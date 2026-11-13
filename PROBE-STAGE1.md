@@ -74,10 +74,13 @@ cannot run` or `Copy: not registered, cannot run` means Car driving stays on the
 
 ## 3. Before the A/B passes
 
+The stage 1 probe runs on **Bevy Valley only**. A large-city check (e.g. Sirater) is deferred to a later stage.
+
 - **Gap Acceptance: City-wide OFF** for the timing passes (Options > Gap Acceptance). Gap Acceptance does not
   reference the navigation system and works with either pair, but city-wide mode adds its own per-frame work and
-  holds cars, which adds noise to a timing comparison. The opt-in list may stay. Pass E below runs with it back ON.
-  If a STOP/YIELD jam appears at Valley x Carlisle during any pass, report it to the Gap Acceptance session as usual.
+  holds cars, which adds noise to a timing comparison. The opt-in list may stay. The final pass (E in section 4)
+  runs with it back ON. If a STOP/YIELD jam appears at Valley x Carlisle during any pass, report it to the Gap
+  Acceptance session as usual.
 - Options > Junction Rules > **Log navigation timing** ON. Every 1024 simulation frames the mod log gets one line for
   the system that ran in that window:
   `timing game's own CarNavigationSystem: frames a-b (1024 sim frames in S s = R frames/s), cars C, navigation job schedule-to-done ms over N runs: mean .. p50 .. p95 .. max .. (skipped k)`
@@ -85,45 +88,61 @@ cannot run` or `Copy: not registered, cannot run` means Car driving stays on the
   to the end of the navigation job, upstream waits included, which are the same for both).
 - Same camera spot, same graphics settings, no building during a pass.
 
-## 4. A/B passes
-
 Switching: Options > Junction Rules > **Car driving**: `Game's own` / `Junction Rules copy`. It applies at the next
 simulation step, also while the city runs; the log says `car driving switched to ...`. A window that straddles a
 switch has samples of only one system; skip the first line after each switch.
 
-| Pass | City | Speed | Car driving | Record |
-|---|---|---|---|---|
-| A1 | Sirater | 3 | Game's own | wait 1 line, then 5 timing lines; FPS over 60 s |
-| B1 | Sirater | 3 | Junction Rules copy | skip 1 line, then 5 timing lines; FPS over 60 s |
-| A2 | Sirater | 3 | Game's own | 5 timing lines (checks drift between A1 and B1) |
-| B2 | Sirater | 3 | Junction Rules copy | 5 timing lines; then 10 minutes of watching (section 5) |
-| C | Bevy Valley | 1 and 3 | copy selected **before** loading the save | load log lines; 5 timing lines; watching (section 5) |
-| D | Bevy Valley | 3 | Game's own, then copy | 3 lines each |
-| E | Sirater | 3 | copy, Gap Acceptance City-wide back ON | 5 timing lines; 5 minutes of watching |
+**Same in-game duration for every pass:** a pass is 6 timing lines (skip the first, keep 5). Each line is exactly 1024
+simulation frames, so every pass covers the same in-game time at either speed.
 
-Pass C also exercises the load phase: the copy is registered in the game's load simulation too, so loading a save with
-the copy selected must look the same as with the game's own (cars appear where they were, no burst of jams).
+## 4. Speed and timing: game's own vs copy (Bevy Valley)
 
-## 5. What to measure and what passes
+At the owner's speeds, the in-game speed buttons **1x** and **4x**; Gap Acceptance City-wide OFF except pass E.
 
-Speed (from the timing lines, Sirater at speed 3):
-- Copy `mean` and `p95` within about 10 % of the game's own (Burst on both sides; the A2 pass shows the normal drift).
+| Pass | Speed | Car driving | Record |
+|---|---|---|---|
+| A1 | 1x | Game's own | 5 timing lines; FPS over the pass |
+| B1 | 1x | Junction Rules copy | 5 timing lines; FPS over the pass |
+| A2 | 4x | Game's own | 5 timing lines; FPS over the pass |
+| B2 | 4x | Junction Rules copy | 5 timing lines; FPS over the pass |
+| A3 | 4x | Game's own | 5 timing lines (checks drift between A2 and B2) |
+| C | 1x, then 4x | copy selected **before** loading the save | load log lines; 5 timing lines at each speed |
+| E | 4x | copy, Gap Acceptance City-wide back **ON** | 5 timing lines; then watch the section 5 junctions with the copy |
+
+Pass C also exercises the load phase: the copy is registered in the game's load simulation too, so loading the save
+with the copy selected must look the same as with the game's own (cars appear where they were, no burst of jams).
+
+What passes:
+- Copy `mean` and `p95` within about 10 % of the game's own at the same speed (Burst on both sides; A3 shows the
+  normal drift).
 - `frames/s` (simulation rate) the same within noise; FPS the same within noise.
 - `skipped` stays 0 or near it. A copy 2x slower or more means its Burst code is not running: check the Modding.log
   Burst line.
 
-Behaviour (watch with the copy active, busy junctions and a highway):
-- Cars stop at red lights and go on green; STOP/YIELD signs are obeyed as before.
-- Lane changes and lane reservations at junctions look normal; no cars driving through each other.
-- Parking, bus stops, delivery trucks, trailers behave as before.
-- No new gridlock compared with the game's own pass; no frozen cars.
-- `JunctionRules.Mod.log`, `Modding.log` and `Player.log` stay free of new exceptions.
+## 5. Behaviour check at known Bevy Valley junctions
 
-**ClearTheWay check** (ClearTheWay runs right before the car-driving slot): with the copy active, follow an emergency
-vehicle with its siren on (fire engine, ambulance or police car on a call). Other cars must pull aside / let it
-through as with the game's own system. `Logs/ClearTheWay.log` must show no new errors.
+Watch each junction for the same in-game time (6 timing lines) once with `Game's own` and once with
+`Junction Rules copy`, same speed, same camera spot:
 
-## 6. Rollback
+- **Valley x Carlisle** at (1092.7, -81.5): a STOP/YIELD junction that Gap Acceptance holds (no sign, lane or
+  connection changes there during tests).
+- **1-2 busy signalised junctions or merges: the owner picks them** (the repo docs name no others).
+
+Compare between the two settings, per junction:
+- Queues: length and how fast they clear.
+- Stuck cars: none frozen, no new gridlock; cars stop at red and go on green; STOP/YIELD obeyed as before.
+- Odd lane changes: lane changes and lane reservations look the same; no cars driving through each other.
+- Despawns: no cars vanishing that the game's own pass does not also show.
+- Also: parking, bus stops, delivery trucks, trailers behave as before; `JunctionRules.Mod.log`, `Modding.log` and
+  `Player.log` stay free of new exceptions.
+
+## 6. ClearTheWay siren check
+
+ClearTheWay runs right before the car-driving slot. With the copy active, follow an emergency vehicle with its siren
+on (fire engine, ambulance or police car on a call). Other cars must pull aside / let it through as with the game's
+own system. `Logs/ClearTheWay.log` must show no new errors.
+
+## 7. Rollback
 
 - Immediate: set **Car driving** back to `Game's own` (applies at the next step).
 - Full: quit the game, then remove the mod folder (self-contained; only runs with the game closed and refuses when the
@@ -142,7 +161,8 @@ through as with the game's own system. `Logs/ClearTheWay.log` must show no new e
   The settings file is `$CS2/JunctionRules.coc` (same place as Gap Acceptance's `GapAcceptance.coc`; may be left).
   The mod adds no data to saves; saves load the same without it.
 
-## 7. Report back
+## 8. Report back
 
-Per pass: the 5 timing lines (or their mean/p95/frames per second), FPS, and anything odd seen while watching; the
-three version-check lines from section 2; any exception text.
+Per pass: the 5 timing lines (or their mean/p95/frames per second) and FPS; per junction: queues, stuck cars, odd
+lane changes and despawns for each setting; the siren check result; the three version-check lines from section 2;
+any exception text.
