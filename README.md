@@ -30,6 +30,8 @@ No new driving rules yet.
 When the version gate does not allow the copy, the copy pair and the timing probes are not registered at all (their
 types are only named inside `Systems/CopyPair.cs`, behind NoInlining methods), so a game patch that renames something
 the copy uses cannot break loading; the switch then only keeps the game's own pair running.
+If registering or creating the copy fails partway, every copy or probe system that already exists is switched off
+(the game creates a system, enabled, when it is registered) and the game's own pair keeps running; the log says how many.
 - **Skip code hash check (probe aid)**: lets the copy run on the right game version when only the code hash differs.
   Read at game start.
 

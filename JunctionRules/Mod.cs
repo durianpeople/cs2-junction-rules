@@ -61,6 +61,9 @@ namespace JunctionRules
                 {
                     log.Error(e, "registering the Junction Rules copy failed; car driving stays with the game's own system");
                     Gate = VersionGate.Failed("registering the copy: " + e.GetType().Name + ": " + e.Message);
+                    // UpdateAfter/UpdateBefore create systems at registration, Enabled. Register already switches off what
+                    // it made (finally); this repeats it in case Register failed before its own try (e.g. at JIT time).
+                    DisableCopyLeftovers(updateSystem.World, "after the failed registration");
                 }
             }
             else
@@ -69,6 +72,23 @@ namespace JunctionRules
             }
             // Creating the switch system now turns the copy and the probes off before any step can run them.
             updateSystem.World.GetOrCreateSystemManaged<CarDrivingSwitchSystem>();
+        }
+
+        /// <summary>
+        /// Switches off any copy or probe system that exists in the world, so nothing of the copy runs next to the game's
+        /// own system while the switch leaves it alone. Never throws. Used when registration or creation failed.
+        /// </summary>
+        internal static void DisableCopyLeftovers(Unity.Entities.World world, string when)
+        {
+            try
+            {
+                int n = CopyPair.DisableAnyExisting(world);
+                log.Warn($"switched off {n} existing Junction Rules copy/probe system(s) {when}");
+            }
+            catch (Exception e)
+            {
+                log.Error(e, $"switching off the Junction Rules copy/probe systems {when} failed");
+            }
         }
 
         /// <summary>

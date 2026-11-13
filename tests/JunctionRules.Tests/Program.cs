@@ -187,6 +187,26 @@ namespace JunctionRules.Tests
             int regIf = sw.LastIndexOf("if (Mod.CopyRegistered)", create < 0 ? 0 : create, StringComparison.Ordinal);
             Check(create > 0 && regIf > 0, "switch creates the copy only if Mod.CopyRegistered");
             Check(sw.Contains("DrivingSwitch.GateFor(Mod.Gate, m_Copy != null)"), "switch closes the gate when the copy is absent");
+
+            // Leftover copy systems are switched off on every failure path (UpdateAfter/UpdateBefore create systems
+            // at registration, and a fresh system is Enabled).
+            int regBody = copyPair.IndexOf("public static void Register(", StringComparison.Ordinal);
+            int fin = copyPair.IndexOf("finally", regBody < 0 ? 0 : regBody, StringComparison.Ordinal);
+            int nextMethod = copyPair.IndexOf("public static", regBody + 1, StringComparison.Ordinal);
+            Check(regBody > 0 && fin > regBody && fin < nextMethod && copyPair.IndexOf("DisableAnyExisting(updateSystem.World)", fin, StringComparison.Ordinal) is int d && d > fin && d < nextMethod,
+                "Register switches off what it created in a finally");
+            foreach (string t in new[] { "JRCarNavigationSystem>", "JRCarNavigationSystem.Actions>", "GameNavTimingProbeSystem>", "CopyNavTimingProbeSystem>" })
+            {
+                int n = System.Text.RegularExpressions.Regex.Matches(copyPair, @"\[MethodImpl\(MethodImplOptions\.NoInlining\)\]\s*private static bool \w+\(World world\) => Disable\(world\.GetExistingSystemManaged<" + System.Text.RegularExpressions.Regex.Escape(t)).Count;
+                Check(n == 1, "DisableAnyExisting has its own NoInlining helper for " + t.TrimEnd('>'));
+            }
+            Check(System.Text.RegularExpressions.Regex.Matches(copyPair, @"TryDisable\(""[^""]+"", \(\) => Disable\w+\(world\)\)").Count == 4, "DisableAnyExisting wraps each of the 4 helpers in TryDisable");
+            int modCatch = mod.IndexOf("catch (Exception e)", reg < 0 ? 0 : reg, StringComparison.Ordinal);
+            int modLeft = mod.IndexOf("DisableCopyLeftovers(updateSystem.World", modCatch < 0 ? 0 : modCatch, StringComparison.Ordinal);
+            int modElse = mod.IndexOf("else", modCatch < 0 ? 0 : modCatch, StringComparison.Ordinal);
+            Check(modCatch > reg && modLeft > modCatch && modLeft < modElse, "Mod switches off leftovers when registration fails");
+            int swCatch = sw.IndexOf("catch (System.Exception e)", create < 0 ? 0 : create, StringComparison.Ordinal);
+            Check(swCatch > create && sw.IndexOf("Mod.DisableCopyLeftovers(World", swCatch, StringComparison.Ordinal) > swCatch, "switch switches off leftovers when creating the copy fails");
         }
 
         // ---- driving switch ----

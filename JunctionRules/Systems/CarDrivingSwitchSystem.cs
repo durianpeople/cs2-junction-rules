@@ -47,6 +47,9 @@ namespace JunctionRules.Systems
                 {
                     m_Copy = null;
                     Mod.log.Error(e, "getting the Junction Rules copy systems failed; car driving stays with the game's own system");
+                    // Registered systems exist; with m_Copy null this switch never touches them again, so make sure
+                    // none of them is left on.
+                    Mod.DisableCopyLeftovers(World, "after the failed copy creation");
                 }
             }
         }

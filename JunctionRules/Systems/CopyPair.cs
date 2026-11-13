@@ -32,16 +32,79 @@ namespace JunctionRules.Systems
         /// TrainNavigationSystem. Same in LoadSimulation, where the game also runs car navigation. The debug timing
         /// probes sit between each navigation system and its Actions system (GameSimulation only).
         /// </summary>
+        /// <remarks>
+        /// UpdateSystem.UpdateAfter/UpdateBefore create the system in the world at registration time
+        /// (World.GetOrCreateSystemManaged, Game/UpdateSystem.cs), and a fresh system is Enabled. So whatever this
+        /// registered, all of it or only part of it before an exception, is switched off again on the way out (finally).
+        /// Only CarDrivingSwitchSystem turns any of them on, and only when Mod.CopyRegistered is true.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void Register(UpdateSystem updateSystem)
         {
-            foreach (SystemUpdatePhase phase in new[] { SystemUpdatePhase.GameSimulation, SystemUpdatePhase.LoadSimulation })
+            try
             {
-                updateSystem.UpdateAfter<JRCarNavigationSystem, CarNavigationSystem.Actions>(phase);
-                updateSystem.UpdateAfter<JRCarNavigationSystem.Actions, JRCarNavigationSystem>(phase);
+                foreach (SystemUpdatePhase phase in new[] { SystemUpdatePhase.GameSimulation, SystemUpdatePhase.LoadSimulation })
+                {
+                    updateSystem.UpdateAfter<JRCarNavigationSystem, CarNavigationSystem.Actions>(phase);
+                    updateSystem.UpdateAfter<JRCarNavigationSystem.Actions, JRCarNavigationSystem>(phase);
+                }
+                updateSystem.UpdateBefore<GameNavTimingProbeSystem, CarNavigationSystem.Actions>(SystemUpdatePhase.GameSimulation);
+                updateSystem.UpdateBefore<CopyNavTimingProbeSystem, JRCarNavigationSystem.Actions>(SystemUpdatePhase.GameSimulation);
             }
-            updateSystem.UpdateBefore<GameNavTimingProbeSystem, CarNavigationSystem.Actions>(SystemUpdatePhase.GameSimulation);
-            updateSystem.UpdateBefore<CopyNavTimingProbeSystem, JRCarNavigationSystem.Actions>(SystemUpdatePhase.GameSimulation);
+            finally
+            {
+                DisableAnyExisting(updateSystem.World);
+            }
+        }
+
+        /// <summary>
+        /// Switches off every copy or probe system that exists in the world (registered fully, partly, or created
+        /// before a failure). Never throws: each system is handled in its own NoInlining helper inside its own try/catch,
+        /// so one type that cannot load (TypeLoadException on another game version) or a system whose creation failed
+        /// does not stop the others. Returns how many existing systems it switched off; failures go to the log.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static int DisableAnyExisting(World world)
+        {
+            int disabled = 0;
+            if (world == null) return 0;
+            disabled += TryDisable("copy navigation", () => DisableNavigation(world));
+            disabled += TryDisable("copy actions", () => DisableActions(world));
+            disabled += TryDisable("game timing probe", () => DisableGameProbe(world));
+            disabled += TryDisable("copy timing probe", () => DisableCopyProbe(world));
+            return disabled;
+        }
+
+        private static int TryDisable(string what, System.Func<bool> disable)
+        {
+            try
+            {
+                return disable() ? 1 : 0;
+            }
+            catch (System.Exception e)
+            {
+                JunctionRules.Mod.log.Warn("switching off the " + what + " system failed: " + e.GetType().Name + ": " + e.Message);
+                return 0;
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool DisableNavigation(World world) => Disable(world.GetExistingSystemManaged<JRCarNavigationSystem>());
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool DisableActions(World world) => Disable(world.GetExistingSystemManaged<JRCarNavigationSystem.Actions>());
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool DisableGameProbe(World world) => Disable(world.GetExistingSystemManaged<GameNavTimingProbeSystem>());
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static bool DisableCopyProbe(World world) => Disable(world.GetExistingSystemManaged<CopyNavTimingProbeSystem>());
+
+        private static bool Disable(ComponentSystemBase system)
+        {
+            if (system == null) return false;
+            system.Enabled = false;
+            return true;
         }
 
         /// <summary>Gets the registered copy pair and probes from the world, all switched off.</summary>
