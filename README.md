@@ -11,7 +11,7 @@ No new driving rules yet.
 |---|---|
 | `JunctionRules/Vanilla/` | Copied game code only (generated, do not edit by hand). Each file has a header with its source. |
 | `JunctionRules/Core/` | Game-independent logic: version gate, driving switch, timing window, IL hasher. Unit-tested. |
-| `JunctionRules/Systems/` | `CarDrivingSwitchSystem` (chooses the pair each step), navigation timing probes. |
+| `JunctionRules/Systems/` | `CarDrivingSwitchSystem` (chooses the pair each step), `CopyPair` (the only place that registers/creates the copy), navigation timing probes. |
 | `JunctionRules/Settings/` | Options page and English texts. |
 | `JunctionRules/Mod.cs` | Version gate and system registration. |
 | `tools/vanilla_copy.py`, `tools/vanilla_rules.json` | Makes the copy from the decompile and proves it unchanged. |
@@ -26,6 +26,10 @@ No new driving rules yet.
 - **Status**: what runs now and the version check result.
 - **Log navigation timing** (debug): one line per 1024 simulation frames with the navigation job timing of the pair
   that ran. Off: the probe systems are disabled and cost nothing.
+
+When the version gate does not allow the copy, the copy pair and the timing probes are not registered at all (their
+types are only named inside `Systems/CopyPair.cs`, behind NoInlining methods), so a game patch that renames something
+the copy uses cannot break loading; the switch then only keeps the game's own pair running.
 - **Skip code hash check (probe aid)**: lets the copy run on the right game version when only the code hash differs.
   Read at game start.
 
@@ -40,7 +44,12 @@ cd JunctionRules
 PATH=~/.local/opt/dotnet:$PATH dotnet build -c Release -p:SkipDeploy=true
 ```
 
-Burst build (needs the CS2 modding toolchain env file):
+Burst build (needs the CS2 modding toolchain env file). **Game closed only**: the official post-processor
+(`ModPostProcessor.sh`) runs Proton Experimental's wine inside the game's own Proton prefix (`compatdata/949230`), which
+must not happen while the game runs there under Proton 11.0. The build checks `pgrep -f 'Cities2[.]exe'` first and fails
+with a clear message while the game runs (override at your own risk: `-p:AllowBurstWhileGameRuns=true`). A separate
+scratch wine prefix is not used: the generated script hard-codes the game's prefix and the post-processor needs the
+Windows .NET runtime installed in its prefix.
 
 ```
 cd JunctionRules

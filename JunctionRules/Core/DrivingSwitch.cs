@@ -52,6 +52,13 @@ namespace JunctionRules.Core
         public bool HasApplied => m_HasApplied;
         public int Switches { get; private set; }
 
+        /// <summary>
+        /// The gate the switch must use: the load-time gate, but closed when the copy systems were not registered (they
+        /// are registered only when the gate allowed the copy at load; this also covers a registration that failed).
+        /// </summary>
+        public static GateResult GateFor(GateResult gate, bool copyRegistered) =>
+            !gate.CopyAllowed || copyRegistered ? gate : VersionGate.Failed("the Junction Rules copy systems are not registered");
+
         public static CarDrivingMode Effective(CarDrivingMode requested, bool copyAllowed) =>
             copyAllowed && requested == CarDrivingMode.JunctionRulesCopy ? CarDrivingMode.JunctionRulesCopy : CarDrivingMode.GameOwn;
 
@@ -78,12 +85,6 @@ namespace JunctionRules.Core
             m_HasApplied = true;
             m_Applied = effective;
             return true;
-        }
-
-        /// <summary>Forget the applied state (new World / game load) so the next step re-applies the flags.</summary>
-        public void Reset()
-        {
-            m_HasApplied = false;
         }
     }
 }

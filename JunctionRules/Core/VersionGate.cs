@@ -1,3 +1,5 @@
+using System;
+
 namespace JunctionRules.Core
 {
     /// <summary>What the copy in Vanilla/ was made from. Update together with tools/vanilla_rules.json after a port.</summary>
@@ -69,6 +71,43 @@ namespace JunctionRules.Core
             return new GateResult(GateVerdict.CodeMismatch,
                 $"game version '{actualVersion}' matches but the vanilla code hash {Short(actualHash)} differs from {Short(expectedHash)}. " +
                 "Car driving stays with the game's own system.");
+        }
+
+        /// <summary>
+        /// The load-time check in its safe order: read the version first; on a version mismatch stop there (the code
+        /// hash is never computed and the copy never runs, whatever <paramref name="skipHashCheck"/> says). Only after a
+        /// version match is the hash computed, in its own try/catch: a hashing exception counts as a hash mismatch, so
+        /// "Skip code hash check" can still let the copy run. An exception reading the version fails safe (Error).
+        /// </summary>
+        public static GateResult Check(string expectedVersion, Func<string> readVersion, string expectedHash, Func<string> computeHash, bool skipHashCheck)
+        {
+            string version;
+            try
+            {
+                version = readVersion();
+            }
+            catch (Exception e)
+            {
+                return Failed("reading the game version: " + e.GetType().Name + ": " + e.Message);
+            }
+            if (string.IsNullOrEmpty(version) || version != expectedVersion)
+            {
+                return Evaluate(expectedVersion, version, expectedHash, null, skipHashCheck);
+            }
+
+            string hash;
+            string hashError = null;
+            try
+            {
+                hash = computeHash();
+            }
+            catch (Exception e)
+            {
+                hash = null;
+                hashError = e.GetType().Name + ": " + e.Message;
+            }
+            GateResult result = Evaluate(expectedVersion, version, expectedHash, hash, skipHashCheck);
+            return hashError == null ? result : new GateResult(result.Verdict, result.Message + " (the code hash could not be computed: " + hashError + ")");
         }
 
         public static GateResult Failed(string what) =>

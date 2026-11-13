@@ -8,7 +8,6 @@ using Game.Simulation;
 using JunctionRules.Core;
 using JunctionRules.Settings;
 using JunctionRules.Systems;
-using JunctionRules.Vanilla;
 
 namespace JunctionRules
 {
@@ -25,6 +24,9 @@ namespace JunctionRules
         /// <summary>Version gate result, decided once at load. Fails safe (game's own) until decided.</summary>
         public static GateResult Gate { get; private set; } = VersionGate.Failed("not evaluated yet");
 
+        /// <summary>True only when the copy pair and the probes were registered (gate allowed it and registration worked).</summary>
+        public static bool CopyRegistered { get; private set; }
+
         public void OnLoad(UpdateSystem updateSystem)
         {
             log.Info($"{nameof(OnLoad)} version {typeof(Mod).Assembly.GetName().Version}, copy made from game {MadeFrom.GameVersion}");
@@ -39,46 +41,64 @@ namespace JunctionRules
             else log.Warn("version check: " + Gate.Verdict + ": " + Gate.Message);
             log.Info($"settings: car driving {Settings.CarDriving}, timing log {(Settings.DebugTiming ? "on" : "off")}, skip code hash check {(Settings.SkipCodeHashCheck ? "on" : "off")}");
 
-            // The copy pair sits right after the game's Actions system, i.e. in the game's own slot: after every system a
-            // mod placed "before CarNavigationSystem" (ClearTheWay's ClearTheWaySystem), before every system placed "after
-            // CarNavigationSystem" (those sort after the game's Actions, which the game registers first), before
-            // TrainNavigationSystem. Same in LoadSimulation, where the game also runs car navigation.
+            // The switch runs ahead of the game's car navigation in every step, with or without the copy.
             foreach (SystemUpdatePhase phase in new[] { SystemUpdatePhase.GameSimulation, SystemUpdatePhase.LoadSimulation })
             {
                 updateSystem.UpdateBefore<CarDrivingSwitchSystem, CarNavigationSystem>(phase);
-                updateSystem.UpdateAfter<JRCarNavigationSystem, CarNavigationSystem.Actions>(phase);
-                updateSystem.UpdateAfter<JRCarNavigationSystem.Actions, JRCarNavigationSystem>(phase);
             }
-            // Debug timing probes: between each navigation system and its Actions system (GameSimulation only).
-            updateSystem.UpdateBefore<GameNavTimingProbeSystem, CarNavigationSystem.Actions>(SystemUpdatePhase.GameSimulation);
-            updateSystem.UpdateBefore<CopyNavTimingProbeSystem, JRCarNavigationSystem.Actions>(SystemUpdatePhase.GameSimulation);
+            // The copy pair and the probes are registered only when the gate allows the copy. Their types are named only
+            // inside CopyPair (NoInlining), so on another game version, where loading them could throw TypeLoadException,
+            // nothing here touches them and the game's own system keeps running.
+            CopyRegistered = false;
+            if (Gate.CopyAllowed)
+            {
+                try
+                {
+                    CopyPair.Register(updateSystem);
+                    CopyRegistered = true;
+                }
+                catch (Exception e)
+                {
+                    log.Error(e, "registering the Junction Rules copy failed; car driving stays with the game's own system");
+                    Gate = VersionGate.Failed("registering the copy: " + e.GetType().Name + ": " + e.Message);
+                }
+            }
+            else
+            {
+                log.Info("Junction Rules copy and timing probes not registered (version check did not allow the copy)");
+            }
             // Creating the switch system now turns the copy and the probes off before any step can run them.
             updateSystem.World.GetOrCreateSystemManaged<CarDrivingSwitchSystem>();
         }
 
+        /// <summary>
+        /// Version first (a mismatch always keeps the game's own system and never hashes), then the code hash in its own
+        /// try/catch inside VersionGate.Check, so a hashing exception after a version match counts as a hash mismatch.
+        /// </summary>
         private static GateResult EvaluateGate(bool skipHashCheck)
         {
-            try
+            GateResult result = VersionGate.Check(MadeFrom.GameVersion, ReadGameVersion, MadeFrom.VanillaCodeHash, HashVanillaCode, skipHashCheck);
+            if (result.Verdict == GateVerdict.CodeMismatch || result.Verdict == GateVerdict.PassHashSkipped)
             {
-                string version = Game.Version.current.version;
-                string hash = IlHasher.Hash(typeof(CarNavigationSystem), typeof(CarLaneSpeedIterator));
-                GateResult result = VersionGate.Evaluate(MadeFrom.GameVersion, version, MadeFrom.VanillaCodeHash, hash, skipHashCheck);
-                if (result.Verdict != GateVerdict.Pass)
+                try
                 {
                     foreach (var kv in IlHasher.HashEach(typeof(CarNavigationSystem), typeof(CarLaneSpeedIterator)))
                     {
                         log.Info($"vanilla code hash {kv.Key}: {kv.Value}");
                     }
-                    log.Info($"vanilla code hash (all): {hash}; game full version {Game.Version.current.fullVersion}");
+                    log.Info($"vanilla code hash (all): {HashVanillaCode()}; game full version {Game.Version.current.fullVersion}");
                 }
-                return result;
+                catch (Exception e)
+                {
+                    log.Warn("vanilla code hash diagnostics failed: " + e.GetType().Name + ": " + e.Message);
+                }
             }
-            catch (Exception e)
-            {
-                log.Error(e, "version check failed");
-                return VersionGate.Failed(e.GetType().Name + ": " + e.Message);
-            }
+            return result;
         }
+
+        private static string ReadGameVersion() => Game.Version.current.version;
+
+        private static string HashVanillaCode() => IlHasher.Hash(typeof(CarNavigationSystem), typeof(CarLaneSpeedIterator));
 
         public void OnDispose()
         {

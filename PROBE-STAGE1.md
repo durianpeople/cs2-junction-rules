@@ -4,7 +4,8 @@ Goal: show in the game that the Junction Rules copy of the car-driving system is
 behaves the same. Stage 1 adds no features. The setting defaults to the game's own system, so installing the mod
 changes nothing until **Car driving** is switched.
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.1.0-burst/`
+Build to install: `~/Code/cs2-junction-rules/.staged/0.1.0-burst/`. If that folder holds a `STALE.md`, the staged
+build predates a code fix: rebuild it first with the game closed (command in `STALE.md`) and use the new sha256s.
 
 | File | sha256 |
 |---|---|
@@ -18,12 +19,20 @@ Built for game **1.6.4f1 (1097.158a)** only. On any other version the mod keeps 
 ## 1. Install (game closed only)
 
 ```
-pgrep -f Cities2.exe && echo "GAME IS RUNNING - stop here" || echo "game closed, ok"
 CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
 cd ~/Code/cs2-junction-rules/.staged/0.1.0-burst && sha256sum JunctionRules*      # compare with the table above
-mkdir -p "$CS2/Mods/JunctionRules"
-cp JunctionRules.dll JunctionRules.pdb JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/"
+if pgrep -f 'Cities2[.]exe' >/dev/null; then
+  echo "GAME IS RUNNING - stop"
+elif [ -e STALE.md ]; then
+  echo "STAGED BUILD IS STALE - see STALE.md, rebuild first"
+else
+  mkdir -p "$CS2/Mods/JunctionRules" &&
+  cp JunctionRules.dll JunctionRules.pdb JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
+  echo "installed"
+fi
 ```
+
+(`'Cities2[.]exe'` matches the game's process but never the shell that runs the check.)
 
 Do not install while the game runs. Launch the game the usual way (Proton 11.0 stable).
 
@@ -38,6 +47,10 @@ Do not install while the game runs. Launch the game the usual way (Proton 11.0 s
 - `OnLoad version 0.1.0.0, copy made from game 1.6.4f1 (1097.158a)`
 - `version check: Pass: game version '1.6.4f1 (1097.158a)' and vanilla code hash 5a15f3b9a5f9b2db match`
 - `settings: car driving GameOwn, timing log off, skip code hash check off`
+
+On any verdict other than `Pass`/`PassHashSkipped` the log also says `Junction Rules copy and timing probes not
+registered`: the copy is then not loaded at all, Car driving always runs the game's own system and Log navigation
+timing does nothing.
 
 If the version check says `CodeMismatch` (version matches, hash differs): the game's runtime may hash IL slightly
 differently from the offline tool. Copy the logged `vanilla code hash` lines into the report, then turn on
@@ -101,9 +114,14 @@ through as with the game's own system. `Logs/ClearTheWay.log` must show no new e
 ## 6. Rollback
 
 - Immediate: set **Car driving** back to `Game's own` (applies at the next step).
-- Full: quit the game, check `pgrep -f Cities2.exe`, then remove the mod folder:
-  `rm -r "$CS2/Mods/JunctionRules"`. The settings file is `$CS2/ModsSettings/JunctionRules/JunctionRules.coc`
-  (may be left). The mod adds no data to saves; saves load the same without it.
+- Full: quit the game, then remove the mod folder (only runs with the game closed):
+
+  ```
+  if pgrep -f 'Cities2[.]exe' >/dev/null; then echo "GAME IS RUNNING - stop"; else rm -r "$CS2/Mods/JunctionRules" && echo "removed"; fi
+  ```
+
+  The settings file is `$CS2/JunctionRules.coc` (same place as Gap Acceptance's `GapAcceptance.coc`; may be left).
+  The mod adds no data to saves; saves load the same without it.
 
 ## 7. Report back
 

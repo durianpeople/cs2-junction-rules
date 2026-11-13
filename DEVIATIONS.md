@@ -39,14 +39,23 @@ from outside through `ComponentSystemBase.Enabled`.
 
 Found with `tools/IlHash --copy` (compares the built copy's IL with Game.dll method by method; result for this copy:
 54 of 80 methods or field blocks identical, 7 of them after canonical renumbering of locals and branch labels;
-19 differ only in control-flow shape, with the same calls, fields, types, strings and constants; 7 differ in content,
-all listed here). None changes behaviour, so they are not patched (patching them would make the copy harder to diff
-against later decompiles).
+19 "shape only"; 7 differ in content, all listed here). None changes behaviour, so they are not patched (patching
+them would make the copy harder to diff against later decompiles).
 
-- **`&&` for `&`** (7 sites, in UpdateNavigationJob.FillNavigationPaths, UpdateNavigationTarget and the iterator's
-  CheckCurrentLane x2, CheckOverlappingLanes, CheckParkingLane, UpdateMaxSpeed): the game evaluates both comparisons
-  without a branch (`and`); the decompile short-circuits. Every right-hand side is a side-effect-free comparison of
-  locals/fields, so the result is identical; only the branch shape differs (Burst often turns both into the same code).
+"Shape only" is a weaker check than "identical": that class compares only the sorted multiset of member/type
+references (calls, fields, types, casts, constructors), strings and numeric constants. It ignores branches, local
+loads/stores, `dup`/`pop` **and arithmetic and comparison opcodes** (`add`, `mul`, `clt`, `ceq`, `and`, `or`, ...), so
+a swapped operator or comparison would not show there. Those 19 methods were therefore also read side by side (see the
+bullets below); the copy's source is in any case proved equal to the decompile by `tools/vanilla_copy.py check`.
+
+- **Short-circuit `&&`/`||` for the game's non-short-circuit `&`/`|`** (10 operators in 5 methods: 9 `and` + 1 `or`,
+  in UpdateNavigationJob.FillNavigationPaths, UpdateNavigationTarget and the iterator's CheckOverlappingLanes,
+  CheckParkingLane, UpdateMaxSpeed): the game evaluates both operands without a branch (`and`/`or`); the decompile
+  short-circuits. Every right-hand side is a side-effect-free comparison of locals/fields, so the result is identical;
+  only the branch shape differs (Burst often turns both into the same code).
+- **CheckCurrentLane x2** (the iterator's two overloads): branch layout and boolean-constant placement only (the
+  compiler materialises `true`/`false` in a different place around the same tests); same comparisons, same calls and
+  fields, same result.
 - **Dead zero store** (`flag2` in `JRCarLaneSpeedIterator.cs` line 1159): a local assigned and never read; the build
   warns CS0219 about it. The game's IL has no such store. No effect.
 - **Control-flow shape and local numbering**: a different C# compiler (Roslyn here vs Unity's for the game) lays out

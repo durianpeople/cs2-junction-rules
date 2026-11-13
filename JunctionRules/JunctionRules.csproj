@@ -85,6 +85,26 @@
     <UnityModProjectPath>$(CSII_UNITYMODPROJECTPATH)</UnityModProjectPath>
   </PropertyGroup>
 
+  <!-- Game closed only. ModPostProcessor.sh runs Proton Experimental's wine inside the game's own Proton prefix
+       (compatdata/949230, hard-coded WINEPREFIX in the generated script) while the game may be running there under
+       another Proton (11.0): two wineservers of different versions on one prefix. So a Burst build refuses to start
+       while a Cities2.exe process exists. Override (at your own risk): -p:AllowBurstWhileGameRuns=true.
+       The pattern is written 'Cities2[.]exe' so pgrep never matches the shell that runs it. -->
+  <PropertyGroup>
+    <JRGameProcessPattern Condition="'$(JRGameProcessPattern)' == ''">Cities2[.]exe</JRGameProcessPattern>
+  </PropertyGroup>
+
+  <Target Name="RefuseBurstWhileGameRuns" BeforeTargets="BeforeBuild;BurstPostProcess"
+          Condition="'$(Burst)' == 'true' And '$(AllowBurstWhileGameRuns)' != 'true' And $([MSBuild]::IsOSPlatform('Linux'))">
+    <Exec Command="pgrep -f '$(JRGameProcessPattern)' &gt;/dev/null" IgnoreExitCode="true" EchoOff="true" StandardOutputImportance="low">
+      <Output TaskParameter="ExitCode" PropertyName="_JRGameRunningExit" />
+    </Exec>
+    <Error Condition="'$(_JRGameRunningExit)' == '0'"
+           Text="Cities: Skylines II is running (pgrep -f '$(JRGameProcessPattern)'). The Burst post-processor runs wine inside the game's Proton prefix: build with the game closed only. Quit the game and build again (override at your own risk: -p:AllowBurstWhileGameRuns=true)." />
+    <Error Condition="'$(_JRGameRunningExit)' != '0' And '$(_JRGameRunningExit)' != '1'"
+           Text="Could not check whether Cities: Skylines II is running (pgrep exit code $(_JRGameRunningExit)). Refusing the Burst build; override at your own risk: -p:AllowBurstWhileGameRuns=true." />
+  </Target>
+
   <Target Name="BurstPostProcess" AfterTargets="Build" BeforeTargets="DeployToLocalMods" Condition="'$(Burst)' == 'true'">
     <Error Condition="!Exists('$(ModPostProcessorPath)')" Text="Burst=true but CSII_MODPOSTPROCESSORPATH ('$(ModPostProcessorPath)') does not exist. Load the toolchain env vars first." />
     <Error Condition="!Exists('$(UnityModProjectPath)')" Text="Burst=true but CSII_UNITYMODPROJECTPATH ('$(UnityModProjectPath)') does not exist." />

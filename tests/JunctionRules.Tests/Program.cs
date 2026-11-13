@@ -21,7 +21,9 @@ namespace JunctionRules.Tests
         private static readonly (string Name, Action Run)[] s_Groups =
         {
             ("VersionGateTests", VersionGateTests),
+            ("VersionGateCheckTests", VersionGateCheckTests),
             ("DrivingSwitchTests", DrivingSwitchTests),
+            ("CopyIsolationTests", CopyIsolationTests),
             ("TimingWindowTests", TimingWindowTests),
             ("IlHasherTests", IlHasherTests),
             ("VanillaHeaderTests", VanillaHeaderTests),
@@ -94,6 +96,99 @@ namespace JunctionRules.Tests
             Check(MadeFrom.VanillaCodeHash.Length == 64, "MadeFrom hash is a sha256 hex string");
         }
 
+        // ---- version gate: check order (version first, hash in its own try/catch) ----
+
+        private static void VersionGateCheckTests()
+        {
+            int hashCalls = 0;
+            Func<string> goodHash = () => { hashCalls++; return H; };
+            Func<string> otherHash = () => { hashCalls++; return "00" + H.Substring(2); };
+            Func<string> throwingHash = () => { hashCalls++; throw new InvalidOperationException("hash boom"); };
+
+            GateResult r = VersionGate.Check(V, () => V, H, goodHash, false);
+            Check(r.Verdict == GateVerdict.Pass && hashCalls == 1, "check: same version + same hash passes");
+            r = VersionGate.Check(V, () => V, H, otherHash, false);
+            Check(r.Verdict == GateVerdict.CodeMismatch && !r.CopyAllowed, "check: hash mismatch blocks");
+
+            // Version mismatch: never hashes, never allows, skip or not.
+            hashCalls = 0;
+            r = VersionGate.Check(V, () => "1.6.5f1 (1100.1aa)", H, goodHash, false);
+            Check(r.Verdict == GateVerdict.VersionMismatch && !r.CopyAllowed, "check: other version blocks");
+            r = VersionGate.Check(V, () => "1.6.5f1 (1100.1aa)", H, goodHash, true);
+            Check(r.Verdict == GateVerdict.VersionMismatch && !r.CopyAllowed, "check: skip-hash never skips the version check");
+            r = VersionGate.Check(V, () => "1.6.5f1 (1100.1aa)", H, throwingHash, true);
+            Check(r.Verdict == GateVerdict.VersionMismatch && !r.CopyAllowed, "check: version mismatch with a throwing hash still VersionMismatch");
+            Check(!VersionGate.Check(V, () => null, H, goodHash, true).CopyAllowed, "check: null version blocks");
+            Check(hashCalls == 0, $"check: version mismatch never computes the hash (calls {hashCalls})");
+
+            // Version read throws: fail safe.
+            r = VersionGate.Check(V, () => throw new TypeLoadException("version boom"), H, goodHash, true);
+            Check(r.Verdict == GateVerdict.Error && !r.CopyAllowed && r.Message.Contains("version boom"), "check: version read exception fails safe");
+
+            // Hash throws after a version match: counts as a hash mismatch.
+            r = VersionGate.Check(V, () => V, H, throwingHash, false);
+            Check(r.Verdict == GateVerdict.CodeMismatch && !r.CopyAllowed, "check: hash exception after version match = code mismatch");
+            Check(r.Message.Contains("could not be computed") && r.Message.Contains("hash boom"), "check: hash exception named in the message");
+            r = VersionGate.Check(V, () => V, H, throwingHash, true);
+            Check(r.Verdict == GateVerdict.PassHashSkipped && r.CopyAllowed, "check: hash exception + skip hash check allows the copy");
+            r = VersionGate.Check(V, () => V, H, () => throw new TypeLoadException("x"), true);
+            Check(r.Verdict == GateVerdict.PassHashSkipped, "check: TypeLoadException while hashing is caught too");
+        }
+
+        // ---- copy isolation (source check): nothing outside CopyPair names a copy type ----
+
+        private static string StripComments(string text)
+        {
+            var sb = new System.Text.StringBuilder(text.Length);
+            foreach (string line in text.Split('\n'))
+            {
+                int c = line.IndexOf("//", StringComparison.Ordinal);
+                sb.Append(c < 0 ? line : line.Substring(0, c)).Append('\n');
+            }
+            return sb.ToString();
+        }
+
+        private static void CopyIsolationTests()
+        {
+            string root = RepoRoot();
+            Check(root != null, "repo root found");
+            if (root == null) return;
+            string src = Path.Combine(root, "JunctionRules");
+            string[] copyTypeNames = { "JRCarNavigationSystem", "JRCarLaneSpeedIterator", "CopyNavTimingProbeSystem", "GameNavTimingProbeSystem", "JunctionRules.Vanilla" };
+            // Files allowed to name copy types: the copy itself, the probe definitions, and CopyPair.
+            var offenders = new List<string>();
+            foreach (string f in Directory.GetFiles(src, "*.cs", SearchOption.AllDirectories))
+            {
+                string rel = Path.GetRelativePath(src, f).Replace(Path.DirectorySeparatorChar, '/');
+                if (rel.StartsWith("obj/") || rel.StartsWith("bin/") || rel.StartsWith("Vanilla/")) continue;
+                if (rel == "Systems/CopyPair.cs" || rel == "Systems/NavTimingProbeSystems.cs") continue;
+                string code = StripComments(File.ReadAllText(f));
+                foreach (string n in copyTypeNames)
+                {
+                    if (code.Contains(n)) offenders.Add(rel + " names " + n);
+                }
+            }
+            Check(offenders.Count == 0, "only CopyPair names copy types: " + string.Join("; ", offenders));
+
+            string copyPair = StripComments(File.ReadAllText(Path.Combine(src, "Systems", "CopyPair.cs")));
+            int publicStatic = System.Text.RegularExpressions.Regex.Matches(copyPair, @"public static \w+ \w+\(").Count;
+            int noInline = System.Text.RegularExpressions.Regex.Matches(copyPair, @"\[MethodImpl\(MethodImplOptions\.NoInlining\)\]\s*public static").Count;
+            Check(publicStatic >= 2 && noInline == publicStatic, $"every CopyPair method is NoInlining ({noInline} of {publicStatic})");
+            // CopySystems holds the copy only as the ECS base class (no copy type in a field).
+            Check(System.Text.RegularExpressions.Regex.Matches(copyPair, @"public ComponentSystemBase \w+;").Count == 4, "CopySystems fields are ComponentSystemBase");
+
+            // Registration and creation happen only behind the gate.
+            string mod = StripComments(File.ReadAllText(Path.Combine(src, "Mod.cs")));
+            int reg = mod.IndexOf("CopyPair.Register(", StringComparison.Ordinal);
+            int gateIf = mod.LastIndexOf("if (Gate.CopyAllowed)", reg < 0 ? 0 : reg, StringComparison.Ordinal);
+            Check(reg > 0 && gateIf > 0 && mod.IndexOf("CopyPair.Register(", reg + 1, StringComparison.Ordinal) < 0, "Mod registers the copy once, inside if (Gate.CopyAllowed)");
+            string sw = StripComments(File.ReadAllText(Path.Combine(src, "Systems", "CarDrivingSwitchSystem.cs")));
+            int create = sw.IndexOf("CopyPair.Create(", StringComparison.Ordinal);
+            int regIf = sw.LastIndexOf("if (Mod.CopyRegistered)", create < 0 ? 0 : create, StringComparison.Ordinal);
+            Check(create > 0 && regIf > 0, "switch creates the copy only if Mod.CopyRegistered");
+            Check(sw.Contains("DrivingSwitch.GateFor(Mod.Gate, m_Copy != null)"), "switch closes the gate when the copy is absent");
+        }
+
         // ---- driving switch ----
 
         private static readonly GateResult s_Open = VersionGate.Evaluate(V, V, H, H, false);
@@ -150,9 +245,14 @@ namespace JunctionRules.Tests
             Check(!g.Step(CarDrivingMode.JunctionRulesCopy, s_Closed, out flags, out note) && note == null, "blocked warning only once");
             Check(g.Applied == CarDrivingMode.GameOwn && g.Switches == 0, "blocked: no switch counted");
 
-            // Reset (new world) re-applies on the next step.
-            s.Reset();
-            Check(!s.HasApplied && s.Step(CarDrivingMode.GameOwn, s_Open, out flags, out note) && note.Contains("starts"), "reset re-applies");
+            // Copy not registered (gate closed at load, or registration failed): the switch must keep the game's own.
+            Check(!DrivingSwitch.GateFor(s_Closed, false).CopyAllowed, "gate closed, copy absent: closed");
+            Check(DrivingSwitch.GateFor(s_Open, true).Verdict == GateVerdict.Pass, "gate open, copy registered: unchanged");
+            GateResult absent = DrivingSwitch.GateFor(s_Open, false);
+            Check(!absent.CopyAllowed && absent.Verdict == GateVerdict.Error && absent.Message.Contains("not registered"), "gate open but copy absent: closed, says why");
+            var a = new DrivingSwitch();
+            Check(a.Step(CarDrivingMode.JunctionRulesCopy, absent, out flags, out note) && flags.GameNavigation && !flags.CopyNavigation && flags.IsValid, "copy absent: copy request runs game own");
+            Check(note != null && note.Contains("blocked") && note.Contains("not registered"), "copy absent: blocked warning says why");
         }
 
         // ---- timing window ----
