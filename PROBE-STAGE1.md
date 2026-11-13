@@ -109,8 +109,10 @@ At the owner's speeds, the in-game speed buttons **1x** and **4x**; Gap Acceptan
 | C | 1x, then 4x | copy selected **before** loading the save | load log lines; 5 timing lines at each speed |
 | E | 4x | copy, Gap Acceptance City-wide back **ON** | 5 timing lines; then watch the section 5 junctions with the copy |
 
-Pass C also exercises the load phase: the copy is registered in the game's load simulation too, so loading the save
-with the copy selected must look the same as with the game's own (cars appear where they were, no burst of jams).
+Pass C checks the first simulation steps after loading a save with the copy already selected: it must look the same
+as with the game's own (cars appear where they were, no burst of jams). It does NOT test the game's load-simulation
+phase: that phase runs only when a new game starts (SimulationSystem: `m_LoadingCount = NewGame ? 1024 : 0`), never
+on loading a save. The copy is registered there too, but that path stays unprobed in stage 1 (Bevy Valley only).
 
 What passes:
 - Copy `mean` and `p95` within about 10 % of the game's own at the same speed (Burst on both sides; A3 shows the
@@ -122,7 +124,9 @@ What passes:
 ## 5. Behaviour check at known Bevy Valley junctions
 
 Watch each junction for the same in-game time (6 timing lines) once with `Game's own` and once with
-`Junction Rules copy`, same speed, same camera spot:
+`Junction Rules copy`, same speed, same camera spot, and **the same Gap Acceptance City-wide setting for both**
+(pick ON, the city's normal state, and switch it back ON before the first of the pair; never compare a City-wide-OFF
+pass with a City-wide-ON pass, or the STOP/YIELD difference comes from Gap Acceptance, not the copy):
 
 - **Valley x Carlisle** at (1092.7, -81.5): a STOP/YIELD junction that Gap Acceptance holds (no sign, lane or
   connection changes there during tests).
