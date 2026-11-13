@@ -23,6 +23,7 @@ namespace JunctionRules.Tests
             ("VersionGateTests", VersionGateTests),
             ("VersionGateCheckTests", VersionGateCheckTests),
             ("DrivingSwitchTests", DrivingSwitchTests),
+            ("CopyAcquisitionTests", CopyAcquisitionTests),
             ("CopyIsolationTests", CopyIsolationTests),
             ("TimingWindowTests", TimingWindowTests),
             ("IlHasherTests", IlHasherTests),
@@ -184,8 +185,29 @@ namespace JunctionRules.Tests
             Check(reg > 0 && gateIf > 0 && mod.IndexOf("CopyPair.Register(", reg + 1, StringComparison.Ordinal) < 0, "Mod registers the copy once, inside if (Gate.CopyAllowed)");
             string sw = StripComments(File.ReadAllText(Path.Combine(src, "Systems", "CarDrivingSwitchSystem.cs")));
             int create = sw.IndexOf("CopyPair.Create(", StringComparison.Ordinal);
-            int regIf = sw.LastIndexOf("if (Mod.CopyRegistered)", create < 0 ? 0 : create, StringComparison.Ordinal);
-            Check(create > 0 && regIf > 0, "switch creates the copy only if Mod.CopyRegistered");
+            int regIf = sw.LastIndexOf("if (!m_Acquisition.ShouldAttempt(Mod.CopyRegistered))", create < 0 ? 0 : create, StringComparison.Ordinal);
+            Check(create > 0 && regIf > 0 && sw.IndexOf("CopyPair.Create(", create + 1, StringComparison.Ordinal) < 0,
+                "switch creates the copy once, only after ShouldAttempt(Mod.CopyRegistered)");
+
+            // JR-T-001d: UpdateBefore creates the switch (runs OnCreate) at registration, so (1) the switch must not get
+            // the copy in OnCreate, (2) it gets it in OnUpdate before writing any flag, (3) Mod registers it only after
+            // CopyRegistered is final, and never via a separate GetOrCreateSystemManaged.
+            int onCreate = sw.IndexOf("protected override void OnCreate()", StringComparison.Ordinal);
+            int onUpdate = sw.IndexOf("protected override void OnUpdate()", StringComparison.Ordinal);
+            int onCreateEnd = sw.IndexOf("\n        }", onCreate + 1, StringComparison.Ordinal); // end of the method body
+            Check(onCreate > 0 && onCreateEnd > onCreate && !sw.Substring(onCreate, onCreateEnd - onCreate).Contains("CopyPair") &&
+                  !sw.Substring(onCreate, onCreateEnd - onCreate).Contains("CopyRegistered") && !sw.Substring(onCreate, onCreateEnd - onCreate).Contains("AcquireCopyOnce"),
+                "switch OnCreate does not touch the copy");
+            int acquireCall = sw.IndexOf("AcquireCopyOnce();", onUpdate < 0 ? 0 : onUpdate, StringComparison.Ordinal);
+            int stepCall = sw.IndexOf("m_Switch.Step(", onUpdate < 0 ? 0 : onUpdate, StringComparison.Ordinal);
+            int firstEnabled = sw.IndexOf(".Enabled =", onUpdate < 0 ? 0 : onUpdate, StringComparison.Ordinal);
+            Check(onUpdate > 0 && acquireCall > onUpdate && stepCall > acquireCall && firstEnabled > stepCall, "switch OnUpdate acquires the copy before the step and before any Enabled write");
+            int setRegistered = mod.IndexOf("CopyRegistered = true", StringComparison.Ordinal);
+            int switchReg = mod.IndexOf("UpdateBefore<CarDrivingSwitchSystem", StringComparison.Ordinal);
+            Check(setRegistered > 0 && switchReg > setRegistered && reg > 0 && switchReg > reg, "Mod registers the switch after CopyRegistered = true and after CopyPair.Register");
+            int elseBranch = mod.IndexOf("copy and timing probes not registered", StringComparison.Ordinal);
+            Check(elseBranch > 0 && switchReg > elseBranch, "Mod registers the switch after the whole copy block");
+            Check(!mod.Contains("GetOrCreateSystemManaged<CarDrivingSwitchSystem>"), "Mod does not create the switch on its own");
             Check(sw.Contains("DrivingSwitch.GateFor(Mod.Gate, m_Copy != null)"), "switch closes the gate when the copy is absent");
 
             // Leftover copy systems are switched off on every failure path (UpdateAfter/UpdateBefore create systems
@@ -207,6 +229,7 @@ namespace JunctionRules.Tests
             Check(modCatch > reg && modLeft > modCatch && modLeft < modElse, "Mod switches off leftovers when registration fails");
             int swCatch = sw.IndexOf("catch (System.Exception e)", create < 0 ? 0 : create, StringComparison.Ordinal);
             Check(swCatch > create && sw.IndexOf("Mod.DisableCopyLeftovers(World", swCatch, StringComparison.Ordinal) > swCatch, "switch switches off leftovers when creating the copy fails");
+            Check(sw.IndexOf("m_Acquisition.Failed()", swCatch < 0 ? 0 : swCatch, StringComparison.Ordinal) > swCatch, "switch records the failed creation (never retried)");
         }
 
         // ---- driving switch ----
@@ -273,6 +296,67 @@ namespace JunctionRules.Tests
             var a = new DrivingSwitch();
             Check(a.Step(CarDrivingMode.JunctionRulesCopy, absent, out flags, out note) && flags.GameNavigation && !flags.CopyNavigation && flags.IsValid, "copy absent: copy request runs game own");
             Check(note != null && note.Contains("blocked") && note.Contains("not registered"), "copy absent: blocked warning says why");
+        }
+
+        // ---- lazy copy acquisition ----
+
+        private static void CopyAcquisitionTests()
+        {
+            // Normal: not registered yet at OnCreate time is irrelevant; first update with registered attempts once.
+            var a = new CopyAcquisition();
+            Check(a.State == CopyState.NotCheckedYet && !a.Available, "starts not checked");
+            Check(a.ShouldAttempt(true), "first update with copy registered attempts");
+            a.Succeeded();
+            Check(a.Available && a.State == CopyState.Available, "success: available");
+            Check(!a.ShouldAttempt(true) && a.Available, "after success: no second attempt");
+
+            // Failure: attempted once, never again, stays unavailable.
+            var f = new CopyAcquisition();
+            Check(f.ShouldAttempt(true), "failure case: attempts");
+            f.Failed();
+            Check(f.State == CopyState.CreationFailed && !f.Available, "failure: creation failed");
+            bool again = false;
+            for (int i = 0; i < 100; i++) again |= f.ShouldAttempt(true);
+            Check(!again && f.State == CopyState.CreationFailed, "failure: never retried");
+            f.Succeeded();
+            Check(f.State == CopyState.CreationFailed, "failure is final");
+
+            // Not registered (gate closed / registration failed): never attempts, says so.
+            var n = new CopyAcquisition();
+            Check(!n.ShouldAttempt(false) && n.State == CopyState.NotRegistered && !n.Available, "not registered: no attempt");
+            Check(!n.ShouldAttempt(false), "not registered: still no attempt");
+
+            // The bug JR-T-001d fixed: OnCreate saw CopyRegistered=false. Acquisition no longer happens at OnCreate; the
+            // first update sees the final value (true) and acquires.
+            var late = new CopyAcquisition();
+            Check(late.ShouldAttempt(true), "registered by the first update: acquired then (OnCreate order no longer matters)");
+
+            // Switch + acquisition together, first step: flags always one whole pair, copy only when available.
+            foreach (bool registered in new[] { false, true })
+            foreach (bool createOk in new[] { false, true })
+            foreach (CarDrivingMode want in Enum.GetValues(typeof(CarDrivingMode)))
+            {
+                var acq = new CopyAcquisition();
+                bool held = false;
+                if (acq.ShouldAttempt(registered)) { if (createOk) { acq.Succeeded(); held = true; } else acq.Failed(); }
+                var sw = new DrivingSwitch();
+                bool applied = sw.Step(want, DrivingSwitch.GateFor(s_Open, held), out PairFlags fl, out _);
+                bool copyRuns = registered && createOk && want == CarDrivingMode.JunctionRulesCopy;
+                Check(applied && fl.IsValid && fl.CopyNavigation == copyRuns && held == acq.Available,
+                    $"first step: registered {registered}, create ok {createOk}, want {want}: one whole pair, copy runs {copyRuns}");
+            }
+
+            // Status text never reads as runnable when the copy cannot run.
+            string s1 = CopyAcquisition.StatusText(CarDrivingMode.GameOwn, s_Open, true, CopyState.CreationFailed);
+            Check(s1.Contains("Pass") && s1.Contains("creation failed, cannot run"), "status: pass but creation failed says cannot run");
+            string s2 = CopyAcquisition.StatusText(CarDrivingMode.GameOwn, s_Open, false, CopyState.NotRegistered);
+            Check(s2.Contains("not registered, cannot run"), "status: not registered says cannot run");
+            string s3 = CopyAcquisition.StatusText(CarDrivingMode.JunctionRulesCopy, s_Open, true, CopyState.Available);
+            Check(s3.Contains("Running: Junction Rules copy") && s3.Contains("Copy: available"), "status: available");
+            string s4 = CopyAcquisition.StatusText(CarDrivingMode.GameOwn, s_Open, true, CopyState.NotCheckedYet);
+            Check(s4.Contains("first simulation step"), "status: registered, not set up yet");
+            string s5 = CopyAcquisition.StatusText(CarDrivingMode.GameOwn, s_Closed, false, CopyState.NotCheckedYet);
+            Check(s5.Contains("VersionMismatch") && s5.Contains("cannot run"), "status: gate closed says cannot run");
         }
 
         // ---- timing window ----

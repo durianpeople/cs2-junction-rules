@@ -19,24 +19,34 @@ Built for game **1.6.4f1 (1097.158a)** only. On any other version the mod keeps 
 ## 1. Install (game closed only)
 
 ```
-CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
-cd ~/Code/cs2-junction-rules/.staged/0.1.0-burst && sha256sum JunctionRules*      # compare with the table above
-if pgrep -f 'Cities2[.]exe' >/dev/null; then
-  echo "GAME IS RUNNING - stop"
-elif [ -e STALE.md ]; then
-  echo "STAGED BUILD IS STALE - see STALE.md, rebuild first"
-else
+(
+  CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
+  cd ~/Code/cs2-junction-rules/.staged/0.1.0-burst || exit 1
+  if pgrep -f 'Cities2[.]exe' >/dev/null; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
+  if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
+  if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
+  sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
+08c48ac3a206ad49c22cef6e4962184623b174db08e27e006da618a8bae21efa  JunctionRules.dll
+6ec437e94efd6cdb0b05d98fff24e1f72a6d98276a2e24f061cbcb999ea209c2  JunctionRules.pdb
+0103b33c40e1d387ac8a27de789bdd4f99dc32c58ac89fbfa53fc6950bdb7288  JunctionRules_win_x86_64.dll
+95a45e9368251bb2a50c87a7dcbc26a8e0ef69c6ba9cde16aa7494be54347029  JunctionRules_win_x86_64.pdb
+SUMS
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
   echo "installed"
-fi
+)
 ```
 
+The whole block runs in a subshell `( ... )`: paste it whole; a failed check ends only the subshell, never your
+terminal. It copies nothing unless the game is closed, the build is not stale and all four sha256s match the list in
+the block (which must equal the table above; update both after a rebuild).
 (`'Cities2[.]exe'` matches the game's process but never the shell that runs the check.)
 
 Do not install while the game runs. Launch the game the usual way (Proton 11.0 stable).
 
 ## 2. Check the logs after the main menu appears
+
+`$CS2` below is the game folder set on the first line of the install block.
 
 `$CS2/Logs/Modding.log`:
 - `JunctionRules` is listed as loaded, no exception next to it.
@@ -58,7 +68,9 @@ differently from the offline tool. Copy the logged `vanilla code hash` lines int
 `VersionMismatch`: then the copy is for another game version and must be re-made.
 
 After loading a city: `car driving starts with game's own (game nav on/actions on, copy nav off/actions off)` and
-`navigation timing log off`.
+`navigation timing log off`. Options > Junction Rules > Status then says `Copy: available`; `Copy: creation failed,
+cannot run` or `Copy: not registered, cannot run` means Car driving stays on the game's own system: stop and report
+(with any exception from `JunctionRules.Mod.log`).
 
 ## 3. Before the A/B passes
 
@@ -114,10 +126,17 @@ through as with the game's own system. `Logs/ClearTheWay.log` must show no new e
 ## 6. Rollback
 
 - Immediate: set **Car driving** back to `Game's own` (applies at the next step).
-- Full: quit the game, then remove the mod folder (only runs with the game closed):
+- Full: quit the game, then remove the mod folder (self-contained; only runs with the game closed and refuses when the
+  game folder is not found, so it never removes a path built from an empty variable):
 
   ```
-  if pgrep -f 'Cities2[.]exe' >/dev/null; then echo "GAME IS RUNNING - stop"; else rm -r "$CS2/Mods/JunctionRules" && echo "removed"; fi
+  (
+    CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
+    if [ -z "$CS2" ] || [ ! -d "$CS2/Mods" ]; then echo "CS2 folder not found - nothing removed"; exit 1; fi
+    if pgrep -f 'Cities2[.]exe' >/dev/null; then echo "GAME IS RUNNING - stop, nothing removed"; exit 1; fi
+    if [ ! -d "$CS2/Mods/JunctionRules" ]; then echo "not installed"; exit 0; fi
+    rm -r -- "$CS2/Mods/JunctionRules" && echo "removed"
+  )
   ```
 
   The settings file is `$CS2/JunctionRules.coc` (same place as Gap Acceptance's `GapAcceptance.coc`; may be left).

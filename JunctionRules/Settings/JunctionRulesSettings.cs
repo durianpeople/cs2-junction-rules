@@ -55,8 +55,7 @@ namespace JunctionRules.Settings
 
         public static string StatusText()
         {
-            string running = CarDrivingSwitchSystem.Running == CarDrivingMode.JunctionRulesCopy ? "Junction Rules copy" : "game's own";
-            return $"Running: {running}. Version check: {Mod.Gate.Verdict}.";
+            return CopyAcquisition.StatusText(CarDrivingSwitchSystem.Running, Mod.Gate, Mod.CopyRegistered, CarDrivingSwitchSystem.CopyState);
         }
     }
 
@@ -82,7 +81,7 @@ namespace JunctionRules.Settings
                 { m_Setting.GetEnumValueLocaleID(CarDrivingMode.JunctionRulesCopy), "Junction Rules copy" },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.Status)), "Status" },
-                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.Status)), "What runs now and the result of the version check made at game start. Reopen the options page to refresh." },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.Status)), "What runs now, the result of the version check made at game start, and whether the copy can run (set up at the first simulation step). Reopen the options page to refresh." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.DebugTiming)), "Log navigation timing" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.DebugTiming)), "Every 1024 simulation frames, write the timing of the running car-navigation job (game's own or copy, measured the same way) and the simulation rate to the mod log. Off: nothing is measured. Only available when the version check passed at game start." },

@@ -16,13 +16,17 @@ namespace JunctionRules.Systems
     /// When the version gate did not allow the copy, the copy pair and the probes are not registered at all: this system
     /// then only keeps the game's pair on. It never names a copy type itself (fields are ComponentSystemBase, creation
     /// is in CopyPair.Create), so it loads even when the copy's types cannot.
+    /// The copy systems are got lazily, in the first update that sees Mod.CopyRegistered (attempted once, see
+    /// CopyAcquisition), not in OnCreate: UpdateSystem.UpdateBefore creates this system, and so runs OnCreate, at
+    /// registration time, which must not depend on the order of the registrations in Mod.OnLoad.
     /// </summary>
     public class CarDrivingSwitchSystem : GameSystemBase
     {
         private CarNavigationSystem m_GameNavigation;
         private CarNavigationSystem.Actions m_GameActions;
-        /// <summary>Null when the copy is not registered (version gate closed or registration failed).</summary>
+        /// <summary>Null unless <see cref="m_Acquisition"/> is Available.</summary>
         private CopySystems m_Copy;
+        private readonly CopyAcquisition m_Acquisition = new CopyAcquisition();
         private readonly DrivingSwitch m_Switch = new DrivingSwitch();
         private bool m_ProbesOn;
         private bool m_ProbesApplied;
@@ -30,33 +34,53 @@ namespace JunctionRules.Systems
         /// <summary>What actually runs now (for the settings status line).</summary>
         public static CarDrivingMode Running { get; private set; }
 
+        /// <summary>Whether the switch holds the copy (for the settings status line).</summary>
+        public static CopyState CopyState { get; private set; } = CopyState.NotCheckedYet;
+
         [Preserve]
         protected override void OnCreate()
         {
             base.OnCreate();
             m_GameNavigation = World.GetOrCreateSystemManaged<CarNavigationSystem>();
             m_GameActions = World.GetOrCreateSystemManaged<CarNavigationSystem.Actions>();
-            // Until the first step decides, the copy and the probes stay off (the game's pair keeps its default: on).
-            if (Mod.CopyRegistered)
+            // Nothing of the copy here: it may not be registered yet (see the class summary). Until the first update,
+            // the game's pair keeps its default (on) and the copy and the probes stay off (CopyPair.Register's finally).
+        }
+
+        /// <summary>
+        /// Gets the copy systems once, in the first update that sees the copy registered. On failure everything of the
+        /// copy that exists is switched off and the switch stays on the game's own pair for the session.
+        /// </summary>
+        private void AcquireCopyOnce()
+        {
+            if (!m_Acquisition.ShouldAttempt(Mod.CopyRegistered))
             {
-                try
-                {
-                    m_Copy = CopyPair.Create(World);
-                }
-                catch (System.Exception e)
-                {
-                    m_Copy = null;
-                    Mod.log.Error(e, "getting the Junction Rules copy systems failed; car driving stays with the game's own system");
-                    // Registered systems exist; with m_Copy null this switch never touches them again, so make sure
-                    // none of them is left on.
-                    Mod.DisableCopyLeftovers(World, "after the failed copy creation");
-                }
+                CopyState = m_Acquisition.State;
+                return;
             }
+            try
+            {
+                m_Copy = CopyPair.Create(World);
+                m_Acquisition.Succeeded();
+            }
+            catch (System.Exception e)
+            {
+                m_Copy = null;
+                m_Acquisition.Failed();
+                Mod.log.Error(e, "getting the Junction Rules copy systems failed; car driving stays with the game's own system");
+                // Registered systems exist; with m_Copy null this switch never touches them again, so make sure
+                // none of them is left on.
+                Mod.DisableCopyLeftovers(World, "after the failed copy creation");
+            }
+            CopyState = m_Acquisition.State;
         }
 
         [Preserve]
         protected override void OnUpdate()
         {
+            // First, in the same update and before any Enabled flag is written: the copy is either held (all four of
+            // its systems known, off) or absent (closed gate below, never enabled).
+            AcquireCopyOnce();
             CarDrivingMode requested = Mod.Settings != null ? Mod.Settings.CarDriving : CarDrivingMode.GameOwn;
             GateResult gate = DrivingSwitch.GateFor(Mod.Gate, m_Copy != null);
             if (m_Switch.Step(requested, gate, out PairFlags flags, out string note))

@@ -41,11 +41,6 @@ namespace JunctionRules
             else log.Warn("version check: " + Gate.Verdict + ": " + Gate.Message);
             log.Info($"settings: car driving {Settings.CarDriving}, timing log {(Settings.DebugTiming ? "on" : "off")}, skip code hash check {(Settings.SkipCodeHashCheck ? "on" : "off")}");
 
-            // The switch runs ahead of the game's car navigation in every step, with or without the copy.
-            foreach (SystemUpdatePhase phase in new[] { SystemUpdatePhase.GameSimulation, SystemUpdatePhase.LoadSimulation })
-            {
-                updateSystem.UpdateBefore<CarDrivingSwitchSystem, CarNavigationSystem>(phase);
-            }
             // The copy pair and the probes are registered only when the gate allows the copy. Their types are named only
             // inside CopyPair (NoInlining), so on another game version, where loading them could throw TypeLoadException,
             // nothing here touches them and the game's own system keeps running.
@@ -70,8 +65,16 @@ namespace JunctionRules
             {
                 log.Info("Junction Rules copy and timing probes not registered (version check did not allow the copy)");
             }
-            // Creating the switch system now turns the copy and the probes off before any step can run them.
-            updateSystem.World.GetOrCreateSystemManaged<CarDrivingSwitchSystem>();
+            // The switch runs ahead of the game's car navigation in every step, with or without the copy. Registered
+            // last, after CopyRegistered is final: UpdateBefore creates the switch (runs its OnCreate) right here. The
+            // switch does not depend on that order (it gets the copy lazily in its first update, see
+            // CarDrivingSwitchSystem), but registering it last keeps the two in step. The copy and the probes are
+            // already off at this point (CopyPair.Register's finally); the switch's first update, ahead of both
+            // navigation slots, writes all four Enabled flags of the step.
+            foreach (SystemUpdatePhase phase in new[] { SystemUpdatePhase.GameSimulation, SystemUpdatePhase.LoadSimulation })
+            {
+                updateSystem.UpdateBefore<CarDrivingSwitchSystem, CarNavigationSystem>(phase);
+            }
         }
 
         /// <summary>

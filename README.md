@@ -23,13 +23,19 @@ No new driving rules yet.
 
 - **Car driving**: `Game's own` (default) or `Junction Rules copy`. Applies at the next simulation step. The copy only
   runs if the version gate passed at game start.
-- **Status**: what runs now and the version check result.
+- **Status**: what runs now, the version check result, and whether the copy can run.
 - **Log navigation timing** (debug): one line per 1024 simulation frames with the navigation job timing of the pair
   that ran. Off: the probe systems are disabled and cost nothing.
 
 When the version gate does not allow the copy, the copy pair and the timing probes are not registered at all (their
-types are only named inside `Systems/CopyPair.cs`, behind NoInlining methods), so a game patch that renames something
-the copy uses cannot break loading; the switch then only keeps the game's own pair running.
+types are only named inside `Systems/CopyPair.cs`, behind NoInlining methods), so after a game patch the mod's own code
+never loads a copy type (checked offline by the CopyIsolationTests); the switch then only keeps the game's own pair
+running. Not proven: whether the game itself, reflecting over every type of the mod assembly at load (e.g. when it
+collects systems or Burst code), trips over a copy type that no longer matches a patched game. That has not been
+tested on a patched game.
+The switch gets the copy systems in its first simulation update, not when it is created (the game creates it during
+registration). The options **Status** line says `Copy: available`, `not registered, cannot run` or
+`creation failed, cannot run`, so it never reads as runnable when the copy cannot run.
 If registering or creating the copy fails partway, every copy or probe system that already exists is switched off
 (the game creates a system, enabled, when it is registered) and the game's own pair keeps running; the log says how many.
 - **Skip code hash check (probe aid)**: lets the copy run on the right game version when only the code hash differs.
