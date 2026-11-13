@@ -1,0 +1,60 @@
+{
+  "_doc": "Rules that turn the ILSpy decompile of the game's car-driving code into the copy in JunctionRules/Vanilla/. tools/vanilla_copy.py applies them (generate) or proves the copy equals decompile + these rules (check). Every deviation must also be listed in DEVIATIONS.md under the same id.",
+  "made_from": {
+    "game_version": "1.6.4f1 (1097.158a)",
+    "game_full_version": "1.6.4f1 (1097.158a) [6360.18886]",
+    "game_dll_sha256": "f076df4b70aa0f21a80345e03a052ca2273bc6754f41dab7e63d837837a43745",
+    "decompiler": "ilspycmd 8.2.0.7535",
+    "decompiled_on": "2026-11-13"
+  },
+  "files": [
+    {
+      "source": "Game.Simulation/CarNavigationSystem.cs",
+      "target": "JunctionRules/Vanilla/JRCarNavigationSystem.cs",
+      "original_type": "Game.Simulation.CarNavigationSystem (incl. nested Actions, UpdateNavigationJob, UpdateLaneSignalsJob, UpdateLaneReservationsJob, TrafficAmbienceEffect, ApplyTrafficAmbienceJob, ApplyLaneEffectsJob, TypeHandle)"
+    },
+    {
+      "source": "Game.Simulation/CarLaneSpeedIterator.cs",
+      "target": "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs",
+      "original_type": "Game.Simulation.CarLaneSpeedIterator"
+    }
+  ],
+  "renames": [
+    {
+      "id": "R-01",
+      "from": "CarNavigationSystem",
+      "to": "JRCarNavigationSystem",
+      "reason": "Own type name so the game's system and the copy can both exist in one World."
+    },
+    {
+      "id": "R-02",
+      "from": "CarLaneSpeedIterator",
+      "to": "JRCarLaneSpeedIterator",
+      "reason": "The copy's navigation job must call the copied iterator, not the game's."
+    }
+  ],
+  "namespace": {
+    "id": "R-03",
+    "from": "namespace Game.Simulation;",
+    "to": "namespace JunctionRules.Vanilla;",
+    "reason": "Copied types live in the mod's own namespace. Inside 'namespace Game.Simulation;' every type of Game.Simulation and of its parent Game was visible without a using; the two added usings restore exactly those lookups (a name that became ambiguous would be a compile error, never a silent rebind).",
+    "add_usings": [
+      "using Game;",
+      "using Game.Simulation;"
+    ]
+  },
+  "deviations": [
+    {
+      "id": "D-01",
+      "kind": "decompiler artefact correction",
+      "files": {
+        "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 13,
+        "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 20
+      },
+      "regex": true,
+      "find": "(\\(|, |= )0f - ",
+      "replace": "\\1-",
+      "reason": "ILSpy 8.2 prints the IL float negation 'neg' as '0f - x'. That is not the same operation: -(+0) is -0 but 0f - (+0) is +0, so the decompile changes the sign of zero results. Restores the game's unary minus. Verified by tools/IlHash --copy: all 33 sites are 'neg' in Game.dll and every one is followed by a primary expression, so '-x' parses exactly like the original."
+    }
+  ]
+}

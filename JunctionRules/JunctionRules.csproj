@@ -1,0 +1,106 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>10.0</LangVersion>
+    <AssemblyName>JunctionRules</AssemblyName>
+    <RootNamespace>JunctionRules</RootNamespace>
+    <Version>0.1.0</Version>
+    <InformationalVersion>0.1.0-stage1</InformationalVersion>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <Nullable>disable</Nullable>
+    <!-- Cities: Skylines II install path. Resolution order (first match wins):
+         1) -p:GamePath=... on the dotnet build command line
+         2) CS2_PATH environment variable
+         3) CSII_INSTALLATIONPATH (set by the official modding toolchain / ~/.config/environment.d/60-cs2-modding.conf)
+         4) common Steam library locations -->
+    <GamePath Condition="'$(GamePath)' == '' And '$(CS2_PATH)' != ''">$(CS2_PATH)</GamePath>
+    <GamePath Condition="'$(GamePath)' == '' And '$(CSII_INSTALLATIONPATH)' != ''">$(CSII_INSTALLATIONPATH)</GamePath>
+    <GamePath Condition="'$(GamePath)' == '' And Exists('$(HOME)/.local/share/Steam/steamapps/common/Cities Skylines II/Cities2_Data/Managed/Game.dll')">$(HOME)/.local/share/Steam/steamapps/common/Cities Skylines II</GamePath>
+    <GamePath Condition="'$(GamePath)' == '' And Exists('C:\Program Files (x86)\Steam\steamapps\common\Cities Skylines II\Cities2_Data\Managed\Game.dll')">C:\Program Files (x86)\Steam\steamapps\common\Cities Skylines II</GamePath>
+    <ManagedDLLPath>$(GamePath)/Cities2_Data/Managed</ManagedDLLPath>
+    <!-- Local mods folder the game loads from. Deploy is OFF unless -p:Deploy=true is passed (stage 1 is a probe
+         build: install by hand with the game closed, see PROBE-STAGE1.md). -->
+    <ModDeployPath Condition="'$(CSII_LOCALMODSPATH)' != ''">$(CSII_LOCALMODSPATH)/JunctionRules</ModDeployPath>
+    <ModDeployPath Condition="'$(ModDeployPath)' == ''">$(LOCALAPPDATA)Low\Colossal Order\Cities Skylines II\Mods\JunctionRules</ModDeployPath>
+  </PropertyGroup>
+
+  <!-- Compile against the game's own class libraries (Unity's Mono profile) instead of the .NET Framework reference
+       assemblies: the copied game code must bind to exactly what Game.dll binds to. It uses System.MathF, which the
+       net472 reference assemblies lack (build note B-01 in DEVIATIONS.md). -->
+  <PropertyGroup>
+    <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+    <NoStdLib>true</NoStdLib>
+    <NoCompilerStandardLib>true</NoCompilerStandardLib>
+    <ImplicitlyExpandNETStandardFacades>false</ImplicitlyExpandNETStandardFacades>
+    <ImplicitlyExpandDesignTimeFacades>false</ImplicitlyExpandDesignTimeFacades>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="mscorlib"><HintPath>$(ManagedDLLPath)/mscorlib.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="System"><HintPath>$(ManagedDLLPath)/System.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="System.Core"><HintPath>$(ManagedDLLPath)/System.Core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="netstandard"><HintPath>$(ManagedDLLPath)/netstandard.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Game"><HintPath>$(ManagedDLLPath)/Game.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Colossal.Core"><HintPath>$(ManagedDLLPath)/Colossal.Core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Colossal.Logging"><HintPath>$(ManagedDLLPath)/Colossal.Logging.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Colossal.Localization"><HintPath>$(ManagedDLLPath)/Colossal.Localization.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Colossal.IO.AssetDatabase"><HintPath>$(ManagedDLLPath)/Colossal.IO.AssetDatabase.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Colossal.PSI.Common"><HintPath>$(ManagedDLLPath)/Colossal.PSI.Common.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Colossal.Mathematics"><HintPath>$(ManagedDLLPath)/Colossal.Mathematics.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Colossal.Collections"><HintPath>$(ManagedDLLPath)/Colossal.Collections.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Unity.Entities"><HintPath>$(ManagedDLLPath)/Unity.Entities.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Unity.Collections"><HintPath>$(ManagedDLLPath)/Unity.Collections.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Unity.Mathematics"><HintPath>$(ManagedDLLPath)/Unity.Mathematics.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Unity.Burst"><HintPath>$(ManagedDLLPath)/Unity.Burst.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine"><HintPath>$(ManagedDLLPath)/UnityEngine.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(ManagedDLLPath)/UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+
+  <!-- The .NET Framework reference pack is only used to satisfy the SDK's framework check; every class-library
+       reference that reaches the compiler comes from the game's Managed folder. -->
+  <Target Name="UseGameClassLibrariesOnly" AfterTargets="ResolveAssemblyReferences;FindReferenceAssembliesForReferences" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <_JRGameClassLib Include="$(ManagedDLLPath)/mscorlib.dll;$(ManagedDLLPath)/System.dll;$(ManagedDLLPath)/System.Core.dll;$(ManagedDLLPath)/netstandard.dll" />
+      <ReferencePath Remove="@(ReferencePath)" Condition="$([System.String]::Copy('%(ReferencePath.Identity)').ToLowerInvariant().Contains('referenceassemblies'))" />
+      <ReferencePathWithRefAssemblies Remove="@(ReferencePathWithRefAssemblies)" Condition="$([System.String]::Copy('%(ReferencePathWithRefAssemblies.Identity)').ToLowerInvariant().Contains('referenceassemblies'))" />
+      <ReferencePath Remove="@(_JRGameClassLib)" />
+      <ReferencePathWithRefAssemblies Remove="@(_JRGameClassLib)" />
+      <ReferencePath Include="@(_JRGameClassLib)" />
+      <ReferencePathWithRefAssemblies Include="@(_JRGameClassLib)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="ValidateGamePath" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(ManagedDLLPath)/Game.dll')"
+           Text="Cities: Skylines II not found (looked in '$(GamePath)'). Set CS2_PATH to the game install folder, or pass -p:GamePath=&quot;.../Cities Skylines II&quot;." />
+  </Target>
+
+  <!-- Burst build (opt-in): dotnet build -p:Burst=true. Needs the CSII_* toolchain env vars
+       (~/.config/environment.d/60-cs2-modding.conf on Linux). Runs the official ModPostProcessor as the
+       toolchain's Mod.targets does; it writes JunctionRules_win_x86_64.dll (the Burst code) beside the assembly. -->
+  <PropertyGroup Condition="'$(Burst)' == 'true'">
+    <DefineConstants>$(DefineConstants);JUNCTIONRULES_BURST</DefineConstants>
+    <ModPostProcessorPath>$(CSII_MODPOSTPROCESSORPATH)</ModPostProcessorPath>
+    <UnityModProjectPath>$(CSII_UNITYMODPROJECTPATH)</UnityModProjectPath>
+  </PropertyGroup>
+
+  <Target Name="BurstPostProcess" AfterTargets="Build" BeforeTargets="DeployToLocalMods" Condition="'$(Burst)' == 'true'">
+    <Error Condition="!Exists('$(ModPostProcessorPath)')" Text="Burst=true but CSII_MODPOSTPROCESSORPATH ('$(ModPostProcessorPath)') does not exist. Load the toolchain env vars first." />
+    <Error Condition="!Exists('$(UnityModProjectPath)')" Text="Burst=true but CSII_UNITYMODPROJECTPATH ('$(UnityModProjectPath)') does not exist." />
+    <Exec Command="&quot;$(ModPostProcessorPath)&quot; PostProcess &quot;$(TargetPath)&quot; -u &quot;$(UnityModProjectPath)&quot; @(ReferencePath->'-r &quot;%(Identity)&quot;', ' ') -p Windows -d -v" />
+  </Target>
+
+  <!-- Never runs unless -p:Deploy=true (and not -p:SkipDeploy=true). -->
+  <Target Name="DeployToLocalMods" AfterTargets="Build" Condition="'$(Deploy)' == 'true' And '$(SkipDeploy)' != 'true'">
+    <MakeDir Directories="$(ModDeployPath)" />
+    <ItemGroup>
+      <DeployFiles Include="$(TargetDir)$(TargetName)_win_x86_64.dll" Condition="'$(Burst)' == 'true'" />
+      <DeployFiles Include="$(TargetDir)$(TargetName).dll" />
+      <DeployFiles Include="$(TargetDir)$(TargetName).pdb" Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
+    </ItemGroup>
+    <Copy SourceFiles="@(DeployFiles)" DestinationFolder="$(ModDeployPath)" />
+    <Message Importance="high" Text="JunctionRules deployed to $(ModDeployPath)" />
+  </Target>
+
+</Project>

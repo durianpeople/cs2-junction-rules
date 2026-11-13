@@ -1,0 +1,186 @@
+using System.Collections.Generic;
+using System.Diagnostics;
+using Game;
+using Game.Common;
+using Game.Simulation;
+using Game.Tools;
+using Game.Vehicles;
+using JunctionRules.Core;
+using JunctionRules.Vanilla;
+using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
+using Unity.Entities;
+using Unity.Jobs;
+using UnityEngine.Scripting;
+
+namespace JunctionRules.Systems
+{
+    /// <summary>
+    /// Debug-only timing of one car-navigation job, the same way for the game's and the copy's. Each probe runs right
+    /// after its navigation system and before that system's Actions (registered "before Actions"), only in steps where
+    /// the navigation system ran. It takes the main-thread time just after the job was scheduled and schedules a tiny
+    /// marker job on the navigation job's handle (Actions.m_Dependency, public on both pairs) that stamps the time the
+    /// navigation job finished. The difference ("schedule-to-done") includes waiting for upstream jobs, which is the
+    /// same for both pairs because both sit in the same slot with the same dependencies. Nothing waits on the marker
+    /// job: results are read once it has finished, in a later step. When the debug setting is off the switch system
+    /// keeps these systems disabled, so they cost nothing.
+    /// </summary>
+    public abstract class NavTimingProbeSystem : GameSystemBase
+    {
+        public const uint kWindowFrames = 1024;
+        private const int kSlots = 16;
+
+        private struct StampJob : IJob
+        {
+            [NativeDisableContainerSafetyRestriction] public NativeArray<long> m_Stamps;
+            public int m_Index;
+
+            public void Execute() => m_Stamps[m_Index] = Stopwatch.GetTimestamp();
+        }
+
+        private struct Pending
+        {
+            public int Slot;
+            public long ScheduledTicks;
+            public JobHandle Handle;
+        }
+
+        private SimulationSystem m_SimulationSystem;
+        private EntityQuery m_CarQuery;
+        private NativeArray<long> m_Stamps;
+        private readonly bool[] m_Busy = new bool[kSlots];
+        private readonly Queue<Pending> m_Pending = new Queue<Pending>(kSlots);
+        private TimingWindow m_Window;
+        private uint m_LastNavigationVersion;
+
+        protected abstract string Label { get; }
+        protected abstract ComponentSystemBase Navigation { get; }
+        protected abstract JobHandle NavigationJob { get; }
+
+        [Preserve]
+        protected override void OnCreate()
+        {
+            base.OnCreate();
+            m_SimulationSystem = World.GetOrCreateSystemManaged<SimulationSystem>();
+            m_CarQuery = GetEntityQuery(ComponentType.ReadOnly<Car>(), ComponentType.ReadOnly<CarCurrentLane>(),
+                ComponentType.Exclude<Deleted>(), ComponentType.Exclude<Temp>(), ComponentType.Exclude<ParkedCar>());
+            m_Stamps = new NativeArray<long>(kSlots, Allocator.Persistent);
+            m_Window = new TimingWindow(Label, kWindowFrames);
+        }
+
+        [Preserve]
+        protected override void OnStartRunning()
+        {
+            base.OnStartRunning();
+            m_LastNavigationVersion = Navigation.LastSystemVersion;
+            m_Window.Restart(m_SimulationSystem.frameIndex, Stopwatch.GetTimestamp());
+        }
+
+        [Preserve]
+        protected override void OnStopRunning()
+        {
+            DrainAll();
+            base.OnStopRunning();
+        }
+
+        [Preserve]
+        protected override void OnDestroy()
+        {
+            DrainAll();
+            if (m_Stamps.IsCreated) m_Stamps.Dispose();
+            base.OnDestroy();
+        }
+
+        [Preserve]
+        protected override void OnUpdate()
+        {
+            Collect();
+
+            uint version = Navigation.LastSystemVersion;
+            if (version != m_LastNavigationVersion)
+            {
+                m_LastNavigationVersion = version;
+                int slot = FreeSlot();
+                if (slot < 0)
+                {
+                    m_Window.Skip();
+                }
+                else
+                {
+                    long scheduled = Stopwatch.GetTimestamp();
+                    var job = new StampJob { m_Stamps = m_Stamps, m_Index = slot };
+                    m_Busy[slot] = true;
+                    m_Pending.Enqueue(new Pending { Slot = slot, ScheduledTicks = scheduled, Handle = job.Schedule(NavigationJob) });
+                }
+            }
+
+            uint frame = m_SimulationSystem.frameIndex;
+            if (m_Window.Due(frame))
+            {
+                int cars = m_Window.Count > 0 ? m_CarQuery.CalculateEntityCountWithoutFiltering() : 0;
+                string line = m_Window.Tick(frame, Stopwatch.GetTimestamp(), Stopwatch.Frequency, cars);
+                if (line != null) Mod.log.Info(line);
+            }
+        }
+
+        private int FreeSlot()
+        {
+            for (int i = 0; i < kSlots; i++)
+            {
+                if (!m_Busy[i]) return i;
+            }
+            return -1;
+        }
+
+        /// <summary>Reads finished markers (in order) without waiting for unfinished ones.</summary>
+        private void Collect()
+        {
+            while (m_Pending.Count > 0 && m_Pending.Peek().Handle.IsCompleted)
+            {
+                Pending p = m_Pending.Dequeue();
+                p.Handle.Complete();
+                m_Window.Add((m_Stamps[p.Slot] - p.ScheduledTicks) * 1000.0 / Stopwatch.Frequency);
+                m_Busy[p.Slot] = false;
+            }
+        }
+
+        /// <summary>On disable/destroy only: waits for outstanding markers so the stamp array can be reused or freed.</summary>
+        private void DrainAll()
+        {
+            while (m_Pending.Count > 0)
+            {
+                Pending p = m_Pending.Dequeue();
+                p.Handle.Complete();
+                m_Busy[p.Slot] = false;
+            }
+        }
+    }
+
+    /// <summary>Times the game's own navigation job (runs only while the game's pair is enabled).</summary>
+    public class GameNavTimingProbeSystem : NavTimingProbeSystem
+    {
+        private CarNavigationSystem m_Navigation;
+        private CarNavigationSystem.Actions m_Actions;
+
+        protected override string Label => "game's own CarNavigationSystem";
+        protected override ComponentSystemBase Navigation => m_Navigation ??= World.GetOrCreateSystemManaged<CarNavigationSystem>();
+        protected override JobHandle NavigationJob => (m_Actions ??= World.GetOrCreateSystemManaged<CarNavigationSystem.Actions>()).m_Dependency;
+
+        [Preserve]
+        public GameNavTimingProbeSystem() { }
+    }
+
+    /// <summary>Times the copy's navigation job (runs only while the copy's pair is enabled).</summary>
+    public class CopyNavTimingProbeSystem : NavTimingProbeSystem
+    {
+        private JRCarNavigationSystem m_Navigation;
+        private JRCarNavigationSystem.Actions m_Actions;
+
+        protected override string Label => "Junction Rules copy";
+        protected override ComponentSystemBase Navigation => m_Navigation ??= World.GetOrCreateSystemManaged<JRCarNavigationSystem>();
+        protected override JobHandle NavigationJob => (m_Actions ??= World.GetOrCreateSystemManaged<JRCarNavigationSystem.Actions>()).m_Dependency;
+
+        [Preserve]
+        public CopyNavTimingProbeSystem() { }
+    }
+}

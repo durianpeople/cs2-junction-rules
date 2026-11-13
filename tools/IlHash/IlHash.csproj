@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Prints the IlHasher hash of the vanilla car-driving types in a Game.dll (same code the mod runs at load).
+       Usage: dotnet run -c Release (project tools/IlHash) then: [Managed dir] [describe OUT.txt] -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../JunctionRules/Core/IlHasher.cs" Link="Core/IlHasher.cs" />
+  </ItemGroup>
+</Project>
