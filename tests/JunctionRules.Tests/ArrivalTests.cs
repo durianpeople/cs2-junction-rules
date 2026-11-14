@@ -133,6 +133,28 @@ namespace JunctionRules.Tests
             Check(!ArrivalProjection.ReservationBlocks(off, off + 0.01f, 100, 102), "reservation short of the overlap start does not (same priority)");
             Check(ArrivalProjection.ReservationBlocks(0.01f, 0.5f, 100, 99), "STOP arm (num6 99): any reserving car blocks, as stock");
 
+            // JR-T-002g (owner ruling 14 Nov 2026): a feeding-lane car counts ONLY when it would win the stock priority test
+            // (num12 - num6 > 0, the S2-10 condition). num6 = deciding car's GetPriority (100) minus the overlap's priority
+            // delta / sign override (stock num6 -= num9): main road -> num6 > 100, minor arm / STOP / YIELD -> num6 < 100.
+            int mainNum6 = 100 - (-1), minorNum6 = 100 - 1, equalNum6 = 100;
+            Check(ArrivalProjection.ReservationBlocks(off, off - 0.01f, 100, mainNum6) && !ArrivalProjection.FeedingCarBlocks(off, off - 0.01f, 100, mainNum6),
+                "main-road deciding car (num6 101) is NOT held by a minor-arm feeding car (100), even with its reach past the overlap start");
+            Check(!ArrivalProjection.FeedingCarBlocks(1f, 0f, 100, mainNum6), "... not even with its reach across the whole junction lane");
+            Check(ArrivalProjection.FeedingCarBlocks(off, off + 0.01f, 100, minorNum6) && ArrivalProjection.FeedingCarBlocks(0.01f, 0.5f, 100, minorNum6),
+                "minor-arm deciding car (num6 99) IS held by a main-road feeding car (100), as by a stock reservation of that priority");
+            Check(!ArrivalProjection.FeedingCarBlocks(off, off - 0.01f, 100, equalNum6) && !ArrivalProjection.WinsPriority(100, equalNum6),
+                "equal priority (num6 100 vs 100): not counted, like S2-10 (stock look-ahead only when num12 - num6 > 0)");
+            for (int n6 = 95; n6 <= 112; n6++)
+            {
+                foreach (int pr in new[] { 100, 108 })
+                {
+                    if (ArrivalProjection.WinsPriority(pr, n6) != (pr - n6 > 0)) Check(false, $"WinsPriority = stock num12 - num6 > 0 (pr {pr}, num6 {n6})");
+                    if (ArrivalProjection.FeedingCarBlocks(0.3f, 0.2f, pr, n6) != (pr - n6 > 0)) Check(false, $"FeedingCarBlocks = priority test then reservation test (pr {pr}, num6 {n6})");
+                }
+            }
+            Check(ArrivalProjection.FeedingCarBlocks(off, off + 0.01f, 108, mainNum6), "emergency feeding car (108) still counts against a main-road car (num6 101)");
+            Check(!ArrivalProjection.WinsPriority(ArrivalProjection.MaxCarPriority, 108), "num6 >= 108: no stock car priority wins, feeding scan skipped");
+
             // The safety re-check uses the same projection: Safety (like Deciding) gives StopAtSpot on a prediction.
             var crossingNear = Car(len, 0.10f, 3f, divided);
             P safety = crossingNear.Classify(true, B(140), out float sStop);
@@ -191,8 +213,11 @@ namespace JunctionRules.Tests
                 string i = File.ReadAllText(it);
                 Check(i.Contains("curvePosition.y += objectSpeed * 2f / math.max(1f, m_Curve.m_Length);"), "stock 2 s look-ahead (ExtendLookAhead base)");
                 Check(i.Contains("if (offset > num10 || priority2 > num6)"), "stock reservation test (ReservationBlocks)");
+                Check(i.Contains("if (num12 - num6 > 0)"), "stock look-ahead priority test (WinsPriority)");
+                Check(t.Contains("return math.select(100, 108, (carData.m_Flags & CarFlags.Emergency) != 0);"), "stock car priorities 100 / 108 (MaxCarPriority)");
                 string n = File.ReadAllText(nav);
                 Check(n.Contains("float num = math.max(0f, VehicleUtils.GetBrakingDistance(prefabCarData, math.abs(navigationData.m_MaxSpeed), timeStep) - 0.01f);"), "stock reservation reach (VirtualOffset)");
+                Check(n.Contains("int priority = VehicleUtils.GetPriority(car);"), "stock reservation priority = VehicleUtils.GetPriority(car) (feeding car priority source)");
             }
             else
             {
@@ -205,6 +230,8 @@ namespace JunctionRules.Tests
             Check(iter.Contains("curvePosition.y = m_JR.AfterProjection(jrInScope, jrY, curvePosition.y,"), "S2-10 extends or undoes the look-ahead");
             string job = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRWholeJunction.cs"));
             Check(Regex.IsMatch(job, @"Projecting\s*\{[^}]*get\s*=>\s*RuleOn\s*&&\s*\(m_OvPhase == PointPhase\.Deciding \|\| m_OvPhase == PointPhase\.Safety\)"), "projection runs for the decision AND the safety re-check (same projection)");
+            Check(job.Contains("int otherPriority = VehicleUtils.GetPriority(otherCar);") && job.Contains("!ArrivalProjection.WinsPriority(otherPriority, num6)) continue;")
+                && job.Contains("!ArrivalProjection.FeedingCarBlocks(offset, num10, otherPriority, num6)) continue;"), "S2-12 feeding cars count only when they win the stock priority test (JR-T-002g)");
             Check(job.Contains("VehicleUtils.CalculateSpeedRange(") && job.Contains("VehicleUtils.GetMaxBrakingSpeed(") && job.Contains("VehicleUtils.GetMaxDriveSpeed("), "job side uses the game's own motion functions");
             string core = File.ReadAllText(Path.Combine(root, "JunctionRules", "Core", "ArrivalTime.cs"));
             string code = Regex.Replace(core, @"//.*", "");

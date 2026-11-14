@@ -129,6 +129,16 @@ sub-lane / connected-edge lookups, no local length), S2-22 (same 4 lines: passes
 S2-23 (5 -> 4 lines: sets the event table and the `ConnectedEdge` lookup instead of the trailer lookups). The 0.2.2
 files `Core/VehicleLength.cs` and `Stage2/JRVehicleLength.cs` are kept (tested, harmless) but nothing calls them.
 
+0.2.3 review fix (JR-T-002g, owner ruling 14 Nov 2026, binding; version stays 0.2.3). In S2-12 a feeding-lane car
+counts ONLY when it would win the stock priority test against the deciding car, `VehicleUtils.GetPriority(car) - num6
+> 0`, the same condition stock applies its look-ahead under and S2-10 extends under (same stock priority source as a
+car on, or a reservation of, the conflicting lane; the game's own `num6`). Combined:
+`GetPriority(car) - num6 > 0 && (offset > num10 || priority > num6)` (`ArrivalProjection.FeedingCarBlocks`), so a
+main-road car never brakes for a minor-arm car heading to its STOP / YIELD line, and equal priority is not counted (as
+S2-10). Implemented in `Stage2/JRWholeJunction.FeedingLaneYield` only: no marked block changed (S2-12 still passes the
+stock `num10` / `num6`), `tools/vanilla_rules.json` unchanged. Owner ruling (2) the same day: the arrival time
+including the stock 0.9 m stop margin is accepted as is (no change).
+
 | Id | File | Sites | Lines inside | Where | What |
 |---|---|---|---|---|---|
 | S2-01 | iterator | 1 | 1 | after field `m_LaneOffsetPush` | Field `m_JR` (JRWholeJunction): the car's stage 2 state. |
@@ -142,7 +152,7 @@ files `Core/VehicleLength.cs` and `Stage2/JRVehicleLength.cs` are kept (tested, 
 | S2-09 | iterator | 1 | 1 | after `GetObjectSpeed` in the object loop | Keeps the other car's position before the 2 s priority look-ahead. |
 | S2-10 | iterator | 1 | 2 | after the look-ahead block | `AfterProjection`: while crossing (no safety stop) the look-ahead is undone unless the other car is already past the overlap start; 0.2.3: while deciding at W or in the safety re-check it becomes `2 s + own arrival time`; `jrProjected` = the car counts only through the look-ahead. |
 | S2-11 / S2-11b | iterator | 1 / 1 | 3 / 2 | around `UpdateMaxSpeed` in `CheckOverlappingLanes` | Before commit: braking distance to W for projected cars and cars in a crossing (merge followers stay stock); `num5` restored after; debug counters. |
-| S2-12 | iterator | 1 | 10 | `CheckOverlappingLanes`, after the reservation priority `num6 -= num9` | 0.2.3 `FeedingLaneYield`: while deciding / re-checking, every car on the lanes feeding this conflicting junction lane as a virtual reservation (stock reach + speed x own arrival time) through the stock test `offset > num10 \|\| priority > num6` with the game's own `num10`; on a hit, the stop at the spot / before the first uncrossed point is applied like a blocking reservation. |
+| S2-12 | iterator | 1 | 10 | `CheckOverlappingLanes`, after the reservation priority `num6 -= num9` | 0.2.3 `FeedingLaneYield`: while deciding / re-checking, every car on the lanes feeding this conflicting junction lane that wins the stock priority test (`GetPriority(car) - num6 > 0`, as S2-10; JR-T-002g) as a virtual reservation (stock reach + speed x own arrival time) through the stock test `offset > num10 \|\| priority > num6` with the game's own `num10` / `num6`; on a hit, the stop at the spot / before the first uncrossed point is applied like a blocking reservation. |
 | S2-20 | nav | 1 | 12 | `UpdateNavigationJob` fields | `m_JRMode` (int, by value), `m_JRCounters` (persistent `NativeArray<long>`, atomic adds, safety restriction off: debug-only counters); 0.2.3: `m_JRSafetyEvents` (persistent `NativeArray<long>` event table, compare-exchange, debug only) and `[ReadOnly] m_JRConnectedEdges` (`BufferLookup<ConnectedEdge>`). The 0.2.2 trailer lookups are gone. |
 | S2-21 | nav | 1 | 1 | after the iterator is set up in `UpdateNavigationTarget` | `m_JR = JRWholeJunction.Create(m_JRMode, m_NodeLaneData, m_OwnerData, m_LaneData, m_Lanes, m_JRConnectedEdges, m_JRCounters)` (0.2.3: read-only lookups of the job for the feeding-lane scan; no per-car local). |
 | S2-22 | nav | 1 | 4 | after `CheckBlocker` at `IL_09cd` | Counters, once per car-step, only when the count bit is set; 0.2.3: safety-stop events through the event table (entity index, simulation frame). |

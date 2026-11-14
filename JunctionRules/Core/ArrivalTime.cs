@@ -174,6 +174,28 @@ namespace JunctionRules.Core
         /// <summary>The stock reservation test (CheckOverlappingLanes: offset &gt; num10 || priority2 &gt; num6), unchanged.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool ReservationBlocks(float offset, float num10, int priority, int num6) => offset > num10 || priority > num6;
+
+        /// <summary>
+        /// The stock priority test for a car on a conflicting junction lane (CheckOverlappingLanes: num12 - num6 &gt; 0,
+        /// where num12 = VehicleUtils.GetPriority(car) and num6 = the deciding car's priority minus the overlap's
+        /// priority delta / sign override; stock applies its look-ahead only then, S2-10 extends only then).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool WinsPriority(int otherPriority, int num6) => otherPriority - num6 > 0;
+
+        /// <summary>The highest stock car priority (VehicleUtils.GetPriority(Car): 100, emergency 108).</summary>
+        public const int MaxCarPriority = 108;
+
+        /// <summary>
+        /// JR-T-002g (owner ruling 14 Nov 2026, binding): a car on a lane feeding the conflicting junction lane counts
+        /// ONLY when it would win the stock priority test against the deciding car, the same condition S2-10 uses for a
+        /// car on the conflicting junction lane (<see cref="WinsPriority"/>); then its virtual reservation goes through
+        /// the unchanged stock reservation test. A main-road car never brakes for a minor-arm car heading to its
+        /// STOP / YIELD line; equal priority is not counted (as S2-10: no look-ahead at equal priority).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool FeedingCarBlocks(float offset, float num10, int priority, int num6) =>
+            WinsPriority(priority, num6) && ReservationBlocks(offset, num10, priority, num6);
     }
 
     /// <summary>

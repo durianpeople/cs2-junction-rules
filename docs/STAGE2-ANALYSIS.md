@@ -218,6 +218,16 @@ Further rulings on the 0.2.1 open points, RULED by the owner on 14 Nov 2026 (bin
 9. **"At the stop line" setting** — KEEP: the variant moves only the entry spot to the stop line; mid-junction spots
    stay in use with it (as built in 0.2.1). 0.2.3: there are no mid spots; the variant still moves W to the line.
 
+Rulings on the 0.2.3 review findings, RULED by the owner on 14 Nov 2026 (binding; version stays 0.2.3; section 10):
+
+10. **Approach (feeding) lane cars only when they win priority** — RULED: a car on a lane feeding a conflicting
+    junction lane counts ONLY when it would win the stock priority test against the deciding car, the same condition
+    S2-10 uses for a car on the conflicting junction lane (`GetPriority(car) - num6 > 0`). A main-road car never brakes
+    for a minor-arm car heading to its STOP / YIELD line. Implemented in JR-T-002g (`FeedingLaneYield`).
+11. **Arrival time includes the stock stop margin** — RULED: ACCEPTED as is. The own arrival time is measured to the
+    point at `Wait(u) + margin` (0.9 m stock stop margin), so the first point at W gets about 0.6 s from standstill
+    (look-ahead about 2.6 s there, not the stock 2 s + 4/15 s). No change.
+
 ## 7. 0.2.1 collisions (JR-T-002c)
 
 Live probe, owner, 14 Nov 2026 (Bevy Valley, 0.2.0 Burst, whole junction on): "stopped inside for a give-way" 0 in
@@ -450,7 +460,8 @@ safety-stop or force a gap. The result was "bold" right turns and safety stops o
    - cars on conflicting junction lanes: look-ahead 2 s + arrival time;
    - cars on the approach lanes feeding a conflicting junction lane: a virtual reservation (position + stock braking
      distance + speed x arrival time) through the stock reservation test.
-2. Count ALL cars on the feeding lanes. Their routes are not read.
+2. Count ALL cars on the feeding lanes. Their routes are not read. Amended by the JR-T-002g ruling below: only
+   feeding cars that win the stock priority test count.
 3. The safety re-check while crossing uses the same projection, from the current state to each remaining uncrossed
    point. The stock can-stop test stays, and so does stock collision braking when the car cannot stop.
 4. Superseded by the clarification below.
@@ -485,7 +496,7 @@ the navigation time step (`m_TimeStep`), as `CarNavigationSystem` advances the c
   front gets 0 s (only a point the front has already reached is stock exactly).
 - **Job side.** `GameMotion` wraps the real `VehicleUtils` calls on the car's `CarData`. The tests use
   `StockCarMotion`, a line-by-line mirror. ArrivalRepoTests check the mirror against the decompile.
-- **Choice made.** This is the time to REACH the point, not the stock "point of no return" (when the reservation
+- **Choice made (stop margin RULED 14 Nov 2026: accepted as is, owner choice 11).** This is the time to REACH the point, not the stock "point of no return" (when the reservation
   reaches it, about `v/(2b) + 4/15 s` earlier at speed). The owner text says "arrival time". The difference is a little
   extra caution at speed. From standstill at W it is not nearly equal either: the distance includes the game's stop
   margin (0.9 m, `Wait(u) + margin`), so even the first point at W gets about 0.6 s (stock: 4/15 s for a standing
@@ -515,7 +526,22 @@ What happens to each car on those lanes (`LaneObject`):
 - Virtual reservation reach = `max(0, GetBrakingDistance(car, v, 4/15) - 0.01)` (the stock reservation reach,
   CarNavigationSystem 2260) `+ v * delta`, beyond the metres the car still has on its lane. As an offset on the
   junction lane it goes through the stock test `offset > num10 || priority > num6` (I 1288, the game's own num10/num6).
-  The STOP arm (num6 99) therefore blocks on any virtual reservation, as stock does for a real one.
+- **Priority gate (JR-T-002g, owner ruling 14 Nov 2026, owner choice 10).** Before that, the car counts ONLY when it
+  would win the stock priority test against the deciding car: `VehicleUtils.GetPriority(car) - num6 > 0`, exactly the
+  condition stock (I 1370) applies its look-ahead under and S2-10 extends under. The priority is the stock one: the same
+  `GetPriority(car)` that stock uses for a car on the conflicting lane (I 1357-1359) and as the priority of the
+  reservation that car would make (N 449); `num6` is the game's own value for this overlap (deciding car's priority
+  minus the overlap's priority delta or sign override, I 1267-1282). So the combined test is
+  `GetPriority(car) - num6 > 0 && (offset > num10 || priority > num6)`, which reduces to "wins priority and its
+  projected reach enters the junction lane": the `offset > num10` branch alone no longer counts a car.
+  Consequences: a main-road deciding car (num6 > 100) is never held by a minor-arm car (100) heading to its STOP / YIELD
+  line, however close; a minor-arm / STOP / YIELD deciding car (num6 < 100) is held by any main-road car whose virtual
+  reservation enters the junction lane, as stock does for a real reservation of that priority; equal priority (num6 =
+  100) is not counted, as S2-10 does not extend the look-ahead at equal priority. Emergency cars (108) count against
+  every normal car. Cheap exit: no feeding scan when no stock car priority (max 108) could win against num6.
+  Before the fix (0.2.3 as built in JR-T-002f) the offset branch counted feeding cars regardless of priority, so a
+  Carlisle through car could brake for a Valley St car approaching its STOP line (review finding).
+  Real reservations already on the junction lane keep the stock test unchanged (`offset > num10` still holds the car).
 - A hit applies the same hold as a blocking reservation: stop at W, or before the first uncrossed point in the re-check.
   Counter: "busy only by projection, feeding-lane car".
 - Cheap exits: no scan unless the overlap is being decided or re-checked, and none when the car is already held at
@@ -530,8 +556,8 @@ Where the lookup cannot work (gaps):
 - Two-way lanes driven against their curve direction are skipped.
 - The actual `Moving` speed is used, not the planned speed. The navigation component is written by the same parallel
   job, so reading it would be a data race. A car about to stop at its own line still counts while it is moving.
-- Every car on the feeding lane counts, including cars that will turn away (owner ruling 2). This is stricter than
-  stock.
+- Every car on the feeding lane that wins the stock priority test counts, including cars that will turn away (owner
+  ruling 2, as amended by owner choice 10). This is stricter than stock.
 - Emergency vehicles: the emergency halving of priority 102 is not modelled in the drive speed. Their priority goes
   through the stock test unchanged.
 
@@ -558,7 +584,7 @@ Deadlock argument (section 8 "Deadlock") unchanged:
   then makes a safety stop (more mid-crossing stops than 0.2.2 in some cases, fewer bold entries).
 - **Stop-start near the boundary.** The decision can flip between updates (start, see a feeding car, stop again).
   Each update re-runs the stock test; there is no hysteresis.
-- **Phantom conflicts.** Counting all feeding-lane cars can hold a car for a car that turns away. This is stricter
+- **Phantom conflicts.** Counting all higher-priority feeding-lane cars can hold a car for a car that turns away. This is stricter
   than stock and is not a collision risk.
 - **Point of no return.** Arrival = reaching the point (above), a little stricter than the stock timing.
 
@@ -586,8 +612,10 @@ Deadlock argument (section 8 "Deadlock") unchanged:
 **Tests.** ArrivalTimeTests (standstill acceleration against a manual step-through, turn cap, near vs far point,
 approach braking, horizon, monotone, microbench), ArrivalProjectionTests (far-carriageway car outside the stock window
 but inside the projected one -> wait at W; first point at W = stop margin only (about 0.6 s); feeding-lane virtual reservation incl. STOP arm and
-standing car; re-check uses the projection and stops before the first uncrossed point; can-stop vs cannot-stop; rule
+standing car; JR-T-002g priority gate: main-road deciding car not held by a minor-arm feeding car, minor-arm deciding car
+held by a main-road feeding car, equal priority not counted as in S2-10, emergency, gate = stock `num12 - num6 > 0` for
+num6 95-112; re-check uses the projection and stops before the first uncrossed point; can-stop vs cannot-stop; rule
 off = stock), SafetyEventTests (one event per transition, gap > 48 frames = new, overflow, histograms),
-ArrivalRepoTests (decompile formulas, S2-10/S2-12 text, Projecting covers Deciding and Safety), and
+ArrivalRepoTests (decompile formulas incl. `num12 - num6 > 0`, GetPriority 100/108 and the reservation priority, S2-10/S2-12 text, the job's priority gate, Projecting covers Deciding and Safety), and
 StretchWholePathTests (one decision at W incl. the far carriageway, re-check stop before the first uncrossed point,
 wait there until all remaining points are clear).

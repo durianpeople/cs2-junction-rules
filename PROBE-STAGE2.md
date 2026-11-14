@@ -388,6 +388,11 @@ section 5, at Valley x Carlisle (1092.7,-81.5) and Sunset x Cherry.
 - **Valley St right turns out across Carlisle are no longer bold.** A car turning right from the Valley St STOP arm
   goes only when BOTH carriageways are clear for the time it needs to reach them. It should not cut in front of
   far-carriageway traffic, and should not stop on the central reservation.
+- **Carlisle through-traffic does not slow for Valley St cars approaching their STOP line** (JR-T-002g). A Carlisle
+  car going through or turning at Valley x Carlisle keeps its speed while a Valley St car drives up to its STOP line;
+  approach-lane cars count only when they have priority over the deciding car. The other way round stays: a Valley St
+  car at its line still waits for Carlisle cars approaching on their lanes. Report any Carlisle car that brakes or
+  stops with nothing on its path but a Valley St car still short of its line.
 - **Safety-stop events are rare.** In the log line, `safety stops inside N (events N)`: the events number is the count
   of cars that went into a safety stop. Expect it to be a small fraction of `whole-path decisions` (well below 0.2.1).
   Report any car seen standing on a central reservation with the junction name. That is now only a safety stop, never
@@ -408,7 +413,7 @@ Diagnostics to read (copy's timing log line, **Log navigation timing** on):
 - `safety stops inside N (events N)`: car-steps vs transitions; read the events.
 - `arrival projection: busy only by projection, junction-lane car N, feeding-lane car N`: how often the projection,
   not the stock 2 s, held a car. Feeding-lane hits should be the larger at Valley x Carlisle (approaching Carlisle
-  traffic).
+  traffic holding Valley St cars; never the reverse since JR-T-002g).
 - `points at W N, distance from W mean X m [histogram (median in a-b)], own arrival mean Y s [histogram (median in a-b)]`:
   the far carriageway should show up as distance ~12-24 m and arrival ~2.5-4 s.
 - Gone: `waited at a mid-junction spot` (no mid spots in 0.2.3).

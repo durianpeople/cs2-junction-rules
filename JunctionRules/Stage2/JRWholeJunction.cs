@@ -335,8 +335,11 @@ namespace JunctionRules.Stage2
         /// <summary>
         /// 0.2.3 (owner ruling 14 Nov 2026): cars on the lanes feeding the conflicting junction lane <paramref name="other"/>,
         /// as virtual reservations on it, through the unchanged stock reservation test. Every car on a feeding lane counts
-        /// (its route is not read: owner choice, the stricter option). num10 / num6 = the stock test's values for this
-        /// overlap. Returns the speed limit this adds (already clamped to the speed range), or float.MaxValue.
+        /// (its route is not read: owner choice, the stricter option), but ONLY when it would win the stock priority test
+        /// against the deciding car (JR-T-002g, owner ruling 14 Nov 2026): VehicleUtils.GetPriority(car) - num6 &gt; 0,
+        /// the same test and the same priority source stock uses for a car on (and a reservation of) the conflicting lane,
+        /// and the condition S2-10 projects under (ArrivalProjection.FeedingCarBlocks). num10 / num6 = the stock test's
+        /// values for this overlap. Returns the speed limit this adds (already clamped to the speed range), or float.MaxValue.
         ///
         /// Feeding lanes, from stock data only: a node lane starts at PathNode(source edge, lane index, segment) of the
         /// edge lane that ends there (Game.Net.LaneSystem node-lane creation; edge lanes end at PathNode(edge, ...)), so
@@ -351,6 +354,8 @@ namespace JunctionRules.Stage2
             ref ComponentLookup<CarData> prefabCars, CarData car, float safeTimeStep, Bounds1 speedRange, float currentMax)
         {
             if (!Projecting) return float.MaxValue;
+            // JR-T-002g: no stock car priority can win against num6 (e.g. a main-road car): nothing on a feeding lane counts.
+            if (!ArrivalProjection.WinsPriority(ArrivalProjection.MaxCarPriority, num6)) return float.MaxValue;
             // Nothing to add when the car is already held at least as hard as this hold would.
             float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, m_OvStopWait, safeTimeStep), speedRange);
             if (!(hold < currentMax)) return float.MaxValue;
@@ -389,6 +394,9 @@ namespace JunctionRules.Stage2
                     // A trailer (or anything driven by another controller, incl. the car's own trailers): its controller is counted.
                     if (controllers.TryGetComponent(e, out Controller c) && c.m_Controller != Entity.Null && c.m_Controller != e) continue;
                     if (!cars.TryGetComponent(e, out Car otherCar)) continue;
+                    // JR-T-002g: only a car that would win the stock priority test against the deciding car counts.
+                    int otherPriority = VehicleUtils.GetPriority(otherCar);
+                    if (!ArrivalProjection.WinsPriority(otherPriority, num6)) continue;
                     float x = o.m_CurvePosition.x;
                     if (o.m_CurvePosition.y < x) continue;   // driving this lane inverted (two-way lane): not towards its end
                     if (!moving.TryGetComponent(e, out Moving m)) continue;
@@ -397,7 +405,7 @@ namespace JunctionRules.Stage2
                     if (!prefabRefs.TryGetComponent(e, out PrefabRef pr) || !prefabCars.TryGetComponent(pr.m_Prefab, out CarData otherData)) continue;
                     float bd = VehicleUtils.GetBrakingDistance(otherData, speed, ReservationTimeStep);
                     float offset = ArrivalProjection.VirtualOffset((1f - x) * feedCurve.m_Length, bd, speed, m_OvDelta, otherLength);
-                    if (offset < 0f || !ArrivalProjection.ReservationBlocks(offset, num10, VehicleUtils.GetPriority(otherCar), num6)) continue;
+                    if (offset < 0f || !ArrivalProjection.FeedingCarBlocks(offset, num10, otherPriority, num6)) continue;
                     if (Counting) m_FeedingLaneHit = true;
                     return MathUtils.Clamp(Apply(StretchState.ForPrediction(m_OvPhase), float.MaxValue, car, safeTimeStep, speedRange), speedRange);
                 }
