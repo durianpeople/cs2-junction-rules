@@ -51,6 +51,11 @@ namespace JunctionRules.Tests
             ("FeedingScanTests", FeedingScanTests),
             ("TurnAcrossTests", TurnAcrossTests),
             ("TurnAcrossRepoTests", TurnAcrossRepoTests),
+            ("BoxOutlineTests", BoxOutlineTests),
+            ("BoxInsetTests", BoxInsetTests),
+            ("BoxHatchTests", BoxHatchTests),
+            ("BoxRectHeightTests", BoxRectHeightTests),
+            ("PaintConfigTests", PaintConfigTests),
         };
 
         private static int Main(string[] args)
