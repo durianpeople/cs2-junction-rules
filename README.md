@@ -18,6 +18,13 @@ normal braking (else collision braking only); a car that can no longer stop at i
 Root causes and rulings: `docs/STAGE2-ANALYSIS.md` sections 7-8.
 0.2.2: a mid-junction spot must fit the whole vehicle, trailers included (stock attach points; owner ruling 14 Nov
 2026, `docs/STAGE2-ANALYSIS.md` section 9), so articulated trucks never wait on a central reservation too short for them.
+0.2.3 (owner rulings 14 Nov 2026, `docs/STAGE2-ANALYSIS.md` section 10): **no mid-junction waiting spots** any more
+(supersedes 0.2.1 mid spots and 0.2.2 trailers; that length code stays in the repo, unused). The car waits only just
+before its first crossing and decides once for its whole path, with an **arrival-time projection**: its own time to
+reach each conflict point (game's own acceleration, speed-in-turns cap and braking) is added to the game's 2 s
+look-ahead for cars on conflicting junction lanes, and every car on the approach lanes feeding a conflicting lane counts
+as a virtual reservation (braking distance + speed x arrival time) in the game's own reservation test. The safety
+re-check while crossing uses the same projection. Expect longer waits at the entry and fewer bold right turns.
 Analysis, per-case behaviour and owner rulings: `docs/STAGE2-ANALYSIS.md`;
 code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 
@@ -26,8 +33,8 @@ code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 | Path | What |
 |---|---|
 | `JunctionRules/Vanilla/` | Copied game code (generated, do not edit by hand) plus stage 2 code only inside `// JR-STAGE2 BEGIN/END` blocks. Each file has a header with its source. |
-| `JunctionRules/Core/` | Game-independent logic: version gate, driving switch, timing window, IL hasher, whole-junction rule arithmetic (`WholePathRule`), stage 2 handoff and counter texts. Unit-tested. |
-| `JunctionRules/Stage2/` | Job side of the whole-junction rule (`JRWholeJunction`) and the copy's main-thread stage 2 state (`JRStage2Bridge`); named only by the copy and the copy's timing probe. |
+| `JunctionRules/Core/` | Game-independent logic: version gate, driving switch, timing window, IL hasher, whole-junction rule arithmetic (`WholePathRule`, `StretchRule`), 0.2.3 arrival time / projection / safety-stop events / histograms (`ArrivalTime.cs`), stage 2 handoff and counter texts. `VehicleLength.cs` (0.2.2) is unused since 0.2.3. Unit-tested. |
+| `JunctionRules/Stage2/` | Job side of the whole-junction rule (`JRWholeJunction`: spots, phases, arrival-time projection, feeding-lane scan) and the copy's main-thread stage 2 state (`JRStage2Bridge`: counters, safety-event table); named only by the copy and the copy's timing probe. `JRVehicleLength.cs` (0.2.2) is unused since 0.2.3. |
 | `JunctionRules/Systems/` | `CarDrivingSwitchSystem` (chooses the pair each step), `CopyPair` (the only place that registers/creates the copy), navigation timing probes. |
 | `JunctionRules/Settings/` | Options page and English texts. |
 | `JunctionRules/Mod.cs` | Version gate and system registration. |
@@ -35,7 +42,7 @@ code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 | `tools/IlHash/` | Prints the vanilla code hash used by the version gate; `--copy` compares the copy's IL with Game.dll. |
 | `tests/JunctionRules.Tests/` | Console test runner. |
 | `DEVIATIONS.md`, `REFERENCERS.md`, `PROBE-STAGE1.md`, `PROBE-STAGE2.md` | Every change to the game code; who uses the copied types; in-game test kits. |
-| `docs/STAGE2-ANALYSIS.md` | Where the game decides conflict by conflict, the change, per-case table, deadlock/starvation, owner rulings. `docs/vanilla_copy_*_0.2.0.txt` / `*_0.2.1.txt` / `*_0.2.2.txt`: the diff script's output per version. |
+| `docs/STAGE2-ANALYSIS.md` | Where the game decides conflict by conflict, the change, per-case table, deadlock/starvation, owner rulings. `docs/vanilla_copy_*_0.2.0.txt` ... `*_0.2.3.txt`: the diff script's output per version. |
 
 ## Settings
 
@@ -47,7 +54,10 @@ code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 - **Whole junction: waiting spot**: `Before the first crossing` (default, owner ruling) or `At the stop line`.
 - **Status**: what runs now, the version check result, and whether the copy can run.
 - **Log navigation timing** (debug): one line per 1024 simulation frames with the navigation job timing of the pair
-  that ran; the copy's line also names the junction gap rule and the stage 2 counters. Off: the probe systems are
+  that ran; the copy's line also names the junction gap rule and the stage 2 counters (0.2.3: whole-path decisions,
+  waits at the entry spot for a later conflict, safety stops inside with their EVENT count (one per car transition),
+  stopped inside for a give-way / behind a crossing car, "busy only by projection" split junction-lane / feeding-lane
+  car, and for points at W the distance from W and the own arrival time as mean + histogram with the median bucket). Off: the probe systems are
   disabled and the counters are not counted, so they cost nothing.
 
 When the version gate does not allow the copy, the copy pair and the timing probes are not registered at all (their

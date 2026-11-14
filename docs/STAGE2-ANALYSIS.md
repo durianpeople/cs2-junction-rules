@@ -211,12 +211,12 @@ Further rulings on the 0.2.1 open points, RULED by the owner on 14 Nov 2026 (bin
 6. **Physical car in a later conflict point** — KEEP: a car that is physically in a later point of the stretch makes
    the crossing car brake for it at THAT point (stock collision braking), never a safety stop further back (deadlock
    reason, section 8). As built in 0.2.1 (`StretchState.ForVehicle`: physical -> Stock).
-7. **Followers queued behind a car at a mid spot** — ALLOWED: a follower may stand with its body in the near
+7. **Followers queued behind a car at a mid spot** (SUPERSEDED 0.2.3: no mid spots) — ALLOWED: a follower may stand with its body in the near
    carriageway while it queues behind a car waiting on the central reservation (stock car-following, no room check;
    like an exit queue). No code change; no longer an open risk.
-8. **Trailers** — 0.2.2: the vehicle length a mid spot must fit includes every trailer (section 9).
+8. **Trailers** (SUPERSEDED 0.2.3: no mid spots, code unused) — 0.2.2: the vehicle length a mid spot must fit includes every trailer (section 9).
 9. **"At the stop line" setting** — KEEP: the variant moves only the entry spot to the stop line; mid-junction spots
-   stay in use with it (as built in 0.2.1).
+   stay in use with it (as built in 0.2.1). 0.2.3: there are no mid spots; the variant still moves W to the line.
 
 ## 7. 0.2.1 collisions (JR-T-002c)
 
@@ -317,6 +317,9 @@ It is stock priority-by-claim, not a wrongly placed conflict and not the rule it
 
 ## 8. 0.2.1 stretches and the safety re-check (owner ruling, 14 Nov 2026, binding)
 
+> **0.2.3: mid spots SUPERSEDED** (owner clarification 14 Nov 2026, section 10). The whole path is one stretch: the
+> only waiting spot is W; the safety re-check (point 3) stays. Text below is the 0.2.1 record.
+
 Owner wording (replaces B1): one general pattern, applied from the start.
 1. A car's path through the node (its node lane) has ordered conflict points: the overlaps that place W in 0.2.0
    (road or track, yield-checked, not water, road lanes held by red excluded, amber live). A **waiting spot** is any
@@ -392,6 +395,9 @@ log off nothing runs (`m_Mode == 0`). The probe compares job time against stock 
 
 ## 9. 0.2.2 trailers in the vehicle length (owner ruling, 14 Nov 2026)
 
+> **0.2.3: SUPERSEDED** with the mid spots (section 10). `Core/VehicleLength.cs` and `Stage2/JRVehicleLength.cs` are
+> kept (unit-tested, harmless) but nothing calls them; the trailer lookups left the navigation job (S2-20/21/23).
+
 Owner ruling: trailers count in the vehicle length used for mid-junction waiting spots. In 0.2.1 the room was the
 controller's prefab bounds only, so a tractor unit could be given a spot on a central reservation that its trailer
 did not fit: it waited with the trailer across the near carriageway.
@@ -428,3 +434,158 @@ margin fits between two conflict points; otherwise it makes one decision at the 
 any vehicle longer than the gap did in 0.2.1. Deadlock argument of section 8 unchanged (a mid spot still has no other
 path under the whole body). Tests: VehicleLengthTests (car unchanged, semi-trailer longer than an 8 m reservation gets
 no mid spot while the tractor alone would, multi-trailer chaining and sums, decompile cross-checks).
+
+## 10. 0.2.3 arrival-time projection (JR-T-002f, owner rulings 14 Nov 2026, binding)
+
+**Problem (JR-T-002e boldness analysis).** Stock judges each conflict at the moment the car's reservation reaches it,
+with a fixed 2 s look-ahead on the other car. The whole-path decision at W used that same 2 s window for every point,
+also for a far point the car needs several seconds to reach. Example: Valley St right turn out across both Carlisle
+carriageways. The car went when the far carriageway looked clear for 2 s, reached it 3-4 s later, and then had to
+safety-stop or force a gap. The result was "bold" right turns and safety stops on the central reservation.
+
+**Owner rulings (14 Nov 2026).**
+1. Fix (a). Compute the car's OWN arrival time at each conflict point from its actual state, with the stock
+   CarData / VehicleUtils formulas, the speed-in-turns limit and braking, and no hardcoded margin. Then run the
+   unchanged stock test with the other cars projected forward at constant speed:
+   - cars on conflicting junction lanes: look-ahead 2 s + arrival time;
+   - cars on the approach lanes feeding a conflicting junction lane: a virtual reservation (position + stock braking
+     distance + speed x arrival time) through the stock reservation test.
+2. Count ALL cars on the feeding lanes. Their routes are not read.
+3. The safety re-check while crossing uses the same projection, from the current state to each remaining uncrossed
+   point. The stock can-stop test stays, and so does stock collision braking when the car cannot stop.
+4. Superseded by the clarification below.
+5. b1 diagnostics: zero cost when off, Burst-safe, fixed size.
+
+**Owner clarification (14 Nov 2026, binding).**
+- Supersedes: mid spots (section 8 point 1), b3 (JR-T-002e: mid spots on narrow medians) and the trailer length for
+  mid spots (section 9, owner choices 7-9). Ruling 4 is superseded too.
+- There are NO planned mid-junction waiting spots, and central reservations are not special.
+  1. The car waits just before its FIRST crossing point (W). There it makes ONE decision for its whole path, using the
+     fix (a) arrival times and counting all approach-lane cars.
+  2. While crossing, the re-check uses the same projection. If it finds a miscalculation and the car can still stop
+     comfortably, the car stops just before its first uncrossed point. It goes on when everything remaining is clear.
+  3. If the car cannot stop: stock collision braking. Standing obstacles: stock following.
+- Code: `StretchState.FindSpots` returns only W, so the path is one stretch. The "waited at a mid-junction spot" counter
+  is gone. The trailer length code is kept, unused (see section 9).
+
+**Own arrival time** (`Core/ArrivalTime.cs`, `ArrivalTime.Compute`). The time for the car's front to reach the conflict
+start `u`, at distance `Wait(u) + margin` (the game's num5 plus its margin). The model steps the game's own motion with
+the navigation time step (`m_TimeStep`), as `CarNavigationSystem` advances the car:
+- **Speed per step.** At most `CalculateSpeedRange(car, v, dt).max` (VehicleUtils 645-651):
+  `v + InverseSmoothStep(m_MaxSpeed, 0, v) * m_Acceleration * dt`, capped at `max(min, m_MaxSpeed)`. Here
+  `InverseSmoothStep(a,b,x) = 0.5 - sin(asin(1 - 2 saturate((x-a)/(b-a))) / 3)` (Colossal.Mathematics MathUtils,
+  decompiled with ilspycmd). The speed never drops below `.min = max(0, v - m_Braking * dt)`.
+- **Drive speed.** Never above the junction lane's drive speed: `GetMaxDriveSpeed(car, carLane)` (VehicleUtils 610ff:
+  the speed limit and the turning formula on `m_Curviness`, the speed-in-turns cap), then `ModifyDriveSpeed(ref v,
+  LaneCondition)`. The speed limit is the iterator's `speedLimit` for this lane (S2-04).
+- **Before the junction lane.** At most `max(v0, driveSpeed)`, and at most `GetMaxBrakingSpeed(car, distance to lane
+  start, driveSpeed, dt)` (VehicleUtils 634-638), so the car brakes in time for the turn at the stock rate.
+- **Distance and result.** Trapezoidal distance per step, interpolated inside the last step. The loop is bounded by 64
+  steps, a 17 s horizon; a point further out gets the horizon, which is stricter, never bolder. A point at or behind the
+  front gets 0 s (near point = stock exactly).
+- **Job side.** `GameMotion` wraps the real `VehicleUtils` calls on the car's `CarData`. The tests use
+  `StockCarMotion`, a line-by-line mirror. ArrivalRepoTests check the mirror against the decompile.
+- **Choice made.** This is the time to REACH the point, not the stock "point of no return" (when the reservation
+  reaches it, about `v/(2b) + 4/15 s` earlier at speed). The owner text says "arrival time". The difference is a little
+  extra caution at speed; from standstill at W the two are nearly equal.
+
+**Cars on conflicting junction lanes** (S2-10, `AfterProjection`). Stock adds `objectSpeed * 2 / max(1, len)` to the
+other car's curve position (I 1372) when its priority wins. While deciding at W or in the safety re-check this becomes
+`objectSpeed * (2 + delta) / max(1, len)`, with delta the car's own arrival time at this overlap. It applies only where
+stock applied its own look-ahead, and stock then compares the result with the overlap. While crossing (no safety stop)
+the look-ahead is undone as in 0.2.0/0.2.1. Counter: "busy only by projection, junction-lane car" (the stock 2 s alone
+would have let the car go).
+
+**Cars on feeding lanes** (new block S2-12, `FeedingLaneYield`). Placement: for every overlap in scope, after the game
+has computed its reservation priority (`num6 -= num9`).
+
+How the feeding lanes are found, from stock data only:
+- A node lane's `Lane.m_StartNode` is `PathNode(source edge, lane index, segment)`, the end node of the edge lane that
+  feeds it (LaneSystem 7202 / 7727 / 8498; edge lanes end at `PathNode(edge, ...)`, 4089).
+- `PathNode` keeps only the entity index, so the edge is found in the owner node's `ConnectedEdge` buffer with
+  `new PathNode(e, 0).OwnerEquals(start)`, or the node itself for a lane chained inside the node.
+- The edge's `SubLane` buffer is then scanned for lanes whose `m_EndNode.Equals(start)`. This is the same test
+  `TrafficLightSystem.CheckNextLane` (590) uses.
+
+What happens to each car on those lanes (`LaneObject`):
+- Skipped: the car itself, trailers (their controller is counted) and cars driving a two-way lane inverted.
+- Speed = `Moving` velocity along the lane tangent.
+- Virtual reservation reach = `max(0, GetBrakingDistance(car, v, 4/15) - 0.01)` (the stock reservation reach,
+  CarNavigationSystem 2260) `+ v * delta`, beyond the metres the car still has on its lane. As an offset on the
+  junction lane it goes through the stock test `offset > num10 || priority > num6` (I 1288, the game's own num10/num6).
+  The STOP arm (num6 99) therefore blocks on any virtual reservation, as stock does for a real one.
+- A hit applies the same hold as a blocking reservation: stop at W, or before the first uncrossed point in the re-check.
+  Counter: "busy only by projection, feeding-lane car".
+- Cheap exits: no scan unless the overlap is being decided or re-checked, and none when the car is already held at
+  least as hard. Lanes fed from the car's own approach (same start node, or its current lane) are skipped, so its own
+  followers never hold it.
+
+Where the lookup cannot work (gaps):
+- Only one level upstream, like stock reservations. A fast car two segments back is not seen until it reaches the
+  feeding lane. At 50 km/h with delta ~3 s that is ~40 m, longer than many short segments.
+- Lanes whose source is neither a connected edge of the node nor the node itself are not found, for example a
+  middle/side connection owned elsewhere.
+- Two-way lanes driven against their curve direction are skipped.
+- The actual `Moving` speed is used, not the planned speed. The navigation component is written by the same parallel
+  job, so reading it would be a data race. A car about to stop at its own line still counts while it is moving.
+- Every car on the feeding lane counts, including cars that will turn away (owner ruling 2). This is stricter than
+  stock.
+- Emergency vehicles: the emergency halving of priority 102 is not modelled in the drive speed. Their priority goes
+  through the stock test unchanged.
+
+**Safety re-check consistency.** `Projecting` = rule on and the overlap's phase is Deciding (at W) or Safety (crossing,
+can stop before the first uncrossed point). Both phases use the same delta, computed from the CURRENT state to that
+point, so the re-check asks the same question as the decision with fresher data. The rest is unchanged:
+- Crossing: no give-way, look-ahead undone.
+- A physical car in a later point: stock collision braking there.
+- Space requests: dropped while crossing.
+- Pedestrians: stock.
+
+Deadlock argument (section 8 "Deadlock") unchanged:
+- A standing car projects nothing: look-ahead `0 * (2 + delta)`, and no virtual reservation at speed 0.
+- So a safety-stopped car never holds another car except physically.
+- The only waiting spot (W) is outside every other path.
+
+**Downsides (expected, owner accepted 14 Nov).**
+- **Longer waits at W.** Each later point now needs a gap of 2 s + the arrival time at it. Minor-arm throughput drops,
+  most on wide divided roads and from STOP arms.
+- **Starvation, by ruling.** On a busy main road a minor arm can wait much longer than stock. There is no safeguard
+  and never will be.
+- **Hesitation.** The re-check from the current state can find a point busy that looked clear at W: a car
+  accelerating more slowly than modelled, a car appearing on a feeding lane, a junction-lane car speeding up. The car
+  then makes a safety stop (more mid-crossing stops than 0.2.2 in some cases, fewer bold entries).
+- **Stop-start near the boundary.** The decision can flip between updates (start, see a feeding car, stop again).
+  Each update re-runs the stock test; there is no hysteresis.
+- **Phantom conflicts.** Counting all feeding-lane cars can hold a car for a car that turns away. This is stricter
+  than stock and is not a collision risk.
+- **Point of no return.** Arrival = reaching the point (above), a little stricter than the stock timing.
+
+**Diagnostics (b1, debug/timing log only).** The counters run only when the timing log asks for them.
+- **Safety-stop events.** A car's transition into a safety stop is counted once (`SafetyStopEvents`). The table is
+  fixed: 8192 slots of (entity index + 1, last frame), lock-free compare-exchange, 8 probes. A car-step at most 48
+  frames after the car's last one continues the event (each car is updated every 16 frames). A full probe range
+  counts as new: it may over-count but never hides an event.
+- **Points at W.** Per point at W, sampled when the car stands within the margin of W: the distance from W and the
+  own arrival time. Logged as mean plus an 8-bucket histogram with the median bucket. Distance edges: 2/4/8/12/16/24/32
+  m. Arrival edges: 0.5/1/1.5/2/2.5/3/4 s. Samples are weighted by car-steps: a car standing longer contributes more
+  samples.
+- **"Busy only by projection".** Split into junction-lane car and feeding-lane car.
+- **Dropped.** "Waited at a mid-junction spot".
+
+**Performance.**
+- Managed microbench (tests, not Burst): `ArrivalTime.Compute` ~0.3 us per call.
+- Cost per car-step:
+  - One arrival time per in-scope overlap, cached for repeated starts, only while deciding or re-checking.
+  - A feeding-lane scan only when it could tighten the hold: a few connected edges, their sub-lanes, and the lane
+    objects on the 1-3 feeding lanes.
+  - Rule off: one phase test per overlap. The timing log off adds nothing.
+- Under Burst the arithmetic should be several times faster. The probe's job-time A/B is the measure.
+
+**Tests.** ArrivalTimeTests (standstill acceleration against a manual step-through, turn cap, near vs far point,
+approach braking, horizon, monotone, microbench), ArrivalProjectionTests (far-carriageway car outside the stock window
+but inside the projected one -> wait at W; near point unchanged; feeding-lane virtual reservation incl. STOP arm and
+standing car; re-check uses the projection and stops before the first uncrossed point; can-stop vs cannot-stop; rule
+off = stock), SafetyEventTests (one event per transition, gap > 48 frames = new, overflow, histograms),
+ArrivalRepoTests (decompile formulas, S2-10/S2-12 text, Projecting covers Deciding and Safety), and
+StretchWholePathTests (one decision at W incl. the far carriageway, re-check stop before the first uncrossed point,
+wait there until all remaining points are clear).

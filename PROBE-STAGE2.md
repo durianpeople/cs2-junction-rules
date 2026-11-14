@@ -1,4 +1,4 @@
-# Probe kit: Junction Rules 0.2.1 (stage 2, whole-junction gap decision + collision fix); 0.2.2 in section 8
+# Probe kit: Junction Rules 0.2.1 (stage 2, whole-junction gap decision + collision fix); 0.2.2 in section 8; 0.2.3 (arrival-time projection, no mid spots) in section 9
 
 0.2.1 replaces the installed 0.2.0 Burst build. It fixes the collisions between cars that had already gone (root causes:
 `docs/STAGE2-ANALYSIS.md` section 7) with the owner ruling of 14 Nov 2026 (section 8):
@@ -318,3 +318,140 @@ section 2. Passes and counters as sections 3-5 (same junctions, same method).
   Further back: section 6 (0.2.0), PROBE-STAGE1.md (0.1.0 / remove).
 
 Report back as section 7, plus any trailer standing across a carriageway while its tractor waits mid-junction.
+
+## 9. 0.2.3: arrival-time projection, no mid-junction spots (JR-T-002f)
+
+0.2.3 replaces 0.2.1/0.2.2 behaviour inside **Junction gap rule = Whole junction** (owner rulings and clarification
+14 Nov 2026, `docs/STAGE2-ANALYSIS.md` section 10):
+- **No mid-junction waiting spots.** A car waits only just before its FIRST crossing (W) and decides once for its whole
+  path, far carriageway included. Central reservations are not special: **no car should wait on a central reservation
+  by plan**. A car may still stand there after a safety stop (below), rarely.
+- **Arrival-time projection.** At W the car works out when it would reach each crossing (the game's own acceleration,
+  speed-in-turns cap and braking). Cars on conflicting junction lanes are judged with the game's 2 s look-ahead plus
+  that time. EVERY car on an approach lane feeding a conflicting lane counts as a virtual reservation (braking
+  distance + speed x that time) in the game's own reservation test.
+- **Safety re-check.** While crossing, the same projection runs from the car's current state. If it finds a crossing
+  no longer clear and the car can still stop with normal braking, the car stops just before the first crossing it has
+  not reached. It goes when everything remaining is clear. Otherwise collision braking only.
+
+Defaults change nothing: **Car driving** = Game's own, **Junction gap rule** = Stock. With the rule on Stock, 0.2.3
+drives exactly as 0.2.2 / stage 1.
+
+Build to install: `~/Code/cs2-junction-rules/.staged/0.2.3-burst/`. If that folder holds a `STALE.md`, it has only a
+managed build (made while the game was running): do the Burst rebuild in `STALE.md` first (game closed), then put the
+new sha256s in the table and in the install block below. Until then the install block refuses (the sums below are
+placeholders on purpose: `0000...`).
+
+| File | sha256 |
+|---|---|
+| `JunctionRules.dll` | `PLACEHOLDER - see .staged/0.2.3-burst/STALE.md` |
+| `JunctionRules.pdb` | `PLACEHOLDER` |
+| `JunctionRules_win_x86_64.dll` (Burst code) | `PLACEHOLDER` |
+| `JunctionRules_win_x86_64.pdb` | `PLACEHOLDER` |
+
+### 9.1 Install over whatever is installed (game closed only; backs up the installed files)
+
+```
+(
+  CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
+  BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.3-prev-installed-backup"
+  cd ~/Code/cs2-junction-rules/.staged/0.2.3-burst || exit 1
+  if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
+  if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
+  if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
+  sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
+SUMS
+  if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
+    mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && (cd "$BACKUP" && sha256sum JunctionRules*.dll JunctionRules*.pdb > SHA256SUMS) &&
+    echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
+  fi
+  mkdir -p "$CS2/Mods/JunctionRules" &&
+  cp JunctionRules.dll JunctionRules.pdb JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
+  echo "installed 0.2.3"
+)
+```
+
+Copies nothing unless the game is closed, the build is not stale and all four sums match. The first run keeps the
+installed files, whatever version they are (expected: the 0.2.1 Burst build), in `.staged/0.2.3-prev-installed-backup/`
+with their sums in `SHA256SUMS`. An existing backup is never overwritten.
+
+Log check (section 2) with `OnLoad version 0.2.3.0, copy made from game 1.6.4f1 (1097.158a)`; everything else as
+section 2. Timing A/B as section 4 (rule Stock vs Whole junction, 1x and 4x, 5 lines each). Behaviour passes as
+section 5, at Valley x Carlisle (1092.7,-81.5) and Sunset x Cherry.
+
+### 9.2 What to watch (0.2.3)
+
+- **Valley St right turns out across Carlisle are no longer bold.** A car turning right from the Valley St STOP arm
+  goes only when BOTH carriageways are clear for the time it needs to reach them. It should not cut in front of
+  far-carriageway traffic, and should not stop on the central reservation.
+- **Safety-stop events are rare.** In the log line, `safety stops inside N (events N)`: the events number is the count
+  of cars that went into a safety stop. Expect it to be a small fraction of `whole-path decisions` (well below 0.2.1).
+  Report any car seen standing on a central reservation with the junction name. That is now only a safety stop, never
+  a planned wait.
+- **Entry waits are longer** (expected, owner accepted). `waited at entry spot for a later conflict` rises, most from
+  STOP arms onto divided roads. Note the longest minor-arm wait at Valley x Carlisle per rule.
+- **Minor-arm throughput.** Count cars out of the Valley St arm over the same 2 in-game minutes, Stock vs Whole
+  junction. The arm should still empty between platoons. Starvation on a busy main road is accepted by ruling: report
+  it, do not fix it.
+- **No deadlocks.** No two cars each waiting for the other, and no car frozen in a junction after the traffic around
+  it has gone.
+- **No new collisions** between cars that had already gone.
+- Timing: rule Whole junction vs Stock should differ by no more than the 0.2.1 A/B. The projection adds arithmetic
+  per crossing and a short scan of the approach lanes while a car decides at W.
+
+Diagnostics to read (copy's timing log line, **Log navigation timing** on):
+- `whole-path decisions N`, `waited at entry spot for a later conflict N`.
+- `safety stops inside N (events N)`: car-steps vs transitions; read the events.
+- `arrival projection: busy only by projection, junction-lane car N, feeding-lane car N`: how often the projection,
+  not the stock 2 s, held a car. Feeding-lane hits should be the larger at Valley x Carlisle (approaching Carlisle
+  traffic).
+- `points at W N, distance from W mean X m [histogram (median in a-b)], own arrival mean Y s [histogram (median in a-b)]`:
+  the far carriageway should show up as distance ~12-24 m and arrival ~2.5-4 s.
+- Gone: `waited at a mid-junction spot` (no mid spots in 0.2.3).
+
+### 9.3 Rollback
+
+- Immediate: **Junction gap rule** back to Stock (drives as stage 1), or **Car driving** back to Game's own.
+- Back to the version that was installed before 0.2.3 (game closed), from the 9.1 backup, checked against the sums
+  the install wrote:
+
+  ```
+  (
+    CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
+    cd ~/Code/cs2-junction-rules/.staged/0.2.3-prev-installed-backup || { echo "no backup - use the 0.2.1 block below"; exit 1; }
+    if [ ! -d "$CS2/Mods/JunctionRules" ]; then echo "mod folder not found - nothing changed"; exit 1; fi
+    if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing changed"; exit 1; fi
+    sha256sum -c --strict SHA256SUMS || { echo "BACKUP SHA256 MISMATCH - nothing changed"; exit 1; }
+    cp JunctionRules.dll JunctionRules.pdb JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
+    echo "previous install restored"
+  )
+  ```
+
+- Or the 0.2.1 Burst build from `.staged/0.2.1-burst/`, checked against the sums in the section 1 install block of
+  THIS file, read the same way as 8.3:
+
+  ```
+  (
+    CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
+    KIT="$HOME/Code/cs2-junction-rules/PROBE-STAGE2.md"
+    cd ~/Code/cs2-junction-rules/.staged/0.2.1-burst || exit 1
+    if [ ! -d "$CS2/Mods/JunctionRules" ]; then echo "mod folder not found - nothing changed"; exit 1; fi
+    if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing changed"; exit 1; fi
+    if [ -e STALE.md ]; then echo "0.2.1 BUILD IS STALE - see its STALE.md; nothing changed"; exit 1; fi
+    SUMS21="$(awk '/<<.SUMS./{n++; if(n==1){on=1; next}} on && /^SUMS$/{exit} on' "$KIT")"
+    if [ "$(printf '%s\n' "$SUMS21" | grep -c '  JunctionRules')" != 4 ] || printf '%s\n' "$SUMS21" | grep -q '^0000'; then
+      echo "0.2.1 SUMS NOT FILLED IN (section 1 of PROBE-STAGE2.md) - nothing changed"; exit 1; fi
+    printf '%s\n' "$SUMS21" | sha256sum -c --strict - || { echo "SHA256 MISMATCH - nothing changed"; exit 1; }
+    cp JunctionRules.dll JunctionRules.pdb JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
+    echo "0.2.1 restored"
+  )
+  ```
+
+  Further back: section 6 (0.2.0), PROBE-STAGE1.md (0.1.0 / remove).
+
+Report back as section 7, plus: the counters line per pass (with the events and histogram parts), Valley St right-turn
+behaviour, any car on a central reservation, longest minor-arm wait and cars out per 2 minutes per rule.
