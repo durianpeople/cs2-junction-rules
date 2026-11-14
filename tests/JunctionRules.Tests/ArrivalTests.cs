@@ -114,9 +114,10 @@ namespace JunctionRules.Tests
             var atW = Car(len, B(13) - M / len, 0f, divided);
             P phase = atW.Classify(true, B(140), out float stop);
             Check(phase == P.Deciding && StretchState.ForPrediction(phase) == A.StopAtSpot && Near(stop, atW.Wait(B(13))), "... so the car waits at W (whole-path decision)");
-            // Near point unchanged: a point the car is at has delta 0, the look-ahead is stock.
-            float nearDelta = ArrivalTime.Compute(ref car, atW.Wait(B(13)), 0f, 8f, 0f, Dt);
-            Check(nearDelta < 0.05f && ArrivalProjection.ExtendLookAhead(otherY, stockY, nearDelta) - stockY < 0.01f, "near point (at W): projection ~ stock");
+            // First point at W: the job computes the distance as Wait + the game's stop margin (JRWholeJunction.Delta), so a car
+            // standing at W still needs its margin (0.9 m) to reach the point: about 0.6 s from standstill, not 0 (JR-T-002fr).
+            float nearDelta = ArrivalTime.Compute(ref car, atW.Wait(B(13)) + M, 0f, 8f, 0f, Dt);
+            Check(nearDelta > 0.4f && nearDelta < 0.9f && Near(ArrivalProjection.ExtendLookAhead(otherY, stockY, nearDelta) - stockY, otherV * nearDelta / otherLen, 1e-4f), $"first point at W: only the stop margin to reach ({nearDelta:F2} s), look-ahead 2 s + that");
             Check(ArrivalProjection.ExtendLookAhead(otherY, stockY, 0f) == stockY, "near point at the car: exactly stock");
 
             // Feeding lane: virtual reservation on the junction lane.

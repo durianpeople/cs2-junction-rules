@@ -32,10 +32,10 @@ namespace JunctionRules.Settings
 
         /// <summary>
         /// Stage 2: how a car judges the conflicts on its path through a junction. Stock (default): the game's own,
-        /// conflict by conflict. Whole junction: wait just before the first path crossing (or at a mid-junction spot
-        /// where the whole car fits between crossings), one decision per stretch up to the next spot (stock judgement on
-        /// each), plus a safety stop before the next uncrossed point if a missed car shows up and the car can still stop.
-        /// Acts only while the copy drives; applies at the next simulation step.
+        /// conflict by conflict. Whole junction: wait just before the first path crossing (0.2.3: the only waiting
+        /// spot, no mid-junction spots), one decision there for the whole path (stock judgement on each point, other cars
+        /// projected to the car's own arrival time), plus a safety stop before the next uncrossed point if a missed car
+        /// shows up and the car can still stop. Acts only while the copy drives; applies at the next simulation step.
         /// </summary>
         [SettingsUISection(kSection, kDrivingGroup)]
         public JunctionGapRule GapRule { get; set; }
@@ -101,7 +101,7 @@ namespace JunctionRules.Settings
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.GapRule)), "Junction gap rule" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.GapRule)),
-                    "How cars judge the conflicts on their path through a junction. Stock (default): the game's own, conflict by conflict. Whole junction (stage 2 test): a car that has to wait stops just before the first point where its path crosses another lane's path (at the stop line if that is at the junction edge; STOP signs still stop at the line first), then goes only when the game's own judgement finds every conflict up to the next waiting spot clear (a mid-junction spot exists only where the whole car fits between two crossings, e.g. a wide central reservation). While crossing it keeps checking the conflicts it has not reached yet: if one is no longer clear and it can still stop with normal braking, it stops just before it (safety stop) and waits until the rest is clear; otherwise it brakes only to avoid hitting anything. Acts only while Car driving is the Junction Rules copy. Changes take effect at the next simulation step." },
+                    "How cars judge the conflicts on their path through a junction. Stock (default): the game's own, conflict by conflict. Whole junction (stage 2 test): a car that has to wait stops just before the first point where its path crosses another lane's path (at the stop line if that is at the junction edge; STOP signs still stop at the line first), then goes only when the game's own judgement finds every conflict on its whole path clear, with the other cars projected to the time this car needs to reach each conflict (cars on the approach lanes count too). There is no waiting spot inside the junction, also not on a central reservation. While crossing it keeps checking the conflicts it has not reached yet in the same way: if one is no longer clear and it can still stop with normal braking, it stops just before it (safety stop) and waits until the rest is clear; otherwise it brakes only to avoid hitting anything. Acts only while Car driving is the Junction Rules copy. Changes take effect at the next simulation step." },
                 { m_Setting.GetEnumValueLocaleID(JunctionGapRule.Stock), "Stock (conflict by conflict)" },
                 { m_Setting.GetEnumValueLocaleID(JunctionGapRule.WholeJunction), "Whole junction" },
 

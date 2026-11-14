@@ -482,12 +482,14 @@ the navigation time step (`m_TimeStep`), as `CarNavigationSystem` advances the c
   start, driveSpeed, dt)` (VehicleUtils 634-638), so the car brakes in time for the turn at the stock rate.
 - **Distance and result.** Trapezoidal distance per step, interpolated inside the last step. The loop is bounded by 64
   steps, a 17 s horizon; a point further out gets the horizon, which is stricter, never bolder. A point at or behind the
-  front gets 0 s (near point = stock exactly).
+  front gets 0 s (only a point the front has already reached is stock exactly).
 - **Job side.** `GameMotion` wraps the real `VehicleUtils` calls on the car's `CarData`. The tests use
   `StockCarMotion`, a line-by-line mirror. ArrivalRepoTests check the mirror against the decompile.
 - **Choice made.** This is the time to REACH the point, not the stock "point of no return" (when the reservation
   reaches it, about `v/(2b) + 4/15 s` earlier at speed). The owner text says "arrival time". The difference is a little
-  extra caution at speed; from standstill at W the two are nearly equal.
+  extra caution at speed. From standstill at W it is not nearly equal either: the distance includes the game's stop
+  margin (0.9 m, `Wait(u) + margin`), so even the first point at W gets about 0.6 s (stock: 4/15 s for a standing
+  car), i.e. the look-ahead there is about 2.6 s, not exactly stock (JR-T-002fr).
 
 **Cars on conflicting junction lanes** (S2-10, `AfterProjection`). Stock adds `objectSpeed * 2 / max(1, len)` to the
 other car's curve position (I 1372) when its priority wins. While deciding at W or in the safety re-check this becomes
@@ -583,7 +585,7 @@ Deadlock argument (section 8 "Deadlock") unchanged:
 
 **Tests.** ArrivalTimeTests (standstill acceleration against a manual step-through, turn cap, near vs far point,
 approach braking, horizon, monotone, microbench), ArrivalProjectionTests (far-carriageway car outside the stock window
-but inside the projected one -> wait at W; near point unchanged; feeding-lane virtual reservation incl. STOP arm and
+but inside the projected one -> wait at W; first point at W = stop margin only (about 0.6 s); feeding-lane virtual reservation incl. STOP arm and
 standing car; re-check uses the projection and stops before the first uncrossed point; can-stop vs cannot-stop; rule
 off = stock), SafetyEventTests (one event per transition, gap > 48 frames = new, overflow, histograms),
 ArrivalRepoTests (decompile formulas, S2-10/S2-12 text, Projecting covers Deciding and Safety), and
