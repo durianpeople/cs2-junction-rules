@@ -4,18 +4,20 @@ using Colossal.IO.AssetDatabase;
 using Game.Modding;
 using Game.Settings;
 using JunctionRules.Core;
+using JunctionRules.Paint;
 using JunctionRules.Systems;
 
 namespace JunctionRules.Settings
 {
     [FileLocation(nameof(JunctionRules))]
-    [SettingsUIGroupOrder(kDrivingGroup, kDebugGroup)]
-    [SettingsUIShowGroupName(kDrivingGroup, kDebugGroup)]
+    [SettingsUIGroupOrder(kDrivingGroup, kPaintGroup, kDebugGroup)]
+    [SettingsUIShowGroupName(kDrivingGroup, kPaintGroup, kDebugGroup)]
     public class JunctionRulesSettings : ModSetting
     {
         public const string kSection = "Main";
         public const string kDrivingGroup = "Driving";
         public const string kDebugGroup = "Debug";
+        public const string kPaintGroup = "PaintTest";
 
         public JunctionRulesSettings(IMod mod) : base(mod)
         {
@@ -58,6 +60,59 @@ namespace JunctionRules.Settings
         [SettingsUISection(kSection, kDrivingGroup)]
         public string Status => StatusText();
 
+        // ---- stage 3 probe (0.3.0-probe): yellow box paint test, draw-only, default off ----
+
+        private bool m_YellowBoxPaintTest;
+        private BoxPaintMode m_PaintMode;
+        private BoxPaintLayers m_PaintLayers = BoxPaintLayers.Roads;
+
+        /// <summary>
+        /// Stage 3 probe: paints UK yellow boxes on the junctions listed in ModsData/JunctionRules/paint-test.json with
+        /// the game's surface shader. Draw-only (nothing saved, no entity touched, no driving change). Default off; off =
+        /// the paint system does not run at all.
+        /// </summary>
+        [SettingsUISection(kSection, kPaintGroup)]
+        public bool YellowBoxPaintTest
+        {
+            get => m_YellowBoxPaintTest;
+            set { m_YellowBoxPaintTest = value; PaintControl.ApplySettings(); }
+        }
+
+        /// <summary>What the paint test draws: hatch (border + diagonals), plain fill, or outline only.</summary>
+        [SettingsUISection(kSection, kPaintGroup)]
+        public BoxPaintMode PaintMode
+        {
+            get => m_PaintMode;
+            set { m_PaintMode = value; PaintControl.ApplySettings(); }
+        }
+
+        /// <summary>Decal layers the paint goes onto: Roads (2, default) or Roads + Other (34), or 39 like G87 (debug).</summary>
+        [SettingsUISection(kSection, kPaintGroup)]
+        public BoxPaintLayers PaintLayers
+        {
+            get => m_PaintLayers;
+            set { m_PaintLayers = value; PaintControl.ApplySettings(); }
+        }
+
+        /// <summary>Re-reads the test list file and rebuilds every box.</summary>
+        [SettingsUIButton]
+        [SettingsUISection(kSection, kPaintGroup)]
+        public bool PaintRefresh { set { PaintControl.Refresh(); } }
+
+        /// <summary>Adds the junction node at the camera centre to the test list file (read-only pick; writes only the list file).</summary>
+        [SettingsUIButton]
+        [SettingsUISection(kSection, kPaintGroup)]
+        public bool PaintAddCameraJunction { set { PaintControl.AddCameraJunction(); } }
+
+        /// <summary>Writes the paint cost line to the log now.</summary>
+        [SettingsUIButton]
+        [SettingsUISection(kSection, kPaintGroup)]
+        public bool PaintLogCost { set { PaintControl.LogCost(); } }
+
+        /// <summary>Read-only: what the paint test does now.</summary>
+        [SettingsUISection(kSection, kPaintGroup)]
+        public string PaintStatus => PaintControl.Status();
+
         /// <summary>Logs per-window timing of the active navigation job (game's or copy's). Off: no cost.</summary>
         [SettingsUISection(kSection, kDebugGroup)]
         public bool DebugTiming { get; set; }
@@ -76,6 +131,9 @@ namespace JunctionRules.Settings
             GapRule = JunctionGapRule.Stock;
             WaitingSpot = JunctionWaitingSpot.BeforeFirstCrossing;
             TurnAcrossGivesWay = true;
+            YellowBoxPaintTest = false;
+            PaintMode = BoxPaintMode.Hatch;
+            PaintLayers = BoxPaintLayers.Roads;
             DebugTiming = false;
             SkipCodeHashCheck = false;
         }
@@ -125,6 +183,29 @@ namespace JunctionRules.Settings
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.Status)), "Status" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.Status)), "What runs now, the result of the version check made at game start, and whether the copy can run (set up at the first simulation step). Reopen the options page to refresh." },
+
+                { m_Setting.GetOptionGroupLocaleID(JunctionRulesSettings.kPaintGroup), "Yellow box paint test (stage 3 probe)" },
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.YellowBoxPaintTest)), "Yellow box paint test" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.YellowBoxPaintTest)),
+                    "Off (default): nothing runs. On: paints UK yellow boxes on the junctions listed in the test list file (ModsData/JunctionRules/paint-test.json) with the game's own surface paint. Purely visual: nothing is saved in the city, no road or node is changed, cars drive exactly as before. Remove the list file or switch this off and the boxes are gone. If anything fails, the mod log says what and painting stays off until the game restarts. See PROBE-STAGE3-PAINT.md." },
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.PaintMode)), "Yellow box paint test: what to draw" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.PaintMode)), "Box (default): border line plus criss-cross lines. Plain fill: the whole box area in plain colour (to see the shape without the lines). Outline only: just the border line (to check it against the kerbs and the arm mouths)." },
+                { m_Setting.GetEnumValueLocaleID(BoxPaintMode.Hatch), "Box (border + criss-cross)" },
+                { m_Setting.GetEnumValueLocaleID(BoxPaintMode.PlainFill), "Plain fill" },
+                { m_Setting.GetEnumValueLocaleID(BoxPaintMode.OutlineOnly), "Outline only" },
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.PaintLayers)), "Yellow box paint test: paint onto" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.PaintLayers)), "Which surfaces take the paint. Roads (default). Roads + Other: try this if the box does not show on some junctions or decks. Everything but vehicles: what the G87 junction box surface uses; it can also paint the ground (debug comparison only)." },
+                { m_Setting.GetEnumValueLocaleID(BoxPaintLayers.Roads), "Roads" },
+                { m_Setting.GetEnumValueLocaleID(BoxPaintLayers.RoadsAndOther), "Roads + Other" },
+                { m_Setting.GetEnumValueLocaleID(BoxPaintLayers.AllButVehicles), "Everything but vehicles (G87 value)" },
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.PaintRefresh)), "Refresh test list" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.PaintRefresh)), "Read the test list file again and redraw every box (after you edit the file)." },
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.PaintAddCameraJunction)), "Add junction at camera centre" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.PaintAddCameraJunction)), "Adds the junction the camera looks at (the nearest node within 8 m of the screen centre line, nearest to the camera, so a deck wins over the ground below) to the test list file and paints it. Only writes the list file; nothing in the city changes. The paint test must be on." },
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.PaintLogCost)), "Log paint cost now" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.PaintLogCost)), "Writes the paint cost line (draw time per frame, edit check time, rebuilds) to the mod log now. It is also written every 30 seconds while boxes are painted." },
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.PaintStatus)), "Paint test status" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.PaintStatus)), "Off, on (how many junctions are painted), or failed (what failed; restart the game to try again). Reopen the options page to refresh." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.DebugTiming)), "Log navigation timing" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.DebugTiming)), "Every 1024 simulation frames, write the timing of the running car-navigation job (game's own or copy, measured the same way) and the simulation rate to the mod log; the copy's line also names the junction gap rule that ran and its stage 2 counters. Off: nothing is measured. Only available when the version check passed at game start." },

@@ -6,6 +6,7 @@ using Game.Modding;
 using Game.SceneFlow;
 using Game.Simulation;
 using JunctionRules.Core;
+using JunctionRules.Paint;
 using JunctionRules.Settings;
 using JunctionRules.Systems;
 
@@ -39,7 +40,7 @@ namespace JunctionRules
             Gate = EvaluateGate(Settings.SkipCodeHashCheck);
             if (Gate.CopyAllowed) log.Info("version check: " + Gate.Verdict + ": " + Gate.Message);
             else log.Warn("version check: " + Gate.Verdict + ": " + Gate.Message);
-            log.Info($"settings: car driving {Settings.CarDriving}, junction gap rule {Settings.GapRule}, waiting spot {Settings.WaitingSpot}, turning across oncoming gives way {(Settings.TurnAcrossGivesWay ? "on" : "off")}, timing log {(Settings.DebugTiming ? "on" : "off")}, skip code hash check {(Settings.SkipCodeHashCheck ? "on" : "off")}");
+            log.Info($"settings: car driving {Settings.CarDriving}, junction gap rule {Settings.GapRule}, waiting spot {Settings.WaitingSpot}, turning across oncoming gives way {(Settings.TurnAcrossGivesWay ? "on" : "off")}, timing log {(Settings.DebugTiming ? "on" : "off")}, yellow box paint test {(Settings.YellowBoxPaintTest ? "on" : "off")}, skip code hash check {(Settings.SkipCodeHashCheck ? "on" : "off")}");
 
             // The copy pair and the probes are registered only when the gate allows the copy. Their types are named only
             // inside CopyPair (NoInlining), so on another game version, where loading them could throw TypeLoadException,
@@ -74,6 +75,18 @@ namespace JunctionRules
             foreach (SystemUpdatePhase phase in new[] { SystemUpdatePhase.GameSimulation, SystemUpdatePhase.LoadSimulation })
             {
                 updateSystem.UpdateBefore<CarDrivingSwitchSystem, CarNavigationSystem>(phase);
+            }
+
+            // Stage 3 probe (0.3.0-probe): yellow box paint test, draw-only, default off. Registered last and on its own:
+            // if it fails, the copy, stage 2 and the timing probes above are already in place and unaffected.
+            try
+            {
+                PaintRegistration.Register(updateSystem);
+            }
+            catch (Exception e)
+            {
+                log.Error(e, "registering the yellow box paint test failed; painting is unavailable, the rest of Junction Rules is not affected");
+                PaintRegistration.DisableLeftover(updateSystem.World);
             }
         }
 

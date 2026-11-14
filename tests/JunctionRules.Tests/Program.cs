@@ -56,6 +56,7 @@ namespace JunctionRules.Tests
             ("BoxHatchTests", BoxHatchTests),
             ("BoxRectHeightTests", BoxRectHeightTests),
             ("PaintConfigTests", PaintConfigTests),
+            ("PaintRepoTests", PaintRepoTests),
         };
 
         private static int Main(string[] args)
