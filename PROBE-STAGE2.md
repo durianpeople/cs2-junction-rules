@@ -17,10 +17,10 @@ placeholders on purpose).
 
 | File | sha256 |
 |---|---|
-| `JunctionRules.dll` | `REBUILD-REQUIRED (see STALE.md)` |
-| `JunctionRules.pdb` | `REBUILD-REQUIRED` |
-| `JunctionRules_win_x86_64.dll` (Burst code) | `REBUILD-REQUIRED` |
-| `JunctionRules_win_x86_64.pdb` | `REBUILD-REQUIRED` |
+| `JunctionRules.dll` | `6baf70bbf10368d28ccbfb6ee6cdeda62f3eb633f70221486d0e69386d4cddea` |
+| `JunctionRules.pdb` | `f93a0d193bca7906925d6742e9430bd4fbe85d9fe1af23faa04e201a7849d9be` |
+| `JunctionRules_win_x86_64.dll` (Burst code) | `001d74ae8d545cbf7cb864aba7befafb0da53f7e865845c3aab2f8602eead998` |
+| `JunctionRules_win_x86_64.pdb` | `930d13ed0fcc530650085cb4c974d44424319c1931b91116cbf8fe6248e878c8` |
 
 Built for game **1.6.4f1 (1097.158a)** only (same version gate as 0.1.0).
 
@@ -35,10 +35,10 @@ Built for game **1.6.4f1 (1097.158a)** only (same version gate as 0.1.0).
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-REBUILD-REQUIRED  JunctionRules.dll
-REBUILD-REQUIRED  JunctionRules.pdb
-REBUILD-REQUIRED  JunctionRules_win_x86_64.dll
-REBUILD-REQUIRED  JunctionRules_win_x86_64.pdb
+6baf70bbf10368d28ccbfb6ee6cdeda62f3eb633f70221486d0e69386d4cddea  JunctionRules.dll
+f93a0d193bca7906925d6742e9430bd4fbe85d9fe1af23faa04e201a7849d9be  JunctionRules.pdb
+001d74ae8d545cbf7cb864aba7befafb0da53f7e865845c3aab2f8602eead998  JunctionRules_win_x86_64.dll
+930d13ed0fcc530650085cb4c974d44424319c1931b91116cbf8fe6248e878c8  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
