@@ -7,8 +7,8 @@ namespace JunctionRules.Stage2
 {
     /// <summary>
     /// 0.2.2 (JR-T-002d): the whole vehicle's length (controller + trailers) for mid-junction waiting spots, computed once
-    /// per car and navigation update by the copy's navigation job (JR-STAGE2 block S2-25) and handed to the car's iterator
-    /// (S2-21 -> JRWholeJunction.m_VehicleLength). Only stock data: ObjectGeometryData bounds and the CarTractorData /
+    /// per car and navigation update by the copy's navigation job (JR-STAGE2 block S2-21, as a local of UpdateNavigationTarget:
+    /// never a job-struct field, parallel workers share it) and handed to the car's iterator (JRWholeJunction.m_VehicleLength). Only stock data: ObjectGeometryData bounds and the CarTractorData /
     /// CarTrailerData attach points, chained exactly as the game places trailers (Core/VehicleLength.cs has the decompile
     /// references). Burst-compatible: lookups and a buffer read only, no managed allocations.
     /// </summary>

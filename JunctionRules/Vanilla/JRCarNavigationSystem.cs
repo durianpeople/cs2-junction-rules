@@ -6,7 +6,7 @@
 // tools/vanilla_rules.json (and DEVIATIONS.md) and run `python3 tools/vanilla_copy.py generate`.
 // Changes applied: R-01, R-02, R-03, D-01 (see DEVIATIONS.md). Logic is otherwise the game's, unchanged.
 // Exception: hand-written code only inside '// JR-STAGE2 BEGIN <id>' ... '// JR-STAGE2 END' blocks
-// (S2-20, S2-21, S2-22, S2-23, S2-24, S2-25; see DEVIATIONS.md). `check` proves everything outside them is the above.
+// (S2-20, S2-21, S2-22, S2-23, S2-24; see DEVIATIONS.md). `check` proves everything outside them is the above.
 // ==== end of header; the code below is the game's, changed only as listed in DEVIATIONS.md ====
 
 using System.Runtime.CompilerServices;
@@ -387,7 +387,8 @@ public class JRCarNavigationSystem : GameSystemBase
 		[ReadOnly]
 		public ComponentLookup<CarTrailerData> m_JRTrailerData;
 
-		public float m_JRVehicleLength;
+		[ReadOnly]
+		public BufferLookup<LayoutElement> m_JRLayoutData;
 		// JR-STAGE2 END
 
 		public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
@@ -469,13 +470,6 @@ public class JRCarNavigationSystem : GameSystemBase
 					DynamicBuffer<BlockedLane> blockedLanes2 = m_BlockedLanes[entity2];
 					CarData prefabCarData = m_PrefabCarData[prefabRef2.m_Prefab];
 					ObjectGeometryData objectGeometryData2 = m_PrefabObjectGeometryData[prefabRef2.m_Prefab];
-					// JR-STAGE2 BEGIN S2-25: whole vehicle length incl. trailers for mid-junction spots (rule/count on only)
-					m_JRVehicleLength = 0f;
-					if (m_JRMode != 0 && bufferAccessor3.Length != 0)
-					{
-						m_JRVehicleLength = JunctionRules.Stage2.JRVehicleLength.WithTrailers(objectGeometryData2, bufferAccessor3[j], ref m_PrefabRefData, ref m_PrefabObjectGeometryData, ref m_JRTractorData, ref m_JRTrailerData);
-					}
-					// JR-STAGE2 END
 					if (bufferAccessor3.Length != 0)
 					{
 						UpdateCarLimits(ref prefabCarData, bufferAccessor3[j]);
@@ -1578,8 +1572,13 @@ public class JRCarNavigationSystem : GameSystemBase
 			carLaneSpeedIterator.m_MaxSpeed = speedRange.max;
 			carLaneSpeedIterator.m_CanChangeLane = 1f;
 			carLaneSpeedIterator.m_CurrentPosition = transform.m_Position;
-			// JR-STAGE2 BEGIN S2-21: hand the stage 2 mode to this car's iterator
-			carLaneSpeedIterator.m_JR = JunctionRules.Stage2.JRWholeJunction.Create(m_JRMode, m_NodeLaneData, m_JRVehicleLength);
+			// JR-STAGE2 BEGIN S2-21: hand the stage 2 mode and the whole vehicle length (trailers incl.) to this car's iterator
+			float jrVehicleLength = 0f;
+			if (m_JRMode != 0 && m_JRLayoutData.TryGetBuffer(entity, out DynamicBuffer<LayoutElement> jrLayout))
+			{
+				jrVehicleLength = JunctionRules.Stage2.JRVehicleLength.WithTrailers(prefabObjectGeometryData, jrLayout, ref m_PrefabRefData, ref m_PrefabObjectGeometryData, ref m_JRTractorData, ref m_JRTrailerData);
+			}
+			carLaneSpeedIterator.m_JR = JunctionRules.Stage2.JRWholeJunction.Create(m_JRMode, m_NodeLaneData, jrVehicleLength);
 			// JR-STAGE2 END
 			JRCarLaneSpeedIterator laneIterator = carLaneSpeedIterator;
 			Game.Vehicles.CarLaneFlags carLaneFlags = (Game.Vehicles.CarLaneFlags)0u;
@@ -3107,6 +3106,7 @@ public class JRCarNavigationSystem : GameSystemBase
 		jobData.m_JRCounters = JunctionRules.Stage2.JRStage2Bridge.Counters;
 		jobData.m_JRTractorData = GetComponentLookup<CarTractorData>(isReadOnly: true);
 		jobData.m_JRTrailerData = GetComponentLookup<CarTrailerData>(isReadOnly: true);
+		jobData.m_JRLayoutData = GetBufferLookup<LayoutElement>(isReadOnly: true);
 		// JR-STAGE2 END
 		JobHandle jobHandle = JobChunkExtensions.ScheduleParallel(jobData, m_VehicleQuery, JobUtils.CombineDependencies(base.Dependency, dependencies, dependencies2, dependencies3, dependencies4));
 		m_NetSearchSystem.AddNetSearchTreeReader(jobHandle);

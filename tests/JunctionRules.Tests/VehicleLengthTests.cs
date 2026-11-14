@@ -6,7 +6,7 @@ namespace JunctionRules.Tests
 {
     /// <summary>
     /// 0.2.2 (JR-T-002d): mid-junction waiting spots need room for the whole vehicle, trailers included
-    /// (Core/VehicleLength.cs; job side Stage2/JRVehicleLength.cs, navigation block S2-25).
+    /// (Core/VehicleLength.cs; job side Stage2/JRVehicleLength.cs, navigation block S2-21).
     /// Attach points as the game builds them (VehicleInitializeSystem): tractor z = bounds.min.z + CarTractor.m_AttachOffset.z,
     /// trailer z = bounds.max.z - CarTrailerPrefab.m_AttachOffset.z; the trailer's attach point sits on the tractor's.
     /// </summary>
@@ -60,17 +60,24 @@ namespace JunctionRules.Tests
             Check(Car(40f, 0f, 0f, semi.Length, wide).Spots.Count == 2, "20 m reservation fits the 16.5 m truck + margin: mid spot");
             Check(Car(40f, 0f, 0f, road.Length, wide).Spots.Count == 1, "25 m road train does not fit the 20 m reservation");
 
-            // Repo: the job side and the navigation block wire the length in, only when stage 2 is on.
+            // Repo: the job side and the navigation block (S2-21) wire the length in, only when stage 2 is on.
             string root = RepoRoot();
             if (root == null) { Check(false, "repo root found"); return; }
             string nav = File.ReadAllText(Path.Combine(root, "JunctionRules", "Vanilla", "JRCarNavigationSystem.cs"));
-            Check(nav.Contains("if (m_JRMode != 0 && bufferAccessor3.Length != 0)") && nav.Contains("JRVehicleLength.WithTrailers(objectGeometryData2, bufferAccessor3[j]"),
-                "S2-25 computes the whole length from the layout buffer only when stage 2 is on");
-            int s25 = nav.IndexOf("BEGIN S2-25", StringComparison.Ordinal);
-            int target = nav.IndexOf("UpdateNavigationTarget(ref random, priority, entity2", StringComparison.Ordinal);
-            Check(s25 > 0 && target > s25, "S2-25 runs before UpdateNavigationTarget (which builds the iterator)");
-            Check(nav.Contains("JRWholeJunction.Create(m_JRMode, m_NodeLaneData, m_JRVehicleLength)"), "S2-21 hands the length to the iterator");
-            Check(nav.Contains("GetComponentLookup<CarTractorData>(isReadOnly: true)") && nav.Contains("GetComponentLookup<CarTrailerData>(isReadOnly: true)"), "S2-23 sets the read-only prefab lookups");
+            int s21 = nav.IndexOf("BEGIN S2-21", StringComparison.Ordinal);
+            int s21End = s21 < 0 ? -1 : nav.IndexOf("JR-STAGE2 END", s21, StringComparison.Ordinal);
+            string s21Block = s21 >= 0 && s21End > s21 ? nav.Substring(s21, s21End - s21) : "";
+            Check(s21Block.Contains("if (m_JRMode != 0 && m_JRLayoutData.TryGetBuffer(entity, out DynamicBuffer<LayoutElement> jrLayout))")
+                  && s21Block.Contains("JRVehicleLength.WithTrailers(prefabObjectGeometryData, jrLayout"),
+                "S2-21 computes the whole length from the car's layout buffer only when stage 2 is on");
+            Check(s21Block.Contains("float jrVehicleLength = 0f;") && s21Block.Contains("JRWholeJunction.Create(m_JRMode, m_NodeLaneData, jrVehicleLength)"),
+                "S2-21 hands the length (a local) to the iterator");
+            // Review JR-T-002d: the job runs in parallel and its workers share the one job struct, so Execute must never write a
+            // job field (the first 0.2.2 cut stored the per-car length in m_JRVehicleLength: a data race between cars).
+            Check(!nav.Contains("m_JRVehicleLength") && !System.Text.RegularExpressions.Regex.IsMatch(nav, @"(?m)^\s*m_JR\w*\s*="),
+                "no per-car value is written to a job-struct field (parallel workers share it)");
+            Check(nav.Contains("GetComponentLookup<CarTractorData>(isReadOnly: true)") && nav.Contains("GetComponentLookup<CarTrailerData>(isReadOnly: true)")
+                  && nav.Contains("GetBufferLookup<LayoutElement>(isReadOnly: true)"), "S2-23 sets the read-only prefab and layout lookups");
             string jr = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRWholeJunction.cs"));
             Check(jr.Contains("m_VehicleLength > 0f ? m_VehicleLength : geometry.m_Bounds.max.z - geometry.m_Bounds.min.z"), "BeginLane uses the whole length, else the 0.2.1 bounds length");
             string vl = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRVehicleLength.cs"));

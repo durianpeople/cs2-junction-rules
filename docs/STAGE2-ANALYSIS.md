@@ -415,10 +415,13 @@ entirely in the two stock attach points. Without trailers the result is exactly 
 bicycles unchanged). Code: `Core/VehicleLength.cs` (`CombinedLength`, unit-tested), `Stage2/JRVehicleLength.cs`
 (reads the `LayoutElement` buffer, element 0 = the controller as in the game's UpdateTrailers).
 
-**Where it runs.** Once per car and navigation update, in the navigation job's moving-car loop (block S2-25, before
-`UpdateNavigationTarget` builds the iterator), only when stage 2 is on (`m_JRMode != 0`; the timing log alone also
-turns it on so the counters see the same spots). It is handed to the iterator through `JRWholeJunction.Create` (S2-21)
-and used by `BeginLane` for `FindSpots`. Rule and timing log off: one int test and a float store per car, nothing else.
+**Where it runs.** Once per car and navigation update, in `UpdateNavigationTarget`, where the navigation job builds the car's
+iterator (block S2-21), only when stage 2 is on (`m_JRMode != 0`; the timing log alone also turns it on so the counters
+see the same spots). The length is a local of that call, passed to the iterator through `JRWholeJunction.Create` and
+used by `BeginLane` for `FindSpots`; it is never a field of the job struct (the job runs in parallel and its workers
+share that struct; a first 0.2.2 cut did that and was fixed in review JR-T-002dr). Layout buffer through a read-only
+`BufferLookup` (the job already reads it through a read-only type handle). Rule and timing log off: one int test per
+car, nothing else.
 
 **Effect.** An articulated truck or a car with a caravan gets a mid spot only where the whole combination plus the stop
 margin fits between two conflict points; otherwise it makes one decision at the entry spot for the whole junction, as

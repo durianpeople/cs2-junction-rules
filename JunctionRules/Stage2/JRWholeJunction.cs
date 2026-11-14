@@ -31,7 +31,7 @@ namespace JunctionRules.Stage2
         public int m_Mode;
         /// <summary>
         /// 0.2.2: the whole vehicle's length, trailers included (Stage2/JRVehicleLength.cs, computed once per car and
-        /// update by the navigation job, S2-25). 0 = not given: the controller's prefab bounds are used (0.2.1).
+        /// update by the navigation job, S2-21). 0 = not given: the controller's prefab bounds are used (0.2.1).
         /// </summary>
         public float m_VehicleLength;
 
