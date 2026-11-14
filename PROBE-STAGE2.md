@@ -460,3 +460,154 @@ Diagnostics to read (copy's timing log line, **Log navigation timing** on):
 
 Report back as section 7, plus: the counters line per pass (with the events and histogram parts), Valley St right-turn
 behaviour, any car on a central reservation, longest minor-arm wait and cars out per 2 minutes per rule.
+
+## 10. 0.2.4: red/amber feeding cars, cheap feeding scan, turning across oncoming gives way (JR-T-002h)
+
+0.2.4 changes three things inside **Junction gap rule = Whole junction** (owner rulings 14 Nov 2026,
+`docs/STAGE2-ANALYSIS.md` section 11, `DEVIATIONS.md` 0.2.4):
+- **Red / amber feeding cars.** An approach-lane (feeding) car whose own conflicting junction lane shows RED no longer
+  counts. On AMBER it is skipped when the game's own amber test says it can stop (braking distance at its current
+  speed <= distance to its stop line), and still counts when it cannot stop (and wins priority). Green / no signal:
+  as 0.2.3. Emergency vehicles (priority 108) ignore signals exactly as stock does, so they still count.
+- **Cheap feeding scan.** Only the car at its entry spot W (no car ahead of it on its own approach lane) or the car
+  re-checking while crossing scans the approach lanes; followers never do. No repeat scan of the same approach in one
+  car-update (memo), early exits, and a work cap (96 cars per car-update, 16 lanes per scan; cars not read are NOT
+  counted, cap hits are counted).
+- **Turning across oncoming traffic gives way** (new setting, default ON, whole junction only, applied at the next
+  simulation step). With equal sign status, a turn across the oncoming flow (left-hand traffic: right turns and
+  right U-turns; right-hand traffic: the mirror, from the game's own traffic-side flag) has LOWER priority than the
+  oncoming straight, and the straight car no longer waits for the turner's lane reservation alone. A turner already
+  physically in the way is still braked for (stock collision braking). Setting off = 0.2.3.
+
+Defaults: **Car driving** = Game's own, **Junction gap rule** = Stock. With the rule on Stock, 0.2.4 drives exactly as
+stage 1 (the new setting has no effect then).
+
+Build to install: `~/Code/cs2-junction-rules/.staged/0.2.4-burst/`. It holds a `STALE.md` (managed build made while
+the game was running): do the Burst rebuild in `STALE.md` first (game closed), then put the new sha256s in the table
+and in the install block below. Until then the install block refuses (placeholder sums `0000...` on purpose).
+
+| File | sha256 |
+|---|---|
+| `JunctionRules.dll` | `PLACEHOLDER - see .staged/0.2.4-burst/STALE.md` |
+| `JunctionRules.pdb` | `PLACEHOLDER` |
+| `JunctionRules_win_x86_64.dll` (Burst code) | `PLACEHOLDER` |
+| `JunctionRules_win_x86_64.pdb` | `PLACEHOLDER` |
+
+### 10.1 Install over the installed version (game closed only; backs up the installed files)
+
+```
+(
+  CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
+  BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-prev-installed-backup"
+  cd ~/Code/cs2-junction-rules/.staged/0.2.4-burst || exit 1
+  if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
+  if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
+  if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
+  sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
+SUMS
+  if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
+    mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && (cd "$BACKUP" && sha256sum JunctionRules*.dll JunctionRules*.pdb > SHA256SUMS) &&
+    echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
+  fi
+  mkdir -p "$CS2/Mods/JunctionRules" &&
+  cp JunctionRules.dll JunctionRules.pdb JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
+  echo "installed 0.2.4"
+)
+```
+
+Copies nothing unless the game is closed, the build is not stale and all four sums match. The first run keeps the
+installed files (expected: the 0.2.3 Burst build) in `.staged/0.2.4-prev-installed-backup/` with their sums in
+`SHA256SUMS`. An existing backup is never overwritten.
+
+Log check (section 2) with `OnLoad version 0.2.4.0`; the settings line names `turning across oncoming gives way`.
+With the rule on Whole junction and the new setting on, the copy's rule name ends `, turning across oncoming gives
+way (left-hand traffic)` in Bevy Valley. Timing A/B as section 4; behaviour passes as section 5 at Valley x Carlisle
+(1092.7,-81.5) and a signalled junction on a main road (Sunset x Cherry).
+
+### 10.2 What to watch (0.2.4)
+
+Red / amber (signalled junctions):
+- **Green main-road cars no longer brake for cars stopping at their red.** A car with green turning or crossing in
+  front of a side road whose cars are rolling up to their red stop line keeps going. Report any green car that waits
+  with nothing on its path but cars that then stop at a red.
+- **Amber runners are still respected.** A car too close to stop when its light turns amber (it carries on through)
+  still holds a conflicting car deciding at W. Watch a few light changes at speed: no green car pulls out in front of
+  an amber runner. A car that could have stopped on amber is not waited for (expected).
+- Red runners: a car that runs its red anyway (stock only lets it when it cannot stop within braking distance + 1 m)
+  is NOT counted any more (owner ruling taken literally). Only the stock reservation, safety re-check and collision
+  braking separate it. Report any near-collision with a red runner.
+- Emergency vehicles on blue lights through a red are still counted (stock: they ignore the signal).
+
+Cost of the approach-lane scan:
+- **No post-load spike.** The first timing windows after loading the save should look like later windows. A/B the
+  first 3 windows after load with **Car driving** = Game's own vs the copy (rule Whole junction) to see whether any
+  spike left is the game's own (`docs/STAGE2-ANALYSIS.md` 11.2: the timing includes waits on upstream jobs).
+- **Nav job mean / p95 equal to 0.2.1** (rule Whole junction, same save, same speed, 5 lines each at 1x and 4x).
+  Report the numbers next to the 0.2.1 and 0.2.3 lines if you have them.
+- **Feeding scans per window**, from the copy's line:
+  `feeding scans N (skipped: follower N, memo N; cap hits N)`. Expect followers skipped >> scans in queues,
+  `cap hits` 0 or near 0. Any steady cap hits: report the junction (the cap errs on "not busy").
+
+Turning across oncoming (Valley x Carlisle, 1092.7,-81.5; and any junction with a busy turn across a main road):
+- **A fast eastbound right-turner into Valley St waits for westbound Carlisle traffic** (equal status, both main-road
+  approaches). It should not cut across a westbound car that is close.
+- **Westbound Carlisle through traffic is not held by the turner.** A westbound car keeps going while an eastbound car
+  is deciding or committed to the right turn; it no longer waits for the turner's reservation.
+- **Watch for near-overlaps**: a turner already committed when a westbound car arrives is now separated only by
+  collision braking (accepted risk). Report any visible overlap or two cars stopping nose to nose in the junction.
+- STOP / YIELD / RightOfWay differences stay stock: a Valley St STOP-arm car still gives way to both Carlisle flows,
+  whatever its turn. Left turns (LHT) are unaffected.
+- Counters: `turning across oncoming: priority changed N, turner reservation not waited for N`. Both should be > 0 at
+  Valley x Carlisle with the setting on and 0 with it off.
+- **Setting off = 0.2.3**: switch it off for one pass; behaviour and counters as 0.2.3 (turn counters 0).
+
+Also as 9.2: no deadlocks, no new collisions, safety-stop events rare, no car on a central reservation by plan.
+
+### 10.3 Rollback
+
+- Immediate (no restart): the new setting **Whole junction: turning across oncoming traffic gives way** off (0.2.3
+  turn behaviour), **Junction gap rule** back to Stock (drives as stage 1), or **Car driving** back to Game's own.
+- Back to the version installed before 0.2.4 (expected 0.2.3; game closed), from the 10.1 backup, checked against the
+  sums the install wrote:
+
+  ```
+  (
+    CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
+    cd ~/Code/cs2-junction-rules/.staged/0.2.4-prev-installed-backup || { echo "no backup - use the 0.2.3 block below"; exit 1; }
+    if [ ! -d "$CS2/Mods/JunctionRules" ]; then echo "mod folder not found - nothing changed"; exit 1; fi
+    if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing changed"; exit 1; fi
+    sha256sum -c --strict SHA256SUMS || { echo "BACKUP SHA256 MISMATCH - nothing changed"; exit 1; }
+    cp JunctionRules.dll JunctionRules.pdb JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
+    echo "previous install restored"
+  )
+  ```
+
+- Or the 0.2.3 Burst build from `.staged/0.2.3-burst/`, checked against the sums in the section 9.1 install block of
+  THIS file (no sums are copied here; the block refuses while 9.1 still has placeholders):
+
+  ```
+  (
+    CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
+    KIT="$HOME/Code/cs2-junction-rules/PROBE-STAGE2.md"
+    cd ~/Code/cs2-junction-rules/.staged/0.2.3-burst || exit 1
+    if [ ! -d "$CS2/Mods/JunctionRules" ]; then echo "mod folder not found - nothing changed"; exit 1; fi
+    if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing changed"; exit 1; fi
+    if [ -e STALE.md ]; then echo "0.2.3 BUILD IS STALE - see its STALE.md; nothing changed"; exit 1; fi
+    SUMS23="$(awk '/^### 9\.1 /{sec=1} sec && /<<.SUMS./{on=1; next} on && /^SUMS$/{exit} on' "$KIT")"
+    if [ "$(printf '%s\n' "$SUMS23" | grep -c '  JunctionRules')" != 4 ] || printf '%s\n' "$SUMS23" | grep -q '^0000'; then
+      echo "0.2.3 SUMS NOT FILLED IN (section 9.1 of PROBE-STAGE2.md) - nothing changed"; exit 1; fi
+    printf '%s\n' "$SUMS23" | sha256sum -c --strict - || { echo "SHA256 MISMATCH - nothing changed"; exit 1; }
+    cp JunctionRules.dll JunctionRules.pdb JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
+    echo "0.2.3 restored"
+  )
+  ```
+
+  Further back: 9.3 (0.2.1), section 6 (0.2.0), PROBE-STAGE1.md (0.1.0 / remove).
+
+Report back as section 7, plus: the counters line per pass (feeding scans / skips / cap hits, turn counters), the
+first 3 windows after load (copy vs Game's own), nav mean/p95 vs 0.2.1, any green car braking for a red-stopper,
+any amber-runner conflict, and Valley x Carlisle turner / westbound behaviour with the setting on and off.

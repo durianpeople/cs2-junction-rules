@@ -25,6 +25,13 @@ reach each conflict point (game's own acceleration, speed-in-turns cap and braki
 look-ahead for cars on conflicting junction lanes, and every car on the approach lanes feeding a conflicting lane counts
 as a virtual reservation (braking distance + speed x arrival time) in the game's own reservation test. The safety
 re-check while crossing uses the same projection. Expect longer waits at the entry and fewer bold right turns.
+0.2.4 (owner rulings 14 Nov 2026, `docs/STAGE2-ANALYSIS.md` section 11): approach-lane cars whose own conflicting
+lane shows **red** no longer count; on **amber** they count only when the game's own amber test says they cannot stop.
+The approach-lane scan is **cheap**: only the car at its entry spot (or re-checking while crossing) scans, followers
+never, no repeat scan per car-update, capped work (cars not read are not counted; diagnostics count scans, skips and
+cap hits). New setting **Whole junction: turning across oncoming traffic gives way** (default on): with equal sign
+status a turn across the oncoming flow (right turn in left-hand traffic, mirrored for right-hand) gives way to the
+oncoming straight, and the straight car no longer waits for the turner's reservation (owner-approved deviation).
 Analysis, per-case behaviour and owner rulings: `docs/STAGE2-ANALYSIS.md`;
 code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 
@@ -52,12 +59,15 @@ code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
   Car driving is the copy; applies at the next simulation step (the switch system publishes it each step, the copy
   takes it by value into its job when it schedules).
 - **Whole junction: waiting spot**: `Before the first crossing` (default, owner ruling) or `At the stop line`.
+- **Whole junction: turning across oncoming traffic gives way** (0.2.4): on (default) or off (= 0.2.3). Acts only
+  with the Whole junction rule; applies at the next simulation step; traffic side from the game's own city setting.
 - **Status**: what runs now, the version check result, and whether the copy can run.
 - **Log navigation timing** (debug): one line per 1024 simulation frames with the navigation job timing of the pair
   that ran; the copy's line also names the junction gap rule and the stage 2 counters (0.2.3: whole-path decisions,
   waits at the entry spot for a later conflict, safety stops inside with their EVENT count (one per car transition),
   stopped inside for a give-way / behind a crossing car, "busy only by projection" split junction-lane / feeding-lane
-  car, and for points at W the distance from W and the own arrival time as mean + histogram with the median bucket). Off: the probe systems are
+  car, and for points at W the distance from W and the own arrival time as mean + histogram with the median bucket); 0.2.4: feeding scans with follower / memo skips and cap hits, turning-across-oncoming priority changes and
+  turner reservations not waited for). Off: the probe systems are
   disabled and the counters are not counted, so they cost nothing.
 
 When the version gate does not allow the copy, the copy pair and the timing probes are not registered at all (their

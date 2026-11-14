@@ -46,6 +46,11 @@ namespace JunctionRules.Tests
             ("ArrivalProjectionTests", ArrivalProjectionTests),
             ("SafetyEventTests", SafetyEventTests),
             ("ArrivalRepoTests", ArrivalRepoTests),
+            ("FeedingSignalTests", FeedingSignalTests),
+            ("SignalRepoTests", SignalRepoTests),
+            ("FeedingScanTests", FeedingScanTests),
+            ("TurnAcrossTests", TurnAcrossTests),
+            ("TurnAcrossRepoTests", TurnAcrossRepoTests),
         };
 
         private static int Main(string[] args)

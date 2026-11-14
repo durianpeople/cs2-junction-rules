@@ -6,7 +6,7 @@
 // tools/vanilla_rules.json (and DEVIATIONS.md) and run `python3 tools/vanilla_copy.py generate`.
 // Changes applied: R-01, R-02, R-03, D-01 (see DEVIATIONS.md). Logic is otherwise the game's, unchanged.
 // Exception: hand-written code only inside '// JR-STAGE2 BEGIN <id>' ... '// JR-STAGE2 END' blocks
-// (S2-01, S2-02, S2-03, S2-04, S2-05, S2-06, S2-07, S2-08, S2-08b, S2-09, S2-10, S2-11, S2-11b, S2-12; see DEVIATIONS.md). `check` proves everything outside them is the above.
+// (S2-01, S2-02, S2-03, S2-04, S2-05, S2-06, S2-07, S2-08, S2-08b, S2-09, S2-10, S2-11, S2-11b, S2-12, S2-13; see DEVIATIONS.md). `check` proves everything outside them is the above.
 // ==== end of header; the code below is the game's, changed only as listed in DEVIATIONS.md ====
 
 using System;
@@ -1318,10 +1318,13 @@ public struct JRCarLaneSpeedIterator
 					int num9 = math.select(laneOverlap.m_PriorityDelta, num8, num8 != 0);
 					num9 = math.select(num9, 0, requestSpace && num9 > 0);
 					num6 -= num9;
-					// JR-STAGE2 BEGIN S2-12: arrival-time projection (0.2.3): cars on the lanes feeding this conflicting lane as virtual reservations, stock reservation test
+					// JR-STAGE2 BEGIN S2-13: turning across oncoming traffic gives way (0.2.4, owner ruling 14 Nov 2026): rule's priority delta for a turn across the oncoming straight
+					num6 = m_JR.TurnAcrossPriority(jrInScope, m_Lane, num6, num8, num9, requestSpace, ref m_CarLaneData, ref m_LaneReservationData);
+					// JR-STAGE2 END
+					// JR-STAGE2 BEGIN S2-12: arrival-time projection (0.2.3): cars on the lanes feeding this conflicting lane as virtual reservations, stock reservation test (0.2.4: minus cars stopping at this lane's red / amber; deciding car only, memo, cap)
 					if (jrInScope && m_JR.Projecting && m_LaneReservationData.HasComponent(m_Lane))
 					{
-						float jrFeedSpeed = m_JR.FeedingLaneYield(m_Lane, m_Curve.m_Length, math.select(math.max(num3 + @float.z, m_CurveOffset.x), 0f, inverse), num6, m_Entity, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_CarData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabCarData, m_PrefabCar, m_SafeTimeStep, m_SpeedRange, m_MaxSpeed);
+						float jrFeedSpeed = m_JR.FeedingLaneYield(m_Lane, m_Curve.m_Length, math.select(math.max(num3 + @float.z, m_CurveOffset.x), 0f, inverse), num6, componentData2, m_Entity, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_CarData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabCarData, ref m_CarLaneData, ref m_PrefabObjectGeometryData, ref m_LaneReservationData, m_PrefabCar, m_SafeTimeStep, m_SpeedRange, m_MaxSpeed);
 						if (jrFeedSpeed < m_MaxSpeed)
 						{
 							m_MaxSpeed = jrFeedSpeed;

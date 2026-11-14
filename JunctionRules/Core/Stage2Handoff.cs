@@ -26,12 +26,13 @@ namespace JunctionRules.Core
         private int m_Mode;
 
         /// <summary>Returns a log line when the requested mode changed (or on the first call), else null.</summary>
-        public string Step(JunctionGapRule rule, bool counting, out int mode, JunctionWaitingSpot spot = JunctionWaitingSpot.BeforeFirstCrossing)
+        public string Step(JunctionGapRule rule, bool counting, out int mode, JunctionWaitingSpot spot = JunctionWaitingSpot.BeforeFirstCrossing,
+            bool turnGivesWay = false, bool leftHandTraffic = false)
         {
-            mode = Stage2Mode.For(rule, counting, spot);
+            mode = Stage2Mode.For(rule, counting, spot, turnGivesWay, leftHandTraffic);
             if (m_Has && mode == m_Mode) return null;
             bool first = !m_Has;
-            bool ruleChanged = !first && ((mode ^ m_Mode) & (Stage2Mode.Rule | Stage2Mode.AtLine)) != 0;
+            bool ruleChanged = !first && ((mode ^ m_Mode) & (Stage2Mode.Rule | Stage2Mode.AtLine | Stage2Mode.TurnGivesWay | Stage2Mode.LeftHandTraffic)) != 0;
             m_Has = true;
             int old = m_Mode;
             m_Mode = mode;
@@ -70,7 +71,19 @@ namespace JunctionRules.Core
         public const int DistanceHistogram = 11;
         /// <summary>0.2.3: first of PointBuckets.Count histogram slots for the projected own arrival time.</summary>
         public const int ArrivalHistogram = DistanceHistogram + PointBuckets.Count;
-        public const int Count = ArrivalHistogram + PointBuckets.Count;
+        /// <summary>0.2.4: feeding-lane scans run (a source's lanes read), summed over car-steps.</summary>
+        public const int FeedingScans = ArrivalHistogram + PointBuckets.Count;
+        /// <summary>0.2.4: feeding-lane scans skipped because the car was a follower (a car ahead of it before W).</summary>
+        public const int FeedingFollowerSkips = FeedingScans + 1;
+        /// <summary>0.2.4: feeding-lane scans skipped by the per-car-update memo (same source already read, nothing there can count).</summary>
+        public const int FeedingMemoSkips = FeedingScans + 2;
+        /// <summary>0.2.4: feeding-lane scans stopped by the work cap (cars not read are not counted, as stock).</summary>
+        public const int FeedingCapHits = FeedingScans + 3;
+        /// <summary>0.2.4: overlaps where "turning across oncoming gives way" changed the stock priority (num6), car-steps x overlaps.</summary>
+        public const int TurnOverrides = FeedingScans + 4;
+        /// <summary>0.2.4: give-ways a straight car did NOT make for a turner's reservation alone (the turner gives way).</summary>
+        public const int TurnReservationDiscounts = FeedingScans + 5;
+        public const int Count = FeedingScans + 6;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -145,6 +158,12 @@ namespace JunctionRules.Core
                    ", stopped inside behind a crossing car " + deltas[StoppedInsideCrossing].ToString(ci) +
                    "; arrival projection: busy only by projection, junction-lane car " + deltas[ProjectedLaneHits].ToString(ci) +
                    ", feeding-lane car " + deltas[FeedingLaneHits].ToString(ci) +
+                   "; feeding scans " + deltas[FeedingScans].ToString(ci) +
+                   " (skipped: follower " + deltas[FeedingFollowerSkips].ToString(ci) +
+                   ", memo " + deltas[FeedingMemoSkips].ToString(ci) +
+                   "; cap hits " + deltas[FeedingCapHits].ToString(ci) + ")" +
+                   "; turning across oncoming: priority changed " + deltas[TurnOverrides].ToString(ci) +
+                   ", turner reservation not waited for " + deltas[TurnReservationDiscounts].ToString(ci) +
                    "; " + points;
         }
     }

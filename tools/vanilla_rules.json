@@ -143,7 +143,13 @@
         "files": {
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
-        "reason": "0.2.3 arrival-time projection: cars on the lanes feeding the conflicting junction lane, projected by the car's own arrival time, as virtual reservations through the unchanged stock reservation test (deciding / safety re-check only)."
+        "reason": "0.2.3 arrival-time projection: cars on the lanes feeding the conflicting junction lane, projected by the car's own arrival time, as virtual reservations through the unchanged stock reservation test (deciding / safety re-check only); 0.2.4: skips cars stopping at that lane's red / amber (the stock-read signal componentData2), scans only for the deciding car (not followers, not when already held or when the lane's own reservation holds it), per-car-update memo, bounded work."
+      },
+      "S2-13": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "0.2.4 (owner ruling 14 Nov 2026, setting 'Turning across oncoming traffic gives way', whole junction only): after the stock num6 -= num9, a turn across the oncoming flow gets the lower priority against that oncoming straight when both have equal signs (no sign / signal override, no Stop / Yield / RightOfWay / Unsafe difference); the straight car is not held by the turner's reservation alone (S2-06)."
       },
       "S2-20": {
         "files": {

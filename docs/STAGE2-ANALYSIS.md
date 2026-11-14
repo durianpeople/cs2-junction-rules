@@ -228,6 +228,17 @@ Rulings on the 0.2.3 review findings, RULED by the owner on 14 Nov 2026 (binding
     point at `Wait(u) + margin` (0.9 m stock stop margin), so the first point at W gets about 0.6 s from standstill
     (look-ahead about 2.6 s there, not the stock 2 s + 4/15 s). No change.
 
+Rulings for 0.2.4, RULED by the owner on 14 Nov 2026 (binding; section 11):
+
+12. **Approach-lane cars at red / amber** — RULED: a feeding car whose OWN junction lane (the conflicting lane it
+    would enter) faces red is skipped; on amber it is skipped when the stock amber test says it stops comfortably and
+    counted when it cannot stop. Everything else as 0.2.3 / choice 10. Implemented (JR-T-002h, `FeedingSignal`).
+13. **Cheap approach-lane scan** — RULED: only the car deciding at W (or about to) scans; followers never; no repeat
+    scans in one update; bounded work, cap hits counted. Implemented (JR-T-002h, `FeedingScan`). Cap choice: a hit
+    stops the scan and counts the unread cars as NOT busy (stock), never as busy (section 11.2).
+14. **The turning-right car should not have right of way** — RULED: setting "Turning across oncoming traffic gives
+    way", default on, whole junction only. Implemented (JR-T-002h, `TurnAcross`, block S2-13); cause analysis in 11.3.
+
 ## 7. 0.2.1 collisions (JR-T-002c)
 
 Live probe, owner, 14 Nov 2026 (Bevy Valley, 0.2.0 Burst, whole junction on): "stopped inside for a give-way" 0 in
@@ -619,3 +630,127 @@ off = stock), SafetyEventTests (one event per transition, gap > 48 frames = new,
 ArrivalRepoTests (decompile formulas incl. `num12 - num6 > 0`, GetPriority 100/108 and the reservation priority, S2-10/S2-12 text, the job's priority gate, Projecting covers Deciding and Safety), and
 StretchWholePathTests (one decision at W incl. the far carriageway, re-check stop before the first uncrossed point,
 wait there until all remaining points are clear).
+
+## 11. 0.2.4 (JR-T-002h, owner rulings 14 Nov 2026, binding: choices 12-14)
+
+### 11.1 Approach-lane cars at red / amber (choice 12)
+
+Review finding on 0.2.3: when the conflicting junction lane faces red, stock lowers the deciding car's `num6` by one
+for that overlap (CheckOverlappingLanes reads `m_LaneSignalData` of `m_Lane = laneOverlap.m_Other`, `case Stop:
+num8++`, `num6 -= num9`), so a feeding car (priority 100) still wins against a green main-road car (num6 99 instead of
+101 against that lane) and the green car braked for a car about to stop at its own red.
+
+Fix, inside `FeedingLaneYield` (Core `FeedingSignal`): the signal facing a feeding car is the conflicting lane's own
+`LaneSignal`, which stock has just read into `componentData2` in the same block (default `None` when the lane has no
+signal). S2-12 passes that value (no new lookup). The decision mirrors the car's own stock decision in
+`CarLaneSpeedIterator.IterateNextLane` (decompile `~/Code/decomp/yb-2026-11-13/CarLaneSpeedIterator.cs` 380-430; the conflicting lane's signal read at 1268):
+
+- the signal applies only on a lane with `TrafficLights` / `LevelCrossing`, and only when that lane or the car's
+  own lane has `Approach` (otherwise stock clears those flags for the car, lines 387-398);
+- a car obeys red / amber only when `m_Priority < 108 || (signal.m_Flags & Physical) != 0` (lines 412, 425):
+  **emergency vehicles ignore a non-physical red / amber in stock, so they are NOT skipped** (they still need to win
+  priority, as every feeding car);
+- red (`Stop`): skipped (owner ruling, also when it could not stop; stock would let such a car run the red when
+  `GetBrakingDistance(car, v, 0f) > num2 + 1`, see risks);
+- amber (`SafeStop`): skipped when `GetBrakingDistance(car, v, 0f) <= num2` (line 425, the stock amber test), where
+  `v = min(|velocity|, CarData.m_MaxSpeed)` (CarNavigationSystem 1487/1500, `m_CurrentSpeed`) and `num2` = distance
+  from its front to the start of the junction lane = rest of its lane as stock measures it
+  (`max(0.001, lerp(chord, length * (1 - x), 1 - x))`, IterateFirstLane line 230) minus `ObjectGeometryData.m_Bounds.max.z`
+  (lines 380-381). The stock lateral term (car position to its lane position) is left out: shorter distance = more
+  "cannot stop" = counted, never bolder;
+- `None` / `Yield` / `Go`: unchanged (0.2.3).
+
+Order per feeding car: priority gate (choice 10), signal (choice 12), virtual reservation, stock reservation test.
+Lookups: the iterator's own read-only `CarLane` and `ObjectGeometryData` lookups (stock already reads both in the same
+job, so job dependencies cover them).
+
+### 11.2 Cheap approach-lane scan (choice 13)
+
+Live 0.2.3 (Bevy Valley, about 1,000 cars, 1x): navigation job window 1 after load mean 2.42 ms / p95 6.66 / max 15.3,
+window 2 mean 0.65 / p95 2.11, then 0.44-0.46 / 0.59-0.62 (as 0.2.1). What changed (Core `FeedingScan`, job
+`FeedingLaneYield`):
+
+- **Who scans.** Deciding phase: only a car with no other car ahead of it on its own edge approach lane (a follower is
+  behind the spot W, which lies on the junction lane; read once per car-update from that lane's `LaneObject` buffer,
+  same direction, trailers belong to their controller; not tested on a node lane). Safety re-check: the crossing car
+  itself. Never when the car is already held as hard as a hit would hold it (`hold >= currentMax`; this also leaves out
+  every car further from W than its braking distance, since `GetMaxBrakingSpeed(d) < v` exactly when
+  `d < GetBrakingDistance(v)`), and never when the conflicting lane's own reservation already makes stock hold it the
+  same way (the stock test right after S2-12; same hold through S2-06).
+- **No repeat scans.** A per-car-update memo (4 fixed slots, keyed by the feeding source = the junction lane's start
+  PathNode) keeps, for every finished scan, the highest priority, the highest `brakingDistance - 0.01 - remaining` and
+  the highest speed over the candidate cars. A later overlap of the same source skips the scan when nobody there could
+  count (`maxPriority <= num6` or `maxReach + maxSpeed * delta <= 0`). Exact bound because, since choice 10, the stock
+  reservation test `offset > num10 || priority > num6` is always true by its second half for a counted car: a feeding
+  car counts exactly when it wins priority, is not stopped by its signal and its projected reach passes its lane end.
+- **Cap.** At most 96 cars read per car-update (all scans) and 16 feeding lanes per scan. A hit stops the scan and the
+  unread cars are NOT counted: that is the stock behaviour (stock never counts feeding cars; the stock reservation,
+  look-ahead, safety re-check and collision braking still apply). Erring "busy" could hold a car at a busy main road for
+  ever (accepted starvation-wise by choice 4, but a cap is a work limit, not a traffic judgement). Normal traffic never
+  reaches it; cap hits are counted.
+- **Diagnostics** (counters on only, zero cost off): feeding scans, scans skipped as follower, skipped by the memo, cap
+  hits, in the timing line.
+- **Microbench / test** (`FeedingScanTests`): 10 cars queued on a minor arm, 3 overlaps per car sharing one source: 1
+  scan (the car at W), 27 follower skips, 2 memo skips; managed gate + memo about 1-2 ns per overlap.
+
+Post-load spike, what was looked at:
+
+- The timing probe measures schedule-to-done of the navigation job, which includes waiting for upstream jobs of the
+  same step (NavTimingProbeSystems summary). After a load the whole simulation catches up (path updates, cars
+  re-filling navigation lanes, lane reservations rebuilt from empty), so an elevated first window is expected for the
+  game's own navigation too. Not measured for 0.2.1 or stock yet: PROBE-STAGE2 section 10 asks for the A/B.
+- Ours, first use: no runtime Burst compilation (the Burst library is built ahead of time); the counter array and the
+  64 KiB safety-event table are created on the main thread in `BeginStep`, before scheduling, outside the measured
+  span; `GetBufferLookup<ConnectedEdge>` per step is a handle copy. None of these can show up as job time.
+- Ours, work: right after load no lane is reserved yet, so the "already held" exits of 0.2.3 rarely fire and every car
+  near W scanned every feeding lane once per overlap, followers included when not speed-limited by the car ahead, with
+  no memo. That is the part fixed here (follower skip, reservation skip, memo, cap). The 223-646 "busy only by
+  projection" feeding hits per window are hits, not scans; the new counters show the scans themselves.
+
+### 11.3 Turning across oncoming traffic gives way (choice 14)
+
+Report: Valley x Carlisle (Medium Road Divided, left-hand traffic), eastbound Carlisle turning right into Valley St at
+the median opening. A turner that has braked or stopped is passed by westbound Carlisle (fine); a fast turner that does
+not stop makes westbound Carlisle stop and give way to it (wrong).
+
+Cause, checked against the decompile (main's hypothesis CORRECTED in part):
+
+- Both lanes come from Carlisle, so `LaneSystem.CalculateYieldOffset` gives them the same sign status (source based)
+  and `LaneOverlapSystem` (1374-1395) falls to the geometric tie-break. With `MathUtils.Right(v) = (v.y, -v.x)`
+  (Colossal.Mathematics, decompiled for this check) the left-hand-traffic test gives lane 1 `+1` (gives way) when
+  `Right(t1) . t2 > 0`. For a right turn rotated clockwise by any angle in (0, 180) degrees against the oncoming
+  straight this is `sin(angle) > 0`: **the stock tie-break already gives the turner the lower priority** (and the
+  right-hand-traffic mirror does the same for left turns). Test `TurnAcrossTests` sweeps the angle. So the tie-break
+  does not favour the turner for this pair.
+- What holds westbound is the **stock reservation test** `offset > num10 || priority2 > num6`: its first half lets ANY
+  reservation that reaches past the overlap start hold the car, whatever the priorities. A fast turner reserves far
+  ahead (`ReserveNavigationLanes`: reach = braking distance at its allowed speed), so westbound gives way to that
+  reservation.
+- Why the fast turner did not wait: it decides only while it can still stop at W; at that moment westbound was not
+  visible to it (not on the conflicting junction lane, no reservation yet, or on a lane further upstream than the one
+  feeding level the 0.2.3 scan reads, or its projected reach still short of its lane end). After W it is crossing: a
+  car that cannot stop before the next point has its prediction give-ways suppressed (0.2.1 Crossing, deadlock rule),
+  so it no longer gives way to westbound's reservation; stock would brake for it, possibly stopping inside.
+
+Fix (setting on, whole junction on; Core `TurnAcross`, block S2-13 + S2-06 via `Yield`):
+
+1. Priority: for a yield-checked overlap with equal sign status (no `num8` sign / signal override, no
+   Stop / Yield / RightOfWay / Unsafe difference after the stock Approach clearing) where one lane is a turn across the
+   oncoming flow (LHT: TurnRight / GentleTurnRight / UTurnRight; RHT: the left flags; side from
+   `CityConfigurationSystem.leftHandTraffic`, the value `LaneOverlapSystem` uses) and the other is that oncoming
+   straight (a `Forward` lane whose END edge is the turner's START edge, from the lanes' PathNodes, no angles), the
+   turner's overlap delta is `+1` and the straight's `-1`, replacing the stock delta in `num6` (space-request zeroing
+   as stock). For the Carlisle pair this equals stock; it binds where the tie-break would differ.
+2. Reservation: the straight car does not give way to the turner's reservation alone (`S2-06` returns no hold) when
+   the reservation's priority does not beat its `num6` (an emergency turner, 108, still holds it). A turner physically
+   in the way still makes it brake (stock collision braking on cars on the conflicting lane is unchanged).
+3. Every later use of `num6` for that overlap sees the rule: the stock look-ahead and reservation tests, S2-10, the
+   S2-12 feeding cars and the safety re-check.
+
+Not classified (stock decides): two turners, oncoming turns (in LHT an oncoming left turn shares the right-turner's
+target: a merge), a straight from a third edge, lanes chained inside a node, any sign or signal difference. The rule
+acts only in whole-junction mode (it changes the copy's decision paths; stock mode stays the game's own). Off = 0.2.3.
+
+Risk accepted with the ruling: a turner that is already committed and cannot stop is no longer waited for by the
+straight car through its reservation; only the physical collision braking separates them (both directions). Watch
+for near-overlaps at Valley x Carlisle (PROBE-STAGE2 section 10).

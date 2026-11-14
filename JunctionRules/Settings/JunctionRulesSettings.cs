@@ -47,6 +47,13 @@ namespace JunctionRules.Settings
         [SettingsUISection(kSection, kDrivingGroup)]
         public JunctionWaitingSpot WaitingSpot { get; set; }
 
+        /// <summary>
+        /// Stage 2, whole junction only (0.2.4, owner ruling 14 Nov 2026): between lanes with equal signs, a turn across
+        /// the oncoming flow gives way to the oncoming straight (Core/TurnAcross.cs). Default on; next simulation step.
+        /// </summary>
+        [SettingsUISection(kSection, kDrivingGroup)]
+        public bool TurnAcrossGivesWay { get; set; }
+
         /// <summary>Read-only: what runs now and the version gate result.</summary>
         [SettingsUISection(kSection, kDrivingGroup)]
         public string Status => StatusText();
@@ -68,6 +75,7 @@ namespace JunctionRules.Settings
             CarDriving = CarDrivingMode.GameOwn;
             GapRule = JunctionGapRule.Stock;
             WaitingSpot = JunctionWaitingSpot.BeforeFirstCrossing;
+            TurnAcrossGivesWay = true;
             DebugTiming = false;
             SkipCodeHashCheck = false;
         }
@@ -110,6 +118,10 @@ namespace JunctionRules.Settings
                     "Only with the Whole junction rule. Before the first crossing (default): a car that has to wait moves into the junction up to the point just before its path first crosses another lane's path (for example a turner across oncoming traffic on a green waits before the first oncoming lane). At the stop line: every car waits at the line instead. Changes take effect at the next simulation step." },
                 { m_Setting.GetEnumValueLocaleID(JunctionWaitingSpot.BeforeFirstCrossing), "Before the first crossing" },
                 { m_Setting.GetEnumValueLocaleID(JunctionWaitingSpot.StopLine), "At the stop line" },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.TurnAcrossGivesWay)), "Whole junction: turning across oncoming traffic gives way" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.TurnAcrossGivesWay)),
+                    "Only with the Whole junction rule. On (default): where neither direction has a sign or signal priority over the other, a car turning across the oncoming traffic (right turns where cars drive on the left, left turns where they drive on the right) gives way to the oncoming cars going straight on, and an oncoming car going straight on does not wait just because the turner has reserved its way through; it still brakes for a turner that is physically in its path. Off: the game's own priority. Changes take effect at the next simulation step." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.Status)), "Status" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.Status)), "What runs now, the result of the version check made at game start, and whether the copy can run (set up at the first simulation step). Reopen the options page to refresh." },

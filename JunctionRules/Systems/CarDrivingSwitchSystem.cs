@@ -104,7 +104,8 @@ namespace JunctionRules.Systems
             // Stage 2: publish the junction gap rule for this step (the copy's OnUpdate, later in this step, takes it by
             // value into its job). Counters run only with the timing log on.
             string ruleNote = m_GapRule.Step(Mod.Settings != null ? Mod.Settings.GapRule : JunctionGapRule.Stock, probes, out int stage2Mode,
-                Mod.Settings != null ? Mod.Settings.WaitingSpot : JunctionWaitingSpot.BeforeFirstCrossing);
+                Mod.Settings != null ? Mod.Settings.WaitingSpot : JunctionWaitingSpot.BeforeFirstCrossing,
+                Mod.Settings == null || Mod.Settings.TurnAcrossGivesWay, LeftHandTraffic());
             Stage2Handoff.Publish(stage2Mode);
             if (ruleNote != null) Mod.log.Info(ruleNote);
             if (!m_ProbesApplied || probes != m_ProbesOn)
@@ -116,6 +117,15 @@ namespace JunctionRules.Systems
                 Mod.log.Info($"navigation timing log {(probes ? "on" : "off")}");
             }
         }
+
+        /// <summary>0.2.4: the game's own traffic side (CityConfigurationSystem.leftHandTraffic, as LaneOverlapSystem reads it).</summary>
+        private bool LeftHandTraffic()
+        {
+            if (m_CityConfiguration == null) m_CityConfiguration = World.GetOrCreateSystemManaged<Game.City.CityConfigurationSystem>();
+            return m_CityConfiguration.leftHandTraffic;
+        }
+
+        private Game.City.CityConfigurationSystem m_CityConfiguration;
 
         [Preserve]
         public CarDrivingSwitchSystem() { }

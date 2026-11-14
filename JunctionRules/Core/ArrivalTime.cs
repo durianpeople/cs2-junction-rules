@@ -199,6 +199,78 @@ namespace JunctionRules.Core
     }
 
     /// <summary>
+    /// 0.2.4 (JR-T-002h, owner rulings 14 Nov 2026, binding): a car on a lane feeding the conflicting junction lane is
+    /// skipped when that junction lane's own signal stops it, decided as the car itself decides it in stock
+    /// (CarLaneSpeedIterator.IterateNextLane, the car lane branch for a lane with TrafficLights / LevelCrossing):
+    /// <list type="bullet">
+    /// <item>the signal applies only when stock keeps the junction lane's TrafficLights / LevelCrossing flags for that
+    /// car (the junction lane or the car's own lane has the Approach flag, else stock clears them);</item>
+    /// <item>a car obeys red / amber only when <c>m_Priority &lt; 108 || (signal.m_Flags &amp; LaneSignalFlags.Physical) != 0</c>
+    /// (stock: emergency vehicles ignore a non-physical signal, so they are NOT skipped);</item>
+    /// <item>RED (LaneSignalType.Stop): skipped (owner ruling 1, regardless of whether it could stop);</item>
+    /// <item>AMBER (LaneSignalType.SafeStop): skipped when the stock amber test says it stops,
+    /// <c>VehicleUtils.GetBrakingDistance(car, currentSpeed, 0f) &lt;= num2</c> with num2 = distance from its front to the
+    /// start of the junction lane (owner ruling 2); counted when it cannot stop (it goes through);</item>
+    /// <item>None / Yield / Go: never skipped (0.2.3 unchanged).</item>
+    /// </list>
+    /// Pure arithmetic, Burst-compatible.
+    /// </summary>
+    public static class FeedingSignal
+    {
+        /// <summary>Game.Net.LaneSignalType values (byte enum: None, Stop, SafeStop, Yield, Go).</summary>
+        public const int None = 0, Stop = 1, SafeStop = 2, Yield = 3, Go = 4;
+
+        /// <summary>Game.Net.LaneSignalFlags.Physical (CanExtend = 1, Physical = 2).</summary>
+        public const int PhysicalFlag = 2;
+
+        /// <summary>The stock lowest priority that ignores a non-physical red / amber (emergency, VehicleUtils.GetPriority).</summary>
+        public const int IgnoresSignalPriority = 108;
+
+        /// <summary>Stock: the car obeys the signal's red / amber (<c>m_Priority &lt; 108 || Physical</c>).</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool Obeys(int priority, int signalFlags) => priority < IgnoresSignalPriority || (signalFlags & PhysicalFlag) != 0;
+
+        /// <summary>Red or amber: the only signals that can skip a feeding car (a quick pre-test before reading the car).</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool CanSkip(int signal) => signal == Stop || signal == SafeStop;
+
+        /// <summary>
+        /// True = the feeding car stops at its signal and is NOT counted. applies = the signal governs this car's entry
+        /// (stock flag test, see the class); brakingDistance = GetBrakingDistance(car, min(|velocity|, max speed), 0f);
+        /// distanceToStop = metres from its front to the start of the junction lane.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool Skips(bool applies, int signal, int signalFlags, int priority, float brakingDistance, float distanceToStop)
+        {
+            if (!applies || !CanSkip(signal) || !Obeys(priority, signalFlags)) return false;
+            return signal == Stop || brakingDistance <= distanceToStop;
+        }
+
+        /// <summary>
+        /// Stock: the junction lane's signal flags survive for a car coming from its lane only when the junction lane or
+        /// the car's lane has the Approach flag (otherwise IterateNextLane clears LevelCrossing / Stop / TrafficLights),
+        /// and the signal is read only for a lane with TrafficLights or LevelCrossing.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool Applies(bool junctionSignalled, bool junctionApproach, bool feedApproach) =>
+            junctionSignalled && (junctionApproach || feedApproach);
+
+        /// <summary>
+        /// Remaining metres on the feeding lane from curve position x as stock measures a lane's rest
+        /// (IterateFirstLane: max(0.001, lerp(chord, length * (1 - x), 1 - x))); the stock lateral term to the car's
+        /// position is left out (shorter = more cars "cannot stop" = counted: never bolder).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float RestOfLane(float chord, float length, float x)
+        {
+            float t = 1f - x;
+            if (t < 0f) t = 0f;
+            float d = chord + (length * t - chord) * t;
+            return d > 0.001f ? d : 0.001f;
+        }
+    }
+
+    /// <summary>
     /// Atomic slots for <see cref="SafetyStopEvents"/>: the job wraps a persistent NativeArray&lt;long&gt; (Interlocked),
     /// the tests a long[].
     /// </summary>
