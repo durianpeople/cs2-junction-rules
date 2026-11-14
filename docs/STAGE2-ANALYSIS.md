@@ -73,7 +73,7 @@ For every junction lane (a lane with `NodeLane`; edge lanes are untouched):
   water, with a road or track lane. A road lane whose signal is **red** right now (`LaneSignal.m_Signal == Stop`) is not a
   live path and does not place W (owner ruling for green turners). A lane on **amber** (`SafeStop`) is live: it places W
   and is judged in the decision like any other lane (owner ruling 14 Nov: only red does not count; the stock yield test
-  itself never treated amber specially, it only adds +1 priority for red, I 1275-1279). Track lanes always place W.
+  itself never treated amber specially, it only adds +1 for red and -1 for a yield signal, I 1273-1276). Track lanes always place W.
   Pedestrian crossings are judged in the decision but do not place W (the car keeps stopping for people at a zebra
   before W as stock does). Variant setting "At the stop line": W = start of the junction lane.
 - **Committed** = the car's own front is past W (by the game's stop margin, 0.9 m, 0.4 m for bicycles): it has left
@@ -87,6 +87,16 @@ For every junction lane (a lane with `NodeLane`; edge lanes are untouched):
   reservation clause could only ever fire on the car's current lane; look-ahead lanes committed only through the
   braking-distance test, as in stock. Both clauses are gone now: on a look-ahead lane the wait distance is always
   positive, so a car is never committed to a junction it has not reached.)
+  Residual stock behaviour (JR-T-002br, outside every block, unchanged): the game's own per-overlap skip
+  `start <= origMinOffset` (I 1241) still applies on the car's CURRENT lane: an overlap that the car's own lane
+  reservation already reaches gets no give-way test at all. The reservation is the braking distance at the car's
+  planned speed, and that speed is clamped to the speed range around the current speed (I 161, 212, N 1503), so this
+  only happens to a car that physically cannot stop before that conflict, as in stock. Such a car is not "committed"
+  for the rule (front not past W), but the game skips the give-way for the conflicts its reservation covers; conflicts
+  beyond the reservation still stop it at W (hard braking, it overruns W and is then committed). A queued or rolling-up
+  follower is slow, so its reservation ends before W (a car braking for W reserves up to the stop point) and the
+  test is applied in full. A car that comes up in a leader's wake too fast to stop is the only way past W without a
+  decision at W; stage 1 stock does the same.
 - **Before commit**: every give-way the stock test raises for a conflict at or after W (reservation, space request,
   projected priority car, a car physically in a crossing, a pedestrian on a crossing) stops the car at W instead of at
   that conflict. Same stock judgement on each conflict (same 2 s projection, priorities, signs, signals), applied to all
