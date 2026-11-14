@@ -55,7 +55,7 @@ its volume is at best INFERRED.
 4. **`HeightRange` for a surface = terrain height minus the triangle's own plane**, sampled over the triangle.
    PROVEN: YB `Game.Areas/GeometrySystem.cs:133-151` (a non-Space area uses terrain height), `:380-411`
    (`UpdateHeightRange`; for a standalone surface the range is terrain-only, `useTriangleHeight` is only true for
-   Space areas or areas owned by a building, `:135`), `:413-483` (`GetHeightRange`: `heights[] - plane`, scaled back
+   Space areas or areas owned by a building, `:136`; a building-owned surface would get the UNION of terrain range and triangle plane, a volume spanning ground to deck, but a road-junction surface cannot be building-owned), `:413-483` (`GetHeightRange`: `heights[] - plane`, scaled back
    at `:481-482`).
    - So the volume always hugs the **terrain** +-1.5 m, wherever the nodes are. With nodes at deck height 10 m above
      the ground, range ~ [-10, -10] and the volume is still [ground - 1.5, ground + 1.5]. INFERRED (arithmetic of
@@ -115,8 +115,8 @@ its volume is at best INFERRED.
 - **Standalone netlanes are editor-only in vanilla.** The net tool uses the lane container only when
   `IsEditor()` (YB `Game.Tools/NetToolSystem.cs:5703-5709`); EDT makes that call return true by a Harmony patch that
   inspects the call stack (EDT `ExtraDetailingTools.Patches/GameModeExtensionsPatches.cs:11-20`). So every G87 line in
-  the city depends on EDT to edit, and a JR box built from them would sit in the save as editor-container nets.
-  PROVEN.
+  the city depends on EDT to edit. PROVEN. That a JR box built from them would sit in the save as editor-container
+  nets is INFERRED (`ApplyNetSystem.cs` copies `EditorContainer` data, not checked further).
 - Height when drawn by hand: control points come from terrain + elevation, or from the hit point on an object surface
   (`NetToolSystem.cs:1871-1905`). Whether a line drawn on a deck snaps to the deck: UNKNOWN (probe S3). By code we set y
   ourselves.
@@ -134,7 +134,7 @@ Two ways:
   whole terrain height range (YB `Game.Rendering/OverlayRenderSystem.cs:172-182`, range at `:632`), so they hit deck
   *and* ground. Non-projected items are flat quads at their own 3D height. TLE draws non-projected curves on the
   node's own `EdgeNodeGeometry` (TLE `C2VM.TrafficLightsEnhancement.Systems.Overlay/OverlayRenderingHelpers.cs:37-53`),
-  which is why its overlay sits right on elevated nodes. PROVEN. Looks like a glowing tool overlay, not paint;
+  so its overlay should sit on elevated nodes (geometry PROVEN, visible result INFERRED, probe S5). Looks like a glowing tool overlay, not paint;
   must be refilled every frame. Good for the selection tool and a debug "show boxes" view.
 - **(E) Mod-fed surface batch (recommended)**: copy exactly what `AreaBatchSystem` does for a surface, but with our own
   triangles:
@@ -143,7 +143,9 @@ Two ways:
     No G87 needed. PROVEN recipe.
   - Data: our own `AreaTriangleData` buffer (layout PROVEN: YB `Game.Rendering/AreaTriangleData.cs:5-30`), with
     `m_YMinMax` set around the node's real height (+-~1 m) and `m_OffsetDir` set to the box axis so the hatch is
-    rotated to the junction (the game uses the owner's forward there, `AreaBatchSystem.cs:1050-1075`).
+    rotated to the junction. The game fills it from the owner's position/forward when the area has an owning
+    transform, and for a standalone surface from node 0 plus the left normal of the node0->node1 side
+    (`AreaBatchSystem.cs:1043-1085`, review correction). What the shader does with it is UNKNOWN (U8).
   - Draw: the same `RenderMeshIndirect` call with the "Area triangle volume" mesh and buffers
     `colossal_AreaBatchBuffer`, `colossal_AreaBatchColors`, `colossal_VisibleIndices` (YB
     `AreaRenderSystem.cs:45-48, 182-211`). `AreaBatchSystem.GetAreaBatch` is public (`AreaBatchSystem.cs:1710`), so we
@@ -153,6 +155,15 @@ Two ways:
   - Look: same shader as any surface, so it reads as paint (lit, with road wear). INFERRED; probe S6.
   - Unknowns: what the colour buffer and visible-index buffer must hold, and whether the shader reads anything else
     (terrain textures, culling data). UNKNOWN; probe S6 settles it with a tiny debug build.
+  - Also to replicate (review addition): the per-camera `RenderMeshIndirect` loop hooked on
+    `RenderPipelineManager.beginContextRendering` (`AreaRenderSystem.cs:182-211`, `:49`), our own visible-index
+    list (the game fills it in its culling jobs), the material vector `m_AreaParameters` = (expand, height offset)
+    (`AreaBatchSystem.cs:2097`), and the per-vertex prev/next neighbours (`m_*PrevXZ/NextXZ`) that the game takes
+    from the polygon outline, not from triangle edges. For thin strips the shader's edge fade / rounding /
+    noise could shrink or blur 0.15 m lines unless the material copies G87's values (EdgeFadeRange 1,0; EdgeNormal 0).
+    UNKNOWN (U9).
+  - Effort: "medium" assumes the shader accepts our buffers. The geometry half (outline union, inset, hatch clipping,
+    strips, culling, edit tracking) is itself sizable: realistic effort is medium-large with a GO/NO-GO gate (S6).
   - Decal mask: use **Roads only (2)** so a low deck never paints the ground under it and cars are never painted.
     INFERRED that junction surfaces are on the Roads layer (G87 lines with mask 3 paint roads).
 - Plain `Graphics.RenderMesh` with some other decal material: needs per-instance data the game's decal shaders expect
@@ -186,12 +197,12 @@ study's probe P7). A mod-side store keyed by node position would be the fallback
 
 | Option | At-grade | Elevated | Tunnel-top | Roundabout | Driveway | Looks like paint? | Follows edits? | Saved in city? | Validation / anarchy risk | Dependency | Effort |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| **A** G87 Junction Box surface (+ G87 line border), placed by code | Yes | **No** (paints ground below) | Yes | Pieces only (no holes in areas) | Yes | Yes, but hatch angle fixed to world axes | No: delete + re-place through our tool (steals the player's tool) | Yes | Passes in game mode; fails over another surface | G87 (+ EDT for border) | Medium |
+| **A** G87 Junction Box surface (+ G87 line border), placed by code | Yes | **No** (paints ground below) | Yes | Pieces only (no holes in areas) | Yes | Yes; hatch angle/phase probably follows the first side drawn (INFERRED from `m_OffsetDir`, U8), not fixed to the box | No: delete + re-place through our tool (steals the player's tool) | Yes | Passes in game mode; fails over another surface | G87 (+ EDT for border) | Medium |
 | **A2** A + mod rewrites triangle height range | Yes | Yes (INFERRED) | Yes | Pieces | Yes | Yes | As A | Yes; falls to ground without mod | As A | G87 | Medium-large |
 | **B** Tool overlay (OverlayRenderSystem) | Yes | Yes | Yes | Yes | Yes | **No** (glowing tool lines) | Yes, every frame | No | None | None | Small |
 | **C** Netlane lines (border + hatch as nets) | Yes | Probably (INFERRED) | Yes | Awkward | Yes | Yes | No: re-place through tool | Yes, 20-50 nets per box | Unknown (crossing lines) | G87 + EDT | Large |
 | **D** Object decals | Rectangles only | Yes (EDT snap) | Yes | No | Rectangle fits | Yes | No | Yes | Low | G87/EDT | n/a: shape fails |
-| **E** Mod-fed surface batch (game's surface shader, own triangles) | Yes | **Yes** | Yes | Yes (any triangles, holes fine) | Yes | Yes (same shader), hatch rotatable | **Yes, same frame** | **No** | **None** (no entities placed) | None (own texture) | Medium |
+| **E** Mod-fed surface batch (game's surface shader, own triangles) | Yes | **Yes** | Yes | Yes (any triangles, holes fine) | Yes | Yes (same shader), hatch rotatable | **Yes, same frame** | **No** | **None** (no entities placed) | None (own texture) | Medium-large (gated by S6) |
 
 ## Recommendation
 
@@ -214,7 +225,8 @@ study's probe P7). A mod-side store keyed by node position would be the fallback
 | U5 | Whether a hand-drawn G87 line snaps onto a deck | S3 |
 | U6 | Loading a save with JR removed while nodes carry a JR component | study P7 |
 | U7 | Carriageway inset (sidewalk width) from composition data matches the visible kerb on all road types | S7-S10 |
-| U8 | UV mapping of the surface shader (world XZ x UVScale, rotated by `m_OffsetDir`) | S6 |
+| U8 | UV mapping of the surface shader (world XZ x UVScale, rotated by `m_OffsetDir`?); decides hatch alignment for A and E | S1, S6 |
+| U9 | Shader use of `m_AreaParameters`, prev/next neighbours, edge fade on thin strips; visible-index and colour buffer layout | S6 |
 
 ---
 
@@ -222,7 +234,8 @@ study's probe P7). A mod-side store keyed by node position would be the fallback
 
 ### 1. Where the game keeps a node's real outline
 
-- A node has no outline of its own; `NodeGeometry` holds only bounds and the node surface height `m_Position`. PROVEN:
+- A node has no outline of its own; `NodeGeometry` holds only bounds, the node surface height `m_Position`, and
+  `m_Flatness`/`m_Offset`. PROVEN:
   YB `Game.Net/NodeGeometry.cs`.
 - **Each connected edge owns its slice of the node**: `StartNodeGeometry` / `EndNodeGeometry` ->
   `EdgeNodeGeometry { Segment m_Left, m_Right; Bezier4x3 m_Middle; m_MiddleRadius }`; each `Segment` is a strip
@@ -238,6 +251,10 @@ study's probe P7). A mod-side store keyed by node position would be the fallback
 - How to get the polygon: for node N, for each `ConnectedEdge` e: g = (e.Start == N) ? StartNodeGeometry : EndNodeGeometry.
   Fill = triangulate each strip g.m_Left, g.m_Right and the two middle pieces exactly as `RaycastJobs.cs:249-256` does
   (left.m_Right = m_Middle, right.m_Left = m_Middle). That gives the whole node surface, including footways.
+  Caveats (review): the per-edge slices overlap, so a single simple outline polygon needs a boolean union of the
+  slices (not just the quads), and the roundabout case (`m_MiddleRadius > 0`, `RaycastJobs.cs:237-244`) splits the
+  right strip differently. Outline-from-union is INFERRED, not shown by any cited code (TLE draws only the outer
+  curves `m_Left.m_Left`/`m_Right.m_Right` plus the mouth line, `OverlayRenderingHelpers.cs:48-53`).
 
 ```
   arm 2                 one connected edge's slice of node N
@@ -254,7 +271,9 @@ study's probe P7). A mod-side store keyed by node position would be the fallback
 
 - **Surface (A/A2)**: any simple polygon (no holes); triangulated by the game. Must be deleted and re-placed on every
   edit (Q2 catch). Hatch is a tiled world-aligned texture (G87 texture is one "X" per tile, `_BaseColorMap.png`,
-  `colossal_UVScale` 0.36), clipped by the polygon for free, but not aligned to the box. Border needs separate lines.
+  `colossal_UVScale` 0.36), clipped by the polygon for free. Whether the tile is world-aligned or follows the first polygon side is UNKNOWN: the
+  game passes node 0 and the node0->node1 normal as `m_OffsetDir` (`AreaBatchSystem.cs:1070-1081`), so drawing side 1
+  along the box axis may align it (probe S1). Border needs separate lines.
 - **Netlanes (C)**: border = one line per polygon side (kerb curves as beziers). Hatch = clip each diagonal line to
   the polygon (segment vs polygon: find entry/exit points along each line, one net per inside piece). Many entities.
 - **Mod-drawn (E)**: we triangulate the polygon ourselves (strips from step 1 are already quads -> 2 triangles each).
@@ -264,7 +283,8 @@ study's probe P7). A mod-side store keyed by node position would be the fallback
 
 ### 3. Laying out the UK hatch on an odd shape
 
-From TSM5 section 8.4: border 200 mm, diagonals 150 mm, spaced about 2 m (shortest side under 9 m) or 2.5 m (9 m or
+From TSM5 section 8.4 (dimensions NOT verified by the reviewer; a web search did not surface them, check diagram 1043
+before coding): border 200 mm, diagonals 150 mm, spaced about 2 m (shortest side under 9 m) or 2.5 m (9 m or
 more), box normally four straight sides, max 30 m; set out from a main diagonal corner to corner of the (notional) box;
 a part-width variant and roundabout/gyratory variants exist. Rules for JR:
 
@@ -336,9 +356,9 @@ job).
 
 | Step | Do | Look at | Decides |
 |---|---|---|---|
-| S1 | Hand-draw G87 UK Junction Box over an at-grade junction | Hatch shows on asphalt; hatch angle vs road | Baseline: surfaces paint roads at grade; hatch is world-aligned (expected yes / not aligned) |
+| S1 | Hand-draw G87 UK Junction Box over an at-grade junction; repeat with the first side drawn along the road, then across/diagonal | Hatch shows on asphalt; does the hatch angle/phase change with the first side? | Baseline: surfaces paint roads at grade; hatch alignment (world vs first side, U8) |
 | S1b | Draw a second surface overlapping the first | Red overlap error? | Confirms Q2 overlap rule (expected error) |
-| S2 | Under an elevated junction, hand-draw a G87 Junction Box covering the deck's footprint on the ground | Deck: hatch or not? Ground under: hatch? | Proves the owner's worry: surfaces cannot paint decks (expected deck clean, ground painted). If the deck IS painted, (A) becomes viable for elevated |
+| S2 | Under an elevated junction, hand-draw a G87 Junction Box covering the deck's footprint on the ground (also try a low viaduct, 1-3 m, to find where the +-1.5 m cut-off falls) | Deck: hatch or not? Ground under: hatch? | Proves the owner's worry: surfaces cannot paint decks (expected deck clean, ground painted). If the deck IS painted, (A) becomes viable for elevated |
 | S3 | With EDT, draw a G87 "RM Line Yellow 30cm" across an elevated deck | Does the line snap to deck height and show on the deck? | Netlanes at deck height by hand (Q3, U5) |
 | S4 | With EDT, place a G87 road decal on a deck (NetArea snap) | Shows on the deck? | Decal boxes follow height (Q3) |
 | S5 | Open TLE's tool on an elevated junction | Overlay lines sit on the deck? | (B) works on elevated nodes (expected yes) |
