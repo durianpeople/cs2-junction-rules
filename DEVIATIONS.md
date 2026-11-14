@@ -26,8 +26,52 @@ proves the copy equals decompile + rules and that every rule id is listed here.
 
 No access workaround was needed: everything the copy uses is public in Game.dll / Unity (including the public
 `InternalCompilerInterface` used by the code-generated parts and the public fields of the Actions system).
-No hook point was added inside the copy: registration is done from `Mod.cs` with `UpdateSystem` and enabling is done
-from outside through `ComponentSystemBase.Enabled`.
+No hook point was added inside the copy for stage 1: registration is done from `Mod.cs` with `UpdateSystem` and
+enabling is done from outside through `ComponentSystemBase.Enabled`. Stage 2 adds the marked blocks of section S2.
+
+## S2: stage 2 marked blocks (JR-T-002, whole-junction gap decision)
+
+Stage 2 code inside the copies sits only between `// JR-STAGE2 BEGIN <id>: <note>` and `// JR-STAGE2 END` lines.
+Every block **only inserts lines**: no vanilla line is changed or removed. `python3 tools/vanilla_copy.py check`
+removes the blocks and proves the rest equals decompile + the rules above; it also fails on an unbalanced, nested,
+undeclared (not in `marked_blocks` of `tools/vanilla_rules.json`), miscounted or undocumented block. `generate` keeps
+the blocks (re-inserted after the same three preceding generated lines; a non-unique match stops it). The logic lives
+outside the copies: `JunctionRules/Core/WholePathRule.cs` (pure, unit-tested) and `JunctionRules/Stage2/` (job side
+`JRWholeJunction`, main-thread `JRStage2Bridge`). With the setting on Stock and the timing log off (`m_Mode == 0`)
+every block is inert (an int test, or a value copied and restored unchanged).
+
+Owner rulings implemented (14 Nov 2026): stock only; stock boldness; whole junction at once; green turners wait
+before the first oncoming lane and cross all oncoming lanes in one decision; generalised: at every junction wait just
+before the FIRST path crossing (never inside another lane's path; node-edge conflict = the stop line), one decision
+there for all remaining conflicts with stock judgement, no give-way stop inside after that, vanilla collision braking
+stays, STOP = stock stop at the line then roll-up; default = this rule, "wait at the stop line" only as a non-default
+variant (setting "Whole junction: waiting spot"). Analysis and flagged cases: `docs/STAGE2-ANALYSIS.md`.
+
+| Id | File | Sites | Lines inside | Where | What |
+|---|---|---|---|---|---|
+| S2-01 | iterator | 1 | 1 | after field `m_LaneOffsetPush` | Field `m_JR` (JRWholeJunction): the car's stage 2 state. |
+| S2-02 | iterator | 2 | 1 each | first statement of both `IterateFirstLane` | `m_JR.m_FirstLane = true` (the lane checked next is the car's current lane). |
+| S2-03 | iterator | 1 | 1 | first statement of `IterateNextLane` | `m_JR.m_FirstLane = false`. |
+| S2-04 | iterator | 1 | 4 | `CheckOverlappingLanes`, before the overlap loop | `BeginLane`: waiting spot W of a junction (node) lane and whether the car has committed. |
+| S2-05 | iterator | 1 | 2 | after `blockerType` in the loop | `jrStart` (overlap start seen from the car), `jrInScope` (at or after W and yield-checked). |
+| S2-06 | iterator | 1 | 1 | after `maxBrakingSpeed` (blocking reservation) | Before commit: brake to W; after commit: no give-way (`float.MaxValue`). |
+| S2-07 | iterator | 1 | 1 | after `maxBrakingSpeed3` (space request) | Same as S2-06. |
+| S2-08 / S2-08b | iterator | 1 / 1 | 2 / 1 | around `CheckPedestrian` | Before commit the pedestrian check uses the distance to W; the game's `num5` is restored after. |
+| S2-09 | iterator | 1 | 1 | after `GetObjectSpeed` in the object loop | Keeps the other car's position before the 2 s priority look-ahead. |
+| S2-10 | iterator | 1 | 2 | after the look-ahead block | After commit the look-ahead is undone unless the other car is already past the overlap start (the game's own committed semantics); `jrProjected` = the car counts only through the look-ahead. |
+| S2-11 / S2-11b | iterator | 1 / 1 | 3 / 2 | around `UpdateMaxSpeed` in `CheckOverlappingLanes` | Before commit: braking distance to W for projected cars and cars in a crossing (merge followers stay stock); `num5` restored after; debug counters. |
+| S2-20 | nav | 1 | 5 | `UpdateNavigationJob` fields | `m_JRMode` (int, by value) and `m_JRCounters` (persistent `NativeArray<long>`, atomic adds, safety restriction off: debug-only counters). |
+| S2-21 | nav | 1 | 1 | after the iterator is set up in `UpdateNavigationTarget` | `m_JR = JRWholeJunction.Create(m_JRMode, m_NodeLaneData)`. |
+| S2-22 | nav | 1 | 4 | after `CheckBlocker` at `IL_09cd` | Counters, once per car-step, only when the count bit is set. |
+| S2-23 | nav | 1 | 2 | `OnUpdate`, before `ScheduleParallel` | Main thread: takes this step's mode from `Stage2Handoff` (published by `CarDrivingSwitchSystem` earlier in the same step) into the job struct by value. |
+| S2-24 | nav | 1 | 7 | new `OnDestroy` (none in vanilla) | Completes the job and frees the counter array. |
+
+Total: 19 blocks, 43 lines inside (as `vanilla_copy.py check` reports).
+
+Effect on `tools/IlHash --copy` (expected): 48 of 80 identical (was 54), 21 shape only (was 19), 11 content
+differences (was 7: the four stage 2 methods `IterateFirstLane` x2, `IterateNextLane`, `UpdateNavigationTarget` join
+`CheckOverlappingLanes` and the others listed below, which also contain blocks now), 1 extra (`OnDestroy`, S2-24).
+Field blocks of the iterator and the job are "shape only" because of S2-01 and S2-20.
 
 ## Build note (not a code change)
 
@@ -56,7 +100,7 @@ bullets below); the copy's source is in any case proved equal to the decompile b
 - **CheckCurrentLane x2** (the iterator's two overloads): branch layout and boolean-constant placement only (the
   compiler materialises `true`/`false` in a different place around the same tests); same comparisons, same calls and
   fields, same result.
-- **Dead zero store** (`flag2` in `JRCarLaneSpeedIterator.cs` line 1159): a local assigned and never read; the build
+- **Dead zero store** (`flag2` in `JRCarLaneSpeedIterator.cs` line 1173 with the stage 2 blocks, 1159 before): a local assigned and never read; the build
   warns CS0219 about it. The game's IL has no such store. No effect.
 - **Control-flow shape and local numbering**: a different C# compiler (Roslyn here vs Unity's for the game) lays out
   branches and locals differently. Same operations in the same order.

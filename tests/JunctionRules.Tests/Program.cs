@@ -6,7 +6,7 @@ using JunctionRules.Core;
 
 namespace JunctionRules.Tests
 {
-    internal static class Program
+    internal static partial class Program
     {
         private static int s_Failed;
         private static int s_Passed;
@@ -29,6 +29,11 @@ namespace JunctionRules.Tests
             ("IlHasherTests", IlHasherTests),
             ("VanillaHeaderTests", VanillaHeaderTests),
             ("DiffScriptSelfTest", DiffScriptSelfTest),
+            ("WholePathRuleTests", WholePathRuleTests),
+            ("WholePathScenarioTests", WholePathScenarioTests),
+            ("Stage2SwitchTests", Stage2SwitchTests),
+            ("Stage2CountersTests", Stage2CountersTests),
+            ("Stage2RepoTests", Stage2RepoTests),
         };
 
         private static int Main(string[] args)
@@ -155,13 +160,14 @@ namespace JunctionRules.Tests
             Check(root != null, "repo root found");
             if (root == null) return;
             string src = Path.Combine(root, "JunctionRules");
-            string[] copyTypeNames = { "JRCarNavigationSystem", "JRCarLaneSpeedIterator", "CopyNavTimingProbeSystem", "GameNavTimingProbeSystem", "JunctionRules.Vanilla" };
+            string[] copyTypeNames = { "JRCarNavigationSystem", "JRCarLaneSpeedIterator", "CopyNavTimingProbeSystem", "GameNavTimingProbeSystem", "JunctionRules.Vanilla",
+                "JRWholeJunction", "JRStage2Bridge", "JunctionRules.Stage2" };
             // Files allowed to name copy types: the copy itself, the probe definitions, and CopyPair.
             var offenders = new List<string>();
             foreach (string f in Directory.GetFiles(src, "*.cs", SearchOption.AllDirectories))
             {
                 string rel = Path.GetRelativePath(src, f).Replace(Path.DirectorySeparatorChar, '/');
-                if (rel.StartsWith("obj/") || rel.StartsWith("bin/") || rel.StartsWith("Vanilla/")) continue;
+                if (rel.StartsWith("obj/") || rel.StartsWith("bin/") || rel.StartsWith("Vanilla/") || rel.StartsWith("Stage2/")) continue;
                 if (rel == "Systems/CopyPair.cs" || rel == "Systems/NavTimingProbeSystems.cs") continue;
                 string code = StripComments(File.ReadAllText(f));
                 foreach (string n in copyTypeNames)

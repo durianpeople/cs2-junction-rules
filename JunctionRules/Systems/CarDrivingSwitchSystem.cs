@@ -28,6 +28,7 @@ namespace JunctionRules.Systems
         private CopySystems m_Copy;
         private readonly CopyAcquisition m_Acquisition = new CopyAcquisition();
         private readonly DrivingSwitch m_Switch = new DrivingSwitch();
+        private readonly GapRuleSwitch m_GapRule = new GapRuleSwitch();
         private bool m_ProbesOn;
         private bool m_ProbesApplied;
 
@@ -100,6 +101,12 @@ namespace JunctionRules.Systems
 
             if (m_Copy == null) return;
             bool probes = Mod.Settings != null && Mod.Settings.DebugTiming;
+            // Stage 2: publish the junction gap rule for this step (the copy's OnUpdate, later in this step, takes it by
+            // value into its job). Counters run only with the timing log on.
+            string ruleNote = m_GapRule.Step(Mod.Settings != null ? Mod.Settings.GapRule : JunctionGapRule.Stock, probes, out int stage2Mode,
+                Mod.Settings != null ? Mod.Settings.WaitingSpot : JunctionWaitingSpot.BeforeFirstCrossing);
+            Stage2Handoff.Publish(stage2Mode);
+            if (ruleNote != null) Mod.log.Info(ruleNote);
             if (!m_ProbesApplied || probes != m_ProbesOn)
             {
                 m_ProbesApplied = true;

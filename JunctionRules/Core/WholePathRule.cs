@@ -1,0 +1,216 @@
+using System.Runtime.CompilerServices;
+
+namespace JunctionRules.Core
+{
+    /// <summary>The "Junction gap rule" setting (stage 2).</summary>
+    public enum JunctionGapRule
+    {
+        /// <summary>The game's own rule: every conflict on the path through a junction is judged on its own (default).</summary>
+        Stock = 0,
+        /// <summary>One decision for the whole path, taken at the waiting spot (owner rulings 14 Nov 2026).</summary>
+        WholeJunction = 1,
+    }
+
+    /// <summary>
+    /// Where a car that must wait under the whole-junction rule stands (owner ruling 14 Nov 2026: the default is just
+    /// before the first path crossing; a "wait at the line" variant is allowed but must not be the default).
+    /// </summary>
+    public enum JunctionWaitingSpot
+    {
+        /// <summary>Just before the first point where the path crosses another live lane's path (default).</summary>
+        BeforeFirstCrossing = 0,
+        /// <summary>At the stop line (the start of the junction lane), for every junction.</summary>
+        StopLine = 1,
+    }
+
+    /// <summary>
+    /// Bits of the per-step stage 2 mode handed into the navigation job. 0 = stage 2 code does nothing (the hot path
+    /// only tests this int).
+    /// </summary>
+    public static class Stage2Mode
+    {
+        /// <summary>The whole-junction rule changes driving.</summary>
+        public const int Rule = 1;
+        /// <summary>Count debug events for the timing log (no driving change on its own).</summary>
+        public const int Count = 2;
+        /// <summary>With <see cref="Rule"/>: wait at the stop line instead of before the first crossing.</summary>
+        public const int AtLine = 4;
+
+        public static int For(JunctionGapRule rule, bool counting, JunctionWaitingSpot spot = JunctionWaitingSpot.BeforeFirstCrossing) =>
+            (rule == JunctionGapRule.WholeJunction ? Rule | (spot == JunctionWaitingSpot.StopLine ? AtLine : 0) : 0) | (counting ? Count : 0);
+
+        public static string RuleName(int mode) =>
+            (mode & Rule) == 0 ? "stock" : (mode & AtLine) != 0 ? "whole junction (wait at the stop line)" : "whole junction";
+    }
+
+    /// <summary>
+    /// The whole-junction rule as plain arithmetic, game-independent so it can be unit-tested and called from Burst code
+    /// (static methods on plain values only). The job-side caller (Stage2/JRWholeJunction.cs) feeds it the game's own
+    /// numbers: the lane overlap ranges, the iterator's distances and the game's own braking distance.
+    ///
+    /// Terms (DEVIATIONS.md S2, docs/STAGE2-ANALYSIS.md):
+    /// - conflict: a lane overlap of a junction (node) lane that the game itself gives the yield test, i.e. not a
+    ///   diverging sibling from the same start (vanilla skips those: (flags &amp; MergeStart|MergeMiddleStart) == 0, or the
+    ///   End flags when driving the lane inverted) and not water.
+    /// - waiting spot: the last point of the path that is not inside any other lane's path = the start of the first
+    ///   conflict with a road or track lane. A road lane held by a red signal right now is not a live path and does not
+    ///   place the waiting spot (owner ruling for turns across oncoming on green); a track lane always does.
+    ///   Pedestrian crossings are judged in the decision but never place the waiting spot.
+    /// - committed: the car can no longer stop before the waiting spot (the game's own "can brake" test, braking
+    ///   distance &lt;= distance + 0.9 m margin) or its lane reservation already reaches past it (the game's own
+    ///   committed test for an overlap, start &lt;= minOffset).
+    /// </summary>
+    public static class WholePathRule
+    {
+        // Game.Net.OverlapFlags values (mirrored so this file stays game-independent; checked by a test against the
+        // decompile).
+        public const int MergeStart = 0x1;
+        public const int MergeEnd = 0x2;
+        public const int MergeMiddleStart = 0x10;
+        public const int MergeMiddleEnd = 0x20;
+        public const int Road = 0x80;
+        public const int Track = 0x100;
+        public const int Water = 0x800;
+
+        /// <summary>LaneOverlap bytes to curve offsets, the game's own factor (1/255 as a float literal).</summary>
+        public const float ByteToOffset = 0.003921569f;
+
+        /// <summary>Conflicts (and pedestrian crossings) at or after the spot are judged together within this offset tolerance.</summary>
+        public const float SpotEpsilon = 1e-4f;
+
+        /// <summary>
+        /// True when the game gives this overlap its yield test (reservations, priority look-ahead of approaching
+        /// cars): vanilla CheckOverlappingLanes' "(laneOverlap.m_Flags &amp; overlapFlags) == 0".
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsYieldChecked(int flags, bool inverse) =>
+            (flags & (inverse ? (MergeEnd | MergeMiddleEnd) : (MergeStart | MergeMiddleStart))) == 0;
+
+        /// <summary>Whether this overlap places the waiting spot (see the class summary).</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool DefinesWaitingSpot(int flags, bool inverse, bool otherHeldByRed)
+        {
+            if ((flags & Water) != 0 || !IsYieldChecked(flags, inverse)) return false;
+            if ((flags & Track) != 0) return true;
+            return (flags & Road) != 0 && !otherHeldByRed;
+        }
+
+        /// <summary>Start of an overlap as seen by the car: the lower end, or the upper end on an inverted lane.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float StartFromCar(float thisStart, float thisEnd, bool inverse) => inverse ? thisEnd : thisStart;
+
+        /// <summary>The nearer of two starts, for building the waiting spot over all conflicts of a lane.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float Nearer(float a, float b, bool inverse) => inverse ? (a > b ? a : b) : (a < b ? a : b);
+
+        /// <summary>Initial value for <see cref="Nearer"/> (beyond every real offset in driving direction).</summary>
+        public static float NoSpot(bool inverse) => inverse ? -1f : 2f;
+
+        public static bool HasSpot(float spot, bool inverse) => inverse ? spot >= 0f : spot <= 1f;
+
+        /// <summary>The "wait at the stop line" variant moves a found spot to the start of the junction lane.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float ApplyVariant(float spot, bool inverse, bool atLine) =>
+            atLine && HasSpot(spot, inverse) ? (inverse ? 1f : 0f) : spot;
+
+        /// <summary>
+        /// One step of the waiting-spot search over a lane's overlaps (LaneOverlap bytes as stored by the game):
+        /// returns the spot after taking this overlap into account. Start from <see cref="NoSpot"/>.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float AddConflict(float spot, int flags, int thisStart, int thisEnd, bool inverse, bool otherHeldByRed)
+        {
+            if (!DefinesWaitingSpot(flags, inverse, otherHeldByRed)) return spot;
+            return Nearer(spot, StartFromCar(thisStart * ByteToOffset, thisEnd * ByteToOffset, inverse), inverse);
+        }
+
+        /// <summary>
+        /// Distance from the car to the waiting spot, with the same formula the game uses for the distance to an
+        /// overlap (CheckOverlappingLanes: num5 = origDistance + length * (start - curveOffset.x)).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float WaitDistance(float origDistance, float length, float spot, float curveX, bool inverse) =>
+            origDistance + length * (inverse ? curveX - spot : spot - curveX);
+
+        /// <summary>
+        /// The car has committed to the junction: it cannot stop before the waiting spot any more (the game's own
+        /// test, braking distance &lt;= distance + margin, failed), or its reservation reaches past the spot (the game's
+        /// own committed test for an overlap). A waiting car (speed 0, front at the spot) is not committed.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsCommitted(float brakingDistance, float waitDistance, float margin, float spot, float origMinOffset, bool inverse) =>
+            brakingDistance > waitDistance + margin || (inverse ? spot >= origMinOffset : spot <= origMinOffset);
+
+        /// <summary>The car's front is past the waiting spot by more than the game's margin (it is inside a path).</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool FrontPastSpot(float waitDistance, float margin) => waitDistance + margin < 0f;
+
+        /// <summary>The overlap starts at or after the waiting spot (it is part of the whole-path decision).</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool AtOrAfterSpot(float start, float spot, bool inverse) =>
+            inverse ? start <= spot + SpotEpsilon : start >= spot - SpotEpsilon;
+
+        /// <summary>The overlap starts strictly after the waiting spot (a later conflict, not the first).</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool AfterSpot(float start, float spot, bool inverse) =>
+            inverse ? start < spot - SpotEpsilon : start > spot + SpotEpsilon;
+
+        /// <summary>What the rule does with one stock yield (a braking demand from a conflict).</summary>
+        public enum YieldAction
+        {
+            /// <summary>Leave the game's value (rule off, not a junction lane, or the conflict is before the spot).</summary>
+            Stock = 0,
+            /// <summary>Not committed: stop at the waiting spot instead of at this conflict.</summary>
+            StopAtSpot = 1,
+            /// <summary>Committed: no more give-way stops inside the junction (collision braking stays).</summary>
+            Suppress = 2,
+        }
+
+        /// <summary>
+        /// A give-way demand of the stock test (a reservation that blocks, a car asking for space, an approaching car
+        /// that counts only thanks to the game's priority look-ahead).
+        /// </summary>
+        public static YieldAction ForYield(bool ruleOn, bool inScope, bool committed)
+        {
+            if (!ruleOn || !inScope) return YieldAction.Stock;
+            return committed ? YieldAction.Suppress : YieldAction.StopAtSpot;
+        }
+
+        /// <summary>
+        /// A car (or bicycle) on a conflicting lane that the game brakes for. Projected = it counts only because the
+        /// game projected a higher-priority approaching car two seconds ahead (a give-way). Physical = it is in or past
+        /// the conflict area. Merge = the overlap is where both lanes run into the same exit (following, not crossing).
+        /// Before committing: a projected car, or a physical car on a crossing, keeps the car at the waiting spot; a
+        /// physical car on the merge is followed as the game does (an exit queue is the stage 3 yellow-box question).
+        /// After committing: projected cars are ignored (see <see cref="UndoProjection"/>), physical cars stay braked for.
+        /// </summary>
+        public static YieldAction ForVehicle(bool ruleOn, bool inScope, bool committed, bool projected, bool merge)
+        {
+            if (!ruleOn || !inScope) return YieldAction.Stock;
+            if (committed) return projected ? YieldAction.Suppress : YieldAction.Stock;
+            return projected || !merge ? YieldAction.StopAtSpot : YieldAction.Stock;
+        }
+
+        /// <summary>
+        /// Pedestrians on a crossing of the path: before committing, wait at the spot; after committing the game's own
+        /// pedestrian braking stays (it brakes only for people at the crossing line).
+        /// </summary>
+        public static YieldAction ForPedestrian(bool ruleOn, bool inScope, bool committed)
+        {
+            if (!ruleOn || !inScope || committed) return YieldAction.Stock;
+            return YieldAction.StopAtSpot;
+        }
+
+        /// <summary>
+        /// After commit the game's priority look-ahead (+2 s for a higher-priority approaching car) is undone unless the
+        /// car is already past the start of the overlap on its own lane: exactly what the game itself does for an
+        /// overlap it considers committed.
+        /// </summary>
+        public static bool UndoProjection(bool ruleOn, bool inScope, bool committed, bool objectPastStart) =>
+            ruleOn && inScope && committed && !objectPastStart;
+
+        /// <summary>The distance the stock braking is computed for under <paramref name="action"/>.</summary>
+        public static float Distance(YieldAction action, float stockDistance, float waitDistance) =>
+            action == YieldAction.StopAtSpot ? waitDistance : stockDistance;
+    }
+}

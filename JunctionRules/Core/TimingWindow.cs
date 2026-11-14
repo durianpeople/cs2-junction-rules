@@ -39,7 +39,7 @@ namespace JunctionRules.Core
         /// Call once per probe update with the simulation frame and a wall clock (ticks at <paramref name="ticksPerSecond"/>).
         /// Returns a log line when a window is complete (and starts the next), else null.
         /// </summary>
-        public string Tick(uint frame, long ticks, long ticksPerSecond, int cars)
+        public string Tick(uint frame, long ticks, long ticksPerSecond, int cars, string suffix = null)
         {
             if (!m_Started || frame < m_StartFrame)
             {
@@ -50,7 +50,7 @@ namespace JunctionRules.Core
             if (frames < m_WindowFrames) return null;
             double seconds = ticksPerSecond > 0 ? (ticks - m_StartTicks) / (double)ticksPerSecond : 0;
             // A window in which this navigation system never ran (the other pair was active) is not logged.
-            string line = m_Samples.Count == 0 && m_Skipped == 0 ? null : Format(m_StartFrame, frame, seconds, cars);
+            string line = m_Samples.Count == 0 && m_Skipped == 0 ? null : Format(m_StartFrame, frame, seconds, cars, suffix);
             Restart(frame, ticks);
             return line;
         }
@@ -64,14 +64,15 @@ namespace JunctionRules.Core
             m_Skipped = 0;
         }
 
-        public string Format(uint fromFrame, uint toFrame, double seconds, int cars)
+        /// <summary>suffix (stage 2): appended as is, e.g. "; junction gap rule stock" (null = the stage 1 line).</summary>
+        public string Format(uint fromFrame, uint toFrame, double seconds, int cars, string suffix = null)
         {
             var ci = CultureInfo.InvariantCulture;
             uint frames = toFrame - fromFrame;
             string rate = seconds > 0 ? (frames / seconds).ToString("0.0", ci) : "n/a";
             if (m_Samples.Count == 0)
             {
-                return $"timing {m_Label}: frames {fromFrame}-{toFrame} ({frames} sim frames in {seconds.ToString("0.00", ci)} s = {rate} frames/s), cars {cars}, no navigation runs sampled (skipped {m_Skipped})";
+                return $"timing {m_Label}: frames {fromFrame}-{toFrame} ({frames} sim frames in {seconds.ToString("0.00", ci)} s = {rate} frames/s), cars {cars}, no navigation runs sampled (skipped {m_Skipped}){suffix}";
             }
             var sorted = new List<double>(m_Samples);
             sorted.Sort();
@@ -80,7 +81,7 @@ namespace JunctionRules.Core
             double mean = sum / sorted.Count;
             return $"timing {m_Label}: frames {fromFrame}-{toFrame} ({frames} sim frames in {seconds.ToString("0.00", ci)} s = {rate} frames/s), cars {cars}, " +
                    $"navigation job schedule-to-done ms over {sorted.Count} runs: mean {mean.ToString("0.000", ci)} p50 {Percentile(sorted, 0.50).ToString("0.000", ci)} " +
-                   $"p95 {Percentile(sorted, 0.95).ToString("0.000", ci)} max {sorted[sorted.Count - 1].ToString("0.000", ci)} (skipped {m_Skipped})";
+                   $"p95 {Percentile(sorted, 0.95).ToString("0.000", ci)} max {sorted[sorted.Count - 1].ToString("0.000", ci)} (skipped {m_Skipped}){suffix}";
         }
 
         /// <summary>Nearest-rank percentile of an ascending list.</summary>

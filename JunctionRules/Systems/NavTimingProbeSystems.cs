@@ -6,6 +6,7 @@ using Game.Simulation;
 using Game.Tools;
 using Game.Vehicles;
 using JunctionRules.Core;
+using JunctionRules.Stage2;
 using JunctionRules.Vanilla;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
@@ -57,6 +58,15 @@ namespace JunctionRules.Systems
         protected abstract ComponentSystemBase Navigation { get; }
         protected abstract JobHandle NavigationJob { get; }
 
+        /// <summary>Stage 2: a navigation run of this pair was seen this step (main thread).</summary>
+        protected virtual void OnNavigationRun() { }
+
+        /// <summary>Stage 2: a window starts (also when the probe starts running).</summary>
+        protected virtual void OpenWindow() { }
+
+        /// <summary>Stage 2: the window closes; returns the suffix of its timing line and starts the next window.</summary>
+        protected virtual string CloseWindow() => null;
+
         [Preserve]
         protected override void OnCreate()
         {
@@ -74,6 +84,7 @@ namespace JunctionRules.Systems
             base.OnStartRunning();
             m_LastNavigationVersion = Navigation.LastSystemVersion;
             m_Window.Restart(m_SimulationSystem.frameIndex, Stopwatch.GetTimestamp());
+            OpenWindow();
         }
 
         [Preserve]
@@ -100,6 +111,7 @@ namespace JunctionRules.Systems
             if (version != m_LastNavigationVersion)
             {
                 m_LastNavigationVersion = version;
+                OnNavigationRun();
                 int slot = FreeSlot();
                 if (slot < 0)
                 {
@@ -118,7 +130,7 @@ namespace JunctionRules.Systems
             if (m_Window.Due(frame))
             {
                 int cars = m_Window.Count > 0 ? m_CarQuery.CalculateEntityCountWithoutFiltering() : 0;
-                string line = m_Window.Tick(frame, Stopwatch.GetTimestamp(), Stopwatch.Frequency, cars);
+                string line = m_Window.Tick(frame, Stopwatch.GetTimestamp(), Stopwatch.Frequency, cars, CloseWindow());
                 if (line != null) Mod.log.Info(line);
             }
         }
@@ -166,6 +178,8 @@ namespace JunctionRules.Systems
         protected override ComponentSystemBase Navigation => m_Navigation ??= World.GetOrCreateSystemManaged<CarNavigationSystem>();
         protected override JobHandle NavigationJob => (m_Actions ??= World.GetOrCreateSystemManaged<CarNavigationSystem.Actions>()).m_Dependency;
 
+        protected override string CloseWindow() => "; junction gap rule game's own (stock)";
+
         [Preserve]
         public GameNavTimingProbeSystem() { }
     }
@@ -179,6 +193,40 @@ namespace JunctionRules.Systems
         protected override string Label => "Junction Rules copy";
         protected override ComponentSystemBase Navigation => m_Navigation ??= World.GetOrCreateSystemManaged<JRCarNavigationSystem>();
         protected override JobHandle NavigationJob => (m_Actions ??= World.GetOrCreateSystemManaged<JRCarNavigationSystem.Actions>()).m_Dependency;
+
+        // Stage 2: which rule the copy's steps in this window ran with, and the counter deltas over the window.
+        private int m_RuleMask;
+        private bool m_CountedWhole;
+        private readonly long[] m_Totals = new long[Stage2Counters.Count];
+        private readonly long[] m_Start = new long[Stage2Counters.Count];
+        private bool m_HasStart;
+
+        protected override void OpenWindow()
+        {
+            m_RuleMask = 0;
+            m_CountedWhole = true;
+            m_HasStart = JRStage2Bridge.Read(m_Start);
+        }
+
+        protected override void OnNavigationRun()
+        {
+            int mode = JRStage2Bridge.AppliedMode;
+            m_RuleMask |= (mode & Stage2Mode.Rule) != 0 ? 2 : 1;
+            if ((mode & Stage2Mode.Count) == 0) m_CountedWhole = false;
+        }
+
+        protected override string CloseWindow()
+        {
+            long[] deltas = null;
+            if (m_HasStart && m_CountedWhole && JRStage2Bridge.Read(m_Totals))
+            {
+                deltas = new long[Stage2Counters.Count];
+                for (int i = 0; i < deltas.Length; i++) deltas[i] = m_Totals[i] - m_Start[i];
+            }
+            string suffix = Stage2Counters.Format(m_RuleMask, deltas);
+            OpenWindow();
+            return suffix;
+        }
 
         [Preserve]
         public CopyNavTimingProbeSystem() { }

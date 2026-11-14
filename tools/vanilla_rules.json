@@ -56,5 +56,119 @@
       "replace": "\\1-",
       "reason": "ILSpy 8.2 prints the IL float negation 'neg' as '0f - x'. That is not the same operation: -(+0) is -0 but 0f - (+0) is +0, so the decompile changes the sign of zero results. Restores the game's unary minus. Verified by tools/IlHash --copy: all 33 sites are 'neg' in Game.dll and every one is followed by a primary expression, so '-x' parses exactly like the original."
     }
-  ]
+  ],
+  "marked_blocks": {
+    "_doc": "Hand-written stage 2 code allowed only between '// JR-STAGE2 BEGIN <id>' and '// JR-STAGE2 END' lines; vanilla_copy.py check removes them and proves the rest equals decompile + rules. Each block is insert-only (no vanilla line inside is changed). Every id is described in DEVIATIONS.md (section S2).",
+    "tag": "JR-STAGE2",
+    "blocks": {
+      "S2-01": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "Iterator field holding the car's stage 2 state (JRWholeJunction)."
+      },
+      "S2-02": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 2
+        },
+        "reason": "Both IterateFirstLane overloads: the lane checked next is the car's current lane."
+      },
+      "S2-03": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "IterateNextLane: the lanes checked from here are ahead of the current lane."
+      },
+      "S2-04": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "CheckOverlappingLanes, before the overlap loop: waiting spot and commitment of a junction (node) lane."
+      },
+      "S2-05": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "Per overlap: is it part of the whole-path decision (start at or after the waiting spot, yield-checked)."
+      },
+      "S2-06": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "Blocking reservation: stop at the waiting spot before commit, no give-way after commit."
+      },
+      "S2-07": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "Car asking for space (priority 96): same as S2-06."
+      },
+      "S2-08": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "Pedestrian on a crossing of the path: distance swapped to the waiting spot before commit."
+      },
+      "S2-08b": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "Restores the game's distance after the pedestrian check."
+      },
+      "S2-09": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "Keeps the other car's position before the game's priority look-ahead."
+      },
+      "S2-10": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "After commit the look-ahead is undone unless the other car is past the overlap start (game's own committed semantics)."
+      },
+      "S2-11": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "Car on a conflicting lane: braking distance swapped to the waiting spot before commit (projected cars, crossings)."
+      },
+      "S2-11b": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "Restores the game's distance after the vehicle check; counters."
+      },
+      "S2-20": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
+        },
+        "reason": "Job fields: stage 2 mode and the debug counter array."
+      },
+      "S2-21": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
+        },
+        "reason": "Hands the mode to each car's iterator."
+      },
+      "S2-22": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
+        },
+        "reason": "Debug counters, once per car and step, only when counting."
+      },
+      "S2-23": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
+        },
+        "reason": "OnUpdate: takes this step's mode from the main-thread handoff."
+      },
+      "S2-24": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
+        },
+        "reason": "OnDestroy: frees the counter array."
+      }
+    }
+  }
 }

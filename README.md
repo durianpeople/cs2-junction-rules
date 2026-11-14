@@ -3,29 +3,41 @@
 A Cities: Skylines II mod. Stage 1 (0.1.0): switch off the game's car-driving system
 (`Game.Simulation.CarNavigationSystem` and its `Actions` system) and run an unchanged, Burst-compiled copy of it
 (plus `CarLaneSpeedIterator`) in the same slot, switchable in game, to prove the copy is as fast and behaves the same.
-No new driving rules yet.
+
+Stage 2 (0.2.0): the first driving rule, inside the copy only, default off. **Junction gap rule = Whole junction**: a
+car that has to wait stops just before the first point where its path crosses another lane's path, then makes one go/
+wait decision for every remaining conflict with the game's own gap judgement, and never stops again inside the junction
+to give way (collision braking stays). Analysis, per-case behaviour and owner choices: `docs/STAGE2-ANALYSIS.md`;
+code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `JunctionRules/Vanilla/` | Copied game code only (generated, do not edit by hand). Each file has a header with its source. |
-| `JunctionRules/Core/` | Game-independent logic: version gate, driving switch, timing window, IL hasher. Unit-tested. |
+| `JunctionRules/Vanilla/` | Copied game code (generated, do not edit by hand) plus stage 2 code only inside `// JR-STAGE2 BEGIN/END` blocks. Each file has a header with its source. |
+| `JunctionRules/Core/` | Game-independent logic: version gate, driving switch, timing window, IL hasher, whole-junction rule arithmetic (`WholePathRule`), stage 2 handoff and counter texts. Unit-tested. |
+| `JunctionRules/Stage2/` | Job side of the whole-junction rule (`JRWholeJunction`) and the copy's main-thread stage 2 state (`JRStage2Bridge`); named only by the copy and the copy's timing probe. |
 | `JunctionRules/Systems/` | `CarDrivingSwitchSystem` (chooses the pair each step), `CopyPair` (the only place that registers/creates the copy), navigation timing probes. |
 | `JunctionRules/Settings/` | Options page and English texts. |
 | `JunctionRules/Mod.cs` | Version gate and system registration. |
 | `tools/vanilla_copy.py`, `tools/vanilla_rules.json` | Makes the copy from the decompile and proves it unchanged. |
 | `tools/IlHash/` | Prints the vanilla code hash used by the version gate; `--copy` compares the copy's IL with Game.dll. |
 | `tests/JunctionRules.Tests/` | Console test runner. |
-| `DEVIATIONS.md`, `REFERENCERS.md`, `PROBE-STAGE1.md` | Every change to the game code; who uses the copied types; in-game test kit. |
+| `DEVIATIONS.md`, `REFERENCERS.md`, `PROBE-STAGE1.md`, `PROBE-STAGE2.md` | Every change to the game code; who uses the copied types; in-game test kits. |
+| `docs/STAGE2-ANALYSIS.md` | Where the game decides conflict by conflict, the change, per-case table, deadlock/starvation, owner choices. `docs/vanilla_copy_*_0.2.0.txt`: the diff script's output for 0.2.0. |
 
 ## Settings
 
 - **Car driving**: `Game's own` (default) or `Junction Rules copy`. Applies at the next simulation step. The copy only
   runs if the version gate passed at game start.
+- **Junction gap rule** (stage 2): `Stock (conflict by conflict)` (default) or `Whole junction`. Acts only while
+  Car driving is the copy; applies at the next simulation step (the switch system publishes it each step, the copy
+  takes it by value into its job when it schedules).
+- **Whole junction: waiting spot**: `Before the first crossing` (default, owner ruling) or `At the stop line`.
 - **Status**: what runs now, the version check result, and whether the copy can run.
 - **Log navigation timing** (debug): one line per 1024 simulation frames with the navigation job timing of the pair
-  that ran. Off: the probe systems are disabled and cost nothing.
+  that ran; the copy's line also names the junction gap rule and the stage 2 counters. Off: the probe systems are
+  disabled and the counters are not counted, so they cost nothing.
 
 When the version gate does not allow the copy, the copy pair and the timing probes are not registered at all (their
 types are only named inside `Systems/CopyPair.cs`, behind NoInlining methods), so after a game patch the mod's own code
@@ -54,7 +66,7 @@ PATH=~/.local/opt/dotnet:$PATH dotnet build -c Release -p:SkipDeploy=true
 
 Burst build (needs the CS2 modding toolchain env file). **Game closed only**: the official post-processor
 (`ModPostProcessor.sh`) runs Proton Experimental's wine inside the game's own Proton prefix (`compatdata/949230`), which
-must not happen while the game runs there under Proton 11.0. The build checks `pgrep -f 'Cities2[.]exe'` first and fails
+must not happen while the game runs there under Proton 11.0. The build checks `ps -eo comm | grep -i cities2` first and fails
 with a clear message while the game runs (override at your own risk: `-p:AllowBurstWhileGameRuns=true`). A separate
 scratch wine prefix is not used: the generated script hard-codes the game's prefix and the post-processor needs the
 Windows .NET runtime installed in its prefix.
@@ -73,7 +85,7 @@ path; `-p:GamePath=...` overrides it.
 
 ```
 PATH=~/.local/opt/dotnet:$PATH DOTNET_ROOT=~/.local/opt/dotnet dotnet run -c Release --project tests/JunctionRules.Tests
-python3 tools/vanilla_copy.py check        # copy == decompile + documented rules; 0 unexplained differences
+python3 tools/vanilla_copy.py check        # copy outside JR-STAGE2 blocks == decompile + documented rules; 0 unexplained differences
 python3 tools/vanilla_copy.py selftest     # the diff script's own tests
 cd tools/IlHash && PATH=~/.local/opt/dotnet:$PATH DOTNET_ROOT=~/.local/opt/dotnet dotnet run -c Release                       # vanilla code hash
 cd tools/IlHash && PATH=~/.local/opt/dotnet:$PATH DOTNET_ROOT=~/.local/opt/dotnet dotnet run -c Release -- --copy ../../JunctionRules/bin/Release/JunctionRules.dll

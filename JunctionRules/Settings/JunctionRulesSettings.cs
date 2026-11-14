@@ -30,6 +30,22 @@ namespace JunctionRules.Settings
         [SettingsUISection(kSection, kDrivingGroup)]
         public CarDrivingMode CarDriving { get; set; }
 
+        /// <summary>
+        /// Stage 2: how a car judges the conflicts on its path through a junction. Stock (default): the game's own,
+        /// conflict by conflict. Whole junction: wait just before the first path crossing, then one decision for all
+        /// remaining conflicts (stock judgement on each), no more give-way stops inside. Acts only while the copy drives;
+        /// applies at the next simulation step.
+        /// </summary>
+        [SettingsUISection(kSection, kDrivingGroup)]
+        public JunctionGapRule GapRule { get; set; }
+
+        /// <summary>
+        /// Stage 2, whole junction only: where a waiting car stands. Before the first crossing (default, owner ruling
+        /// 14 Nov 2026) or at the stop line (the allowed variant).
+        /// </summary>
+        [SettingsUISection(kSection, kDrivingGroup)]
+        public JunctionWaitingSpot WaitingSpot { get; set; }
+
         /// <summary>Read-only: what runs now and the version gate result.</summary>
         [SettingsUISection(kSection, kDrivingGroup)]
         public string Status => StatusText();
@@ -49,6 +65,8 @@ namespace JunctionRules.Settings
         public override void SetDefaults()
         {
             CarDriving = CarDrivingMode.GameOwn;
+            GapRule = JunctionGapRule.Stock;
+            WaitingSpot = JunctionWaitingSpot.BeforeFirstCrossing;
             DebugTiming = false;
             SkipCodeHashCheck = false;
         }
@@ -80,11 +98,23 @@ namespace JunctionRules.Settings
                 { m_Setting.GetEnumValueLocaleID(CarDrivingMode.GameOwn), "Game's own" },
                 { m_Setting.GetEnumValueLocaleID(CarDrivingMode.JunctionRulesCopy), "Junction Rules copy" },
 
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.GapRule)), "Junction gap rule" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.GapRule)),
+                    "How cars judge the conflicts on their path through a junction. Stock (default): the game's own, conflict by conflict. Whole junction (stage 2 test): a car that has to wait stops just before the first point where its path crosses another lane's path (at the stop line if that is at the junction edge; STOP signs still stop at the line first), then goes only when the game's own judgement finds every remaining conflict clear, and does not stop again to give way inside the junction (it still brakes to avoid hitting anything). Acts only while Car driving is the Junction Rules copy. Changes take effect at the next simulation step." },
+                { m_Setting.GetEnumValueLocaleID(JunctionGapRule.Stock), "Stock (conflict by conflict)" },
+                { m_Setting.GetEnumValueLocaleID(JunctionGapRule.WholeJunction), "Whole junction" },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.WaitingSpot)), "Whole junction: waiting spot" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.WaitingSpot)),
+                    "Only with the Whole junction rule. Before the first crossing (default): a car that has to wait moves into the junction up to the point just before its path first crosses another lane's path (for example a turner across oncoming traffic on a green waits before the first oncoming lane). At the stop line: every car waits at the line instead. Changes take effect at the next simulation step." },
+                { m_Setting.GetEnumValueLocaleID(JunctionWaitingSpot.BeforeFirstCrossing), "Before the first crossing" },
+                { m_Setting.GetEnumValueLocaleID(JunctionWaitingSpot.StopLine), "At the stop line" },
+
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.Status)), "Status" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.Status)), "What runs now, the result of the version check made at game start, and whether the copy can run (set up at the first simulation step). Reopen the options page to refresh." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.DebugTiming)), "Log navigation timing" },
-                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.DebugTiming)), "Every 1024 simulation frames, write the timing of the running car-navigation job (game's own or copy, measured the same way) and the simulation rate to the mod log. Off: nothing is measured. Only available when the version check passed at game start." },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.DebugTiming)), "Every 1024 simulation frames, write the timing of the running car-navigation job (game's own or copy, measured the same way) and the simulation rate to the mod log; the copy's line also names the junction gap rule that ran and its stage 2 counters. Off: nothing is measured. Only available when the version check passed at game start." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.SkipCodeHashCheck)), "Skip code hash check (probe aid)" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.SkipCodeHashCheck)), "Only if the mod log says the game version matches but the code hash does not: lets the copy run anyway. The game version must still match. Read at game start: restart the game after changing it." },

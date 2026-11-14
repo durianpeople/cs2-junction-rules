@@ -5,8 +5,9 @@
     <LangVersion>10.0</LangVersion>
     <AssemblyName>JunctionRules</AssemblyName>
     <RootNamespace>JunctionRules</RootNamespace>
-    <Version>0.1.0</Version>
-    <InformationalVersion>0.1.0-stage1</InformationalVersion>
+    <Version>0.2.0</Version>
+    <InformationalVersion>0.2.0-stage2</InformationalVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <Nullable>disable</Nullable>
     <!-- Cities: Skylines II install path. Resolution order (first match wins):
@@ -89,20 +90,18 @@
        (compatdata/949230, hard-coded WINEPREFIX in the generated script) while the game may be running there under
        another Proton (11.0): two wineservers of different versions on one prefix. So a Burst build refuses to start
        while a Cities2.exe process exists. Override (at your own risk): -p:AllowBurstWhileGameRuns=true.
-       The pattern is written 'Cities2[.]exe' so pgrep never matches the shell that runs it. -->
-  <PropertyGroup>
-    <JRGameProcessPattern Condition="'$(JRGameProcessPattern)' == ''">Cities2[.]exe</JRGameProcessPattern>
-  </PropertyGroup>
+       The check is the owner's standard one, `ps -eo comm | grep -i cities2` (process names only, so it never
+       matches the shell that runs it; `pgrep -f` can). -->
 
   <Target Name="RefuseBurstWhileGameRuns" BeforeTargets="BeforeBuild;BurstPostProcess"
           Condition="'$(Burst)' == 'true' And '$(AllowBurstWhileGameRuns)' != 'true' And $([MSBuild]::IsOSPlatform('Linux'))">
-    <Exec Command="pgrep -f '$(JRGameProcessPattern)' &gt;/dev/null" IgnoreExitCode="true" EchoOff="true" StandardOutputImportance="low">
+    <Exec Command="ps -eo comm | grep -qi cities2" IgnoreExitCode="true" EchoOff="true" StandardOutputImportance="low">
       <Output TaskParameter="ExitCode" PropertyName="_JRGameRunningExit" />
     </Exec>
     <Error Condition="'$(_JRGameRunningExit)' == '0'"
-           Text="Cities: Skylines II is running (pgrep -f '$(JRGameProcessPattern)'). The Burst post-processor runs wine inside the game's Proton prefix: build with the game closed only. Quit the game and build again (override at your own risk: -p:AllowBurstWhileGameRuns=true)." />
+           Text="Cities: Skylines II is running (ps -eo comm | grep -i cities2 found it). The Burst post-processor runs wine inside the game's Proton prefix: build with the game closed only. Quit the game and build again (override at your own risk: -p:AllowBurstWhileGameRuns=true)." />
     <Error Condition="'$(_JRGameRunningExit)' != '0' And '$(_JRGameRunningExit)' != '1'"
-           Text="Could not check whether Cities: Skylines II is running (pgrep exit code $(_JRGameRunningExit)). Refusing the Burst build; override at your own risk: -p:AllowBurstWhileGameRuns=true." />
+           Text="Could not check whether Cities: Skylines II is running (grep exit code $(_JRGameRunningExit)). Refusing the Burst build; override at your own risk: -p:AllowBurstWhileGameRuns=true." />
   </Target>
 
   <Target Name="BurstPostProcess" AfterTargets="Build" BeforeTargets="DeployToLocalMods" Condition="'$(Burst)' == 'true'">
