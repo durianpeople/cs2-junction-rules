@@ -31,6 +31,7 @@ namespace JunctionRules.Tests
             ("DiffScriptSelfTest", DiffScriptSelfTest),
             ("WholePathRuleTests", WholePathRuleTests),
             ("WholePathScenarioTests", WholePathScenarioTests),
+            ("Stage2RulingTests", Stage2RulingTests),
             ("Stage2SwitchTests", Stage2SwitchTests),
             ("Stage2CountersTests", Stage2CountersTests),
             ("Stage2RepoTests", Stage2RepoTests),

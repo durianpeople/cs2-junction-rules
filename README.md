@@ -7,7 +7,10 @@ A Cities: Skylines II mod. Stage 1 (0.1.0): switch off the game's car-driving sy
 Stage 2 (0.2.0): the first driving rule, inside the copy only, default off. **Junction gap rule = Whole junction**: a
 car that has to wait stops just before the first point where its path crosses another lane's path, then makes one go/
 wait decision for every remaining conflict with the game's own gap judgement, and never stops again inside the junction
-to give way (collision braking stays). Analysis, per-case behaviour and owner choices: `docs/STAGE2-ANALYSIS.md`;
+to give way (collision braking stays). The decision is taken only by the car at its waiting spot: a queued car follows
+with the game's own car-following and decides for itself when it reaches the spot; amber lanes count as live; exit
+queues stay stock (yellow boxes are stage 3); no starvation safeguard (owner rulings 14 Nov 2026).
+Analysis, per-case behaviour and owner rulings: `docs/STAGE2-ANALYSIS.md`;
 code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 
 ## Layout
@@ -24,7 +27,7 @@ code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 | `tools/IlHash/` | Prints the vanilla code hash used by the version gate; `--copy` compares the copy's IL with Game.dll. |
 | `tests/JunctionRules.Tests/` | Console test runner. |
 | `DEVIATIONS.md`, `REFERENCERS.md`, `PROBE-STAGE1.md`, `PROBE-STAGE2.md` | Every change to the game code; who uses the copied types; in-game test kits. |
-| `docs/STAGE2-ANALYSIS.md` | Where the game decides conflict by conflict, the change, per-case table, deadlock/starvation, owner choices. `docs/vanilla_copy_*_0.2.0.txt`: the diff script's output for 0.2.0. |
+| `docs/STAGE2-ANALYSIS.md` | Where the game decides conflict by conflict, the change, per-case table, deadlock/starvation, owner rulings. `docs/vanilla_copy_*_0.2.0.txt`: the diff script's output for 0.2.0. |
 
 ## Settings
 

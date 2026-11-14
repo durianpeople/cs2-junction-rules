@@ -1216,7 +1216,7 @@ public struct JRCarLaneSpeedIterator
 		// JR-STAGE2 BEGIN S2-04: junction lane: waiting spot and commitment
 		if (m_JR.m_Mode != 0)
 		{
-			m_JR.BeginLane(lane, bufferData, ref m_LaneSignalData, curveOffset.x, length, origDistance, origMinOffset, num, VehicleUtils.GetBrakingDistance(m_PrefabCar, m_CurrentSpeed, m_TimeStep), inverse);
+			m_JR.BeginLane(lane, bufferData, ref m_LaneSignalData, curveOffset.x, length, origDistance, num, inverse);
 		}
 		// JR-STAGE2 END
 		for (int i = 0; i < bufferData.Length; i++)

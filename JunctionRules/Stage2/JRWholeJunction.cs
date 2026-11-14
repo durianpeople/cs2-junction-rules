@@ -71,11 +71,11 @@ namespace JunctionRules.Stage2
         /// <summary>
         /// Start of CheckOverlappingLanes for one lane: decide whether the rule covers this lane (a node lane with at
         /// least one conflict that places a waiting spot), where the spot is, and whether the car has committed.
-        /// origDistance is the game's value after its own "- margin"; brakingDistance is the game's
-        /// GetBrakingDistance(car, current speed, time step), the same value as the game's "can brake" flag.
+        /// origDistance is the game's value after its own "- margin". Committed = the car's front is past the spot
+        /// (owner ruling 14 Nov 2026: the decision is taken only at the spot; no braking-distance or reservation commit).
         /// </summary>
         public void BeginLane(Entity lane, DynamicBuffer<LaneOverlap> overlaps, ref ComponentLookup<LaneSignal> signals,
-            float curveX, float length, float origDistance, float origMinOffset, float margin, float brakingDistance, bool inverse)
+            float curveX, float length, float origDistance, float margin, bool inverse)
         {
             m_LaneActive = false;
             m_Committed = false;
@@ -89,7 +89,8 @@ namespace JunctionRules.Stage2
                 bool held = false;
                 if ((flags & WholePathRule.Road) != 0 && (flags & WholePathRule.Track) == 0 && signals.TryGetComponent(o.m_Other, out LaneSignal s))
                 {
-                    held = s.m_Signal == LaneSignalType.Stop || s.m_Signal == LaneSignalType.SafeStop;
+                    // Only red holds a lane; amber (SafeStop) is live (owner ruling 14 Nov 2026).
+                    held = WholePathRule.IsHeldByRed((int)s.m_Signal);
                 }
                 spot = WholePathRule.AddConflict(spot, flags, o.m_ThisStart, o.m_ThisEnd, inverse, held);
             }
@@ -98,8 +99,8 @@ namespace JunctionRules.Stage2
             m_Inverse = inverse;
             m_Spot = spot;
             m_WaitDistance = WholePathRule.WaitDistance(origDistance, length, spot, curveX, inverse);
-            m_Committed = WholePathRule.IsCommitted(brakingDistance, m_WaitDistance, margin, spot, origMinOffset, inverse);
-            m_Inside = m_FirstLane && WholePathRule.FrontPastSpot(m_WaitDistance, margin);
+            m_Committed = WholePathRule.IsCommitted(m_WaitDistance, margin);
+            m_Inside = m_FirstLane && m_Committed;
             m_LaneActive = true;
             if (RuleOn && !m_Committed) m_Decision = true;
         }

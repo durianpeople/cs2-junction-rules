@@ -83,7 +83,7 @@
         "files": {
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
-        "reason": "CheckOverlappingLanes, before the overlap loop: waiting spot and commitment of a junction (node) lane."
+        "reason": "CheckOverlappingLanes, before the overlap loop: waiting spot (red excluded, amber live) and commitment (front past the spot only) of a junction (node) lane."
       },
       "S2-05": {
         "files": {

@@ -47,12 +47,22 @@ there for all remaining conflicts with stock judgement, no give-way stop inside 
 stays, STOP = stock stop at the line then roll-up; default = this rule, "wait at the stop line" only as a non-default
 variant (setting "Whole junction: waiting spot"). Analysis and flagged cases: `docs/STAGE2-ANALYSIS.md`.
 
+Further owner rulings implemented (14 Nov 2026, JR-T-002b, version stays 0.2.0): **amber = live** (only a red
+`LaneSignal` keeps a lane from placing the waiting spot; `WholePathRule.IsHeldByRed`); **roundabouts** one decision per
+node lane, as built (no block touches the roundabout code); **decide only at the waiting spot / first in line decides**:
+"committed" is now only "the car's own front is past its waiting spot" (`WholePathRule.IsCommitted(waitDistance,
+margin)`), so no car commits from behind the spot through the braking-distance test, its reservation, a look-ahead lane
+or a leader's go; a queued follower uses stock car-following, rolls up to the spot and decides there itself; **exit
+queues** stay stock car-following (no room check; yellow boxes are stage 3); **no starvation safeguard**, ever.
+Block change for this: S2-04 only (same 4 lines; the call no longer passes `origMinOffset` and the game's braking
+distance). All other blocks are unchanged; the logic change is in `Core/WholePathRule.cs` and `Stage2/JRWholeJunction.cs`.
+
 | Id | File | Sites | Lines inside | Where | What |
 |---|---|---|---|---|---|
 | S2-01 | iterator | 1 | 1 | after field `m_LaneOffsetPush` | Field `m_JR` (JRWholeJunction): the car's stage 2 state. |
 | S2-02 | iterator | 2 | 1 each | first statement of both `IterateFirstLane` | `m_JR.m_FirstLane = true` (the lane checked next is the car's current lane). |
 | S2-03 | iterator | 1 | 1 | first statement of `IterateNextLane` | `m_JR.m_FirstLane = false`. |
-| S2-04 | iterator | 1 | 4 | `CheckOverlappingLanes`, before the overlap loop | `BeginLane`: waiting spot W of a junction (node) lane and whether the car has committed. |
+| S2-04 | iterator | 1 | 4 | `CheckOverlappingLanes`, before the overlap loop | `BeginLane`: waiting spot W of a junction (node) lane (red lanes excluded, amber live) and whether the car has committed (front past W only; JR-T-002b: no longer passes `origMinOffset` or the braking distance). |
 | S2-05 | iterator | 1 | 2 | after `blockerType` in the loop | `jrStart` (overlap start seen from the car), `jrInScope` (at or after W and yield-checked). |
 | S2-06 | iterator | 1 | 1 | after `maxBrakingSpeed` (blocking reservation) | Before commit: brake to W; after commit: no give-way (`float.MaxValue`). |
 | S2-07 | iterator | 1 | 1 | after `maxBrakingSpeed3` (space request) | Same as S2-06. |

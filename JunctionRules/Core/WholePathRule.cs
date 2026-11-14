@@ -54,11 +54,15 @@ namespace JunctionRules.Core
     ///   End flags when driving the lane inverted) and not water.
     /// - waiting spot: the last point of the path that is not inside any other lane's path = the start of the first
     ///   conflict with a road or track lane. A road lane held by a red signal right now is not a live path and does not
-    ///   place the waiting spot (owner ruling for turns across oncoming on green); a track lane always does.
+    ///   place the waiting spot (owner ruling for turns across oncoming on green); a lane on amber (SafeStop) IS live
+    ///   (owner ruling 14 Nov 2026: only red does not count); a track lane always does.
     ///   Pedestrian crossings are judged in the decision but never place the waiting spot.
-    /// - committed: the car can no longer stop before the waiting spot (the game's own "can brake" test, braking
-    ///   distance &lt;= distance + 0.9 m margin) or its lane reservation already reaches past it (the game's own
-    ///   committed test for an overlap, start &lt;= minOffset).
+    /// - committed: the car's own front is past its waiting spot (by the game's stop margin), i.e. it has left the spot
+    ///   and is inside the junction's paths. Owner ruling 14 Nov 2026 (decide only at the spot): nothing else commits a
+    ///   car: not the braking-distance test, not a lane reservation, not a look-ahead lane, not a leader's go. Until its
+    ///   front reaches the spot every give-way of the path stops it at the spot, so the decision that lets it pass is the
+    ///   one judged at the spot. A follower queued behind a leader is behind the spot, so it cannot inherit the leader's
+    ///   decision; it rolls up to the spot and decides for itself.
     /// </summary>
     public static class WholePathRule
     {
@@ -71,6 +75,17 @@ namespace JunctionRules.Core
         public const int Road = 0x80;
         public const int Track = 0x100;
         public const int Water = 0x800;
+
+        // Game.Net.LaneSignalType values (mirrored, checked by a test against the decompile).
+        public const int SignalStop = 1;
+        public const int SignalSafeStop = 2;
+
+        /// <summary>
+        /// The other lane is held by red right now: only LaneSignalType.Stop. Amber (SafeStop) counts as live, both for
+        /// the waiting spot and in the decision (owner ruling 14 Nov 2026).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsHeldByRed(int signal) => signal == SignalStop;
 
         /// <summary>LaneOverlap bytes to curve offsets, the game's own factor (1/255 as a float literal).</summary>
         public const float ByteToOffset = 0.003921569f;
@@ -133,13 +148,13 @@ namespace JunctionRules.Core
             origDistance + length * (inverse ? curveX - spot : spot - curveX);
 
         /// <summary>
-        /// The car has committed to the junction: it cannot stop before the waiting spot any more (the game's own
-        /// test, braking distance &lt;= distance + margin, failed), or its reservation reaches past the spot (the game's
-        /// own committed test for an overlap). A waiting car (speed 0, front at the spot) is not committed.
+        /// The car has committed to the junction: its front is past the waiting spot (owner ruling 14 Nov 2026: the
+        /// decision is taken only at the spot). A car standing at the spot (front at the game's stop point, a margin
+        /// before it) or anywhere behind it is not committed, whatever its speed, reservation or leader. On a look-ahead
+        /// lane the wait distance is always positive, so a car is never committed to a lane it has not reached.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsCommitted(float brakingDistance, float waitDistance, float margin, float spot, float origMinOffset, bool inverse) =>
-            brakingDistance > waitDistance + margin || (inverse ? spot >= origMinOffset : spot <= origMinOffset);
+        public static bool IsCommitted(float waitDistance, float margin) => FrontPastSpot(waitDistance, margin);
 
         /// <summary>The car's front is past the waiting spot by more than the game's margin (it is inside a path).</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

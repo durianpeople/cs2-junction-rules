@@ -36,6 +36,11 @@ namespace JunctionRules.Tests
             // Which conflicts place the waiting spot.
             Check(WholePathRule.DefinesWaitingSpot(Road, false, false), "road crossing places the spot");
             Check(!WholePathRule.DefinesWaitingSpot(Road, false, true), "road lane held by a red signal does not place the spot");
+            // Amber is live (owner ruling 14 Nov 2026): only red (LaneSignalType.Stop) holds a lane.
+            Check(WholePathRule.IsHeldByRed(WholePathRule.SignalStop), "red holds the other lane");
+            Check(!WholePathRule.IsHeldByRed(WholePathRule.SignalSafeStop), "amber does not hold the other lane (live)");
+            Check(!WholePathRule.IsHeldByRed(0) && !WholePathRule.IsHeldByRed(3) && !WholePathRule.IsHeldByRed(4), "none / yield / go are live");
+            Check(WholePathRule.DefinesWaitingSpot(Road, false, WholePathRule.IsHeldByRed(WholePathRule.SignalSafeStop)), "amber lane places the spot");
             Check(WholePathRule.DefinesWaitingSpot(Track, false, true) && WholePathRule.DefinesWaitingSpot(Track | Road, false, true), "track always places the spot");
             Check(!WholePathRule.DefinesWaitingSpot(0, false, false), "pedestrian crossing (no Road/Track flag) never places the spot");
             Check(!WholePathRule.DefinesWaitingSpot(Road | WholePathRule.Water, false, false), "water never places the spot");
@@ -61,12 +66,11 @@ namespace JunctionRules.Tests
             Check(Near(WholePathRule.WaitDistance(-2f, 20f, 0.25f, 0.5f, false), -7f), "wait distance behind the car is negative");
 
             // Commitment.
-            Check(!WholePathRule.IsCommitted(5f, 10f, 0.9f, 0.5f, 0.2f, false), "can still stop before the spot: not committed");
-            Check(WholePathRule.IsCommitted(12f, 10f, 0.9f, 0.5f, 0.2f, false), "cannot stop before the spot: committed");
-            Check(!WholePathRule.IsCommitted(0f, 0f, 0.9f, 0.5f, 0.49f, false), "car standing at the spot is not committed");
-            Check(WholePathRule.IsCommitted(0f, 3f, 0.9f, 0.5f, 0.5f, false), "reservation reaching the spot = committed (game's own test)");
-            Check(WholePathRule.IsCommitted(0f, 3f, 0.9f, 0.5f, 0.4f, true), "inverted: reservation reaching the spot = committed");
-            Check(WholePathRule.IsCommitted(0f, -1f, 0.9f, 0.5f, 0.2f, false), "standing past the spot = committed");
+            // Commitment (owner ruling 14 Nov 2026): only a front past the spot commits; speed and reservations do not.
+            Check(!WholePathRule.IsCommitted(10f, 0.9f), "before the spot: not committed");
+            Check(!WholePathRule.IsCommitted(2f, 0.9f), "fast car that could not stop before the spot: still not committed (no braking-distance commit)");
+            Check(!WholePathRule.IsCommitted(0f, 0.9f) && !WholePathRule.IsCommitted(-0.9f, 0.9f), "car standing at the spot (game's stop point) is not committed");
+            Check(WholePathRule.IsCommitted(-1f, 0.9f), "front past the spot = committed");
             Check(WholePathRule.FrontPastSpot(-1f, 0.9f) && !WholePathRule.FrontPastSpot(-0.5f, 0.9f), "front past spot uses the game's margin");
 
             // Scope.
@@ -110,30 +114,30 @@ namespace JunctionRules.Tests
             float len = 20f;
             // Car standing at the stop line (front at offset 0, origDistance after the game's margin = -0.9).
             float wait = WholePathRule.WaitDistance(-margin + 0f, len, spot, 0f, false);
-            bool committed = WholePathRule.IsCommitted(0f, wait, margin, spot, 0f, false);
+            bool committed = WholePathRule.IsCommitted(wait, margin);
             Check(!committed && wait > 7f, "green turner at the line may pull forward ~8 m to the spot");
             // Both oncoming lanes are judged from the spot: the far lane busy keeps it at the spot (one decision).
             Check(WholePathRule.AtOrAfterSpot(140 / 255f, spot, false) && WholePathRule.ForYield(true, true, committed) == A.StopAtSpot, "far oncoming lane busy: wait at the spot, not between the lanes");
             Check(WholePathRule.AfterSpot(140 / 255f, spot, false), "far oncoming lane counts as a later conflict (counter)");
             // Car standing at the spot: still not committed; once moving it cannot stop before the spot -> committed.
             float atSpot = WholePathRule.WaitDistance(-margin + len * spot, len, spot, spot, false);
-            Check(!WholePathRule.IsCommitted(0f, atSpot, margin, spot, spot - 0.001f, false), "standing at the spot: decision still open");
+            Check(!WholePathRule.IsCommitted(atSpot, margin), "standing at the spot: decision still open");
             float inside = WholePathRule.WaitDistance(-margin, len, spot, spot + 0.05f, false);
-            Check(WholePathRule.IsCommitted(2f, inside, margin, spot, spot + 0.05f, false), "moved off the spot: committed");
+            Check(WholePathRule.IsCommitted(inside, margin), "moved off the spot: committed");
             Check(WholePathRule.ForYield(true, true, true) == A.Suppress && WholePathRule.ForVehicle(true, true, true, true, false) == A.Suppress, "after the go: no give-way stop for the far oncoming lane");
             // Signal flips while the turner stands in the side road's path: the side-road lanes now place the spot,
             // behind the car's front -> committed, the car clears the junction.
             var flipped = new (int, int, int, bool)[] { (Road, 25, 51, false), (Road, 102, 127, true), (Road, 140, 166, true) };
             float spot2 = Spot(false, flipped);
             float w2 = WholePathRule.WaitDistance(-margin, len, spot2, spot, false);
-            Check(Near(spot2, 25 / 255f) && WholePathRule.IsCommitted(0f, w2, margin, spot2, spot, false), "signal flip: car inside a now-green path is committed and clears");
+            Check(Near(spot2, 25 / 255f) && WholePathRule.IsCommitted(w2, margin), "signal flip: car inside a now-green path is committed and clears");
 
             // STOP sign: the game's own full stop at the line happens before the junction lane (IterateNextLane Stop
             // flag); after it, with the spot inside the junction, the car may roll up to the spot.
             var stopArm = new (int, int, int, bool)[] { (Road, 38, 64, false), (Road, 128, 153, false) };
             float sp = Spot(false, stopArm);
             float fromLine = WholePathRule.WaitDistance(-margin, len, sp, 0f, false);
-            Check(!WholePathRule.IsCommitted(0f, fromLine, margin, sp, 0f, false) && fromLine > 1f, "STOP: after the stop at the line, roll-up to the spot is allowed");
+            Check(!WholePathRule.IsCommitted(fromLine, margin) && fromLine > 1f, "STOP: after the stop at the line, roll-up to the spot is allowed");
             Check(Near(WholePathRule.Distance(WholePathRule.ForYield(true, true, false), -margin, fromLine), fromLine), "STOP: a busy later conflict holds the car at the spot, not at the line");
             // STOP where the first conflict starts at the node edge: the spot is the line itself.
             float spEdge = Spot(false, (Road, 0, 26, false), (Road, 128, 153, false));
@@ -147,6 +151,68 @@ namespace JunctionRules.Tests
 
             // Rule off: everything stock whatever the geometry.
             Check(WholePathRule.ForYield(false, true, false) == A.Stock && WholePathRule.ForVehicle(false, true, true, true, false) == A.Stock, "stock rule leaves every decision to the game");
+        }
+
+        /// <summary>Owner rulings of 14 Nov 2026 (JR-T-002b): amber live, decide only at the spot, exit queues stock, roundabouts per node.</summary>
+        private static void Stage2RulingTests()
+        {
+            const float margin = 0.9f, len = 20f;
+            // Right turn across two oncoming lanes (left-hand traffic), on a node lane of 20 m: oncoming lanes cross at
+            // 0.40-0.50 and 0.55-0.65, exit merge 0.95-1.0. Spot W = 0.40 (8 m in).
+            var turn = new (int, int, int, bool)[] { (Road, 102, 127, false), (Road, 140, 166, false), (Road | WholePathRule.MergeEnd, 242, 255, false) };
+            float w = Spot(false, turn);
+            Check(Near(w, 102 / 255f), "turners: W before the first oncoming lane");
+            float Wd(float carX) => WholePathRule.WaitDistance(-margin, len, w, carX, false);
+
+            // A stands at W (front at the game's stop point): decides there.
+            float aAtW = Wd(w - margin / len);
+            Check(Near(aAtW, 0f) && !WholePathRule.IsCommitted(aAtW, margin), "A at W: not committed, decision open");
+            Check(WholePathRule.ForVehicle(true, true, false, true, false) == A.StopAtSpot && Near(WholePathRule.Distance(A.StopAtSpot, 12f, aAtW), aAtW), "A at W, far oncoming lane busy: waits at W");
+            // A goes: front past W -> committed, no give-way inside.
+            float aGone = Wd(w + 0.1f);
+            Check(WholePathRule.IsCommitted(aGone, margin) && WholePathRule.ForYield(true, true, true) == A.Suppress, "A past W: committed, crosses both oncoming lanes in one go");
+
+            // B queued behind A on the same node lane, 2 m in, standing or moving at any speed: never committed behind W.
+            float bBehind = Wd(0.1f);
+            Check(bBehind > 4f && !WholePathRule.IsCommitted(bBehind, margin), "B behind W: not committed (no braking-distance, reservation or leader commit)");
+            // B on the approach (look-ahead lane): the wait distance is positive, so never committed to that lane.
+            float bApproach = WholePathRule.WaitDistance(15f, len, w, 0f, false);
+            Check(!WholePathRule.IsCommitted(bApproach, margin), "B still on the approach: not committed to the junction lane");
+            // A's gap is not B's: a busy conflict while B follows A stops B at W (not at the conflict, not through).
+            Check(WholePathRule.ForVehicle(true, true, false, true, false) == A.StopAtSpot && Near(WholePathRule.Distance(A.StopAtSpot, 14f, bBehind), bBehind), "B following A, oncoming car within the stock gap: B stops at W, no tailgating through");
+            Check(WholePathRule.ForYield(true, true, false) == A.StopAtSpot, "B following A, reservation on an oncoming lane: B stops at W");
+            Check(!WholePathRule.UndoProjection(true, true, false, false), "B behind W keeps the stock 2 s look-ahead of oncoming cars");
+            // B rolls up to W and decides on its own there.
+            float bAtW = Wd(w - margin / len);
+            Check(!WholePathRule.IsCommitted(bAtW, margin), "B at W: decision open");
+            Check(WholePathRule.ForVehicle(true, true, false, true, false) == A.StopAtSpot, "B at W, gap busy: waits at W");
+            Check(WholePathRule.IsCommitted(Wd(w + 0.05f), margin) && WholePathRule.ForVehicle(true, true, true, true, false) == A.Suppress, "B at W, gap clear: goes; past W it is committed");
+
+            // Exit queue: stock car-following, before and after commit (no room check, yellow boxes are stage 3).
+            Check(WholePathRule.ForVehicle(true, true, true, false, true) == A.Stock, "committed car behind a queue on the exit merge: stock following");
+            Check(WholePathRule.ForVehicle(true, true, false, false, true) == A.Stock, "car before W behind a queue on the exit merge: stock following");
+            Check(WholePathRule.ForVehicle(true, true, true, false, false) == A.Stock, "committed car with a car physically in its path: stock collision braking");
+
+            // Amber lanes are live and place W; red does not.
+            var amber = new (int, int, int, bool)[] { (Road, 25, 51, WholePathRule.IsHeldByRed(WholePathRule.SignalSafeStop)), (Road, 102, 127, false) };
+            var red = new (int, int, int, bool)[] { (Road, 25, 51, WholePathRule.IsHeldByRed(WholePathRule.SignalStop)), (Road, 102, 127, false) };
+            Check(Near(Spot(false, amber), 25 / 255f), "amber side-road lane: W before it");
+            Check(Near(Spot(false, red), 102 / 255f), "red side-road lane: W after it (before the first live lane)");
+            // Signal flip, new W ahead of the car (advisory a): the car rolls up to it and decides again.
+            float carX = 10 / 255f;
+            Check(!WholePathRule.IsCommitted(WholePathRule.WaitDistance(-margin, len, Spot(false, amber), carX, false), margin), "signal flip with the new W ahead: not committed, rolls up and decides again");
+
+            // Node-edge / no-crossing paths: no road or track conflict -> no spot -> stock.
+            Check(!WholePathRule.HasSpot(Spot(false), false), "lane without overlaps: no spot");
+            Check(!WholePathRule.HasSpot(Spot(false, (Road | WholePathRule.MergeStart, 0, 255, false)), false), "only a diverging sibling: no spot (stock)");
+            Check(!WholePathRule.HasSpot(Spot(false, (0, 30, 60, false)), false), "only a pedestrian crossing: no spot (stock)");
+            Check(!WholePathRule.HasSpot(Spot(false, (Road, 30, 60, true)), false), "only red-held conflicts: no spot (stock)");
+
+            // Roundabout: one decision per roundabout node lane, from that lane's own overlaps (no ring look-ahead).
+            var ring = new (int, int, int, bool)[] { (Road | WholePathRule.MergeStart, 0, 60, false), (Road | WholePathRule.MergeEnd, 120, 255, false) };
+            Check(Near(Spot(false, ring), 120 / 255f), "ring lane at a roundabout node: W before the entry merge of that node");
+            var entry = new (int, int, int, bool)[] { (Road | WholePathRule.MergeEnd, 90, 255, false) };
+            Check(Near(Spot(false, entry), 90 / 255f), "entry lane: W before the ring lane it joins");
         }
 
         private static void Stage2SwitchTests()
@@ -219,6 +285,15 @@ namespace JunctionRules.Tests
             Check(WholePathRule.MergeStart == 1 && WholePathRule.MergeEnd == 2 && WholePathRule.MergeMiddleStart == 0x10 && WholePathRule.MergeMiddleEnd == 0x20
                   && WholePathRule.Road == 0x80 && WholePathRule.Track == 0x100 && WholePathRule.Water == 0x800, "mirrored flag constants");
             Check(WholePathRule.ByteToOffset == 0.003921569f, "byte factor is the game's literal");
+            string sigDecomp = Path.Combine(Path.GetDirectoryName(decomp), "LaneSignalType.cs");
+            if (File.Exists(sigDecomp))
+            {
+                string[] names = { "None", "Stop", "SafeStop", "Yield", "Go" };
+                string body = File.ReadAllText(sigDecomp);
+                int ix = 0; bool order = true;
+                foreach (string n in names) { int k = body.IndexOf("\t" + n, ix, StringComparison.Ordinal); order &= k > 0; ix = k < 0 ? ix : k; }
+                Check(order && WholePathRule.SignalStop == 1 && WholePathRule.SignalSafeStop == 2, "LaneSignalType mirror: Stop = 1, SafeStop = 2 (decompile order)");
+            }
 
             string root = RepoRoot();
             if (root == null) { Check(false, "repo root found"); return; }
@@ -240,6 +315,16 @@ namespace JunctionRules.Tests
                 }
                 Check(ok && !inBlock && blocks > 0, Path.GetFileName(f) + ": blocks balanced, not nested, stage 2 names only inside them " + bad);
             }
+            string iter = File.ReadAllText(Path.Combine(src, "Vanilla", "JRCarLaneSpeedIterator.cs"));
+            int ccl = iter.IndexOf("private void CheckCurrentLane(", StringComparison.Ordinal);
+            int cpl = iter.IndexOf("private void CheckOverlappingLanes(", StringComparison.Ordinal);
+            Check(ccl > 0 && cpl > ccl && iter.IndexOf("JR-STAGE2", ccl, cpl - ccl, StringComparison.Ordinal) < 0, "car-following (CheckCurrentLane) has no stage 2 block: exit queues stay stock");
+            Check(iter.Contains("x = (@float.x = math.min(x, @float.x));"), "roundabout clamp of the game kept");
+            bool rbInBlock = false;
+            foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(iter, @"// JR-STAGE2 BEGIN[\s\S]*?// JR-STAGE2 END"))
+                rbInBlock |= m.Value.Contains("isRoundabout") || m.Value.Contains("m_TempBuffer");
+            Check(!rbInBlock, "no stage 2 block touches the roundabout handling");
+            Check(typeof(WholePathRule).GetMethod("IsCommitted").GetParameters().Length == 2, "commitment depends only on the wait distance (no speed, reservation or leader input)");
             string sw = File.ReadAllText(Path.Combine(src, "Systems", "CarDrivingSwitchSystem.cs"));
             Check(sw.Contains("Stage2Handoff.Publish(") && sw.Contains("m_GapRule.Step("), "switch system publishes the rule each step");
             string nav = File.ReadAllText(Path.Combine(src, "Vanilla", "JRCarNavigationSystem.cs"));

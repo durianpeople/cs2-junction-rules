@@ -3,7 +3,9 @@
 Goal: show in Bevy Valley that the whole-junction rule (a) costs no measurable time against the stock rule, both with
 the copy driving, and (b) does what the owner ruled: a car that has to wait stops just before the first point where its
 path crosses another lane's path, then goes through every remaining conflict in one go and never stops inside the
-junction to give way (it still brakes so as not to hit anything).
+junction to give way (it still brakes so as not to hit anything). Owner rulings of 14 Nov 2026 also in this build: the
+decision is taken only by the car at its waiting spot (a queued car follows, rolls up to the spot, then decides for
+itself); amber lanes count as live; exit queues are plain stock car-following; no timeout or safeguard for long waits.
 
 Defaults change nothing: **Car driving** = Game's own, **Junction gap rule** = Stock. The rule only acts while Car
 driving is the Junction Rules copy.
@@ -109,8 +111,11 @@ Each pass: 6 timing lines, skip the first, keep 5 (same in-game time at either s
 | S3 | 4x | Stock | 5 timing lines (drift between S2 and W2) |
 
 What passes:
-- W `mean` and `p95` within about 10 % of S at the same speed (S3 shows the normal drift); S close to the stage 1
-  copy numbers (1x mean ~0.55 / p95 ~0.68 ms; 4x ~0.6 / ~1.05 ms).
+- W `mean` and `p95` within about 10 % of S at the same speed (S3 shows the normal drift).
+- S close to the stage 1 copy numbers (1x mean ~0.55 / p95 ~0.68 ms; 4x ~0.6 / ~1.05 ms). This is the check for the
+  stage 2 scan cost itself: with the timing log on, the counters are on even on Stock, so the S passes already run the
+  per-junction-lane scan (`BeginLane`) and the counter code. S vs W therefore hides that scan; S vs the stage 1 numbers
+  shows it.
 - `frames/s` and FPS the same within noise; `skipped` 0 or near it.
 - Each line says the rule that ran (`stock` / `whole junction`).
 - Counters: `stopped inside for a give-way` clearly lower with whole junction (about 0); `waited at spot for a later
@@ -131,15 +136,36 @@ What to look for, comparing the two rules:
 - **Turners across oncoming traffic** (right turns; Bevy Valley drives on the left): on a green or from the major road
   they pull forward to just before the FIRST oncoming lane, wait there, then cross ALL oncoming lanes in one go; never
   cross one oncoming lane and stop again before the next.
+- **Each car decides at the front**: when two turners queue, the second one follows the first only up to the waiting
+  spot. It stops at the spot (or reaches it with a clear gap) before crossing and makes its own decision there; it
+  never slips through right behind the first one on the first one's gap. Same for queues on any arm: only the car at
+  the spot decides.
+- **Amber**: a side-road lane on amber still counts. A turner waits before it while it is on amber; only red side-road
+  lanes let it pull further in.
+- **Exit queues: nothing special**: a car that has gone may still stop behind a queue on the exit, as in stock (no
+  yellow-box behaviour in this build). Do not report that as a fault; report only a car that stopped inside to give
+  way.
 - **STOP arms**: full stop at the line as before, then roll up to the waiting spot if it is further in, then one go.
-- **Minor arms still get out**: note roughly how long the longest wait is on each rule. Longer waits with Whole
-  junction are expected on a busy major road (it needs both directions clear at once); report a minor arm that never
-  gets out.
+- **Long waits**: note roughly how long the longest minor-arm wait is on each rule. Longer waits with Whole junction
+  are expected on a busy major road (it needs both directions clear at once). The rule has no timeout by owner ruling:
+  a very long wait is a road design / city finding, so report it with the junction name, it is not a test failure.
 - **No new jams or deadlocks**: no cars frozen facing each other, no queue that never clears; red/green obeyed.
 - No cars driving through each other; no new despawns; `JunctionRules.Mod.log`, `Modding.log`, `Player.log` free of
   new exceptions.
 - Optional: one extra 6-line pass with **Whole junction: waiting spot = At the stop line** at one junction (turners then
   wait at the line). Set it back to the default after.
+
+Optional extra passes (same method: 6 lines on Stock, 6 on Whole junction; Bevy Valley only). No coordinates are
+given here on purpose: pick the site in game by the description.
+- **Roundabout**: any busy roundabout in Bevy Valley (one with queues on at least one entry at the time of the test).
+  Look for: entering cars wait before the ring lane they cross or join and then enter in one go; ring cars decide
+  again at each roundabout node (one decision per node, owner ruling); no ring gridlock that does not also happen on
+  Stock.
+- **Green right turn across oncoming**: a signalised junction where right-turners (left-hand traffic) share the green
+  with two or more oncoming lanes and turn across them in numbers (a busy arterial junction with a right-turn lane).
+  Look for: turners pull up to just before the first oncoming lane, cross all oncoming lanes in one go, the second
+  turner stops at the spot before crossing and never slips through behind the first; when the light changes, a turner
+  standing in the junction clears it.
 
 ## 6. Rollback
 
@@ -163,5 +189,6 @@ What to look for, comparing the two rules:
 ## 7. Report back
 
 The three log lines of section 2; per pass the 5 timing lines (or mean/p95/frames per second, and the four counters)
-and FPS; per junction and rule: where waiting cars stood, any car stopped inside to give way, turners' behaviour, STOP
-roll-up, longest minor-arm wait, jams/deadlocks; any exception text.
+and FPS; per junction and rule: where waiting cars stood, any car stopped inside to give way, turners' behaviour
+(second turner stopping at the spot), STOP roll-up, longest minor-arm wait, jams/deadlocks; the optional passes if
+done; any exception text.
