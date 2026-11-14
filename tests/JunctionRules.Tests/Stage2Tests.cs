@@ -337,7 +337,7 @@ namespace JunctionRules.Tests
             string bridge = File.ReadAllText(Path.Combine(src, "Stage2", "JRWholeJunction.cs"));
             Check(!System.Text.RegularExpressions.Regex.IsMatch(bridge, @"\bnew\s+\w"), "job-side struct has no 'new' (no managed allocation)");
             string proj = File.ReadAllText(Path.Combine(src, "JunctionRules.csproj"));
-            Check(proj.Contains("<Version>0.2.1</Version>"), "version 0.2.1");
+            Check(proj.Contains("<Version>0.2.2</Version>"), "version 0.2.2");
         }
     }
 }

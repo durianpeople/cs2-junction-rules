@@ -16,6 +16,8 @@ reservation): one decision per stretch up to the next spot; while crossing, the 
 reached yet and makes a safety stop just before the first of them if one is no longer clear and it can still stop with
 normal braking (else collision braking only); a car that can no longer stop at its spot keeps the game's own give-way.
 Root causes and rulings: `docs/STAGE2-ANALYSIS.md` sections 7-8.
+0.2.2: a mid-junction spot must fit the whole vehicle, trailers included (stock attach points; owner ruling 14 Nov
+2026, `docs/STAGE2-ANALYSIS.md` section 9), so articulated trucks never wait on a central reservation too short for them.
 Analysis, per-case behaviour and owner rulings: `docs/STAGE2-ANALYSIS.md`;
 code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 
@@ -33,7 +35,7 @@ code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 | `tools/IlHash/` | Prints the vanilla code hash used by the version gate; `--copy` compares the copy's IL with Game.dll. |
 | `tests/JunctionRules.Tests/` | Console test runner. |
 | `DEVIATIONS.md`, `REFERENCERS.md`, `PROBE-STAGE1.md`, `PROBE-STAGE2.md` | Every change to the game code; who uses the copied types; in-game test kits. |
-| `docs/STAGE2-ANALYSIS.md` | Where the game decides conflict by conflict, the change, per-case table, deadlock/starvation, owner rulings. `docs/vanilla_copy_*_0.2.0.txt` / `*_0.2.1.txt`: the diff script's output per version. |
+| `docs/STAGE2-ANALYSIS.md` | Where the game decides conflict by conflict, the change, per-case table, deadlock/starvation, owner rulings. `docs/vanilla_copy_*_0.2.0.txt` / `*_0.2.1.txt` / `*_0.2.2.txt`: the diff script's output per version. |
 
 ## Settings
 

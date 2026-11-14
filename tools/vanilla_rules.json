@@ -143,13 +143,13 @@
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
-        "reason": "Job fields: stage 2 mode and the debug counter array."
+        "reason": "Job fields: stage 2 mode, the debug counter array; 0.2.2: tractor/trailer prefab lookups and the car's whole length."
       },
       "S2-21": {
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
-        "reason": "Hands the mode to each car's iterator."
+        "reason": "Hands the mode (0.2.2: and the whole vehicle length) to each car's iterator."
       },
       "S2-22": {
         "files": {
@@ -161,13 +161,19 @@
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
-        "reason": "OnUpdate: takes this step's mode from the main-thread handoff."
+        "reason": "OnUpdate: takes this step's mode from the main-thread handoff; 0.2.2: tractor/trailer prefab lookups."
       },
       "S2-24": {
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
         "reason": "OnDestroy: frees the counter array."
+      },
+      "S2-25": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
+        },
+        "reason": "Moving-car loop: whole vehicle length incl. trailers (stock attach points) for mid-junction waiting spots, once per car and update, only when stage 2 is on (0.2.2)."
       }
     }
   }

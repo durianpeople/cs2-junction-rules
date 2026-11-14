@@ -41,6 +41,7 @@ namespace JunctionRules.Tests
             ("StretchMidSpotTests", StretchMidSpotTests),
             ("StretchDeadlockTests", StretchDeadlockTests),
             ("StretchRepoTests", StretchRepoTests),
+            ("VehicleLengthTests", VehicleLengthTests),
         };
 
         private static int Main(string[] args)

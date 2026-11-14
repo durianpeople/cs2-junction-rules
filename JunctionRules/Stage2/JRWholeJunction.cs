@@ -29,6 +29,11 @@ namespace JunctionRules.Stage2
         public ComponentLookup<NodeLane> m_NodeLaneData;
         /// <summary>Stage2Mode bits; 0 = off.</summary>
         public int m_Mode;
+        /// <summary>
+        /// 0.2.2: the whole vehicle's length, trailers included (Stage2/JRVehicleLength.cs, computed once per car and
+        /// update by the navigation job, S2-25). 0 = not given: the controller's prefab bounds are used (0.2.1).
+        /// </summary>
+        public float m_VehicleLength;
 
         // ---- state of the junction lane being checked (BeginLane) ----
         public bool m_LaneActive;
@@ -75,11 +80,15 @@ namespace JunctionRules.Stage2
             get => (m_Mode & Stage2Mode.Count) != 0;
         }
 
-        public static JRWholeJunction Create(int mode, ComponentLookup<NodeLane> nodeLaneData)
+        public static JRWholeJunction Create(int mode, ComponentLookup<NodeLane> nodeLaneData, float vehicleLength)
         {
             JRWholeJunction j = default;
             j.m_Mode = mode;
-            if (mode != 0) j.m_NodeLaneData = nodeLaneData;
+            if (mode != 0)
+            {
+                j.m_NodeLaneData = nodeLaneData;
+                j.m_VehicleLength = vehicleLength;
+            }
             return j;
         }
 
@@ -114,7 +123,8 @@ namespace JunctionRules.Stage2
         /// Start of CheckOverlappingLanes for one lane: decide whether the rule covers this lane (a node lane with at
         /// least one conflict point), find its waiting spots (entry spot W and mid spots), where the car is among them
         /// and the first uncrossed point of the stretch it is crossing. origDistance is the game's value after its own
-        /// "- margin". braking = the game's braking distance at the car's current speed (its can-stop test).
+        /// "- margin". braking = the game's braking distance at the car's current speed (its can-stop test). The room a
+        /// mid spot needs is m_VehicleLength (trailers included, 0.2.2) or, if not given, the geometry's bounds length.
         /// </summary>
         public void BeginLane(Entity lane, DynamicBuffer<LaneOverlap> overlaps, ref ComponentLookup<LaneSignal> signals,
             float curveX, float length, float origDistance, float margin, bool inverse, CarData car, float currentSpeed,
@@ -134,7 +144,8 @@ namespace JunctionRules.Stage2
                 if (HeldByRed(overlaps[i], ref signals)) list.m_Held |= 1UL << i;
             }
             float braking = VehicleUtils.GetBrakingDistance(car, currentSpeed, timeStep);
-            float carLength = geometry.m_Bounds.max.z - geometry.m_Bounds.min.z;
+            // 0.2.2: the room a mid spot needs is the whole vehicle, trailers included (owner ruling 14 Nov 2026).
+            float carLength = m_VehicleLength > 0f ? m_VehicleLength : geometry.m_Bounds.max.z - geometry.m_Bounds.min.z;
             if (!m_Stretch.Begin(ref list, origDistance, length, StretchGeometry.ToDriving(curveX, inverse), margin, braking, carLength,
                     (m_Mode & Stage2Mode.AtLine) != 0))
             {

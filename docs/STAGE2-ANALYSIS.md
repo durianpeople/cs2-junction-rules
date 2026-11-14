@@ -206,6 +206,18 @@ All RULED by the owner on 14 Nov 2026 (binding; version stays 0.2.0):
 5. **Waiting spot** — RULED: default stays "before the first crossing"; "at the stop line" remains a non-default
    variant setting ("Whole junction: waiting spot").
 
+Further rulings on the 0.2.1 open points, RULED by the owner on 14 Nov 2026 (binding):
+
+6. **Physical car in a later conflict point** — KEEP: a car that is physically in a later point of the stretch makes
+   the crossing car brake for it at THAT point (stock collision braking), never a safety stop further back (deadlock
+   reason, section 8). As built in 0.2.1 (`StretchState.ForVehicle`: physical -> Stock).
+7. **Followers queued behind a car at a mid spot** — ALLOWED: a follower may stand with its body in the near
+   carriageway while it queues behind a car waiting on the central reservation (stock car-following, no room check;
+   like an exit queue). No code change; no longer an open risk.
+8. **Trailers** — 0.2.2: the vehicle length a mid spot must fit includes every trailer (section 9).
+9. **"At the stop line" setting** — KEEP: the variant moves only the entry spot to the stop line; mid-junction spots
+   stay in use with it (as built in 0.2.1).
+
 ## 7. 0.2.1 collisions (JR-T-002c)
 
 Live probe, owner, 14 Nov 2026 (Bevy Valley, 0.2.0 Burst, whole junction on): "stopped inside for a give-way" 0 in
@@ -311,8 +323,8 @@ Owner wording (replaces B1): one general pattern, applied from the start.
    position right before a conflict point where the car is not inside any other lane's path, computed like W: W (the
    start of the first point) is the entry spot; a **mid spot** is the start of a point that follows a gap in which
    the car fits: front at the game's stop margin before the point, rear clear of every earlier point
-   (`gap * laneLength >= carLength + margin`, carLength = the car's prefab bounds front to rear, margin 0.9 m / 0.4 m
-   bicycles). Points that touch or overlap form one group (no spot inside a path). No gap size is defined: the room is
+   (`gap * laneLength >= carLength + margin`, carLength = the car's prefab bounds front to rear, since 0.2.2 the whole
+   vehicle including trailers (section 9), margin 0.9 m / 0.4 m bicycles). Points that touch or overlap form one group (no spot inside a path). No gap size is defined: the room is
    the car's own body. Code: `StretchState.FindSpots`.
 2. The points from one spot to the next are a **stretch**. At each spot the car makes ONE decision for its stretch
    (stock judgement on each point). Only the car at the spot decides: a follower is behind the spot, so every busy
@@ -370,10 +382,46 @@ lanes do not close a gap (not live); track lanes always do.
   game itself would then hold a crossing car the same way (stopped at the point instead of the first uncrossed point).
   The "safety stops inside" counter makes such a case visible (it would grow every window).
 - **Queues at a mid spot**: a follower that enters while the mid spot is taken queues by stock car-following and may
-  stand with its body in the near half (like an exit queue). Owner ruling: queueing unchanged; flagged as an open risk.
+  stand with its body in the near half (like an exit queue). Owner ruling 14 Nov 2026 (owner choice 7): ALLOWED.
 
 ### Performance (0.2.1)
 
 BeginLane now finds the spots: one pass for W, about three passes per group of touching points, one pass for the first
 uncrossed point (node lanes have tens of overlaps; signal lookups once per overlap). With the rule off and the timing
 log off nothing runs (`m_Mode == 0`). The probe compares job time against stock and 0.2.0.
+
+## 9. 0.2.2 trailers in the vehicle length (owner ruling, 14 Nov 2026)
+
+Owner ruling: trailers count in the vehicle length used for mid-junction waiting spots. In 0.2.1 the room was the
+controller's prefab bounds only, so a tractor unit could be given a spot on a central reservation that its trailer
+did not fit: it waited with the trailer across the near carriageway.
+
+**How the game places trailers (stock data only).** A trailer's attach point is put exactly on the attach point of the
+piece that pulls it, each in its own prefab frame (z = forward):
+`trailer position = puller position + rotate(puller rotation, CarTractorData.m_AttachPosition) - rotate(trailer rotation,
+CarTrailerData.m_AttachPosition)`, in `Game.Simulation.CarTrailerMoveSystem` (all movement types; `Free` also aims the
+trailer from its `CarData.m_PivotOffset` to the hitch, the hitch itself stays coincident), `Game.Vehicles.InitializeSystem`
+323-324 (spawn) and `Game.Rendering.ObjectInterpolateSystem` 1754-1768. A trailer that pulls another one has its own
+CarTractorData and the chain moves on to it (CarTrailerMoveSystem, InitializeSystem 335-338). The attach points come
+from the prefab: puller z = `bounds.min.z + CarTractor.m_AttachOffset.z`, trailer z = `bounds.max.z -
+CarTrailerPrefab.m_AttachOffset.z` (`Game.Prefabs.VehicleInitializeSystem` 406-407 / 421-422). (CarTrailerMoveSystem is
+missing from the yb-2026-11-13 full decompile, which stopped early; it was decompiled on its own from the same Game.dll,
+sha256 f076df4b..., for this check.)
+
+**Length.** Chain the pieces along the controller's axis (the combination standing straight, as it waits at a spot):
+origin of piece k+1 = origin k + puller attach z - trailer attach z; length = front-most front minus rear-most rear over
+all pieces. A semi-trailer's front over the tractor's rear is counted once. No constant is added: the hitch spacing is
+entirely in the two stock attach points. Without trailers the result is exactly 0.2.1's bounds length (cars, buses,
+bicycles unchanged). Code: `Core/VehicleLength.cs` (`CombinedLength`, unit-tested), `Stage2/JRVehicleLength.cs`
+(reads the `LayoutElement` buffer, element 0 = the controller as in the game's UpdateTrailers).
+
+**Where it runs.** Once per car and navigation update, in the navigation job's moving-car loop (block S2-25, before
+`UpdateNavigationTarget` builds the iterator), only when stage 2 is on (`m_JRMode != 0`; the timing log alone also
+turns it on so the counters see the same spots). It is handed to the iterator through `JRWholeJunction.Create` (S2-21)
+and used by `BeginLane` for `FindSpots`. Rule and timing log off: one int test and a float store per car, nothing else.
+
+**Effect.** An articulated truck or a car with a caravan gets a mid spot only where the whole combination plus the stop
+margin fits between two conflict points; otherwise it makes one decision at the entry spot for the whole junction, as
+any vehicle longer than the gap did in 0.2.1. Deadlock argument of section 8 unchanged (a mid spot still has no other
+path under the whole body). Tests: VehicleLengthTests (car unchanged, semi-trailer longer than an 8 m reservation gets
+no mid spot while the tractor alone would, multi-trailer chaining and sums, decompile cross-checks).

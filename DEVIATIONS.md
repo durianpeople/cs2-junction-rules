@@ -76,6 +76,28 @@ car at its spot but are dropped while crossing). All other blocks unchanged (onl
 Counters (timing log): stretch decisions, waits at the entry spot for a later conflict, waits at a mid-junction spot,
 safety stops inside, stopped inside for a give-way, stopped inside behind a crossing car.
 
+0.2.2 (JR-T-002d, owner ruling 14 Nov 2026): **trailers count in the vehicle length for mid spots.** The room a mid
+spot needs is the whole vehicle: controller + every trailer, chained by the game's own attach points (the trailer's
+`CarTrailerData.m_AttachPosition` is placed on the puller's `CarTractorData.m_AttachPosition`: CarTrailerMoveSystem,
+`Game.Vehicles.InitializeSystem` 323-324, `ObjectInterpolateSystem` 1754-1768; attach z from prefab bounds and stock
+offsets, `VehicleInitializeSystem` 406-407 / 421-422), length = straight extent front-most front to rear-most rear. No
+invented constant: the hitch spacing is entirely in the stock attach points. Bicycles and cars without trailers get
+exactly the 0.2.1 length. Computed once per car and navigation update by the navigation job (new block S2-25, only
+when `m_JRMode != 0`) from the `LayoutElement` buffer the job already reads, then handed to the iterator through
+`JRWholeJunction.Create` (S2-21). Logic: new `JunctionRules/Core/VehicleLength.cs` (pure, unit-tested) and
+`Stage2/JRVehicleLength.cs` (lookups, Burst-compatible, no allocations); `BeginLane` uses it instead of the controller's
+bounds (S2-04 unchanged). Block changes for 0.2.2: S2-20 (+8 lines: read-only `CarTractorData` / `CarTrailerData`
+lookups and the per-car length field), S2-21 (same 1 line, one more argument), S2-23 (+2 lines: the two lookups, set
+every step on the main thread with `SystemBase.GetComponentLookup(isReadOnly: true)`), new S2-25 (5 lines). With
+`m_JRMode == 0` S2-25 is one int test plus a float store; the two lookups are always set (read-only, prefab data).
+
+Further owner rulings recorded (14 Nov 2026, no code change): (1) a car physically in a later conflict point -> the
+crossing car brakes for it there (stock collision braking at that point): KEEP; (2) a follower queued behind a car
+waiting at a mid-junction spot may stand in the near carriageway: ALLOWED (stock car-following, no room check);
+(3) trailers count in the vehicle length for mid spots: 0.2.2 (above); (4) the "At the stop line" waiting-spot setting
+keeps using mid-junction spots: KEEP (only the entry spot moves to the line). Analysis: `docs/STAGE2-ANALYSIS.md`
+owner choices 6-9.
+
 | Id | File | Sites | Lines inside | Where | What |
 |---|---|---|---|---|---|
 | S2-01 | iterator | 1 | 1 | after field `m_LaneOffsetPush` | Field `m_JR` (JRWholeJunction): the car's stage 2 state. |
@@ -89,18 +111,22 @@ safety stops inside, stopped inside for a give-way, stopped inside behind a cros
 | S2-09 | iterator | 1 | 1 | after `GetObjectSpeed` in the object loop | Keeps the other car's position before the 2 s priority look-ahead. |
 | S2-10 | iterator | 1 | 2 | after the look-ahead block | After commit the look-ahead is undone unless the other car is already past the overlap start (the game's own committed semantics); `jrProjected` = the car counts only through the look-ahead. |
 | S2-11 / S2-11b | iterator | 1 / 1 | 3 / 2 | around `UpdateMaxSpeed` in `CheckOverlappingLanes` | Before commit: braking distance to W for projected cars and cars in a crossing (merge followers stay stock); `num5` restored after; debug counters. |
-| S2-20 | nav | 1 | 5 | `UpdateNavigationJob` fields | `m_JRMode` (int, by value) and `m_JRCounters` (persistent `NativeArray<long>`, atomic adds, safety restriction off: debug-only counters). |
-| S2-21 | nav | 1 | 1 | after the iterator is set up in `UpdateNavigationTarget` | `m_JR = JRWholeJunction.Create(m_JRMode, m_NodeLaneData)`. |
+| S2-20 | nav | 1 | 13 | `UpdateNavigationJob` fields | `m_JRMode` (int, by value) and `m_JRCounters` (persistent `NativeArray<long>`, atomic adds, safety restriction off: debug-only counters); 0.2.2: `[ReadOnly] m_JRTractorData` / `m_JRTrailerData` (prefab lookups) and `m_JRVehicleLength` (this car's whole length, written by S2-25). |
+| S2-21 | nav | 1 | 1 | after the iterator is set up in `UpdateNavigationTarget` | `m_JR = JRWholeJunction.Create(m_JRMode, m_NodeLaneData, m_JRVehicleLength)` (0.2.2: plus the whole vehicle length). |
 | S2-22 | nav | 1 | 4 | after `CheckBlocker` at `IL_09cd` | Counters, once per car-step, only when the count bit is set. |
-| S2-23 | nav | 1 | 2 | `OnUpdate`, before `ScheduleParallel` | Main thread: takes this step's mode from `Stage2Handoff` (published by `CarDrivingSwitchSystem` earlier in the same step) into the job struct by value. |
-| S2-24 | nav | 1 | 7 | new `OnDestroy` (none in vanilla) | Completes the job and frees the counter array. |
+| S2-23 | nav | 1 | 4 | `OnUpdate`, before `ScheduleParallel` | Main thread: takes this step's mode from `Stage2Handoff` (published by `CarDrivingSwitchSystem` earlier in the same step) into the job struct by value; 0.2.2: sets the read-only `CarTractorData` / `CarTrailerData` lookups. |
+| S2-24 | nav | 1 | 8 | new `OnDestroy` (none in vanilla) | Completes the job and frees the counter array. |
+| S2-25 | nav | 1 | 5 | moving-car loop of `UpdateNavigationJob.Execute`, after the controller's `ObjectGeometryData` lookup, before `UpdateNavigationTarget` | 0.2.2: `m_JRVehicleLength` = 0, or, when `m_JRMode != 0` and the chunk has a `LayoutElement` buffer, `JRVehicleLength.WithTrailers(...)` (controller + trailers by the stock attach points). |
 
-Total: 19 blocks, 43 lines inside (as `vanilla_copy.py check` reports).
+Total: 20 blocks, 58 lines inside (as `vanilla_copy.py check` reports; 0.2.1: 19 blocks, 43 lines; S2-24 counts its trailing blank line).
 
 Effect on `tools/IlHash --copy` (expected): 48 of 80 identical (was 54), 21 shape only (was 19), 11 content
 differences (was 7: the four stage 2 methods `IterateFirstLane` x2, `IterateNextLane`, `UpdateNavigationTarget` join
 `CheckOverlappingLanes` and the others listed below, which also contain blocks now), 1 extra (`OnDestroy`, S2-24).
 Field blocks of the iterator and the job are "shape only" because of S2-01 and S2-20.
+0.2.2 (`tools/IlHash --copy`, managed build of 0.2.2): 48 of 80 identical, 20 shape only, 12 content differences,
+1 extra. `UpdateNavigationJob.Execute` joins the content differences (S2-25; it was "shape only" before), the rest as
+0.2.1.
 
 ## Build note (not a code change)
 
