@@ -200,3 +200,175 @@ All RULED by the owner on 14 Nov 2026 (binding; version stays 0.2.0):
    long waits visible.
 5. **Waiting spot** — RULED: default stays "before the first crossing"; "at the stop line" remains a non-default
    variant setting ("Whole junction: waiting spot").
+
+## 7. 0.2.1 collisions (JR-T-002c)
+
+Live probe, owner, 14 Nov 2026 (Bevy Valley, 0.2.0 Burst, whole junction on): "stopped inside for a give-way" 0 in
+every window (stock 43-164), job time equal to stock, but committed cars occasionally drove into another car inside
+the junction, and once at Valley x Carlisle (1092.7, -81.5) a westbound Carlisle car waited for an eastbound
+right-turner into Valley. Citations: I = decompile `CarLaneSpeedIterator.cs`, N = decompile `CarNavigationSystem.cs`,
+H = `full/Game.Simulation/CarNavigationHelpers.cs`, R = `full/Game.Simulation/NetLaneReservationSystem.cs`.
+
+### How stock keeps two crossing cars apart (the part 0.2.0 broke)
+
+The stock gap test is not a one-off judgement; it is a handshake that runs every update (each car is updated once per
+16 frames, N 2982) until the car can no longer stop:
+
+1. A car C reserves its own path ahead up to its braking distance at its planned speed (N 2251-2310). On its CURRENT
+   lane that reservation is only its curve position `y` (N 2263, not a LaneReservation entry), which other cars read as
+   `LaneObject.m_CurvePosition.y` (H 185/198: lane objects carry `(x, y)` = position and reserved end). Lanes ahead are
+   reserved as LaneReservation entries (N 2305), rolled over every 16 frames (R 29-34).
+2. Every update, for each overlap of its path, C applies the give-way test (reservation `offset > num10 || priority2 >
+   num6`, I 1286-1288; the 2 s look-ahead of a higher-priority car on the other lane, I 1354-1372) **until its own
+   reservation covers that overlap**: on the current lane the overlap is then skipped (`start <= origMinOffset`,
+   I 1241; and the look-ahead only counts cars already past the start, I 1354). On look-ahead lanes `origMinOffset` is
+   -1 (N 2036-2037), so the test always runs there.
+3. The moment C's reservation (`y`) passes the overlap start, every other car brakes for C as a car "in" the overlap
+   (I 1382-1388), whatever the priorities. So a stock car claims an overlap only when it can no longer stop, and only
+   after the 2 s / reservation test said "clear" at every update until that moment.
+
+The 2 s look-ahead and the reservation priority are therefore safe only because they are re-run continuously up to
+the car's point of no return for EACH overlap. Cars on the approach of the other road are invisible except through
+their reservation of the junction lane (their braking distance), so a car that is not yet within its braking distance
+of the junction is not seen at all at decision time.
+
+### Root cause 1 (main): later conflict points lost their protection after the go (0.2.0 design)
+
+0.2.0 judged all points at W once, then, with the front past W, dropped every give-way of the path (S2-06/S2-07
+`Suppress`, S2-10 look-ahead undone). For the FIRST point that is harmless (the front is in it, the reservation covers
+it, stock skips it too). For every LATER point the car had not claimed it yet (its reservation reaches it only when
+within braking distance), but it no longer checked it. Timeline for a car crossing a two-way road from standstill
+(far lane 12 m beyond W, car 5 m/s^2, priority car at 50 km/h): decision at W sees the far lane clear (priority car
+more than its braking distance, ~16 m, from the junction lane: no reservation, not on the junction lane: no
+look-ahead); the car needs ~2.2 s to reach the far lane; the priority car reaches it in ~1.5-2.5 s. Stock would have
+seen the priority car's reservation of its junction lane ~1 s after the go and stopped before the far lane (the stock
+"stopped inside"). 0.2.0 ignored it; each car braked for the other only when the other's reservation `y` reached the
+overlap (I 1382-1388), i.e. when neither could stop: the visible collision. Same for: a car that was stopped inside by
+collision braking (behind a crossing car) and then restarted into the next car of a platoon (2 s look-ahead and the
+reservation both dropped); and two cars that went in the same update group or within one 16-frame cycle on a shared
+gap (oncoming stream clears, both turners go), each committed past its W with the other's later point unchecked.
+**Fix: the safety re-check of section 8 (owner ruling B1/stretches): every uncrossed point is re-checked with the stock
+test until the front reaches it.** This restores exactly the stock handshake for the later points, with the stop moved
+to the first uncrossed point.
+
+### Root cause 2 (decision): stop at an unreachable W, then drop the give-way (0.2.0, since 604c210)
+
+Since 604c210 a car is committed only when its front is past W (no braking-distance commit). Before commit, a busy
+later point stops the car at W (`StopAtSpot`, distance to W). A fast car that is surprised just before W (a point
+becomes busy, typically a claim by another car's reservation, I 1288 `offset > num10`) cannot stop at W: it brakes at
+the full rate (speed range clamp, VehicleUtils.CalculateSpeedRange), overruns W, is then committed and drops the
+give-way for that later point entirely, although stock would have braked for the point itself (further away, often in
+time). The decision was being applied to a spot the car could no longer reach. **Fix (separate from the safety net,
+`StretchState.Classify`, phase `Stock`):** when the car cannot stop at the spot by the game's own can-stop test
+(`GetBrakingDistance(car, currentSpeed, timeStep) <= distance`, I 1236), the busy point keeps the game's own give-way
+(stop at that point, stock distance) for that update instead of `StopAtSpot`. A car that can stop at its spot is
+unchanged (it decides at the spot). This is not a commit: no give-way is dropped. Tests: StretchRootCauseTests.
+
+### Candidates checked and ruled out
+
+- **Look-ahead too short at decision time**: no. A car standing at W has braking distance 0, and the iterator walks on
+  while `m_Distance + offset - 20 < brakingDistance` (I 239/363/620), so the junction lane is always reached;
+  CheckOverlappingLanes then loops over ALL overlaps of that lane regardless of distance (I 1191 ff.). The only early
+  stop is `m_MaxSpeed == m_SpeedRange.min` (already braking at the full rate for something earlier, e.g. a stopped
+  leader): such a car is not at W and follows stock.
+- **Wrong distance to far points**: no. The distance uses the stock `num5` formula; what is wrong in 0.2.0 is the time
+  at which the test runs (root cause 1), not the distance.
+- **Opposing right-turners each seeing the other's reservation**: no deadlock and no false wait while both stand at W:
+  a car never reserves its own current lane (N 2263), its `y` equals its position when standing, and equal-priority
+  cars are not projected (I 1370). They do share gaps (both go when the oncoming stream clears), which is the same-gap
+  race of root cause 1.
+- **The 604c210 IsCommitted change**: only through root cause 2 (overrun of an unreachable W). The ruling itself
+  (commit only past W, followers decide at W) stays.
+
+### Valley x Carlisle: westbound waited for an eastbound right-turner
+
+Carlisle E/W lanes are the priority lanes there (STOP only on the SE-bound Valley approach, node 1125927). By lane
+priority the westbound car never yields to the opposing right-turner. It does yield, in stock as well, to a CLAIM: a
+right-turner whose reservation (braking distance at its speed) already reaches the westbound overlap makes every car
+on that lane yield (I 1288 `offset > num10`, independent of priority), and a turner whose `y` is past the overlap
+start is braked for as a car in the path (I 1382-1388). Two ways this shows:
+1. The turner had gone (judged at its W, westbound car not yet visible: not on the junction lane, its reservation not
+   yet reaching it) and was in, or had claimed, the westbound overlap: the westbound car must stop. Stock does the same.
+2. The turner was still approaching at speed and its reservation already covered the overlap (on its approach the
+   junction lane is a look-ahead lane, so no stock skip applies), while it was itself being held at its W by the
+   westbound car's priority reservation: both hold each other for one rollover (<= 16 frames, R 29-34) until the
+   turner stands and its claim lapses. Stock has the same exchange; in 0.2.0 the westbound car stopped at its own W
+   (possibly earlier than the overlap). If the turner could not stop at its W, 0.2.0 then let it overrun and drop the
+   give-way (root cause 2): that is the case to rule out in the probe.
+It is stock priority-by-claim, not a wrongly placed conflict and not the rule itself; 0.2.1 removes the overrun part
+(root cause 2) and re-checks the westbound point if the turner overruns (safety net). What to watch: PROBE-STAGE2.md.
+
+## 8. 0.2.1 stretches and the safety re-check (owner ruling, 14 Nov 2026, binding)
+
+Owner wording (replaces B1): one general pattern, applied from the start.
+1. A car's path through the node (its node lane) has ordered conflict points: the overlaps that place W in 0.2.0
+   (road or track, yield-checked, not water, road lanes held by red excluded, amber live). A **waiting spot** is any
+   position right before a conflict point where the car is not inside any other lane's path, computed like W: W (the
+   start of the first point) is the entry spot; a **mid spot** is the start of a point that follows a gap in which
+   the car fits: front at the game's stop margin before the point, rear clear of every earlier point
+   (`gap * laneLength >= carLength + margin`, carLength = the car's prefab bounds front to rear, margin 0.9 m / 0.4 m
+   bicycles). Points that touch or overlap form one group (no spot inside a path). No gap size is defined: the room is
+   the car's own body. Code: `StretchState.FindSpots`.
+2. The points from one spot to the next are a **stretch**. At each spot the car makes ONE decision for its stretch
+   (stock judgement on each point). Only the car at the spot decides: a follower is behind the spot, so every busy
+   point of that stretch holds it at the spot (it cannot cross on the leader's gap); car-following stays stock.
+3. **While crossing** (front past the stretch's spot) it re-checks ALL uncrossed points of its stretch (a point is
+   crossed once the front has reached its start). If any is busy by the stock gap judgement (a blocking reservation or
+   the 2 s look-ahead: "a car it missed or misjudged will be there") and it can stop comfortably before the FIRST
+   uncrossed point, it stops there (safety stop; it may stand inside a lane it has partly crossed: accepted), and waits
+   until every remaining point of the stretch is clear (each update re-runs the test on all of them). If it cannot stop
+   comfortably: no give-way, stock collision braking only (0.2.0 behaviour).
+4. With no mid spots this is exactly the 0.2.0 decision at W plus the safety net. Points of a LATER stretch hold the car
+   at that stretch's spot (if it can still stop there, else root cause 2's stock give-way).
+
+**Comfortably** = the game's own can-stop test for an overlap, `GetBrakingDistance(car, currentSpeed, timeStep) <=
+num5 + num` (I 1236): the car stops before the point within its prefab braking `m_Braking`. CS2 has a single braking
+rate (`CalculateSpeedRange` never decelerates faster than `m_Braking`, VehicleUtils 645-651; there is no separate
+emergency braking), so "comfortable" = "within the stock braking"; no new margin or gap time.
+
+What a safety stop reacts to: reservations that block (I 1288) and cars counted through the 2 s look-ahead (I 1372).
+Not to: a car physically in a later point (stock collision braking at THAT point, as stock and 0.2.0), a car asking for
+space (priority 96, dropped while crossing as in 0.2.0), pedestrians (stock pedestrian braking). Reason: deadlock,
+below.
+
+### Where mid spots exist (from stock geometry)
+
+The overlap ranges come from `LaneOverlapSystem` (lane areas incl. width), so a mid spot exists exactly where the node
+lane runs through an area no other live lane crosses, for at least the car's length plus the margin:
+- divided roads with a central reservation inside one node (crossing or turning across Carlisle-type roads, if the
+  median opening is longer than the car + 0.9 m along the path);
+- wide junctions where a turning path runs clear between the near and far lanes (big skew junctions);
+- the stretch before the exit merge of a turn that has crossed everything else (a spot before the merge if the gap
+  fits the car).
+None exist: plain two-lane crossroads and T-junctions (lanes touch), turners across oncoming lanes that lie side by
+side, narrow medians, and every vehicle longer than the gap (buses and trucks often get one decision where cars get
+two). Dual carriageways built as two separate nodes are two junctions (one decision per node lane, as before). Red
+lanes do not close a gap (not live); track lanes always do.
+
+### Deadlock (0.2.1)
+
+- **Spot waiters hold nobody**: the entry spot is before every live point, a mid spot only exists where the whole car
+  fits between points (tested on random lanes, StretchDeadlockTests). A standing car is not projected (speed 0), does
+  not reserve its current lane (N 2263) and reserves nothing ahead at speed 0 (N 2259: braking distance 0).
+- **Safety-stopped cars**: a safety stop waits only on predictions (reservations, 2 s look-ahead). Both come only from
+  cars that are MOVING towards the point (a standing car projects 0 and reserves nothing ahead). Such a car either
+  passes the point (clears it) or stops at its own spot or safety point, after which its reservation lapses within one
+  rollover (R 29-34) and its look-ahead is 0. So two safety-stopped cars cannot wait for each other; a wait cycle
+  needs every car of it to be moving, which ends by itself.
+- **A genuine mutual wait if the rule waited on physical cars**: C1 safety-stopped before its first uncrossed point A
+  because C2 is physically in a later point B, while C1's body (in a point it has partly crossed) is in C2's path:
+  C2 waits for C1, C1 for C2; stock would have pulled C1 forward to B (collision braking at B) and could free C2's path.
+  Stock-consistent resolution (no timeout): a physical car in a point gives the stock collision braking at that point
+  (`StretchState.ForVehicle`: physical -> Stock), never a wait further back. Same for space requests (priority 96,
+  from a standing, blocked car): dropped while crossing, as in 0.2.0. Residual: the stock reservation-priority test
+  (`priority2 > num6`, I 1288) also fires on a 96 space reservation when the overlap's priority delta is above 4; the
+  game itself would then hold a crossing car the same way (stopped at the point instead of the first uncrossed point).
+  The "safety stops inside" counter makes such a case visible (it would grow every window).
+- **Queues at a mid spot**: a follower that enters while the mid spot is taken queues by stock car-following and may
+  stand with its body in the near half (like an exit queue). Owner ruling: queueing unchanged; flagged as an open risk.
+
+### Performance (0.2.1)
+
+BeginLane now finds the spots: one pass for W, about three passes per group of touching points, one pass for the first
+uncrossed point (node lanes have tens of overlaps; signal lookups once per overlap). With the rule off and the timing
+log off nothing runs (`m_Mode == 0`). The probe compares job time against stock and 0.2.0.

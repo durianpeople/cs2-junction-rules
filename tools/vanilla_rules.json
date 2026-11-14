@@ -83,7 +83,7 @@
         "files": {
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
-        "reason": "CheckOverlappingLanes, before the overlap loop: waiting spot (red excluded, amber live) and commitment (front past the spot only) of a junction (node) lane."
+        "reason": "CheckOverlappingLanes, before the overlap loop: waiting spots (entry + mid spots where the car fits; red excluded, amber live), current stretch and first uncrossed point of a junction (node) lane (0.2.1)."
       },
       "S2-05": {
         "files": {
@@ -95,13 +95,13 @@
         "files": {
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
-        "reason": "Blocking reservation: stop at the waiting spot before commit, no give-way after commit."
+        "reason": "Blocking reservation: stop at the spot of its stretch; while crossing a safety stop before the first uncrossed point if the car can stop (0.2.1)."
       },
       "S2-07": {
         "files": {
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
-        "reason": "Car asking for space (priority 96): same as S2-06."
+        "reason": "Car asking for space (priority 96): stop at the spot; dropped while crossing (0.2.1)."
       },
       "S2-08": {
         "files": {
@@ -125,7 +125,7 @@
         "files": {
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
-        "reason": "After commit the look-ahead is undone unless the other car is past the overlap start (game's own committed semantics)."
+        "reason": "While crossing with no safety stop possible the look-ahead is undone unless the other car is past the overlap start (game's own committed semantics)."
       },
       "S2-11": {
         "files": {

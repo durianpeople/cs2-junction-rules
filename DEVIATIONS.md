@@ -36,7 +36,7 @@ Every block **only inserts lines**: no vanilla line is changed or removed. `pyth
 removes the blocks and proves the rest equals decompile + the rules above; it also fails on an unbalanced, nested,
 undeclared (not in `marked_blocks` of `tools/vanilla_rules.json`), miscounted or undocumented block. `generate` keeps
 the blocks (re-inserted after the same three preceding generated lines; a non-unique match stops it). The logic lives
-outside the copies: `JunctionRules/Core/WholePathRule.cs` (pure, unit-tested) and `JunctionRules/Stage2/` (job side
+outside the copies: `JunctionRules/Core/WholePathRule.cs` and `StretchRule.cs` (pure, unit-tested) and `JunctionRules/Stage2/` (job side
 `JRWholeJunction`, main-thread `JRStage2Bridge`). With the setting on Stock and the timing log off (`m_Mode == 0`)
 every block is inert (an int test, or a value copied and restored unchanged).
 
@@ -57,15 +57,34 @@ queues** stay stock car-following (no room check; yellow boxes are stage 3); **n
 Block change for this: S2-04 only (same 4 lines; the call no longer passes `origMinOffset` and the game's braking
 distance). All other blocks are unchanged; the logic change is in `Core/WholePathRule.cs` and `Stage2/JRWholeJunction.cs`.
 
+0.2.1 (JR-T-002c, owner ruling 14 Nov 2026, binding: stretches and the safety re-check). A node lane's ordered conflict
+points are split by **waiting spots**: W (entry spot, as before) and **mid spots** = the start of a conflict point
+after a gap in which the whole car fits (car length from the prefab bounds + the game's stop margin), so the car is
+inside no other lane's path there; touching points form one group. At each spot ONE decision for its **stretch** (the
+points up to the next spot), stock judgement on each; only the car at the spot decides, followers queue with stock
+car-following. **While crossing** the car re-checks every uncrossed point of its stretch: a blocking reservation or a
+2 s look-ahead car on one of them, and it can still stop by the game's own can-stop test (`GetBrakingDistance <=
+distance`, no new margin) -> **safety stop** just before the FIRST uncrossed point until all remaining points of the
+stretch are clear; cannot stop -> stock collision braking only. A physical car in a later point and space requests
+keep stock braking at that point (deadlock, `docs/STAGE2-ANALYSIS.md` section 8). With no mid spot this is the 0.2.0
+decision at W plus the safety net. **Root-cause fix, separate (section 7):** a car that can no longer stop at its spot
+keeps the game's own give-way at the busy point instead of being sent to an unreachable spot (and then committed past
+it). Logic: new `JunctionRules/Core/StretchRule.cs` (pure, unit-tested) and `Stage2/JRWholeJunction.cs`.
+Block changes for 0.2.1: S2-04 (same 4 lines; `BeginLane` now also takes the car, its speed, the time step and its
+geometry for the can-stop test and the car length) and S2-07 (same 1 line; calls `SpaceYield`: space requests hold a
+car at its spot but are dropped while crossing). All other blocks unchanged (only comments reworded in S2-06/S2-10).
+Counters (timing log): stretch decisions, waits at the entry spot for a later conflict, waits at a mid-junction spot,
+safety stops inside, stopped inside for a give-way, stopped inside behind a crossing car.
+
 | Id | File | Sites | Lines inside | Where | What |
 |---|---|---|---|---|---|
 | S2-01 | iterator | 1 | 1 | after field `m_LaneOffsetPush` | Field `m_JR` (JRWholeJunction): the car's stage 2 state. |
 | S2-02 | iterator | 2 | 1 each | first statement of both `IterateFirstLane` | `m_JR.m_FirstLane = true` (the lane checked next is the car's current lane). |
 | S2-03 | iterator | 1 | 1 | first statement of `IterateNextLane` | `m_JR.m_FirstLane = false`. |
-| S2-04 | iterator | 1 | 4 | `CheckOverlappingLanes`, before the overlap loop | `BeginLane`: waiting spot W of a junction (node) lane (red lanes excluded, amber live) and whether the car has committed (front past W only; JR-T-002b: no longer passes `origMinOffset` or the braking distance). |
+| S2-04 | iterator | 1 | 4 | `CheckOverlappingLanes`, before the overlap loop | `BeginLane`: waiting spots of a junction (node) lane (W + mid spots, red lanes excluded, amber live), the stretch the car is in and its first uncrossed point (0.2.1: also passes the car, speed, time step and geometry for the can-stop test and the car length). |
 | S2-05 | iterator | 1 | 2 | after `blockerType` in the loop | `jrStart` (overlap start seen from the car), `jrInScope` (at or after W and yield-checked). |
-| S2-06 | iterator | 1 | 1 | after `maxBrakingSpeed` (blocking reservation) | Before commit: brake to W; after commit: no give-way (`float.MaxValue`). |
-| S2-07 | iterator | 1 | 1 | after `maxBrakingSpeed3` (space request) | Same as S2-06. |
+| S2-06 | iterator | 1 | 1 | after `maxBrakingSpeed` (blocking reservation) | Per point phase (0.2.1): later stretch / deciding: brake to the spot; crossing with a busy uncrossed point: safety stop before the first uncrossed point if it can stop, else no give-way; cannot stop at the spot: stock. |
+| S2-07 | iterator | 1 | 1 | after `maxBrakingSpeed3` (space request) | 0.2.1 `SpaceYield`: holds a car at its spot; dropped while crossing (deadlock). |
 | S2-08 / S2-08b | iterator | 1 / 1 | 2 / 1 | around `CheckPedestrian` | Before commit the pedestrian check uses the distance to W; the game's `num5` is restored after. |
 | S2-09 | iterator | 1 | 1 | after `GetObjectSpeed` in the object loop | Keeps the other car's position before the 2 s priority look-ahead. |
 | S2-10 | iterator | 1 | 2 | after the look-ahead block | After commit the look-ahead is undone unless the other car is already past the overlap start (the game's own committed semantics); `jrProjected` = the car counts only through the look-ahead. |

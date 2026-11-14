@@ -254,8 +254,9 @@ namespace JunctionRules.Tests
 
             Check(Stage2Counters.Format(1, null) == "; junction gap rule stock", "suffix without counters");
             Check(Stage2Counters.Format(3, null).Contains("mixed"), "suffix for a switched window");
-            string f = Stage2Counters.Format(2, new long[] { 10, 2, 0, 1 });
-            Check(f == "; junction gap rule whole junction; car-steps: whole-path decisions 10, waited at spot for a later conflict 2, stopped inside for a give-way 0, stopped inside behind a crossing car 1", "suffix with counters: " + f);
+            string f = Stage2Counters.Format(2, new long[] { 10, 2, 0, 1, 3, 4 });
+            Check(f == "; junction gap rule whole junction; car-steps: stretch decisions 10, waited at entry spot for a later conflict 2, waited at a mid-junction spot 3, safety stops inside 4, stopped inside for a give-way 0, stopped inside behind a crossing car 1", "suffix with counters: " + f);
+            Check(Stage2Counters.Format(2, new long[] { 1, 2, 3, 4 }) == "; junction gap rule whole junction", "too few counters: rule only");
 
             var w = new TimingWindow("Junction Rules copy", 4);
             w.Tick(0, 0, 1000, 5);
@@ -336,7 +337,7 @@ namespace JunctionRules.Tests
             string bridge = File.ReadAllText(Path.Combine(src, "Stage2", "JRWholeJunction.cs"));
             Check(!System.Text.RegularExpressions.Regex.IsMatch(bridge, @"\bnew\s+\w"), "job-side struct has no 'new' (no managed allocation)");
             string proj = File.ReadAllText(Path.Combine(src, "JunctionRules.csproj"));
-            Check(proj.Contains("<Version>0.2.0</Version>"), "version 0.2.0");
+            Check(proj.Contains("<Version>0.2.1</Version>"), "version 0.2.1");
         }
     }
 }

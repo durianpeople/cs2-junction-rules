@@ -10,6 +10,12 @@ wait decision for every remaining conflict with the game's own gap judgement, an
 to give way (collision braking stays). The decision is taken only by the car at its waiting spot: a queued car follows
 with the game's own car-following and decides for itself when it reaches the spot; amber lanes count as live; exit
 queues stay stock (yellow boxes are stage 3); no starvation safeguard (owner rulings 14 Nov 2026).
+
+0.2.1 (collision fix): mid-junction waiting spots where the whole car fits between two crossings (e.g. a wide central
+reservation): one decision per stretch up to the next spot; while crossing, the car re-checks the conflicts it has not
+reached yet and makes a safety stop just before the first of them if one is no longer clear and it can still stop with
+normal braking (else collision braking only); a car that can no longer stop at its spot keeps the game's own give-way.
+Root causes and rulings: `docs/STAGE2-ANALYSIS.md` sections 7-8.
 Analysis, per-case behaviour and owner rulings: `docs/STAGE2-ANALYSIS.md`;
 code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 
@@ -27,7 +33,7 @@ code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 | `tools/IlHash/` | Prints the vanilla code hash used by the version gate; `--copy` compares the copy's IL with Game.dll. |
 | `tests/JunctionRules.Tests/` | Console test runner. |
 | `DEVIATIONS.md`, `REFERENCERS.md`, `PROBE-STAGE1.md`, `PROBE-STAGE2.md` | Every change to the game code; who uses the copied types; in-game test kits. |
-| `docs/STAGE2-ANALYSIS.md` | Where the game decides conflict by conflict, the change, per-case table, deadlock/starvation, owner rulings. `docs/vanilla_copy_*_0.2.0.txt`: the diff script's output for 0.2.0. |
+| `docs/STAGE2-ANALYSIS.md` | Where the game decides conflict by conflict, the change, per-case table, deadlock/starvation, owner rulings. `docs/vanilla_copy_*_0.2.0.txt` / `*_0.2.1.txt`: the diff script's output per version. |
 
 ## Settings
 

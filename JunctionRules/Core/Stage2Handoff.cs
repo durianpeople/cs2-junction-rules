@@ -44,15 +44,19 @@ namespace JunctionRules.Core
     /// <summary>Indices and the log text of the debug counters (counted in car navigation updates, "car-steps").</summary>
     public static class Stage2Counters
     {
-        /// <summary>Car-steps in which a car still before its waiting spot took the whole-path decision (rule on only).</summary>
+        /// <summary>Car-steps in which a car still before a waiting spot (entry or mid) took the decision for that spot's stretch (rule on only).</summary>
         public const int Decisions = 0;
-        /// <summary>Car-steps in which a car stood at its waiting spot because a LATER conflict (not the first) was busy (rule on only).</summary>
+        /// <summary>Car-steps in which a car stood at its ENTRY spot because a later conflict of the first stretch (not the first point) was busy (rule on only).</summary>
         public const int WaitedForLater = 1;
         /// <summary>Car-steps in which a car stood inside the junction (front past its waiting spot) held by a give-way (both rules).</summary>
         public const int StoppedInsideYield = 2;
         /// <summary>Car-steps in which a car stood inside the junction behind a car crossing its path (collision braking, both rules).</summary>
         public const int StoppedInsideCrossing = 3;
-        public const int Count = 4;
+        /// <summary>Car-steps in which a car stood at a MID-junction waiting spot (central reservation etc.) for a point of the next stretch (rule on only, 0.2.1).</summary>
+        public const int WaitedAtMidSpot = 4;
+        /// <summary>Car-steps in which a safety stop inside the junction limited the car (braking for it or standing at it; rule on only, 0.2.1).</summary>
+        public const int SafetyStops = 5;
+        public const int Count = 6;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -64,6 +68,10 @@ namespace JunctionRules.Core
         public static bool IsStandingOn(bool recorded, float recordedSpeed, float finalMaxSpeed, float currentSpeed) =>
             recorded && recordedSpeed <= finalMaxSpeed + BindingTolerance && currentSpeed < StandingSpeed;
 
+        /// <summary>The recorded limit is the car's binding limit (moving or standing).</summary>
+        public static bool IsBinding(bool recorded, float recordedSpeed, float finalMaxSpeed) =>
+            recorded && recordedSpeed <= finalMaxSpeed + BindingTolerance;
+
         /// <summary>
         /// The suffix of the copy's timing line. ruleMask: bit 0 = a step ran with stock, bit 1 = with whole junction
         /// (both = the rule was switched inside the window). deltas: null when counters were not on for the whole window.
@@ -74,8 +82,10 @@ namespace JunctionRules.Core
             if (deltas == null || deltas.Length < Count) return "; junction gap rule " + rule;
             var ci = CultureInfo.InvariantCulture;
             return "; junction gap rule " + rule +
-                   "; car-steps: whole-path decisions " + deltas[Decisions].ToString(ci) +
-                   ", waited at spot for a later conflict " + deltas[WaitedForLater].ToString(ci) +
+                   "; car-steps: stretch decisions " + deltas[Decisions].ToString(ci) +
+                   ", waited at entry spot for a later conflict " + deltas[WaitedForLater].ToString(ci) +
+                   ", waited at a mid-junction spot " + deltas[WaitedAtMidSpot].ToString(ci) +
+                   ", safety stops inside " + deltas[SafetyStops].ToString(ci) +
                    ", stopped inside for a give-way " + deltas[StoppedInsideYield].ToString(ci) +
                    ", stopped inside behind a crossing car " + deltas[StoppedInsideCrossing].ToString(ci);
         }

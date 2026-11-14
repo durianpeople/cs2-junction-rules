@@ -1213,10 +1213,10 @@ public struct JRCarLaneSpeedIterator
 			int priority = componentData.GetPriority();
 			num2 = math.select(num2, 106, priority >= 108 && 106 > num2);
 		}
-		// JR-STAGE2 BEGIN S2-04: junction lane: waiting spot and commitment
+		// JR-STAGE2 BEGIN S2-04: junction lane: waiting spots, stretches and where the car is
 		if (m_JR.m_Mode != 0)
 		{
-			m_JR.BeginLane(lane, bufferData, ref m_LaneSignalData, curveOffset.x, length, origDistance, num, inverse);
+			m_JR.BeginLane(lane, bufferData, ref m_LaneSignalData, curveOffset.x, length, origDistance, num, inverse, m_PrefabCar, m_CurrentSpeed, m_TimeStep, m_PrefabObjectGeometry);
 		}
 		// JR-STAGE2 END
 		for (int i = 0; i < bufferData.Length; i++)
@@ -1323,7 +1323,7 @@ public struct JRCarLaneSpeedIterator
 						if (offset > num10 || priority2 > num6)
 						{
 							float maxBrakingSpeed = VehicleUtils.GetMaxBrakingSpeed(m_PrefabCar, num5, m_SafeTimeStep);
-							// JR-STAGE2 BEGIN S2-06: blocking reservation: stop at the waiting spot / no give-way after commit
+							// JR-STAGE2 BEGIN S2-06: blocking reservation: stop at the spot / safety stop / no give-way while crossing
 							maxBrakingSpeed = m_JR.Yield(jrInScope, maxBrakingSpeed, jrStart, m_PrefabCar, m_SafeTimeStep, m_SpeedRange);
 							// JR-STAGE2 END
 							maxBrakingSpeed = MathUtils.Clamp(maxBrakingSpeed, m_SpeedRange);
@@ -1347,8 +1347,8 @@ public struct JRCarLaneSpeedIterator
 						if (flag && !requestSpace && priority2 == 96 && !CheckOverlapSpace(lane, curveOffset, m_NextLane, m_NextOffset, @float.xy, out var blocker))
 						{
 							float maxBrakingSpeed3 = VehicleUtils.GetMaxBrakingSpeed(m_PrefabCar, num5, m_SafeTimeStep);
-							// JR-STAGE2 BEGIN S2-07: car asking for space: stop at the waiting spot / no give-way after commit
-							maxBrakingSpeed3 = m_JR.Yield(jrInScope, maxBrakingSpeed3, jrStart, m_PrefabCar, m_SafeTimeStep, m_SpeedRange);
+							// JR-STAGE2 BEGIN S2-07: car asking for space: stop at the waiting spot / no give-way while crossing
+							maxBrakingSpeed3 = m_JR.SpaceYield(jrInScope, maxBrakingSpeed3, jrStart, m_PrefabCar, m_SafeTimeStep, m_SpeedRange);
 							// JR-STAGE2 END
 							if (maxBrakingSpeed3 < m_MaxSpeed)
 							{
@@ -1423,7 +1423,7 @@ public struct JRCarLaneSpeedIterator
 						curvePosition.y += objectSpeed * 2f / math.max(1f, m_Curve.m_Length);
 					}
 				}
-				// JR-STAGE2 BEGIN S2-10: after commit: no look-ahead give-way (game's own committed semantics)
+				// JR-STAGE2 BEGIN S2-10: while crossing (no safety stop): no look-ahead give-way (game's own committed semantics)
 				curvePosition.y = m_JR.AfterProjection(jrInScope, jrY, curvePosition.y, flag2 ? (jrY < @float.w) : (jrY > @float.z));
 				bool jrProjected = curvePosition.y != jrY && (flag2 ? (jrY >= @float.w - num3) : (jrY <= @float.z + num3));
 				// JR-STAGE2 END

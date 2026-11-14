@@ -17,10 +17,12 @@ namespace JunctionRules.Stage2
     /// per car; nothing is shared between threads except the counters (Interlocked adds, debug only).
     /// Burst-compatible: blittable fields, no managed allocations.
     ///
-    /// Per junction lane (BeginLane, once per CheckOverlappingLanes call): find the waiting spot and whether the car has
-    /// committed. Per stock yield demand (Yield / Vehicle / Pedestrian): either leave the game's value (Stock), move the
-    /// stop to the waiting spot (StopAtSpot) or drop the give-way (Suppress). With m_Mode == 0 every entry point returns
-    /// at its first test.
+    /// Per junction lane (BeginLane, once per CheckOverlappingLanes call): find the waiting spots (entry spot W and the
+    /// 0.2.1 mid spots), where the car is among them and the first uncrossed point of the stretch it is crossing.
+    /// Per overlap (InScope): classify it (Core/StretchRule.cs: Deciding / Safety / Crossing / Stock). Per stock yield
+    /// demand (Yield / SpaceYield / Vehicle / Pedestrian): leave the game's value (Stock), stop at the stretch's spot or
+    /// before the first uncrossed point (StopAtSpot) or drop the give-way (Suppress). With m_Mode == 0 every entry point
+    /// returns at its first test.
     /// </summary>
     public struct JRWholeJunction
     {
@@ -30,14 +32,23 @@ namespace JunctionRules.Stage2
 
         // ---- state of the junction lane being checked (BeginLane) ----
         public bool m_LaneActive;
+        /// <summary>The car's front is past the entry spot W (0.2.0 "committed").</summary>
         public bool m_Committed;
         public bool m_Inverse;
+        /// <summary>Entry spot W in the game's lane offsets (as 0.2.0).</summary>
         public float m_Spot;
-        public float m_WaitDistance;
+        /// <summary>Spots, stretches and the car's place in them (0.2.1, Core/StretchRule.cs).</summary>
+        public StretchState m_Stretch;
         /// <summary>Set by IterateFirstLane, cleared by IterateNextLane: the lane being checked is the car's current lane.</summary>
         public bool m_FirstLane;
-        /// <summary>The car's front is past the waiting spot of its current lane (it is inside the junction's paths).</summary>
+        /// <summary>The car's front is past the entry spot of its current lane (it is inside the junction's paths).</summary>
         public bool m_Inside;
+
+        // ---- the overlap being checked (InScope, once per overlap before the game's yield and object checks) ----
+        public PointPhase m_OvPhase;
+        public float m_OvStopWait;
+        public bool m_OvMid;
+        public float m_OvStart;
 
         // ---- per-car results for the debug counters ----
         public bool m_Decision;
@@ -47,6 +58,10 @@ namespace JunctionRules.Stage2
         public float m_InsideYieldSpeed;
         public bool m_HasInsideCrossing;
         public float m_InsideCrossingSpeed;
+        public bool m_HasMid;
+        public float m_MidSpeed;
+        public bool m_HasSafety;
+        public float m_SafetySpeed;
 
         public bool RuleOn
         {
@@ -68,63 +83,112 @@ namespace JunctionRules.Stage2
             return j;
         }
 
+        /// <summary>The lane's overlaps as conflict points in driving coordinates (red-held road lanes are not live).</summary>
+        private struct OverlapConflicts : IConflictList
+        {
+            public DynamicBuffer<LaneOverlap> m_Overlaps;
+            public bool m_Inverse;
+            /// <summary>Bit i = overlap i is held by red (first 64 overlaps; the rest are looked up).</summary>
+            public ulong m_Held;
+            public ComponentLookup<LaneSignal> m_Signals;
+
+            public int Count => m_Overlaps.Length;
+
+            public bool Conflict(int i, out float start, out float end)
+            {
+                LaneOverlap o = m_Overlaps[i];
+                bool held = i < 64 ? (m_Held & (1UL << i)) != 0 : HeldByRed(o, ref m_Signals);
+                return StretchGeometry.ToConflict((int)o.m_Flags, o.m_ThisStart, o.m_ThisEnd, m_Inverse, held, out start, out end);
+            }
+        }
+
+        private static bool HeldByRed(LaneOverlap o, ref ComponentLookup<LaneSignal> signals)
+        {
+            int flags = (int)o.m_Flags;
+            // Only red holds a lane; amber (SafeStop) is live (owner ruling 14 Nov 2026). Track lanes are always live.
+            return (flags & WholePathRule.Road) != 0 && (flags & WholePathRule.Track) == 0
+                && signals.TryGetComponent(o.m_Other, out LaneSignal s) && WholePathRule.IsHeldByRed((int)s.m_Signal);
+        }
+
         /// <summary>
         /// Start of CheckOverlappingLanes for one lane: decide whether the rule covers this lane (a node lane with at
-        /// least one conflict that places a waiting spot), where the spot is, and whether the car has committed.
-        /// origDistance is the game's value after its own "- margin". Committed = the car's front is past the spot
-        /// (owner ruling 14 Nov 2026: the decision is taken only at the spot; no braking-distance or reservation commit).
+        /// least one conflict point), find its waiting spots (entry spot W and mid spots), where the car is among them
+        /// and the first uncrossed point of the stretch it is crossing. origDistance is the game's value after its own
+        /// "- margin". braking = the game's braking distance at the car's current speed (its can-stop test).
         /// </summary>
         public void BeginLane(Entity lane, DynamicBuffer<LaneOverlap> overlaps, ref ComponentLookup<LaneSignal> signals,
-            float curveX, float length, float origDistance, float margin, bool inverse)
+            float curveX, float length, float origDistance, float margin, bool inverse, CarData car, float currentSpeed,
+            float timeStep, ObjectGeometryData geometry)
         {
             m_LaneActive = false;
             m_Committed = false;
             m_Inside = false;
             if (!m_NodeLaneData.HasComponent(lane)) return;
-            float spot = WholePathRule.NoSpot(inverse);
-            for (int i = 0; i < overlaps.Length; i++)
+            OverlapConflicts list = default;
+            list.m_Overlaps = overlaps;
+            list.m_Inverse = inverse;
+            list.m_Signals = signals;
+            int n = overlaps.Length < 64 ? overlaps.Length : 64;
+            for (int i = 0; i < n; i++)
             {
-                LaneOverlap o = overlaps[i];
-                int flags = (int)o.m_Flags;
-                bool held = false;
-                if ((flags & WholePathRule.Road) != 0 && (flags & WholePathRule.Track) == 0 && signals.TryGetComponent(o.m_Other, out LaneSignal s))
-                {
-                    // Only red holds a lane; amber (SafeStop) is live (owner ruling 14 Nov 2026).
-                    held = WholePathRule.IsHeldByRed((int)s.m_Signal);
-                }
-                spot = WholePathRule.AddConflict(spot, flags, o.m_ThisStart, o.m_ThisEnd, inverse, held);
+                if (HeldByRed(overlaps[i], ref signals)) list.m_Held |= 1UL << i;
             }
-            if (!WholePathRule.HasSpot(spot, inverse)) return;
-            spot = WholePathRule.ApplyVariant(spot, inverse, (m_Mode & Stage2Mode.AtLine) != 0);
+            float braking = VehicleUtils.GetBrakingDistance(car, currentSpeed, timeStep);
+            float carLength = geometry.m_Bounds.max.z - geometry.m_Bounds.min.z;
+            if (!m_Stretch.Begin(ref list, origDistance, length, StretchGeometry.ToDriving(curveX, inverse), margin, braking, carLength,
+                    (m_Mode & Stage2Mode.AtLine) != 0))
+            {
+                return;
+            }
             m_Inverse = inverse;
-            m_Spot = spot;
-            m_WaitDistance = WholePathRule.WaitDistance(origDistance, length, spot, curveX, inverse);
-            m_Committed = WholePathRule.IsCommitted(m_WaitDistance, margin);
+            m_Spot = StretchGeometry.ToDriving(m_Stretch.Spots[0], inverse);
+            m_Committed = m_Stretch.PastEntry;
             m_Inside = m_FirstLane && m_Committed;
             m_LaneActive = true;
-            if (RuleOn && !m_Committed) m_Decision = true;
-        }
-
-        /// <summary>The overlap starting at <paramref name="start"/> is part of this lane's whole-path decision.</summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool InScope(float start, bool yieldChecked)
-        {
-            return m_Mode != 0 && m_LaneActive && yieldChecked && WholePathRule.AtOrAfterSpot(start, m_Spot, m_Inverse);
+            if (RuleOn && m_Stretch.Next < m_Stretch.Spots.Count) m_Decision = true;
         }
 
         /// <summary>
-        /// A stock give-way demand from a blocking reservation or a car asking for space: stockSpeed is the game's
+        /// The overlap starting at <paramref name="start"/> (game lane offset) is part of the rule (yield-checked, at or
+        /// after the entry spot). Also classifies it for the checks that follow (Core/StretchRule.cs).
+        /// </summary>
+        public bool InScope(float start, bool yieldChecked)
+        {
+            if (m_Mode == 0 || !m_LaneActive || !yieldChecked || !WholePathRule.AtOrAfterSpot(start, m_Spot, m_Inverse))
+            {
+                m_OvPhase = PointPhase.Stock;
+                return false;
+            }
+            float u = StretchGeometry.ToDriving(start, m_Inverse);
+            m_OvStart = u;
+            m_OvPhase = m_Stretch.Classify(RuleOn, u, out m_OvStopWait, out m_OvMid);
+            return true;
+        }
+
+        /// <summary>
+        /// A stock give-way demand from a blocking reservation (a prediction): stockSpeed is the game's
         /// GetMaxBrakingSpeed(car, distance to this conflict, safe time step). Returns the speed the game then uses.
         /// </summary>
         public float Yield(bool inScope, float stockSpeed, float start, CarData car, float safeTimeStep, Bounds1 speedRange)
         {
             if (!inScope) return stockSpeed;
-            WholePathRule.YieldAction a = WholePathRule.ForYield(RuleOn, true, m_Committed);
-            float result = a == WholePathRule.YieldAction.StopAtSpot ? VehicleUtils.GetMaxBrakingSpeed(car, m_WaitDistance, safeTimeStep)
+            return Apply(StretchState.ForPrediction(m_OvPhase), stockSpeed, car, safeTimeStep, speedRange);
+        }
+
+        /// <summary>A car asking for space (reservation priority 96): held at the spot before it, dropped while crossing.</summary>
+        public float SpaceYield(bool inScope, float stockSpeed, float start, CarData car, float safeTimeStep, Bounds1 speedRange)
+        {
+            if (!inScope) return stockSpeed;
+            return Apply(StretchState.ForSpaceRequest(m_OvPhase), stockSpeed, car, safeTimeStep, speedRange);
+        }
+
+        private float Apply(WholePathRule.YieldAction a, float stockSpeed, CarData car, float safeTimeStep, Bounds1 speedRange)
+        {
+            float result = a == WholePathRule.YieldAction.StopAtSpot ? VehicleUtils.GetMaxBrakingSpeed(car, m_OvStopWait, safeTimeStep)
                 : a == WholePathRule.YieldAction.Suppress ? float.MaxValue : stockSpeed;
             if (Counting && a != WholePathRule.YieldAction.Suppress)
             {
-                RecordYield(MathUtils.Clamp(result, speedRange), start, a == WholePathRule.YieldAction.StopAtSpot);
+                Record(MathUtils.Clamp(result, speedRange), a, false);
             }
             return result;
         }
@@ -133,48 +197,44 @@ namespace JunctionRules.Stage2
         public float PedestrianDistance(bool inScope, float stockDistance)
         {
             if (!inScope) return stockDistance;
-            return WholePathRule.Distance(WholePathRule.ForPedestrian(RuleOn, true, m_Committed), stockDistance, m_WaitDistance);
+            return WholePathRule.Distance(StretchState.ForPedestrian(m_OvPhase), stockDistance, m_OvStopWait);
         }
 
         /// <summary>After the game's priority look-ahead: returns the curve position the game goes on with.</summary>
         public float AfterProjection(bool inScope, float originalY, float projectedY, bool objectPastStart)
         {
             if (!inScope || projectedY == originalY) return projectedY;
-            return WholePathRule.UndoProjection(RuleOn, true, m_Committed, objectPastStart) ? originalY : projectedY;
+            return StretchState.UndoProjection(m_OvPhase, objectPastStart) ? originalY : projectedY;
         }
 
         /// <summary>Distance for the game's vehicle braking (UpdateMaxSpeed) on a conflicting lane.</summary>
         public float VehicleDistance(bool inScope, float stockDistance, bool projected, bool merge)
         {
             if (!inScope) return stockDistance;
-            return WholePathRule.Distance(WholePathRule.ForVehicle(RuleOn, true, m_Committed, projected, merge), stockDistance, m_WaitDistance);
+            return WholePathRule.Distance(StretchState.ForVehicle(m_OvPhase, projected, merge), stockDistance, m_OvStopWait);
         }
 
         /// <summary>Counters only: after the game's vehicle braking, note what limited the car.</summary>
         public void AfterVehicle(bool inScope, float maxSpeedBefore, float maxSpeedAfter, bool projected, bool merge, float start)
         {
             if (!inScope || !Counting || !(maxSpeedAfter < maxSpeedBefore)) return;
-            WholePathRule.YieldAction a = WholePathRule.ForVehicle(RuleOn, true, m_Committed, projected, merge);
-            if (projected)
-            {
-                RecordYield(maxSpeedAfter, start, a == WholePathRule.YieldAction.StopAtSpot);
-            }
-            else if (!merge)
-            {
-                if (a == WholePathRule.YieldAction.StopAtSpot) RecordLater(maxSpeedAfter, start);
-                else if (m_Inside) Min(ref m_HasInsideCrossing, ref m_InsideCrossingSpeed, maxSpeedAfter);
-            }
+            if (merge && !projected) return;
+            Record(maxSpeedAfter, StretchState.ForVehicle(m_OvPhase, projected, merge), !projected);
         }
 
-        private void RecordYield(float speed, float start, bool stoppedAtSpot)
+        private void Record(float speed, WholePathRule.YieldAction a, bool physical)
         {
-            if (stoppedAtSpot) RecordLater(speed, start);
-            else if (m_Inside) Min(ref m_HasInsideYield, ref m_InsideYieldSpeed, speed);
-        }
-
-        private void RecordLater(float speed, float start)
-        {
-            if (WholePathRule.AfterSpot(start, m_Spot, m_Inverse)) Min(ref m_HasLater, ref m_LaterSpeed, speed);
+            if (a == WholePathRule.YieldAction.StopAtSpot)
+            {
+                if (m_OvPhase == PointPhase.Safety) Min(ref m_HasSafety, ref m_SafetySpeed, speed);
+                else if (m_OvMid) Min(ref m_HasMid, ref m_MidSpeed, speed);
+                else if (m_Stretch.Spots.Count > 0 && m_OvStart > m_Stretch.Spots[0] + WholePathRule.SpotEpsilon) Min(ref m_HasLater, ref m_LaterSpeed, speed);
+            }
+            else if (a == WholePathRule.YieldAction.Stock && m_Inside)
+            {
+                if (physical) Min(ref m_HasInsideCrossing, ref m_InsideCrossingSpeed, speed);
+                else Min(ref m_HasInsideYield, ref m_InsideYieldSpeed, speed);
+            }
         }
 
         private static void Min(ref bool has, ref float value, float speed)
@@ -194,6 +254,8 @@ namespace JunctionRules.Stage2
             if (Stage2Counters.IsStandingOn(m_HasLater, m_LaterSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.WaitedForLater);
             if (Stage2Counters.IsStandingOn(m_HasInsideYield, m_InsideYieldSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.StoppedInsideYield);
             if (Stage2Counters.IsStandingOn(m_HasInsideCrossing, m_InsideCrossingSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.StoppedInsideCrossing);
+            if (Stage2Counters.IsStandingOn(m_HasMid, m_MidSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.WaitedAtMidSpot);
+            if (Stage2Counters.IsBinding(m_HasSafety, m_SafetySpeed, finalMaxSpeed)) Add(counters, Stage2Counters.SafetyStops);
         }
 
         private static unsafe void Add(NativeArray<long> counters, int index)

@@ -35,6 +35,12 @@ namespace JunctionRules.Tests
             ("Stage2SwitchTests", Stage2SwitchTests),
             ("Stage2CountersTests", Stage2CountersTests),
             ("Stage2RepoTests", Stage2RepoTests),
+            ("StretchSpotTests", StretchSpotTests),
+            ("StretchDecisionTests", StretchDecisionTests),
+            ("StretchRootCauseTests", StretchRootCauseTests),
+            ("StretchMidSpotTests", StretchMidSpotTests),
+            ("StretchDeadlockTests", StretchDeadlockTests),
+            ("StretchRepoTests", StretchRepoTests),
         };
 
         private static int Main(string[] args)
