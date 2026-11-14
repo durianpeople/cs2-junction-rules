@@ -9,10 +9,10 @@ build predates a code fix: rebuild it first with the game closed (command in `ST
 
 | File | sha256 |
 |---|---|
-| `JunctionRules.dll` | `08c48ac3a206ad49c22cef6e4962184623b174db08e27e006da618a8bae21efa` |
-| `JunctionRules.pdb` | `6ec437e94efd6cdb0b05d98fff24e1f72a6d98276a2e24f061cbcb999ea209c2` |
-| `JunctionRules_win_x86_64.dll` (Burst code) | `0103b33c40e1d387ac8a27de789bdd4f99dc32c58ac89fbfa53fc6950bdb7288` |
-| `JunctionRules_win_x86_64.pdb` | `95a45e9368251bb2a50c87a7dcbc26a8e0ef69c6ba9cde16aa7494be54347029` |
+| `JunctionRules.dll` | `5171d4e601184c1d8b854cfc5c91cda69012270048de6796d83de27822086a32` |
+| `JunctionRules.pdb` | `b0613fe49b886c8bbea2cc178cced62dd3d897e91b0c2d8e238791840b435c09` |
+| `JunctionRules_win_x86_64.dll` (Burst code) | `df74ad128adf51dae8afb5ecbd5dc92548860fb71668e2bc5c4e70d8cedce337` |
+| `JunctionRules_win_x86_64.pdb` | `b9125bfb724352248bee85fb6c17d96a9dc873406c56e31942caf636d7c19e09` |
 
 Built for game **1.6.4f1 (1097.158a)** only. On any other version the mod keeps the game's own system and says so.
 
@@ -26,10 +26,10 @@ Built for game **1.6.4f1 (1097.158a)** only. On any other version the mod keeps 
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-08c48ac3a206ad49c22cef6e4962184623b174db08e27e006da618a8bae21efa  JunctionRules.dll
-6ec437e94efd6cdb0b05d98fff24e1f72a6d98276a2e24f061cbcb999ea209c2  JunctionRules.pdb
-0103b33c40e1d387ac8a27de789bdd4f99dc32c58ac89fbfa53fc6950bdb7288  JunctionRules_win_x86_64.dll
-95a45e9368251bb2a50c87a7dcbc26a8e0ef69c6ba9cde16aa7494be54347029  JunctionRules_win_x86_64.pdb
+5171d4e601184c1d8b854cfc5c91cda69012270048de6796d83de27822086a32  JunctionRules.dll
+b0613fe49b886c8bbea2cc178cced62dd3d897e91b0c2d8e238791840b435c09  JunctionRules.pdb
+df74ad128adf51dae8afb5ecbd5dc92548860fb71668e2bc5c4e70d8cedce337  JunctionRules_win_x86_64.dll
+b9125bfb724352248bee85fb6c17d96a9dc873406c56e31942caf636d7c19e09  JunctionRules_win_x86_64.pdb
 SUMS
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
