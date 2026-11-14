@@ -41,10 +41,10 @@ Built for game **1.6.4f1 (1097.158a)** only (same version gate as 0.1.0/0.2.0).
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
+94a9226d9972857d0b561abb9f704902180607de6e70707bcded335b3164b7cf  JunctionRules.dll
+521a1de6ca8a82f95cea471ac3205d82b2582b2292201508494653f2a0b7fc31  JunctionRules.pdb
+2ec79dc48b95592824a4cd931d900c7359a936b95bfed1e24dd2fbc535673bf7  JunctionRules_win_x86_64.dll
+30311c033082de2d46fbfbd5298132701d3125c2f261bfe151e3244f5311159a  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
