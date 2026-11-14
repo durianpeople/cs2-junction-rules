@@ -1,4 +1,4 @@
-# Probe kit: Junction Rules 0.2.1 (stage 2, whole-junction gap decision + collision fix)
+# Probe kit: Junction Rules 0.2.1 (stage 2, whole-junction gap decision + collision fix); 0.2.2 in section 8
 
 0.2.1 replaces the installed 0.2.0 Burst build. It fixes the collisions between cars that had already gone (root causes:
 `docs/STAGE2-ANALYSIS.md` section 7) with the owner ruling of 14 Nov 2026 (section 8):
@@ -224,3 +224,97 @@ The three log lines of section 2; per pass the 5 timing lines (or mean/p95/frame
 and FPS; per junction and rule: any collision between cars that had gone, safety stops seen, cars waiting on a central reservation, where waiting cars stood, any car stopped inside to give way, turners' behaviour
 (second turner stopping at the spot), STOP roll-up, longest minor-arm wait, jams/deadlocks; the optional passes if
 done; any exception text.
+
+## 8. 0.2.2: trailers in the vehicle length (JR-T-002d)
+
+0.2.2 = 0.2.1 plus one change (owner ruling 14 Nov 2026, `docs/STAGE2-ANALYSIS.md` section 9): a mid-junction waiting
+spot must fit the **whole vehicle, trailers included** (tractor + trailers by the game's own attach points). Cars,
+buses and bicycles without trailers behave exactly as in 0.2.1. Owner rulings recorded with it (no behaviour change):
+a car physically in a later crossing makes the crossing car brake for it there (KEEP); a follower queued behind a car
+on a central reservation may stand in the near carriageway (ALLOWED); "At the stop line" keeps using mid spots (KEEP).
+
+Build to install: `~/Code/cs2-junction-rules/.staged/0.2.2-burst/`. If that folder holds a `STALE.md`, it has only a
+managed build (made while the game was running): do the Burst rebuild in `STALE.md` first (game closed), then put the
+new sha256s in the table and in the install block below. Until then the install block refuses (the sums below are
+placeholders on purpose: `0000...`).
+
+| File | sha256 |
+|---|---|
+| `JunctionRules.dll` | `PLACEHOLDER - see .staged/0.2.2-burst/STALE.md` |
+| `JunctionRules.pdb` | `PLACEHOLDER` |
+| `JunctionRules_win_x86_64.dll` (Burst code) | `PLACEHOLDER` |
+| `JunctionRules_win_x86_64.pdb` | `PLACEHOLDER` |
+
+### 8.1 Install over whatever is installed (game closed only; backs up the installed files)
+
+```
+(
+  CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
+  BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.2-prev-installed-backup"
+  cd ~/Code/cs2-junction-rules/.staged/0.2.2-burst || exit 1
+  if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
+  if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
+  if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
+  sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
+SUMS
+  if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
+    mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
+  fi
+  mkdir -p "$CS2/Mods/JunctionRules" &&
+  cp JunctionRules.dll JunctionRules.pdb JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
+  echo "installed 0.2.2"
+)
+```
+
+Same rules as section 1: copies nothing unless the game is closed, the build is not stale and all four sums match. The
+first run keeps the installed files (whatever version that is: 0.2.0 or 0.2.1) in `.staged/0.2.2-prev-installed-backup/`;
+an existing backup is never overwritten.
+
+Log check (section 2) with `OnLoad version 0.2.2.0, copy made from game 1.6.4f1 (1097.158a)`; everything else as
+section 2. Passes and counters as sections 3-5 (same junctions, same method).
+
+### 8.2 What to watch (0.2.2)
+
+- **Articulated trucks never wait on a central reservation too short for them**: a semi-trailer, a truck with a
+  drawbar trailer or a car with a caravan crossing or turning across a divided road inside one junction either waits on
+  the reservation with the WHOLE combination clear of both carriageways, or (reservation too short for it) waits at the
+  entry spot and crosses everything in one go. Report any trailer left standing across the near carriageway while its
+  tractor waits on the reservation (that was possible in 0.2.1), with the junction name and the vehicle type.
+- Cars on the same reservation behave as in 0.2.1 (mid spot where the car fits).
+- A follower queued behind a car on the reservation may stand in the near carriageway: allowed by owner ruling, not a
+  fault.
+- `waited at a mid-junction spot` may be a little lower than 0.2.1 on roads with truck traffic (fewer spots for long
+  vehicles); timing as 0.2.1 within noise (one extra buffer walk per car with trailers while stage 2 is on).
+
+### 8.3 Rollback
+
+- Immediate: **Junction gap rule** back to Stock, or **Car driving** back to Game's own.
+- Back to 0.2.1 Burst (game closed), from `.staged/0.2.1-burst/`, checked against the sums in the section 1 install
+  block of THIS file (the block reads them from there, so it works once the 0.2.1 sums are filled in; while section 1
+  still holds `0000...` placeholders or `.staged/0.2.1-burst/STALE.md` exists it refuses):
+
+  ```
+  (
+    CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
+    KIT="$HOME/Code/cs2-junction-rules/PROBE-STAGE2.md"
+    cd ~/Code/cs2-junction-rules/.staged/0.2.1-burst || exit 1
+    if [ ! -d "$CS2/Mods/JunctionRules" ]; then echo "mod folder not found - nothing changed"; exit 1; fi
+    if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing changed"; exit 1; fi
+    if [ -e STALE.md ]; then echo "0.2.1 BUILD IS STALE - see its STALE.md; nothing changed"; exit 1; fi
+    SUMS21="$(awk '/<<.SUMS./{n++; if(n==1){on=1; next}} on && /^SUMS$/{exit} on' "$KIT")"
+    if [ "$(printf '%s\n' "$SUMS21" | grep -c '  JunctionRules')" != 4 ] || printf '%s\n' "$SUMS21" | grep -q '^0000'; then
+      echo "0.2.1 SUMS NOT FILLED IN (section 1 of PROBE-STAGE2.md) - nothing changed"; exit 1; fi
+    printf '%s\n' "$SUMS21" | sha256sum -c --strict - || { echo "SHA256 MISMATCH - nothing changed"; exit 1; }
+    cp JunctionRules.dll JunctionRules.pdb JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
+    echo "0.2.1 restored"
+  )
+  ```
+
+  (`.staged/0.2.2-prev-installed-backup/` from 8.1 holds the files that were installed before 0.2.2 as a second copy.)
+  Further back: section 6 (0.2.0), PROBE-STAGE1.md (0.1.0 / remove).
+
+Report back as section 7, plus any trailer standing across a carriageway while its tractor waits mid-junction.
