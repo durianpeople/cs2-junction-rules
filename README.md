@@ -35,6 +35,13 @@ oncoming straight, and the straight car no longer waits for the turner's reserva
 Analysis, per-case behaviour and owner rulings: `docs/STAGE2-ANALYSIS.md`;
 code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 
+Stage 3 probe (0.3.0-probe): a **yellow box paint test**, visual only and default off. With **Yellow box paint test** on,
+the mod draws a UK yellow box (TSRGD diagram 1043; TSM chapter 5 dimensions: 200 mm border, 150 mm diagonals, 2 m /
+2.5 m spacing) on the junctions in `ModsData/JunctionRules/paint-test.json`, with the game's own surface shader and its
+own buffers (option E of `docs/STAGE3-PAINT-RESEARCH.md`). Draw only: nothing goes into the city or the save, driving is
+unchanged. Off = the system does not run. Any failure logs one line and switches the test off for the session.
+In-game test: PROBE-STAGE3-PAINT.md.
+
 ## Layout
 
 | Path | What |
@@ -42,14 +49,15 @@ code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 | `JunctionRules/Vanilla/` | Copied game code (generated, do not edit by hand) plus stage 2 code only inside `// JR-STAGE2 BEGIN/END` blocks. Each file has a header with its source. |
 | `JunctionRules/Core/` | Game-independent logic: version gate, driving switch, timing window, IL hasher, whole-junction rule arithmetic (`WholePathRule`, `StretchRule`), 0.2.3 arrival time / projection / safety-stop events / histograms (`ArrivalTime.cs`), stage 2 handoff and counter texts. `VehicleLength.cs` (0.2.2) is unused since 0.2.3. Unit-tested. |
 | `JunctionRules/Stage2/` | Job side of the whole-junction rule (`JRWholeJunction`: spots, phases, arrival-time projection, feeding-lane scan) and the copy's main-thread stage 2 state (`JRStage2Bridge`: counters, safety-event table); named only by the copy and the copy's timing probe. `JRVehicleLength.cs` (0.2.2) is unused since 0.2.3. |
+| `JunctionRules/Paint/` | Stage 3 paint test (draw-only): `YellowBoxPaintSystem` (list, read-only node lookup, edit tracking, cost meter, draw hook), `PaintGpu` (own material, mesh, buffers), `PaintRegistration` (the only place outside `Paint/` naming them). Pure geometry and list parsing are in `Core/BoxPaintGeometry.cs` and `Core/PaintTestConfig.cs` (unit-tested). |
 | `JunctionRules/Systems/` | `CarDrivingSwitchSystem` (chooses the pair each step), `CopyPair` (the only place that registers/creates the copy), navigation timing probes. |
 | `JunctionRules/Settings/` | Options page and English texts. |
 | `JunctionRules/Mod.cs` | Version gate and system registration. |
 | `tools/vanilla_copy.py`, `tools/vanilla_rules.json` | Makes the copy from the decompile and proves it unchanged. |
 | `tools/IlHash/` | Prints the vanilla code hash used by the version gate; `--copy` compares the copy's IL with Game.dll. |
 | `tests/JunctionRules.Tests/` | Console test runner. |
-| `DEVIATIONS.md`, `REFERENCERS.md`, `PROBE-STAGE1.md`, `PROBE-STAGE2.md` | Every change to the game code; who uses the copied types; in-game test kits. |
-| `docs/STAGE2-ANALYSIS.md` | Where the game decides conflict by conflict, the change, per-case table, deadlock/starvation, owner rulings. `docs/vanilla_copy_*_0.2.0.txt` ... `*_0.2.3.txt`: the diff script's output per version. |
+| `DEVIATIONS.md`, `REFERENCERS.md`, `PROBE-STAGE1.md`, `PROBE-STAGE2.md`, `PROBE-STAGE3-PAINT.md` | Every change to the game code; who uses the copied types; in-game test kits. |
+| `docs/STAGE2-ANALYSIS.md` | Where the game decides conflict by conflict, the change, per-case table, deadlock/starvation, owner rulings. `docs/vanilla_copy_*_0.2.0.txt` ... `*_0.3.0.txt`: the diff script's output per version. |
 
 ## Settings
 
@@ -61,6 +69,9 @@ code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 - **Whole junction: waiting spot**: `Before the first crossing` (default, owner ruling) or `At the stop line`.
 - **Whole junction: turning across oncoming traffic gives way** (0.2.4): on (default) or off (= 0.2.3). Acts only
   with the Whole junction rule; applies at the next simulation step; traffic side from the game's own city setting.
+- **Yellow box paint test** (stage 3 probe): off (default) or on; **what to draw** (Box / Plain fill / Outline only);
+  **paint onto** (Roads (default) / Roads + Other / Everything but vehicles); buttons Refresh test list, Add junction at
+  camera centre, Log paint cost now; Paint test status. See PROBE-STAGE3-PAINT.md.
 - **Status**: what runs now, the version check result, and whether the copy can run.
 - **Log navigation timing** (debug): one line per 1024 simulation frames with the navigation job timing of the pair
   that ran; the copy's line also names the junction gap rule and the stage 2 counters (0.2.3: whole-path decisions,

@@ -61,6 +61,17 @@ namespace JunctionRules.Tests
 
             string csproj = File.ReadAllText(Path.Combine(src, "JunctionRules.csproj"));
             Check(csproj.Contains("<Version>0.3.0</Version>") && csproj.Contains("<InformationalVersion>0.3.0-probe</InformationalVersion>"), "version 0.3.0-probe");
+
+            string kit = Path.Combine(RepoRoot(), "PROBE-STAGE3-PAINT.md");
+            Check(File.Exists(kit), "probe kit PROBE-STAGE3-PAINT.md exists");
+            if (File.Exists(kit))
+            {
+                string k = File.ReadAllText(kit);
+                foreach (string step in new[] { "| S6 |", "| S7 |", "| S8 |", "| S9 |", "| S10 |", "| S11 |" })
+                    Check(k.Contains(step), "probe kit has step " + step.Trim('|', ' '));
+                Check(k.Contains("paint-test.json") && k.Contains("FAILED while") && k.Contains("paint cost over"), "probe kit names the list file, the failure line and the cost line");
+                Check(k.Contains("0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll") || !File.Exists(Path.Combine(RepoRoot(), ".staged", "0.3.0-probe", "STALE.md")), "probe kit install sums stay placeholders while the staged build is stale");
+            }
         }
     }
 }
