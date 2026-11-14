@@ -254,8 +254,17 @@ namespace JunctionRules.Tests
 
             Check(Stage2Counters.Format(1, null) == "; junction gap rule stock", "suffix without counters");
             Check(Stage2Counters.Format(3, null).Contains("mixed"), "suffix for a switched window");
-            string f = Stage2Counters.Format(2, new long[] { 10, 2, 0, 1, 3, 4 });
-            Check(f == "; junction gap rule whole junction; car-steps: stretch decisions 10, waited at entry spot for a later conflict 2, waited at a mid-junction spot 3, safety stops inside 4, stopped inside for a give-way 0, stopped inside behind a crossing car 1", "suffix with counters: " + f);
+            var dl = new long[Stage2Counters.Count];
+            dl[Stage2Counters.Decisions] = 10; dl[Stage2Counters.WaitedForLater] = 2; dl[Stage2Counters.StoppedInsideCrossing] = 1;
+            dl[Stage2Counters.SafetyStops] = 4; dl[Stage2Counters.SafetyStopEvents] = 1; dl[Stage2Counters.ProjectedLaneHits] = 3; dl[Stage2Counters.FeedingLaneHits] = 5;
+            string f0 = Stage2Counters.Format(2, dl);
+            Check(f0 == "; junction gap rule whole junction; car-steps: whole-path decisions 10, waited at entry spot for a later conflict 2, safety stops inside 4 (events 1), stopped inside for a give-way 0, stopped inside behind a crossing car 1; arrival projection: busy only by projection, junction-lane car 3, feeding-lane car 5; points at W 0", "suffix with counters: " + f0);
+            dl[Stage2Counters.PointSamples] = 4; dl[Stage2Counters.PointDistanceSumCm] = 4000; dl[Stage2Counters.ArrivalSumMs] = 8000;
+            dl[Stage2Counters.DistanceHistogram + 2] = 1; dl[Stage2Counters.DistanceHistogram + 3] = 3;
+            dl[Stage2Counters.ArrivalHistogram + 3] = 2; dl[Stage2Counters.ArrivalHistogram + 4] = 2;
+            string f = Stage2Counters.Format(2, dl);
+            Check(f.EndsWith("; points at W 4, distance from W mean 10.0 m [0-2:0 2-4:0 4-8:1 8-12:3 12-16:0 16-24:0 24-32:0 32+:0 (median in 8-12)], own arrival mean 2.00 s [0-0.5:0 0.5-1:0 1-1.5:0 1.5-2:2 2-2.5:2 2.5-3:0 3-4:0 4+:0 (median in 1.5-2)]"), "suffix with point histograms: " + f);
+            Check(!f.Contains("mid-junction"), "0.2.3: no mid-junction counter");
             Check(Stage2Counters.Format(2, new long[] { 1, 2, 3, 4 }) == "; junction gap rule whole junction", "too few counters: rule only");
 
             var w = new TimingWindow("Junction Rules copy", 4);
@@ -335,9 +344,10 @@ namespace JunctionRules.Tests
             string settings = File.ReadAllText(Path.Combine(src, "Settings", "JunctionRulesSettings.cs"));
             Check(settings.Contains("GapRule = JunctionGapRule.Stock;") && settings.Contains("WaitingSpot = JunctionWaitingSpot.BeforeFirstCrossing;"), "settings default to stock / before the first crossing");
             string bridge = File.ReadAllText(Path.Combine(src, "Stage2", "JRWholeJunction.cs"));
-            Check(!System.Text.RegularExpressions.Regex.IsMatch(bridge, @"\bnew\s+\w"), "job-side struct has no 'new' (no managed allocation)");
+            string bridgeCode = System.Text.RegularExpressions.Regex.Replace(bridge, @"//.*", "");
+            Check(!System.Text.RegularExpressions.Regex.IsMatch(bridgeCode, @"\bnew\s+(?!PathNode\()\w"), "job-side struct has no 'new' except the PathNode value type (no managed allocation)");
             string proj = File.ReadAllText(Path.Combine(src, "JunctionRules.csproj"));
-            Check(proj.Contains("<Version>0.2.2</Version>"), "version 0.2.2");
+            Check(proj.Contains("<Version>0.2.3</Version>"), "version 0.2.3");
         }
     }
 }

@@ -71,7 +71,7 @@
         "files": {
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 2
         },
-        "reason": "Both IterateFirstLane overloads: the lane checked next is the car's current lane."
+        "reason": "Both IterateFirstLane overloads: the lane checked next is the car's current lane; 0.2.3: remembers the current lane(s) (the car's own approach, never counted as a feeding lane)."
       },
       "S2-03": {
         "files": {
@@ -83,7 +83,7 @@
         "files": {
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
-        "reason": "CheckOverlappingLanes, before the overlap loop: waiting spots (entry + mid spots where the car fits; red excluded, amber live), current stretch and first uncrossed point of a junction (node) lane (0.2.1)."
+        "reason": "CheckOverlappingLanes, before the overlap loop: entry spot (red excluded, amber live; 0.2.3: no mid spots), where the car is, first uncrossed point of a junction (node) lane, and (0.2.3) the car's motion for the arrival time (lane drive speed from the stock speed limit and turn cap)."
       },
       "S2-05": {
         "files": {
@@ -125,7 +125,7 @@
         "files": {
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
-        "reason": "While crossing with no safety stop possible the look-ahead is undone unless the other car is past the overlap start (game's own committed semantics)."
+        "reason": "While crossing with no safety stop possible the look-ahead is undone unless the other car is past the overlap start (game's own committed semantics); 0.2.3: deciding / safety re-check: the stock 2 s look-ahead becomes 2 s + the car's own arrival time."
       },
       "S2-11": {
         "files": {
@@ -139,29 +139,35 @@
         },
         "reason": "Restores the game's distance after the vehicle check; counters."
       },
+      "S2-12": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "0.2.3 arrival-time projection: cars on the lanes feeding the conflicting junction lane, projected by the car's own arrival time, as virtual reservations through the unchanged stock reservation test (deciding / safety re-check only)."
+      },
       "S2-20": {
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
-        "reason": "Job fields: stage 2 mode, the debug counter array; 0.2.2: read-only tractor/trailer prefab lookups and the layout buffer lookup."
+        "reason": "Job fields: stage 2 mode, the debug counter array; 0.2.3: the safety-stop event table (debug) and a read-only ConnectedEdge buffer lookup (feeding lanes). 0.2.2's trailer lookups removed (no mid spots)."
       },
       "S2-21": {
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
-        "reason": "Hands the mode (0.2.2: and the car's whole vehicle length, computed here as a local) to each car's iterator."
+        "reason": "Hands the mode and the read-only lookups (0.2.3: Owner, Lane, SubLane, ConnectedEdge for the feeding lanes; the counter array) to each car's iterator."
       },
       "S2-22": {
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
-        "reason": "Debug counters, once per car and step, only when counting."
+        "reason": "Debug counters, once per car and step, only when counting (0.2.3: safety-stop events via the car's entity and the simulation frame)."
       },
       "S2-23": {
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
-        "reason": "OnUpdate: takes this step's mode from the main-thread handoff; 0.2.2: tractor/trailer prefab lookups and the layout buffer lookup."
+        "reason": "OnUpdate: takes this step's mode from the main-thread handoff; 0.2.3: the safety-event table and the ConnectedEdge lookup (0.2.2 trailer lookups removed)."
       },
       "S2-24": {
         "files": {

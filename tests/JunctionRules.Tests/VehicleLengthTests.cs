@@ -5,7 +5,8 @@ using JunctionRules.Core;
 namespace JunctionRules.Tests
 {
     /// <summary>
-    /// 0.2.2 (JR-T-002d): mid-junction waiting spots need room for the whole vehicle, trailers included
+    /// 0.2.2 (JR-T-002d): mid-junction waiting spots needed room for the whole vehicle, trailers included (0.2.3: mid spots
+    /// removed by owner clarification; the pure length code stays, unused)
     /// (Core/VehicleLength.cs; job side Stage2/JRVehicleLength.cs, navigation block S2-21).
     /// Attach points as the game builds them (VehicleInitializeSystem): tractor z = bounds.min.z + CarTractor.m_AttachOffset.z,
     /// trailer z = bounds.max.z - CarTrailerPrefab.m_AttachOffset.z; the trailer's attach point sits on the tractor's.
@@ -46,40 +47,18 @@ namespace JunctionRules.Tests
             twoAbut.AddTrailer(-3f, 1.5f, -1.5f, 1.5f);
             Check(Near(twoAbut.Length, 4f + 6f + 3f), "two trailers hitched at their ends: sum of all three lengths");
 
-            // Mid spots: the divided road of StretchSpotTests (8 m central reservation on a 40 m node lane).
-            var divided = new[] { C(0.05f, 0.15f), C(0.15f, 0.25f), C(0.45f, 0.55f), C(0.55f, 0.65f) };
-            var tractorOnly = Car(40f, 0f, 0f, CombinedLength.Of(-3f, 3f).Length, divided);
-            var withTrailer = Car(40f, 0f, 0f, semi.Length, divided);
-            Check(tractorOnly.Spots.Count == 2, "tractor alone (6 m) fits the 8 m reservation: mid spot");
-            Check(withTrailer.Spots.Count == 1, "tractor + trailer (16.5 m) does not fit the 8 m reservation: no mid spot, one decision at W");
-            var carSpots = Car(40f, 0f, 0f, car.Length, divided);
-            var carOld = Car(40f, 0f, 0f, 4.5f, divided);
-            Check(carSpots.Spots.Count == carOld.Spots.Count && Near(carSpots.Spots[1], carOld.Spots[1]), "car without trailer: same spots as 0.2.1");
-            // A reservation long enough for the whole articulated truck gives it the mid spot again.
-            var wide = new[] { C(0.05f, 0.10f), C(0.10f, 0.15f), C(0.65f, 0.75f) };   // 20 m gap on 40 m
-            Check(Car(40f, 0f, 0f, semi.Length, wide).Spots.Count == 2, "20 m reservation fits the 16.5 m truck + margin: mid spot");
-            Check(Car(40f, 0f, 0f, road.Length, wide).Spots.Count == 1, "25 m road train does not fit the 20 m reservation");
-
-            // Repo: the job side and the navigation block (S2-21) wire the length in, only when stage 2 is on.
+            // 0.2.3 (owner clarification 14 Nov 2026): no mid spots, so nothing needs the vehicle length any more. The
+            // pure code above stays (harmless, unused); the navigation job no longer computes it (off the hot path).
             string root = RepoRoot();
             if (root == null) { Check(false, "repo root found"); return; }
             string nav = File.ReadAllText(Path.Combine(root, "JunctionRules", "Vanilla", "JRCarNavigationSystem.cs"));
-            int s21 = nav.IndexOf("BEGIN S2-21", StringComparison.Ordinal);
-            int s21End = s21 < 0 ? -1 : nav.IndexOf("JR-STAGE2 END", s21, StringComparison.Ordinal);
-            string s21Block = s21 >= 0 && s21End > s21 ? nav.Substring(s21, s21End - s21) : "";
-            Check(s21Block.Contains("if (m_JRMode != 0 && m_JRLayoutData.TryGetBuffer(entity, out DynamicBuffer<LayoutElement> jrLayout))")
-                  && s21Block.Contains("JRVehicleLength.WithTrailers(prefabObjectGeometryData, jrLayout"),
-                "S2-21 computes the whole length from the car's layout buffer only when stage 2 is on");
-            Check(s21Block.Contains("float jrVehicleLength = 0f;") && s21Block.Contains("JRWholeJunction.Create(m_JRMode, m_NodeLaneData, jrVehicleLength)"),
-                "S2-21 hands the length (a local) to the iterator");
+            Check(!nav.Contains("JRVehicleLength") && !nav.Contains("m_JRLayoutData") && !nav.Contains("m_JRTractorData"), "0.2.3: the job no longer computes the vehicle length (no hot-path cost)");
             // Review JR-T-002d: the job runs in parallel and its workers share the one job struct, so Execute must never write a
             // job field (the first 0.2.2 cut stored the per-car length in m_JRVehicleLength: a data race between cars).
             Check(!nav.Contains("m_JRVehicleLength") && !System.Text.RegularExpressions.Regex.IsMatch(nav, @"(?m)^\s*m_JR\w*\s*="),
                 "no per-car value is written to a job-struct field (parallel workers share it)");
-            Check(nav.Contains("GetComponentLookup<CarTractorData>(isReadOnly: true)") && nav.Contains("GetComponentLookup<CarTrailerData>(isReadOnly: true)")
-                  && nav.Contains("GetBufferLookup<LayoutElement>(isReadOnly: true)"), "S2-23 sets the read-only prefab and layout lookups");
             string jr = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRWholeJunction.cs"));
-            Check(jr.Contains("m_VehicleLength > 0f ? m_VehicleLength : geometry.m_Bounds.max.z - geometry.m_Bounds.min.z"), "BeginLane uses the whole length, else the 0.2.1 bounds length");
+            Check(!jr.Contains("m_VehicleLength"), "0.2.3: BeginLane no longer takes a vehicle length");
             string vl = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRVehicleLength.cs"));
             string core = File.ReadAllText(Path.Combine(root, "JunctionRules", "Core", "VehicleLength.cs"));
             foreach (var (name, text) in new[] { ("JRVehicleLength", vl), ("CombinedLength", core) })

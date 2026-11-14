@@ -39,14 +39,14 @@ namespace JunctionRules.Tests
             (flags, (int)Math.Round(start * 255f, MidpointRounding.AwayFromZero), (int)Math.Round(end * 255f, MidpointRounding.AwayFromZero), held);
 
         /// <summary>The stretch state of a car whose front is at <paramref name="front"/> (driving coordinates).</summary>
-        private static StretchState Car(float len, float front, float speed, float carLength, params (int, int, int, bool)[] items) =>
-            CarOn(len, front, speed, carLength, false, false, items);
+        private static StretchState Car(float len, float front, float speed, params (int, int, int, bool)[] items) =>
+            CarOn(len, front, speed, false, false, items);
 
-        private static StretchState CarOn(float len, float front, float speed, float carLength, bool inverse, bool atLine, params (int, int, int, bool)[] items)
+        private static StretchState CarOn(float len, float front, float speed, bool inverse, bool atLine, params (int, int, int, bool)[] items)
         {
             var list = new ArrayConflicts { Items = items, Inverse = inverse };
             var s = default(StretchState);
-            bool active = s.Begin(ref list, -M, len, front, M, BrakingDistance(speed), carLength, atLine);
+            bool active = s.Begin(ref list, -M, len, front, M, BrakingDistance(speed), atLine);
             s.Next = active ? s.Next : -1;
             return s;
         }
@@ -60,67 +60,60 @@ namespace JunctionRules.Tests
             Check(Near(si, 1f - B(102)) && Near(ei, 1f - B(51)), "inverted lane: conflict in driving coordinates");
 
             // No conflict point: the rule does not cover the lane.
-            var none = CarOn(20f, 0f, 0f, 4.5f, false, false, C(0.2f, 0.4f, 0));
+            var none = CarOn(20f, 0f, 0f, false, false, C(0.2f, 0.4f, 0));
             Check(none.Next == -1, "only a pedestrian crossing: no spot, lane stays stock");
 
             // One group of touching/overlapping conflicts: one spot (W) = the 0.2.0 spot.
             var g = new[] { C(0.30f, 0.45f), C(0.45f, 0.60f), C(0.10f, 0.32f) };
-            var s1 = Car(20f, 0f, 0f, 4.5f, g);
+            var s1 = Car(20f, 0f, 0f, g);
             Check(s1.Spots.Count == 1 && Near(s1.Spots[0], B(26)), "touching / overlapping conflicts: one spot = start of the first");
             Check(Near(s1.Spots[0], Spot(false, g)), "entry spot equals the 0.2.0 waiting spot");
 
-            // Divided road: two carriageways of two lanes each, central reservation 8 m long on a 40 m node lane.
+            // 0.2.3 (owner clarification 14 Nov 2026): no mid-junction spots, central reservations are not special.
+            // Divided road: two carriageways, central reservation 8 m long on a 40 m node lane -> still ONE spot (W).
             var divided = new[] { C(0.05f, 0.15f), C(0.15f, 0.25f), C(0.45f, 0.55f), C(0.55f, 0.65f) };
-            var d = Car(40f, 0f, 0f, 4.5f, divided);
-            Check(d.Spots.Count == 2 && Near(d.Spots[0], B(13)) && Near(d.Spots[1], B(115)), "divided road: entry spot + central-reservation spot");
-            // The mid spot needs the car's own body: front at the margin before the far carriageway, rear clear of the near one.
-            var truck = Car(40f, 0f, 0f, 12f, divided);
-            Check(truck.Spots.Count == 1, "12 m vehicle does not fit the 8 m reservation: no mid spot, one decision at W");
-            var narrow = Car(40f, 0f, 0f, 4.5f, C(0.05f, 0.15f), C(0.15f, 0.25f), C(0.33f, 0.45f));
-            Check(narrow.Spots.Count == 1, "3.2 m reservation: no mid spot for a 4.5 m car");
-            // Room = the car's length + the stop margin: a 6 m gap fits a 5 m car, not a 5.2 m one.
-            var fits = Car(51f, 0f, 0f, 5.0f, C(B(10), B(50)), C(B(80), B(100)));
-            var tight = Car(51f, 0f, 0f, 5.2f, C(B(10), B(50)), C(B(80), B(100)));
-            Check(fits.Spots.Count == 2 && tight.Spots.Count == 1, "mid spot only when gap >= car length + margin");
+            var d = Car(40f, 0f, 0f, divided);
+            Check(d.Spots.Count == 1 && Near(d.Spots[0], B(13)), "divided road: only the entry spot, no central-reservation spot (0.2.3)");
+            var wide = Car(40f, 0f, 0f, C(0.05f, 0.10f), C(0.65f, 0.75f));
+            Check(wide.Spots.Count == 1, "even a 22 m gap between conflict points is no waiting spot (0.2.3)");
+            Check(d.Spots.StretchOf(B(140)) == 0 && d.Spots.StretchEnd(0) == 2f, "every point belongs to the one stretch");
 
-            // Red-held lanes are not live: they neither place spots nor close a gap.
-            var red = Car(40f, 0f, 0f, 4.5f, C(0.05f, 0.25f), C(0.25f, 0.45f, held: true), C(0.45f, 0.55f));
-            Check(red.Spots.Count == 2 && Near(red.Spots[1], B(115)), "red-held lane in the gap: the gap is a spot (red is not live)");
+            // Red-held lanes are not live: they do not place the spot.
+            var red = Car(40f, 0f, 0f, C(0.05f, 0.25f, held: true), C(0.45f, 0.55f));
+            Check(red.Spots.Count == 1 && Near(red.Spots[0], B(115)), "red-held first lane: the spot is before the first live lane");
             // Track lanes are always live.
-            var track = Car(40f, 0f, 0f, 4.5f, C(0.05f, 0.25f), C(0.25f, 0.45f, WholePathRule.Track, true), C(0.45f, 0.55f));
-            Check(track.Spots.Count == 1, "track lane closes the gap even under red");
+            var track = Car(40f, 0f, 0f, C(0.05f, 0.25f, WholePathRule.Track, true), C(0.45f, 0.55f));
+            Check(track.Spots.Count == 1 && Near(track.Spots[0], B(13)), "track lane places the spot even under red");
             // Diverging siblings and water do not count.
-            var sib = Car(40f, 0f, 0f, 4.5f, C(0f, 1f, WholePathRule.Road | WholePathRule.MergeStart), C(0.05f, 0.25f), C(0.45f, 0.55f));
-            Check(sib.Spots.Count == 2, "diverging sibling (whole lane) does not fill the gap");
+            var sib = Car(40f, 0f, 0f, C(0f, 1f, WholePathRule.Road | WholePathRule.MergeStart), C(0.05f, 0.25f));
+            Check(sib.Spots.Count == 1 && Near(sib.Spots[0], B(13)), "diverging sibling (whole lane) does not place the spot");
 
             // Inverted lane: the same geometry driven from offset 1.
-            var inv = CarOn(40f, 0f, 0f, 4.5f, true, false, C(1f - 0.15f, 1f - 0.05f), C(1f - 0.25f, 1f - 0.15f), C(1f - 0.55f, 1f - 0.45f), C(1f - 0.65f, 1f - 0.55f));
-            Check(inv.Spots.Count == 2 && Near(inv.Spots[0], 1f - B(242), 2e-3f) && Near(inv.Spots[1], 1f - B(140), 2e-3f), "inverted lane: spots in driving order");
+            var inv = CarOn(40f, 0f, 0f, true, false, C(1f - 0.15f, 1f - 0.05f), C(1f - 0.25f, 1f - 0.15f), C(1f - 0.55f, 1f - 0.45f), C(1f - 0.65f, 1f - 0.55f));
+            Check(inv.Spots.Count == 1 && Near(inv.Spots[0], 1f - B(242), 2e-3f), "inverted lane: one spot in driving order");
 
-            // Variant "wait at the stop line": the entry spot moves to the lane start, mid spots stay.
-            var line = CarOn(40f, 0f, 0f, 4.5f, false, true, divided);
-            Check(line.Spots.Count == 2 && line.Spots[0] == 0f && Near(line.Spots[1], B(115)), "stop-line variant: entry at the line, central reservation kept");
+            // Variant "wait at the stop line": the entry spot moves to the lane start.
+            var line = CarOn(40f, 0f, 0f, false, true, divided);
+            Check(line.Spots.Count == 1 && line.Spots[0] == 0f, "stop-line variant: entry at the line, nothing else");
 
-            // Capacity: more than 8 gaps -> the first 8 spots, the rest fold into the last stretch (fewer stops, never more).
+            // Many conflict points: still one spot.
             var many = new (int, int, int, bool)[12];
             for (int i = 0; i < many.Length; i++) many[i] = C(i * 0.08f, i * 0.08f + 0.02f);
-            var mc = Car(400f, 0f, 0f, 4.5f, many);
-            Check(mc.Spots.Count == WaitingSpots.Capacity, "spot capacity 8, no overflow");
-            Check(mc.Spots.StretchOf(0.95f) == 7, "points beyond the 8th spot belong to the last stretch");
+            var mc = Car(400f, 0f, 0f, many);
+            Check(mc.Spots.Count == 1 && mc.Spots.StretchOf(0.95f) == 0, "12 separated points: one spot, one stretch");
         }
 
         private static void StretchDecisionTests()
         {
             float y, len = 30f;
-            bool mid;
-            // Three conflict points in one stretch (gaps of 1.5 m: no mid spot) on a 30 m node lane.
+            // Three conflict points on a 30 m node lane: one stretch.
             var three = new[] { C(0.10f, 0.25f), C(0.30f, 0.45f), C(0.50f, 0.65f) };
             float w = B(26), p2 = B(77), p3 = B(128);
-            var atW = Car(len, w - M / len, 0f, 4.5f, three);
+            var atW = Car(len, w - M / len, 0f, three);
             Check(atW.Spots.Count == 1 && atW.Next == 0, "three points, no mid spot: one stretch, car at W decides");
 
             // Primary W decision unchanged: before W every point holds the car at W (0.2.0 StopAtSpot at the 0.2.0 distance).
-            Check(atW.Classify(true, p3, out y, out mid) == P.Deciding && Near(y, WholePathRule.WaitDistance(-M, len, w, w - M / len, false)) && !mid,
+            Check(atW.Classify(true, p3, out y) == P.Deciding && Near(y, WholePathRule.WaitDistance(-M, len, w, w - M / len, false)),
                 "at W: a busy third point holds the car at W (same distance as 0.2.0)");
             Check(StretchState.ForPrediction(P.Deciding) == WholePathRule.ForYield(true, true, false), "Deciding = 0.2.0 before-commit yield");
             Check(StretchState.ForVehicle(P.Deciding, true, false) == WholePathRule.ForVehicle(true, true, false, true, false)
@@ -138,34 +131,34 @@ namespace JunctionRules.Tests
             // Point 1 crossed (front at 0.27, inside point 1), 5 m/s: a fast car appears at point 2 -> safety stop
             // before point 2 if comfortable. Braking distance at 5 m/s = 2.9 m.
             float bd5 = BrakingDistance(5f);
-            var c1 = Car(len, 0.20f, 5f, 4.5f, three);
+            var c1 = Car(len, 0.20f, 5f, three);
             Check(c1.Next == 1 && Near(c1.FirstUncrossed, p2), "front inside point 1: committed to the stretch, first uncrossed = point 2");
-            Check(c1.Classify(true, w, out _, out _) == P.Crossing, "point 1 (being crossed) no longer counts: no give-way");
-            Check(bd5 <= c1.Wait(p2) + M && c1.Classify(true, p2, out y, out _) == P.Safety && Near(y, c1.Wait(p2)), "fast car at point 2, can stop comfortably: safety stop before point 2");
+            Check(c1.Classify(true, w, out _) == P.Crossing, "point 1 (being crossed) no longer counts: no give-way");
+            Check(bd5 <= c1.Wait(p2) + M && c1.Classify(true, p2, out y) == P.Safety && Near(y, c1.Wait(p2)), "fast car at point 2, can stop comfortably: safety stop before point 2");
             Check(StretchState.ForPrediction(P.Safety) == A.StopAtSpot && StretchState.ForVehicle(P.Safety, true, false) == A.StopAtSpot && !StretchState.UndoProjection(P.Safety, false),
                 "safety stop keeps the stock look-ahead and stops the car");
             // A fast car at point 3 -> the stop is before the FIRST uncrossed point (point 2), not before point 3.
-            Check(c1.Classify(true, p3, out y, out _) == P.Safety && Near(y, c1.Wait(p2)), "fast car at point 3: safety stop before point 2 (first uncrossed)");
+            Check(c1.Classify(true, p3, out y) == P.Safety && Near(y, c1.Wait(p2)), "fast car at point 3: safety stop before point 2 (first uncrossed)");
             // Cannot stop comfortably (12 m/s, braking distance 12.2 m > 2.1 m): stock collision braking only.
-            var fast = Car(len, 0.20f, 12f, 4.5f, three);
-            Check(BrakingDistance(12f) > fast.Wait(p2) + M && fast.Classify(true, p3, out _, out _) == P.Crossing, "cannot stop in time: no safety stop (stock collision braking)");
+            var fast = Car(len, 0.20f, 12f, three);
+            Check(BrakingDistance(12f) > fast.Wait(p2) + M && fast.Classify(true, p3, out _) == P.Crossing, "cannot stop in time: no safety stop (stock collision braking)");
             Check(StretchState.ForVehicle(P.Crossing, false, false) == A.Stock, "...physical cars are still braked for");
             // Comfort is the game's own can-stop test: exactly at the limit stops, a hair beyond does not.
             var edge = c1;
             edge.Braking = edge.Wait(p2) + M;
-            Check(edge.Classify(true, p2, out _, out _) == P.Safety, "braking distance == distance to the point: can stop (game's <=)");
+            Check(edge.Classify(true, p2, out _) == P.Safety, "braking distance == distance to the point: can stop (game's <=)");
             edge.Braking += 1e-3f;
-            Check(edge.Classify(true, p2, out _, out _) == P.Crossing, "braking distance > distance: cannot");
+            Check(edge.Classify(true, p2, out _) == P.Crossing, "braking distance > distance: cannot");
 
             // Waiting after a safety stop: standing before point 2, every remaining point of the stretch holds it.
-            var stood = Car(len, p2 - M / len, 0f, 4.5f, three);
-            Check(stood.Classify(true, p2, out y, out _) == P.Safety && Near(y, 0f, 1e-3f), "standing at the safety stop: point 2 busy keeps it there");
-            Check(stood.Classify(true, p3, out y, out _) == P.Safety && Near(y, 0f, 1e-3f), "standing at the safety stop: point 3 busy keeps it there too (all remaining points)");
+            var stood = Car(len, p2 - M / len, 0f, three);
+            Check(stood.Classify(true, p2, out y) == P.Safety && Near(y, 0f, 1e-3f), "standing at the safety stop: point 2 busy keeps it there");
+            Check(stood.Classify(true, p3, out y) == P.Safety && Near(y, 0f, 1e-3f), "standing at the safety stop: point 3 busy keeps it there too (all remaining points)");
             // All clear -> no demand at all -> it continues (nothing to test beyond 'no other hold'); point 1 never holds it again.
-            Check(stood.Classify(true, w, out _, out _) == P.Crossing, "the crossed point does not hold the waiting car");
+            Check(stood.Classify(true, w, out _) == P.Crossing, "the crossed point does not hold the waiting car");
             // Past point 2: only point 3 remains.
-            var past2 = Car(len, 0.36f, 3f, 4.5f, three);
-            Check(Near(past2.FirstUncrossed, p3) && past2.Classify(true, p2, out _, out _) == P.Crossing && past2.Classify(true, p3, out _, out _) == P.Safety,
+            var past2 = Car(len, 0.36f, 3f, three);
+            Check(Near(past2.FirstUncrossed, p3) && past2.Classify(true, p2, out _) == P.Crossing && past2.Classify(true, p3, out _) == P.Safety,
                 "past point 2: point 2 no longer counts, point 3 still re-checked");
 
             // Physical car in a later point while crossing: collision braking at THAT point (stock), never a wait further
@@ -176,7 +169,7 @@ namespace JunctionRules.Tests
             Check(StretchState.ForPedestrian(P.Safety) == A.Stock, "pedestrians while crossing: the game's own pedestrian braking");
 
             // Rule off: everything stock.
-            Check(c1.Classify(false, p2, out _, out _) == P.Stock && atW.Classify(false, p3, out _, out _) == P.Stock, "rule off: stock");
+            Check(c1.Classify(false, p2, out _) == P.Stock && atW.Classify(false, p3, out _) == P.Stock, "rule off: stock");
             Check(StretchState.ForPrediction(P.Stock) == A.Stock && StretchState.ForVehicle(P.Stock, true, false) == A.Stock
                   && StretchState.ForPedestrian(P.Stock) == A.Stock && StretchState.ForSpaceRequest(P.Stock) == A.Stock && !StretchState.UndoProjection(P.Stock, false),
                 "Stock phase leaves every value to the game");
@@ -185,71 +178,55 @@ namespace JunctionRules.Tests
         private static void StretchRootCauseTests()
         {
             float y, len = 30f;
-            bool mid;
             var three = new[] { C(0.10f, 0.25f), C(0.30f, 0.45f), C(0.50f, 0.65f) };
             float w = B(26), p3 = B(128);
             // Root cause 1 (0.2.0): after the front passed W every give-way of the path was dropped, although the car's
             // own braking reservation had not yet claimed the later points; the stock test that protects a later point
             // is a continuous one. 0.2.1: those points are re-checked (Safety) until the front reaches them.
-            var c = Car(len, 0.20f, 5f, 4.5f, three);
-            Check(c.PastEntry && c.Classify(true, p3, out _, out _) == P.Safety, "RC1: committed car still re-checks a later uncrossed point (0.2.0 dropped it)");
+            var c = Car(len, 0.20f, 5f, three);
+            Check(c.PastEntry && c.Classify(true, p3, out _) == P.Safety, "RC1: committed car still re-checks a later uncrossed point (0.2.0 dropped it)");
             Check(WholePathRule.ForYield(true, true, true) == A.Suppress, "RC1 reference: 0.2.0 after-commit yield was Suppress");
 
             // Root cause 2, the decision fix: a car that cannot stop at its spot any more (fast, surprised just before W)
             // keeps the game's own give-way for the busy point instead of braking for the unreachable spot, overrunning
             // it and then dropping the give-way (0.2.0).
             float front = w - 3f / len;                     // 3 m before W
-            var surprised = Car(len, front, 13f, 4.5f, three);
+            var surprised = Car(len, front, 13f, three);
             Check(!surprised.PastEntry && BrakingDistance(13f) > surprised.Wait(w) + M, "fast car 3 m before W cannot stop at W");
-            Check(surprised.Classify(true, p3, out _, out _) == P.Stock, "decision fix: stock give-way for the busy point (not StopAtSpot at an unreachable W)");
-            var slow = Car(len, front, 3f, 4.5f, three);
-            Check(slow.Classify(true, p3, out y, out mid) == P.Deciding && Near(y, slow.Wait(w)) && !mid, "a car that can stop at W still decides there (primary rule unchanged)");
+            Check(surprised.Classify(true, p3, out _) == P.Stock, "decision fix: stock give-way for the busy point (not StopAtSpot at an unreachable W)");
+            var slow = Car(len, front, 3f, three);
+            Check(slow.Classify(true, p3, out y) == P.Deciding && Near(y, slow.Wait(w)), "a car that can stop at W still decides there (primary rule unchanged)");
             // Standing at W the decision is always taken at W.
-            var standing = Car(len, w - M / len, 0f, 4.5f, three);
-            Check(standing.Classify(true, p3, out _, out _) == P.Deciding, "standing at W: decision at W");
+            var standing = Car(len, w - M / len, 0f, three);
+            Check(standing.Classify(true, p3, out _) == P.Deciding, "standing at W: decision at W");
         }
 
-        private static void StretchMidSpotTests()
+        private static void StretchWholePathTests()
         {
             float y, len = 40f;
-            bool mid;
-            // Divided road (e.g. crossing Carlisle): near carriageway 0.05-0.25, central reservation 8 m, far 0.45-0.65.
+            // 0.2.3 (owner clarification 14 Nov 2026): divided road (e.g. crossing Carlisle), near carriageway 0.05-0.25,
+            // central reservation 8 m, far carriageway 0.45-0.65: ONE decision at W for the whole path.
             var divided = new[] { C(0.05f, 0.15f), C(0.15f, 0.25f), C(0.45f, 0.55f), C(0.55f, 0.65f) };
-            float w = B(13), ms = B(115), far2 = B(140);
-            var atW = Car(len, w - M / len, 0f, 4.5f, divided);
-            Check(atW.Classify(true, B(38), out y, out mid) == P.Deciding && !mid && Near(y, atW.Wait(w)), "near carriageway busy: wait at the entry spot");
-            Check(atW.Classify(true, far2, out y, out mid) == P.Deciding && mid && Near(y, atW.Wait(ms)), "far carriageway busy, near clear: cross the near half and wait on the central reservation");
-            // On the reservation: front past W, before the mid spot -> decides the far stretch there.
-            var onRes = Car(len, ms - M / len, 0f, 4.5f, divided);
-            Check(onRes.PastEntry && onRes.Next == 1 && onRes.Classify(true, far2, out y, out mid) == P.Deciding && mid && Near(y, 0f, 1e-3f), "at the central-reservation spot: one decision for the far carriageway");
-            Check(onRes.Classify(true, B(38), out _, out _) == P.Crossing, "near carriageway points behind it no longer count");
-            // Crossing the far carriageway: re-checks only its remaining points.
-            var crossingFar = Car(len, 0.47f, 4f, 4.5f, divided);
-            Check(crossingFar.Next == 2 && Near(crossingFar.FirstUncrossed, B(140)) && crossingFar.Classify(true, far2, out _, out _) == P.Safety, "crossing the far carriageway: safety re-check of its next lane");
-            // While crossing the near half, a busy far carriageway is a decision for the mid spot, not a safety stop.
-            var crossingNear = Car(len, 0.10f, 4f, 4.5f, divided);
-            Check(crossingNear.Next == 1 && crossingNear.Classify(true, far2, out y, out mid) == P.Deciding && mid && Near(y, crossingNear.Wait(ms)), "crossing the near half: far half busy -> stop at the reservation spot");
-            // ...and if it cannot stop there any more, the stock give-way (decision fix), never a dropped give-way.
-            var fastNear = Car(len, ms - 2f / len, 10f, 4.5f, divided);
-            Check(fastNear.Classify(true, far2, out _, out _) == P.Stock, "cannot stop at the reservation spot: stock give-way for the far point");
-
-            // Queued followers at a mid spot: A stands at the reservation spot; B behind it (front 0.30, inside the gap,
-            // past W) is not the car at the spot: a busy far carriageway holds B at the mid spot (not on A's gap), and
-            // B's position behind A is stock car-following (CheckCurrentLane, no stage 2 block).
-            var b = Car(len, 0.30f, 0f, 4.5f, divided);
-            Check(b.Next == 1 && b.Classify(true, far2, out y, out mid) == P.Deciding && mid && y > 4f, "follower B on the reservation behind A: far busy -> B is held for the mid spot, never crosses on A's gap");
-            // C on the approach behind them: near clear, far busy -> C may enter only up to the mid spot (its stop
-            // distance is the mid spot); the queue on the reservation is stock following (see open risks).
-            var cc = Car(len, w - 5f / len, 0f, 4.5f, divided);
-            Check(cc.Classify(true, far2, out y, out mid) == P.Deciding && mid && Near(y, cc.Wait(ms)), "follower C at the entry: far busy -> its stop for the far half is the mid spot");
-            // Once B is past the mid spot it is committed to the far stretch.
-            var bGone = Car(len, ms + 0.01f, 2f, 4.5f, divided);
-            Check(bGone.Next == 2 && bGone.Classify(true, far2, out _, out _) == P.Safety, "B past the mid spot: committed, safety net only");
-
-            // No mid spots -> exactly 0.2.0 + safety net: a turn across two oncoming lanes 1 m apart.
+            float w = B(13), near2 = B(38), far1 = B(115), far2 = B(140);
+            var atW = Car(len, w - M / len, 0f, divided);
+            Check(atW.Classify(true, near2, out y) == P.Deciding && Near(y, atW.Wait(w)), "near carriageway busy: wait at W");
+            Check(atW.Classify(true, far2, out y) == P.Deciding && Near(y, atW.Wait(w)), "far carriageway busy, near clear: wait at W too (no central-reservation wait)");
+            // Crossing the near half, a busy far carriageway is a safety re-check (stop before the first uncrossed point) if it can stop.
+            var crossingNear = Car(len, 0.10f, 3f, divided);
+            Check(crossingNear.PastEntry && Near(crossingNear.FirstUncrossed, B(38)), "front inside the first near lane: first uncrossed = next near lane");
+            Check(crossingNear.Classify(true, far2, out y) == P.Safety && Near(y, crossingNear.Wait(B(38))), "far busy while crossing the near half: safety stop before the FIRST uncrossed point");
+            // On the reservation (past the near half), first uncrossed = far1; it waits there until all remaining points are clear.
+            var onRes = Car(len, far1 - M / len, 0f, divided);
+            Check(Near(onRes.FirstUncrossed, far1) && onRes.Classify(true, far1, out y) == P.Safety && Near(y, 0f, 1e-3f), "standing before the far carriageway after a safety stop: far1 busy holds it");
+            Check(onRes.Classify(true, far2, out y) == P.Safety && Near(y, 0f, 1e-3f), "...far2 busy holds it there too (all remaining points)");
+            Check(onRes.Classify(true, near2, out _) == P.Crossing, "crossed near points never hold it again");
+            // Cannot stop before the first uncrossed point: stock collision braking only.
+            var fastRes = Car(len, far1 - 2f / len, 10f, divided);
+            Check(fastRes.Classify(true, far2, out _) == P.Crossing, "too fast to stop before the far carriageway: no safety stop");
+            // A green turner across two oncoming lanes 1 m apart: one spot, both lanes in one decision.
             var turn = new[] { C(B(102), B(127)), C(B(140), B(166)) };
-            var t = Car(20f, B(102) - M / 20f, 0f, 4.5f, turn);
-            Check(t.Spots.Count == 1 && t.Classify(true, B(140), out y, out mid) == P.Deciding && !mid && Near(y, 0f, 1e-3f), "green turner: one spot, both oncoming lanes in one decision (0.2.0)");
+            var t = Car(20f, B(102) - M / 20f, 0f, turn);
+            Check(t.Spots.Count == 1 && t.Classify(true, B(140), out y) == P.Deciding && Near(y, 0f, 1e-3f), "green turner: one spot, both oncoming lanes in one decision");
         }
 
         private static void StretchDeadlockTests()
@@ -261,11 +238,11 @@ namespace JunctionRules.Tests
             // distance at speed 0 (nothing past its own position; its current lane is never reserved, only its curve
             // position). So no safety-stopped car can be the reason another one waits except physically, which is the
             // game's own collision braking. Spot waiters stand outside every path (entry spot before the first point,
-            // mid spot only where the car fits), so they cannot hold anyone either.
+            // and since 0.2.3 no mid spots), so they cannot hold anyone either.
             Check(StretchState.ForVehicle(P.Safety, false, false) == A.Stock, "physical blocker while crossing: stock collision braking only");
             Check(StretchState.ForSpaceRequest(P.Safety) == A.Suppress, "space request from a standing car never holds a crossing car");
             Check(BrakingDistance(0f) == 0f && 0f * 2f == 0f, "standing car: no forward reservation, no look-ahead");
-            // Mid spots never put the body inside a path: for every found mid spot the gap fits the car.
+            // 0.2.3: never a mid spot; the one spot is the 0.2.0 entry spot.
             var rnd = new Random(7);
             bool fitOk = true;
             for (int k = 0; k < 400; k++)
@@ -273,21 +250,11 @@ namespace JunctionRules.Tests
                 int n = rnd.Next(1, 7);
                 var items = new (int, int, int, bool)[n];
                 for (int i = 0; i < n; i++) { int a = rnd.Next(0, 240); items[i] = (WholePathRule.Road, a, Math.Min(255, a + rnd.Next(5, 60)), false); }
-                float len = 10f + (float)rnd.NextDouble() * 50f, carLen = 3f + (float)rnd.NextDouble() * 10f;
-                var s = Car(len, 0f, 0f, carLen, items);
-                for (int j = 1; j < s.Spots.Count; j++)
-                {
-                    float spot = s.Spots[j], rear = spot - (carLen + M) / len;
-                    foreach (var it in items)
-                    {
-                        float st = B(it.Item2), en = B(it.Item3);
-                        if (st < spot - WholePathRule.SpotEpsilon && en > rear + 1e-4f) fitOk = false;   // a path under the waiting car
-                        if (st < spot - WholePathRule.SpotEpsilon && en > spot + WholePathRule.SpotEpsilon) fitOk = false;
-                    }
-                }
-                if (s.Spots.Count > 0 && !Near(s.Spots[0], Spot(false, items))) fitOk = false;
+                float len = 10f + (float)rnd.NextDouble() * 50f;
+                var s = Car(len, 0f, 0f, items);
+                if (s.Spots.Count != 1 || !Near(s.Spots[0], Spot(false, items))) fitOk = false;
             }
-            Check(fitOk, "random lanes: entry spot = 0.2.0 spot; a car at any mid spot has no other path under its body");
+            Check(fitOk, "random lanes: exactly one spot, the 0.2.0 entry spot (no mid spots, 0.2.3)");
         }
 
         private static void StretchRepoTests()
@@ -312,15 +279,15 @@ namespace JunctionRules.Tests
             string root = RepoRoot();
             if (root == null) { Check(false, "repo root found"); return; }
             string iter = File.ReadAllText(Path.Combine(root, "JunctionRules", "Vanilla", "JRCarLaneSpeedIterator.cs"));
-            Check(iter.Contains("m_JR.BeginLane(lane, bufferData, ref m_LaneSignalData, curveOffset.x, length, origDistance, num, inverse, m_PrefabCar, m_CurrentSpeed, m_TimeStep, m_PrefabObjectGeometry);"),
-                "S2-04 passes the game's speed, time step and car geometry (comfort test, mid-spot room)");
+            Check(iter.Contains("m_JR.BeginLane(lane, bufferData, ref m_LaneSignalData, ref m_CarLaneData, ref m_LaneConditionData, curveOffset.x, length, origDistance, num, inverse, m_PrefabCar, m_CurrentSpeed, m_TimeStep, speedLimit);"),
+                "S2-04 passes the game's speed, time step and the lane's speed limit (comfort test, arrival time)");
             Check(iter.Contains("maxBrakingSpeed3 = m_JR.SpaceYield("), "S2-07 uses the space-request mapping");
             string job = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRWholeJunction.cs"));
             Check(job.Contains("VehicleUtils.GetBrakingDistance(car, currentSpeed, timeStep)"), "job side uses the game's braking distance");
             string core = File.ReadAllText(Path.Combine(root, "JunctionRules", "Core", "StretchRule.cs"));
             string code = System.Text.RegularExpressions.Regex.Replace(core, @"//.*", "");
             Check(!System.Text.RegularExpressions.Regex.IsMatch(code, @"\bnew\s+\w"), "stretch rule code has no 'new' (no managed allocation)");
-            Check(Stage2Counters.Count == 6 && Stage2Counters.WaitedAtMidSpot == 4 && Stage2Counters.SafetyStops == 5, "0.2.1 counters");
+            Check(Stage2Counters.SafetyStops == 4 && Stage2Counters.SafetyStopEvents == 5 && Stage2Counters.Count == 11 + 2 * PointBuckets.Count, "0.2.3 counters (mid-spot counter dropped)");
             Check(Stage2Counters.IsBinding(true, 1f, 1f) && !Stage2Counters.IsBinding(true, 2f, 1f) && !Stage2Counters.IsBinding(false, 0f, 1f), "safety counter counts braking or standing on the stop");
         }
     }

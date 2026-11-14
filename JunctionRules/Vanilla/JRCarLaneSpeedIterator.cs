@@ -6,7 +6,7 @@
 // tools/vanilla_rules.json (and DEVIATIONS.md) and run `python3 tools/vanilla_copy.py generate`.
 // Changes applied: R-01, R-02, R-03, D-01 (see DEVIATIONS.md). Logic is otherwise the game's, unchanged.
 // Exception: hand-written code only inside '// JR-STAGE2 BEGIN <id>' ... '// JR-STAGE2 END' blocks
-// (S2-01, S2-02, S2-03, S2-04, S2-05, S2-06, S2-07, S2-08, S2-08b, S2-09, S2-10, S2-11, S2-11b; see DEVIATIONS.md). `check` proves everything outside them is the above.
+// (S2-01, S2-02, S2-03, S2-04, S2-05, S2-06, S2-07, S2-08, S2-08b, S2-09, S2-10, S2-11, S2-11b, S2-12; see DEVIATIONS.md). `check` proves everything outside them is the above.
 // ==== end of header; the code below is the game's, changed only as listed in DEVIATIONS.md ====
 
 using System;
@@ -133,8 +133,9 @@ public struct JRCarLaneSpeedIterator
 
 	public bool IterateFirstLane(Entity lane, float3 curveOffset, Entity nextLane, float2 nextOffset, float laneOffset, bool requestSpace, out Game.Net.CarLaneFlags laneFlags)
 	{
-		// JR-STAGE2 BEGIN S2-02: the lane checked next is the current lane
+		// JR-STAGE2 BEGIN S2-02: the lane checked next is the current lane (0.2.3: remember it, it is the car's own approach)
 		m_JR.m_FirstLane = true;
+		m_JR.m_CurrentLane = lane;
 		// JR-STAGE2 END
 		Curve curve = m_CurveData[lane];
 		bool flag = curveOffset.z < curveOffset.x;
@@ -260,8 +261,10 @@ public struct JRCarLaneSpeedIterator
 
 	public bool IterateFirstLane(Entity lane1, Entity lane2, float3 curveOffset, Entity nextLane, float2 nextOffset, float laneDelta, float laneOffset1, float laneOffset2, bool requestSpace, out Game.Net.CarLaneFlags laneFlags)
 	{
-		// JR-STAGE2 BEGIN S2-02: the lane checked next is the current lane
+		// JR-STAGE2 BEGIN S2-02: the lane checked next is the current lane (0.2.3: remember both, they are the car's own approach)
 		m_JR.m_FirstLane = true;
+		m_JR.m_CurrentLane = lane1;
+		m_JR.m_CurrentLane2 = lane2;
 		// JR-STAGE2 END
 		laneDelta = math.saturate(laneDelta);
 		laneFlags = ~(Game.Net.CarLaneFlags.Unsafe | Game.Net.CarLaneFlags.UTurnLeft | Game.Net.CarLaneFlags.Invert | Game.Net.CarLaneFlags.SideConnection | Game.Net.CarLaneFlags.TurnLeft | Game.Net.CarLaneFlags.TurnRight | Game.Net.CarLaneFlags.LevelCrossing | Game.Net.CarLaneFlags.Twoway | Game.Net.CarLaneFlags.IsSecured | Game.Net.CarLaneFlags.Runway | Game.Net.CarLaneFlags.Yield | Game.Net.CarLaneFlags.Stop | Game.Net.CarLaneFlags.SecondaryStart | Game.Net.CarLaneFlags.SecondaryEnd | Game.Net.CarLaneFlags.ForbidBicycles | Game.Net.CarLaneFlags.PublicOnly | Game.Net.CarLaneFlags.Highway | Game.Net.CarLaneFlags.UTurnRight | Game.Net.CarLaneFlags.GentleTurnLeft | Game.Net.CarLaneFlags.GentleTurnRight | Game.Net.CarLaneFlags.Forward | Game.Net.CarLaneFlags.Approach | Game.Net.CarLaneFlags.Roundabout | Game.Net.CarLaneFlags.RightLimit | Game.Net.CarLaneFlags.LeftLimit | Game.Net.CarLaneFlags.ForbidPassing | Game.Net.CarLaneFlags.RightOfWay | Game.Net.CarLaneFlags.TrafficLights | Game.Net.CarLaneFlags.ParkingLeft | Game.Net.CarLaneFlags.ParkingRight | Game.Net.CarLaneFlags.Forbidden | Game.Net.CarLaneFlags.AllowEnter);
@@ -1213,10 +1216,10 @@ public struct JRCarLaneSpeedIterator
 			int priority = componentData.GetPriority();
 			num2 = math.select(num2, 106, priority >= 108 && 106 > num2);
 		}
-		// JR-STAGE2 BEGIN S2-04: junction lane: waiting spots, stretches and where the car is
+		// JR-STAGE2 BEGIN S2-04: junction lane: entry spot, where the car is, its motion for the arrival time (0.2.3)
 		if (m_JR.m_Mode != 0)
 		{
-			m_JR.BeginLane(lane, bufferData, ref m_LaneSignalData, curveOffset.x, length, origDistance, num, inverse, m_PrefabCar, m_CurrentSpeed, m_TimeStep, m_PrefabObjectGeometry);
+			m_JR.BeginLane(lane, bufferData, ref m_LaneSignalData, ref m_CarLaneData, ref m_LaneConditionData, curveOffset.x, length, origDistance, num, inverse, m_PrefabCar, m_CurrentSpeed, m_TimeStep, speedLimit);
 		}
 		// JR-STAGE2 END
 		for (int i = 0; i < bufferData.Length; i++)
@@ -1315,6 +1318,18 @@ public struct JRCarLaneSpeedIterator
 					int num9 = math.select(laneOverlap.m_PriorityDelta, num8, num8 != 0);
 					num9 = math.select(num9, 0, requestSpace && num9 > 0);
 					num6 -= num9;
+					// JR-STAGE2 BEGIN S2-12: arrival-time projection (0.2.3): cars on the lanes feeding this conflicting lane as virtual reservations, stock reservation test
+					if (jrInScope && m_JR.Projecting && m_LaneReservationData.HasComponent(m_Lane))
+					{
+						float jrFeedSpeed = m_JR.FeedingLaneYield(m_Lane, m_Curve.m_Length, math.select(math.max(num3 + @float.z, m_CurveOffset.x), 0f, inverse), num6, m_Entity, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_CarData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabCarData, m_PrefabCar, m_SafeTimeStep, m_SpeedRange, m_MaxSpeed);
+						if (jrFeedSpeed < m_MaxSpeed)
+						{
+							m_MaxSpeed = jrFeedSpeed;
+							m_Blocker = Entity.Null;
+							m_BlockerType = blockerType;
+						}
+					}
+					// JR-STAGE2 END
 					if (m_LaneReservationData.TryGetComponent(m_Lane, out componentData))
 					{
 						float offset = componentData.GetOffset();
@@ -1423,8 +1438,8 @@ public struct JRCarLaneSpeedIterator
 						curvePosition.y += objectSpeed * 2f / math.max(1f, m_Curve.m_Length);
 					}
 				}
-				// JR-STAGE2 BEGIN S2-10: while crossing (no safety stop): no look-ahead give-way (game's own committed semantics)
-				curvePosition.y = m_JR.AfterProjection(jrInScope, jrY, curvePosition.y, flag2 ? (jrY < @float.w) : (jrY > @float.z));
+				// JR-STAGE2 BEGIN S2-10: while crossing (no safety stop): no look-ahead give-way; deciding / re-check: look-ahead 2 s + own arrival time (0.2.3)
+				curvePosition.y = m_JR.AfterProjection(jrInScope, jrY, curvePosition.y, flag2 ? (jrY < @float.w) : (jrY > @float.z), flag2, flag2 ? (@float.w - num3) : (@float.z + num3));
 				bool jrProjected = curvePosition.y != jrY && (flag2 ? (jrY >= @float.w - num3) : (jrY <= @float.z + num3));
 				// JR-STAGE2 END
 				if (flag2)

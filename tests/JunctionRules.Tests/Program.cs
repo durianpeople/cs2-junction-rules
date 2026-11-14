@@ -38,10 +38,14 @@ namespace JunctionRules.Tests
             ("StretchSpotTests", StretchSpotTests),
             ("StretchDecisionTests", StretchDecisionTests),
             ("StretchRootCauseTests", StretchRootCauseTests),
-            ("StretchMidSpotTests", StretchMidSpotTests),
+            ("StretchWholePathTests", StretchWholePathTests),
             ("StretchDeadlockTests", StretchDeadlockTests),
             ("StretchRepoTests", StretchRepoTests),
             ("VehicleLengthTests", VehicleLengthTests),
+            ("ArrivalTimeTests", ArrivalTimeTests),
+            ("ArrivalProjectionTests", ArrivalProjectionTests),
+            ("SafetyEventTests", SafetyEventTests),
+            ("ArrivalRepoTests", ArrivalRepoTests),
         };
 
         private static int Main(string[] args)

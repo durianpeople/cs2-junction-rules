@@ -76,7 +76,8 @@ car at its spot but are dropped while crossing). All other blocks unchanged (onl
 Counters (timing log): stretch decisions, waits at the entry spot for a later conflict, waits at a mid-junction spot,
 safety stops inside, stopped inside for a give-way, stopped inside behind a crossing car.
 
-0.2.2 (JR-T-002d, owner ruling 14 Nov 2026): **trailers count in the vehicle length for mid spots.** The room a mid
+0.2.2 (JR-T-002d, owner ruling 14 Nov 2026; SUPERSEDED by 0.2.3, mid spots removed, the length code is kept but no
+longer called): **trailers count in the vehicle length for mid spots.** The room a mid
 spot needs is the whole vehicle: controller + every trailer, chained by the game's own attach points (the trailer's
 `CarTrailerData.m_AttachPosition` is placed on the puller's `CarTractorData.m_AttachPosition`: CarTrailerMoveSystem,
 `Game.Vehicles.InitializeSystem` 323-324, `ObjectInterpolateSystem` 1754-1768; attach z from prefab bounds and stock
@@ -103,26 +104,52 @@ waiting at a mid-junction spot may stand in the near carriageway: ALLOWED (stock
 keeps using mid-junction spots: KEEP (only the entry spot moves to the line). Analysis: `docs/STAGE2-ANALYSIS.md`
 owner choices 6-9.
 
+0.2.3 (JR-T-002f, owner rulings 14 Nov 2026 + owner clarification the same day, binding). **No mid-junction waiting
+spots** (supersedes the 0.2.1 mid spots, the 0.2.2 trailer length for mid spots and rulings (2)-(4) above): the car
+waits only just before its FIRST conflict point (W) and decides there once for its whole path; central reservations
+are not special. `StretchState.FindSpots` returns only W (one stretch); the "waited at a mid-junction spot" counter is
+gone. **Arrival-time projection (fix (a))**: the car's OWN arrival time at each conflict point is computed from its
+actual state with the game's own motion functions (`VehicleUtils.CalculateSpeedRange` per navigation step,
+`GetMaxDriveSpeed` + `ModifyDriveSpeed` for the junction lane's speed / speed-in-turns cap, `GetMaxBrakingSpeed` to
+brake down to it before the lane; no margin), `Core/ArrivalTime.cs`. The other cars are projected to that time at
+constant speed through the unchanged stock tests: a car on a conflicting junction lane gets the stock look-ahead
+`2 s + arrival time` instead of `2 s` (S2-10); every car on a lane FEEDING a conflicting junction lane (node lane start
+= feed lane end PathNode, found through the node's `ConnectedEdge` buffer and the edge's `SubLane` buffer, as
+`TrafficLightSystem.CheckNextLane` does) becomes a virtual reservation (stock reservation reach + speed x arrival
+time) through the stock reservation test `offset > num10 || priority > num6` (new block S2-12). The same projection
+runs for the safety re-check while crossing (from the current state to each uncrossed point); the stock can-stop test
+and stock collision braking are unchanged. Diagnostics b1 (debug log only): safety-stop EVENTS (a car's transition into
+a safety stop counted once, fixed lock-free table of 8192 slots), and per point at W the distance from W and the own
+arrival time as 8-bucket histograms. Block changes for 0.2.3: S2-02 (1 -> 2 / 3 lines: also remember the current lane(s),
+the car's own approach, so its own followers are never counted), S2-04 (same 4 lines, new arguments: the car's speed
+limit instead of the length), S2-10 (same 2 lines, calls `AfterProjection`: undo while crossing as before, extend while
+deciding / re-checking), S2-12 NEW (10 lines), S2-20 (14 -> 12 lines: the three 0.2.2 trailer lookups replaced by the
+event table and the read-only `ConnectedEdge` lookup), S2-21 (6 -> 1 line: `Create` with the read-only owner / lane /
+sub-lane / connected-edge lookups, no local length), S2-22 (same 4 lines: passes the event table, entity and frame),
+S2-23 (5 -> 4 lines: sets the event table and the `ConnectedEdge` lookup instead of the trailer lookups). The 0.2.2
+files `Core/VehicleLength.cs` and `Stage2/JRVehicleLength.cs` are kept (tested, harmless) but nothing calls them.
+
 | Id | File | Sites | Lines inside | Where | What |
 |---|---|---|---|---|---|
 | S2-01 | iterator | 1 | 1 | after field `m_LaneOffsetPush` | Field `m_JR` (JRWholeJunction): the car's stage 2 state. |
-| S2-02 | iterator | 2 | 1 each | first statement of both `IterateFirstLane` | `m_JR.m_FirstLane = true` (the lane checked next is the car's current lane). |
+| S2-02 | iterator | 2 | 2 / 3 | first statement of both `IterateFirstLane` | `m_JR.m_FirstLane = true` (the lane checked next is the car's current lane); 0.2.3: `m_JR.m_CurrentLane(2) = lane(s)`, the car's own approach (feeding-lane scan skips it). |
 | S2-03 | iterator | 1 | 1 | first statement of `IterateNextLane` | `m_JR.m_FirstLane = false`. |
-| S2-04 | iterator | 1 | 4 | `CheckOverlappingLanes`, before the overlap loop | `BeginLane`: waiting spots of a junction (node) lane (W + mid spots, red lanes excluded, amber live), the stretch the car is in and its first uncrossed point (0.2.1: also passes the car, speed, time step and geometry for the can-stop test and the car length). |
+| S2-04 | iterator | 1 | 4 | `CheckOverlappingLanes`, before the overlap loop | `BeginLane`: the entry spot W of a junction (node) lane (0.2.3: the only spot; red lanes excluded, amber live), whether the car is past it and its first uncrossed point; passes the car, speed, time step and the lane's speed limit (can-stop test, 0.2.3 arrival time). |
 | S2-05 | iterator | 1 | 2 | after `blockerType` in the loop | `jrStart` (overlap start seen from the car), `jrInScope` (at or after W and yield-checked). |
 | S2-06 | iterator | 1 | 1 | after `maxBrakingSpeed` (blocking reservation) | Per point phase (0.2.1): later stretch / deciding: brake to the spot; crossing with a busy uncrossed point: safety stop before the first uncrossed point if it can stop, else no give-way; cannot stop at the spot: stock. |
 | S2-07 | iterator | 1 | 1 | after `maxBrakingSpeed3` (space request) | 0.2.1 `SpaceYield`: holds a car at its spot; dropped while crossing (deadlock). |
 | S2-08 / S2-08b | iterator | 1 / 1 | 2 / 1 | around `CheckPedestrian` | Before commit the pedestrian check uses the distance to W; the game's `num5` is restored after. |
 | S2-09 | iterator | 1 | 1 | after `GetObjectSpeed` in the object loop | Keeps the other car's position before the 2 s priority look-ahead. |
-| S2-10 | iterator | 1 | 2 | after the look-ahead block | After commit the look-ahead is undone unless the other car is already past the overlap start (the game's own committed semantics); `jrProjected` = the car counts only through the look-ahead. |
+| S2-10 | iterator | 1 | 2 | after the look-ahead block | `AfterProjection`: while crossing (no safety stop) the look-ahead is undone unless the other car is already past the overlap start; 0.2.3: while deciding at W or in the safety re-check it becomes `2 s + own arrival time`; `jrProjected` = the car counts only through the look-ahead. |
 | S2-11 / S2-11b | iterator | 1 / 1 | 3 / 2 | around `UpdateMaxSpeed` in `CheckOverlappingLanes` | Before commit: braking distance to W for projected cars and cars in a crossing (merge followers stay stock); `num5` restored after; debug counters. |
-| S2-20 | nav | 1 | 14 | `UpdateNavigationJob` fields | `m_JRMode` (int, by value) and `m_JRCounters` (persistent `NativeArray<long>`, atomic adds, safety restriction off: debug-only counters); 0.2.2: `[ReadOnly] m_JRTractorData` / `m_JRTrailerData` (prefab lookups) and `m_JRLayoutData` (`BufferLookup<LayoutElement>`). |
-| S2-21 | nav | 1 | 6 | after the iterator is set up in `UpdateNavigationTarget` | `m_JR = JRWholeJunction.Create(m_JRMode, m_NodeLaneData, jrVehicleLength)`; 0.2.2: `jrVehicleLength` is a local, 0 or (when `m_JRMode != 0` and the car has a layout buffer) `JRVehicleLength.WithTrailers(...)` (controller + trailers by the stock attach points). |
-| S2-22 | nav | 1 | 4 | after `CheckBlocker` at `IL_09cd` | Counters, once per car-step, only when the count bit is set. |
-| S2-23 | nav | 1 | 5 | `OnUpdate`, before `ScheduleParallel` | Main thread: takes this step's mode from `Stage2Handoff` (published by `CarDrivingSwitchSystem` earlier in the same step) into the job struct by value; 0.2.2: sets the read-only `CarTractorData` / `CarTrailerData` / `LayoutElement` lookups. |
+| S2-12 | iterator | 1 | 10 | `CheckOverlappingLanes`, after the reservation priority `num6 -= num9` | 0.2.3 `FeedingLaneYield`: while deciding / re-checking, every car on the lanes feeding this conflicting junction lane as a virtual reservation (stock reach + speed x own arrival time) through the stock test `offset > num10 \|\| priority > num6` with the game's own `num10`; on a hit, the stop at the spot / before the first uncrossed point is applied like a blocking reservation. |
+| S2-20 | nav | 1 | 12 | `UpdateNavigationJob` fields | `m_JRMode` (int, by value), `m_JRCounters` (persistent `NativeArray<long>`, atomic adds, safety restriction off: debug-only counters); 0.2.3: `m_JRSafetyEvents` (persistent `NativeArray<long>` event table, compare-exchange, debug only) and `[ReadOnly] m_JRConnectedEdges` (`BufferLookup<ConnectedEdge>`). The 0.2.2 trailer lookups are gone. |
+| S2-21 | nav | 1 | 1 | after the iterator is set up in `UpdateNavigationTarget` | `m_JR = JRWholeJunction.Create(m_JRMode, m_NodeLaneData, m_OwnerData, m_LaneData, m_Lanes, m_JRConnectedEdges, m_JRCounters)` (0.2.3: read-only lookups of the job for the feeding-lane scan; no per-car local). |
+| S2-22 | nav | 1 | 4 | after `CheckBlocker` at `IL_09cd` | Counters, once per car-step, only when the count bit is set; 0.2.3: safety-stop events through the event table (entity index, simulation frame). |
+| S2-23 | nav | 1 | 4 | `OnUpdate`, before `ScheduleParallel` | Main thread: takes this step's mode from `Stage2Handoff` (published by `CarDrivingSwitchSystem` earlier in the same step) into the job struct by value; 0.2.3: sets the event table and `GetBufferLookup<ConnectedEdge>(isReadOnly: true)`. |
 | S2-24 | nav | 1 | 8 | new `OnDestroy` (none in vanilla) | Completes the job and frees the counter array. |
 
-Total: 19 blocks, 60 lines inside (as `vanilla_copy.py check` reports; 0.2.1: 19 blocks, 43 lines; S2-24 counts its trailing blank line).
+Total: 20 blocks, 65 lines inside (as `vanilla_copy.py check` reports; 0.2.2: 19 blocks, 60 lines; 0.2.1: 19 blocks, 43 lines; S2-24 counts its trailing blank line).
 
 Effect on `tools/IlHash --copy` (expected): 48 of 80 identical (was 54), 21 shape only (was 19), 11 content
 differences (was 7: the four stage 2 methods `IterateFirstLane` x2, `IterateNextLane`, `UpdateNavigationTarget` join
@@ -130,6 +157,8 @@ differences (was 7: the four stage 2 methods `IterateFirstLane` x2, `IterateNext
 Field blocks of the iterator and the job are "shape only" because of S2-01 and S2-20.
 0.2.2 (`tools/IlHash --copy`, managed build of 0.2.2): unchanged from 0.2.1: 48 of 80 identical, 21 shape only, 11
 content differences, 1 extra (`UpdateNavigationTarget` already differed).
+0.2.3 (`tools/IlHash --copy`, managed build of 0.2.3): unchanged: 48 of 80 identical, 21 shape only, 11 content
+differences, 1 extra (S2-12 is inside `CheckOverlappingLanes`, which already differed).
 
 ## Build note (not a code change)
 
@@ -158,7 +187,7 @@ bullets below); the copy's source is in any case proved equal to the decompile b
 - **CheckCurrentLane x2** (the iterator's two overloads): branch layout and boolean-constant placement only (the
   compiler materialises `true`/`false` in a different place around the same tests); same comparisons, same calls and
   fields, same result.
-- **Dead zero store** (`flag2` in `JRCarLaneSpeedIterator.cs` line 1173 with the stage 2 blocks, 1159 before): a local assigned and never read; the build
+- **Dead zero store** (`flag2` in `JRCarLaneSpeedIterator.cs` line 1176 with the 0.2.3 stage 2 blocks (0.2.2: 1173), 1159 before): a local assigned and never read; the build
   warns CS0219 about it. The game's IL has no such store. No effect.
 - **Control-flow shape and local numbering**: a different C# compiler (Roslyn here vs Unity's for the game) lays out
   branches and locals differently. Same operations in the same order.

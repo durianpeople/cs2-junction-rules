@@ -20,8 +20,8 @@ namespace JunctionRules.Core
 
     /// <summary>
     /// The waiting spots of one junction lane, in driving coordinates, nearest first. Fixed capacity (no allocation,
-    /// Burst-compatible): a lane with more spots keeps the first <see cref="Capacity"/> (the rest fold into the last
-    /// stretch, i.e. fewer stops inside, never more).
+    /// Burst-compatible). Since 0.2.3 only the entry spot is ever added (no mid-junction spots, owner clarification
+    /// 14 Nov 2026), so Count is 0 or 1; the type keeps its 0.2.1 shape to keep the change small.
     /// </summary>
     public struct WaitingSpots
     {
@@ -99,15 +99,13 @@ namespace JunctionRules.Core
     }
 
     /// <summary>
-    /// The 0.2.1 rule (owner wording 14 Nov 2026, binding): a car's path through the node has ordered conflict points.
-    /// A waiting spot is any position right before a conflict point where the car is not inside any other lane's path:
-    /// the entry spot W (the 0.2.0 spot) and every gap between conflict points that the car's own body fits into (its
-    /// front stops at the game's stop margin before the next point, its rear clear of the previous points). The conflict
-    /// points from one spot to the next form a stretch. At each spot the car makes one decision for its stretch (stock
-    /// judgement on every point of it). While crossing a stretch it keeps checking every uncrossed point of that stretch;
-    /// if one is no longer clear by the stock gap judgement and it can stop comfortably, it stops before the first
-    /// uncrossed point and waits there until all remaining points of the stretch are clear; if it cannot, only stock
-    /// collision braking. With no mid spots this is exactly the 0.2.0 single decision at W plus the safety net.
+    /// The rule (0.2.1 safety re-check; 0.2.3 owner clarification 14 Nov 2026, binding): a car's path through the node
+    /// has ordered conflict points. The car waits just before its FIRST conflict point (entry spot W, the 0.2.0 spot)
+    /// and makes ONE decision there for its whole path (stock judgement on every point, with the 0.2.3 arrival-time
+    /// projection on the job side). No mid-junction spots are planned (0.2.1 had them; superseded): the whole path is
+    /// one stretch. While crossing it keeps checking every uncrossed point; if one is no longer clear by the stock gap
+    /// judgement (same projection) and it can stop comfortably, it stops before the first uncrossed point and waits
+    /// there until all remaining points are clear; if it cannot, only stock collision braking.
     ///
     /// "Comfortably" = the game's own can-stop test for an overlap, CarLaneSpeedIterator.CheckOverlappingLanes
     /// <c>GetBrakingDistance(car, currentSpeed, timeStep) &lt;= num5 + num</c>: stopping before the point within the car's
@@ -148,13 +146,12 @@ namespace JunctionRules.Core
         public readonly bool PastEntry => Next > 0;
 
         /// <summary>
-        /// Builds the spots of a lane (false: no conflict point, the rule does not cover this lane). carLength = the car's
-        /// own length (prefab bounds, front to rear); a gap between conflict points is a waiting spot when the car fits in
-        /// it: front at the stop margin before the next point, rear clear of the previous ones (gap * length &gt;=
-        /// carLength + margin). The entry spot needs no room (the rear is on the approach). atLine = "wait at the stop
-        /// line" variant: the entry spot moves to the lane start; mid spots stay.
+        /// Builds the spot of a lane (false: no conflict point, the rule does not cover this lane). 0.2.3 (owner
+        /// clarification 14 Nov 2026): the only waiting spot is the entry spot W, just before the FIRST conflict point;
+        /// no mid-junction spots are ever planned, so the whole path through the node is one stretch and one decision.
+        /// atLine = "wait at the stop line" variant: the entry spot moves to the lane start.
         /// </summary>
-        public bool Begin<T>(ref T list, float origDistance, float length, float curveX, float margin, float braking, float carLength, bool atLine)
+        public bool Begin<T>(ref T list, float origDistance, float length, float curveX, float margin, float braking, bool atLine)
             where T : struct, IConflictList
         {
             Spots = default;
@@ -165,7 +162,7 @@ namespace JunctionRules.Core
             Braking = braking;
             Next = 0;
             FirstUncrossed = 2f;
-            FindSpots(ref list, length, carLength + margin, ref Spots);
+            FindSpots(ref list, ref Spots);
             if (Spots.Count == 0) return false;
             if (atLine) Spots[0] = 0f;
             while (Next < Spots.Count && FrontPast(Spots[Next])) Next++;
@@ -183,59 +180,28 @@ namespace JunctionRules.Core
         }
 
         /// <summary>
-        /// The spots of a lane: the entry spot (start of the first conflict) and every gap of at least
-        /// <paramref name="room"/> metres between the end of a group of overlapping conflicts and the next conflict.
-        /// Conflicts that touch or overlap (within SpotEpsilon) form one group: no spot inside another lane's path.
+        /// The spot of a lane: the start of its first conflict point (the entry spot W), or none. 0.2.3: no mid spots
+        /// (owner clarification 14 Nov 2026: central reservations are not special).
         /// </summary>
-        public static void FindSpots<T>(ref T list, float length, float room, ref WaitingSpots spots) where T : struct, IConflictList
+        public static void FindSpots<T>(ref T list, ref WaitingSpots spots) where T : struct, IConflictList
         {
             spots = default;
-            int n = list.Count;
             float first = 2f;
-            for (int i = 0; i < n; i++)
+            for (int i = 0; i < list.Count; i++)
             {
                 if (list.Conflict(i, out float s, out _) && s < first) first = s;
             }
-            if (first > 1f) return;
-            spots.Add(first);
-            float groupEnd = first;
-            while (true)
-            {
-                // Extend the group: every conflict starting at or before its end belongs to it.
-                bool grown = true;
-                while (grown)
-                {
-                    grown = false;
-                    for (int i = 0; i < n; i++)
-                    {
-                        if (list.Conflict(i, out float s, out float e) && s <= groupEnd + WholePathRule.SpotEpsilon && e > groupEnd)
-                        {
-                            groupEnd = e;
-                            grown = true;
-                        }
-                    }
-                }
-                float next = 2f;
-                for (int i = 0; i < n; i++)
-                {
-                    if (list.Conflict(i, out float s, out _) && s > groupEnd + WholePathRule.SpotEpsilon && s < next) next = s;
-                }
-                if (next > 1f) return;
-                if ((next - groupEnd) * length >= room && !spots.Add(next)) return;
-                groupEnd = next;
-            }
+            if (first <= 1f) spots.Add(first);
         }
 
         /// <summary>
         /// Classifies one stock give-way demand from a conflict point starting at <paramref name="u"/> (driving
-        /// coordinates, at or after the entry spot). stopWait = the distance the car stops at under Deciding (its
-        /// stretch's spot) or Safety (the first uncrossed point of the stretch); mid = the stretch's spot is not the entry
-        /// spot.
+        /// coordinates, at or after the entry spot). stopWait = the distance the car stops at under Deciding (the
+        /// entry spot) or Safety (the first uncrossed point of the path).
         /// </summary>
-        public readonly PointPhase Classify(bool ruleOn, float u, out float stopWait, out bool mid)
+        public readonly PointPhase Classify(bool ruleOn, float u, out float stopWait)
         {
             int k = Spots.StretchOf(u);
-            mid = k > 0;
             stopWait = 0f;
             if (!ruleOn) return PointPhase.Stock;
             if (k >= Next)
