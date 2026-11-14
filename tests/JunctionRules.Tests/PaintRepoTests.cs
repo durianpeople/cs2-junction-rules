@@ -37,6 +37,11 @@ namespace JunctionRules.Tests
             Check(Regex.IsMatch(sys, @"private void Deactivate\(string why\)[\s\S]*?Enabled = false;[\s\S]*?Unsubscribe\(\);[\s\S]*?Dispose\(\)"), "switching off disables the system, unsubscribes the draw and releases the GPU objects");
             Check(Regex.Matches(sys, @"catch \(Exception e\)").Count >= 4, "paint update, draw and controls are wrapped");
 
+            // JR-T-003b-r: version gate, road-node-only picks, no overwrite of an unreadable list.
+            Check(Regex.IsMatch(sys, @"want && !GameVersionOk\(\)") && sys.Contains("GateVerdict.VersionMismatch") == false && sys.Contains("v == GateVerdict.Pass"), "paint test starts only when the version gate does not say VersionMismatch/Error");
+            Check(Regex.IsMatch(sys, @"All = new\[\] \{ ComponentType\.ReadOnly<Game\.Net\.Node>\(\), ComponentType\.ReadOnly<ConnectedEdge>\(\), ComponentType\.ReadOnly<Game\.Net\.Road>\(\) \}"), "node query is road nodes only");
+            Check(sys.Contains("RoadEdgeCount(ents[n]) >= 3") && sys.Contains("not overwriting it"), "camera pick uses junction nodes (3+ road edges); an unreadable list file is never overwritten");
+
             // Isolation: only Mod.cs (registration, in try/catch) and the settings (through PaintControl) name the paint code.
             var named = new List<string>();
             foreach (string f in Directory.GetFiles(src, "*.cs", SearchOption.AllDirectories))

@@ -88,6 +88,17 @@ namespace JunctionRules.Paint
                 YellowBoxPaintSystem s = s_Instance;
                 if (s == null) return;
                 bool want = Mod.Settings != null && Mod.Settings.YellowBoxPaintTest && !s_Latch.Failed;
+                if (want && !GameVersionOk())
+                {
+                    // Same version gate as the copy: the paint code reads game types whose layout may differ on another game version.
+                    want = false;
+                    s_Status = "off: this game version differs from the one this build was made for (" + Mod.Gate.Verdict + "); the paint test is not started";
+                    if (!s_VersionNoted)
+                    {
+                        s_VersionNoted = true;
+                        Mod.log.Warn("yellow box paint test not started: version check says " + Mod.Gate.Verdict + " (" + Mod.Gate.Message + ")");
+                    }
+                }
                 if (want && !s.m_Active) s.Activate();
                 else if (!want && s.m_Active) s.Deactivate("switched off");
                 if (s.m_Active && Mod.Settings != null)
@@ -100,6 +111,15 @@ namespace JunctionRules.Paint
             {
                 Fail("applying the paint test settings", e);
             }
+        }
+
+        private static bool s_VersionNoted;
+
+        /// <summary>The paint test starts only when the game version is the one this build was made for (any gate verdict except a version mismatch or a failed check).</summary>
+        private static bool GameVersionOk()
+        {
+            GateVerdict v = Mod.Gate.Verdict;
+            return v == GateVerdict.Pass || v == GateVerdict.PassHashSkipped || v == GateVerdict.CodeMismatch;
         }
 
         internal static void RequestReload() { Request(s => s.m_NeedReload = true, "reload the test list"); }
@@ -144,7 +164,9 @@ namespace JunctionRules.Paint
             // Creating queries is free while the system is disabled; nothing is read until it runs.
             m_NodeQuery = GetEntityQuery(new EntityQueryDesc
             {
-                All = new[] { ComponentType.ReadOnly<Game.Net.Node>(), ComponentType.ReadOnly<ConnectedEdge>() },
+                // Road nodes only (RoadPrefab puts Road on its node archetype): path, rail, power and pipe nodes near a
+                // junction can never be picked instead of the road node.
+                All = new[] { ComponentType.ReadOnly<Game.Net.Node>(), ComponentType.ReadOnly<ConnectedEdge>(), ComponentType.ReadOnly<Game.Net.Road>() },
                 None = new[] { ComponentType.ReadOnly<Deleted>(), ComponentType.ReadOnly<Temp>() },
             });
             m_ChangedNodeQuery = GetEntityQuery(new EntityQueryDesc
@@ -344,15 +366,26 @@ namespace JunctionRules.Paint
             }
             if (cam == null) { Mod.log.Warn("yellow box paint test: no game camera found; nothing added"); return; }
             Ray ray = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
-            ReadNodes(out NativeArray<Entity> ents, out List<V3> pos);
+            ReadNodes(out NativeArray<Entity> ents, out List<V3> allPos);
             try
             {
+                // Junction nodes only: 3 or more road edges. A mid-road node, a dead end or the node where a footpath joins the
+                // road (2 road edges) nearer the camera must not win over the junction the camera is looking at.
+                var pos = new List<V3>();
+                for (int n = 0; n < ents.Length; n++) if (RoadEdgeCount(ents[n]) >= 3) pos.Add(allPos[n]);
                 int i = PaintTestConfig.PickAlongRay(new V3(ray.origin.x, ray.origin.y, ray.origin.z), new V3(ray.direction.x, ray.direction.y, ray.direction.z), pos, 8.0);
-                if (i < 0) { Mod.log.Info("yellow box paint test: no junction node within 8 m of the camera centre line; nothing added"); return; }
+                if (i < 0) { Mod.log.Info("yellow box paint test: no junction node (3 or more road arms) within 8 m of the camera centre line; nothing added"); return; }
                 V3 p = pos[i];
                 foreach (var j in m_Config.Junctions)
                 {
                     if (V2.Distance(new V2(j.X, j.Z), p.XZ) < 1.0 && (!j.HasY || Math.Abs(j.Y - p.Y) < 1.0)) { Mod.log.Info($"yellow box paint test: node at {p} is already on the list"); return; }
+                }
+                string listPath = ListPath();
+                if (File.Exists(listPath) && m_Config.Problems.Exists(q => q.StartsWith("not valid JSON") || q.StartsWith("top level")))
+                {
+                    // The loaded list is empty because the file could not be read: writing would replace the owner's file.
+                    Mod.log.Warn($"yellow box paint test: {listPath} could not be read (see the earlier 'list file' line); not overwriting it; fix or delete the file, press Refresh, then add again");
+                    return;
                 }
                 m_Config.Junctions.Add(new PaintTestJunction { X = Math.Round(p.X, 2), Y = Math.Round(p.Y, 2), Z = Math.Round(p.Z, 2), Name = "added at camera centre " + DateTime.Now.ToString("HH:mm:ss") });
                 string path = ListPath();
@@ -376,6 +409,21 @@ namespace JunctionRules.Paint
             pos = new List<V3>(nodes.Length);
             for (int i = 0; i < nodes.Length; i++) { float3 p = nodes[i].m_Position; pos.Add(new V3(p.x, p.y, p.z)); }
             nodes.Dispose();
+        }
+
+        /// <summary>Number of Road edges connected to a node (read-only).</summary>
+        private int RoadEdgeCount(Entity node)
+        {
+            EntityManager em = EntityManager;
+            if (!em.Exists(node) || !em.HasBuffer<ConnectedEdge>(node)) return 0;
+            DynamicBuffer<ConnectedEdge> connected = em.GetBuffer<ConnectedEdge>(node, true);
+            int n = 0;
+            for (int i = 0; i < connected.Length; i++)
+            {
+                Entity e = connected[i].m_Edge;
+                if (em.Exists(e) && em.HasComponent<Game.Net.Road>(e)) n++;
+            }
+            return n;
         }
 
         private void ResolveAll()

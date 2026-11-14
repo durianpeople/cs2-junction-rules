@@ -24,7 +24,7 @@ sums below are placeholders on purpose: `0000...`).
 | `JunctionRules_win_x86_64.dll` (Burst code) | `PLACEHOLDER` |
 | `JunctionRules_win_x86_64.pdb` | `PLACEHOLDER` |
 
-Built for game **1.6.4f1 (1097.158a)** only (same version gate as before).
+Built for game **1.6.4f1 (1097.158a)** only (same version gate as before: on another game version the paint test does not start, and the status says so).
 
 ## 1. Install over 0.2.4 (game closed only; backs up the installed 0.2.4)
 
@@ -72,7 +72,7 @@ The list file is
 `$CS2/ModsData/JunctionRules/paint-test.json`. The mod only reads it (and adds to it when you press the button).
 
 **Easiest way:** switch the test on, point the camera centre at a junction, press **Add junction at camera centre**.
-It picks the junction node within 8 m of the screen centre line that is nearest to the camera (so an elevated
+It picks the junction node (3 or more road arms) within 8 m of the screen centre line that is nearest to the camera (so an elevated
 junction wins over the road below it). The log says `added node at (x, y, z) to ...`.
 
 **By hand:** write the file, then press **Refresh test list**. Positions are game x/z in metres (y only to choose
@@ -131,7 +131,7 @@ All in `$CS2/Logs/JunctionRules.Mod.log`:
 ## 6. Switch off and clean up
 
 - **Off:** Options > Junction Rules > **Yellow box paint test** off. The boxes go at once; the system stops running.
-- **Remove the list:** delete `$CS2/ModsData/JunctionRules/paint-test.json` (game running or not).
+- **Remove the list:** delete `$CS2/ModsData/JunctionRules/paint-test.json` (game running or not). While the test is on, press **Refresh test list** afterwards: the list is read when the test is switched on and on Refresh, so the boxes stay until then.
 - **Nothing else to clean:** no data goes in the save. Removing the mod or the file leaves no trace.
 - Back to 0.2.4 (game closed): copy back `.staged/0.2.4-installed-backup/` (made by the install), or the staged
   0.2.4 Burst build after checking its sums:
