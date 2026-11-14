@@ -65,6 +65,11 @@ limited the car (blocker entity, type, speed) for the next step and for queueing
 
 ## 3. The change (implemented, default off: setting "Junction gap rule" = Stock)
 
+> 0.2.1 note (JR-T-002cr): this section describes the 0.2.0 rule (one decision at W, no give-way at all after commit). In
+> 0.2.1 the "After commit" bullet no longer holds as written: the car keeps re-checking the uncrossed points of its stretch
+> (safety stop) and mid-junction spots add more decisions. Sections 7 and 8 are binding where they differ; sections 4 and 5
+> that speak of "committed" cars read as "past the entry spot".
+
 For every junction lane (a lane with `NodeLane`; edge lanes are untouched):
 
 - **Waiting spot W** = the start of the first conflict on the lane, i.e. the last point of the path that is not

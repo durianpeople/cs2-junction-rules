@@ -220,7 +220,7 @@ SUMS
 
 ## 7. Report back
 
-The three log lines of section 2; per pass the 5 timing lines (or mean/p95/frames per second, and the four counters)
-and FPS (all six counters); per junction and rule: any collision between cars that had gone, safety stops seen, cars waiting on a central reservation, where waiting cars stood, any car stopped inside to give way, turners' behaviour
+The three log lines of section 2; per pass the 5 timing lines (or mean/p95/frames per second, and all six counters)
+and FPS; per junction and rule: any collision between cars that had gone, safety stops seen, cars waiting on a central reservation, where waiting cars stood, any car stopped inside to give way, turners' behaviour
 (second turner stopping at the spot), STOP roll-up, longest minor-arm wait, jams/deadlocks; the optional passes if
 done; any exception text.
