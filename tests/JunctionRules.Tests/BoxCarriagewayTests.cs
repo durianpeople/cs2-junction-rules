@@ -331,6 +331,7 @@ namespace JunctionRules.Tests
             Check(sys.Contains("NetCompositionLane") && sys.Contains("NetLaneData ld = em.GetComponentData<NetLaneData>(l.m_Lane)") && sys.Contains("CarriagewayOutline.IsCarriagewayLane(") && !sys.Contains("NetPieceFlags.HasRoadLanes"), "paint system: carriageway from lane extents (position +- NetLaneData width / 2), not piece spans");
             Check(sys.Contains("footway unknown") && sys.Contains("kerbNotes.Add(\"unknown\")") && !sys.Contains("kerbNotes.Add(\"0|0\")"), "paint system: unknown footway is logged, never a silent 0|0");
             Check(sys.Contains("!em.HasComponent<Game.Net.Road>(e)") && sys.Contains("non-road edge(s)"), "paint system: non-road edges (paths) are skipped as arms, with a note");
+            Check(sys.Contains("if (isStart) { double t = left; left = right; right = t; }"), "paint system: node-composition fallback swaps sides at the start node (start-node composition is mirrored, CompositionSelectSystem.GetNodeFlags)");
             Check(sys.Contains("PedestrianLaneFlags.Crosswalk") && sys.Contains("PedestrianLaneFlags.Unsafe"), "paint system: marked crossings = crosswalk lanes without Unsafe");
         }
     }

@@ -679,7 +679,14 @@ namespace JunctionRules.Paint
                         spans.Add(new CompositionLaneSpan(x, ld.m_Width, CarriagewayOutline.IsCarriagewayLane((int)(ld.m_Flags | pl[k].m_ExtraFlags))));
                     }
                 }
-                if (CarriagewayOutline.FootwayWidths(spans, width, out left, out right, out string why2)) { source = "n"; return true; }
+                if (CarriagewayOutline.FootwayWidths(spans, width, out left, out right, out string why2))
+                {
+                    // The start-node composition is mirrored against the edge frame (CompositionSelectSystem.GetNodeFlags
+                    // XORs General.Invert and inverts the side flags when isStart; GetCompositionPieces then reverses the
+                    // sections), so its x < 0 is the edge's RIGHT. Swap back into the edge frame AssignSides expects.
+                    if (isStart) { double t = left; left = right; right = t; }
+                    source = "n"; return true;
+                }
                 why += "; node composition: " + why2;
             }
             AddOnce(notes, "footway unknown (" + why + "): box edge at the outer edge");
