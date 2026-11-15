@@ -1,0 +1,119 @@
+//////////////////////////////////////////
+//
+// NOTE: This is *not* a valid shader file
+//
+///////////////////////////////////////////
+Shader "Shader Graphs/AreaDecalShader" {
+Properties {
+
+_BaseColor ("BaseColor", Color) = (1,1,1,1)
+
+_BaseColorMap ("BaseColorMap", 2D) = "white" { }
+
+_NormalMap ("NormalMap", 2D) = "bump" { }
+
+_MaskMap ("MaskMap", 2D) = "white" { }
+
+_Metallic ("Metallic", Range(0, 1)) = 1.0
+
+_Smoothness ("Smoothness", Range(0, 1)) = 1.0
+
+_NormalOpacity ("NormalOpacity", Range(0, 1)) = 1.0
+
+_MetallicOpacity ("MetallicOpacity", Range(0, 1)) = 1.0
+
+_NormalAlphaSource ("NormalAlphaSource", Range(0, 1)) = 0.0
+
+_MetallicAlphaSource ("MetallicAlphaSource", Range(0, 1)) = 0.0
+
+colossal_UVScale ("UV Scale", Float) = 0.20000000298023224
+
+colossal_EdgeFadeRange ("Edge Fade Range", Vector) = (0.75,0.25,0,0)
+
+colossal_EdgeNormalRange ("Edge Normal Range", Vector) = (0.7,0.5,0,0)
+
+colossal_EdgeNormal ("Edge Normal", Range(-1, 1)) = 0.5
+
+colossal_EdgeNoise ("Edge Noise", Vector) = (0.5,0.5,0,0)
+
+colossal_AreaParameters ("Area Parameters", Vector) = (0.5,4,0,0)
+
+_Wetness ("Wetness", Range(0, 1)) = 0.0
+
+_Snow ("Snow", Range(0, 1)) = 0.0
+
+colossal_Wetness ("SurfaceWetness", Vector) = (0,0,0,0)
+
+_Porosity ("Porosity", Range(0, 1)) = 0.0
+
+_Snow_BaseColorMap ("Snow_BaseColorMap", 2D) = "white" { }
+
+_Snow_Normal ("Snow_Normal", 2D) = "bump" { }
+
+[ProceduralTextureStack.DefaultPVTStack(3)] DefaultPVTStack ("Procedural Virtual Texture", 2D) = "white" { }
+
+DefaultPVTStack_atlasParams0 ("DefaultPVTStack_atlasParams0", Vector) = (0,0,0,0)
+
+DefaultPVTStack_atlasParams1 ("DefaultPVTStack_atlasParams1", Vector) = (0,0,0,0)
+
+_Texture2DAsset_941ecb7ff20748f8822a3c28ab0c099d_Out_0_Texture2D ("Texture2D", 2D) = "white" { }
+
+colossal_DecalLayerMask ("Float", Float) = 0.0
+
+_DrawOrder ("Draw Order", Float) = 0.0
+
+[Enum(Depth Bias, 0, View Bias, 1)] _DecalMeshBiasType ("Float", Float) = 0.0
+
+_DecalMeshDepthBias ("DecalMesh DepthBias", Float) = 0.0
+
+_DecalMeshViewBias ("DecalMesh ViewBias", Float) = 0.0
+
+_DecalStencilWriteMask ("Float", Float) = 0.0
+
+_DecalStencilRef ("Float", Float) = 0.0
+
+[ToggleUI] _AffectAlbedo ("Boolean", Float) = 1.0
+
+[ToggleUI] _AffectNormal ("Boolean", Float) = 1.0
+
+[ToggleUI] _AffectMetal ("Boolean", Float) = 1.0
+
+[ToggleUI] _AffectSmoothness ("Boolean", Float) = 1.0
+
+_DecalColorMask0 ("Float", Float) = 0.0
+
+_DecalColorMask1 ("Float", Float) = 0.0
+
+_DecalColorMask2 ("Float", Float) = 0.0
+
+_DecalColorMask3 ("Float", Float) = 0.0
+
+unity_Lightmaps ("unity_Lightmaps", 2DArray) = "" { }
+
+unity_LightmapsInd ("unity_LightmapsInd", 2DArray) = "" { }
+
+unity_ShadowMasks ("unity_ShadowMasks", 2DArray) = "" { }
+
+}
+SubShader {
+ Tags { "DisableBatching" = "False" "QUEUE" = "Geometry+0" "RenderPipeline" = "HDRenderPipeline" "RenderType" = "Opaque" "ShaderGraphShader" = "true" "ShaderGraphTargetId" = "DecalSubTarget" }
+ Pass {
+ Name "DBufferProjector"
+  Tags { "DisableBatching" = "False" "LIGHTMODE" = "DBufferProjector" "QUEUE" = "Geometry+0" "RenderPipeline" = "HDRenderPipeline" "RenderType" = "Opaque" "ShaderGraphShader" = "true" "ShaderGraphTargetId" = "DecalSubTarget" }
+ ZTest Greater
+ ZWrite Off
+ Cull Front
+  GpuProgramID 54475
+}
+ Pass {
+ Name "DBufferMesh"
+  Tags { "DisableBatching" = "False" "LIGHTMODE" = "DBufferMesh" "QUEUE" = "Geometry+0" "RenderPipeline" = "HDRenderPipeline" "RenderType" = "Opaque" "ShaderGraphShader" = "true" "ShaderGraphTargetId" = "DecalSubTarget" }
+ ZTest Greater
+ ZWrite Off
+ Cull Front
+  GpuProgramID 115361
+}
+}
+Fall back "Hidden/Shader Graph/FallbackError"
+CustomEditor "UnityEditor.ShaderGraph.GenericShaderGraphMaterialGUI"
+}

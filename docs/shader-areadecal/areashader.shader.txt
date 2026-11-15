@@ -1,0 +1,144 @@
+//////////////////////////////////////////
+//
+// NOTE: This is *not* a valid shader file
+//
+///////////////////////////////////////////
+Shader "Shader Graphs/AreaShader" {
+Properties {
+
+colossal_AreaParameters ("Area Parameters", Vector) = (0.5,4,0,0)
+
+[KeywordEnum(Terrain, Triangle)] COLOSSAL_HEIGHT_MODE ("Height Mode", Float) = 0.0
+
+colossal_DecalLayerMask ("Float", Float) = 0.0
+
+_EmissionColor ("Color", Color) = (1,1,1,1)
+
+_RenderQueueType ("Float", Float) = 6.0
+
+[ToggleUI] _AddPrecomputedVelocity ("Boolean", Float) = 0.0
+
+[ToggleUI] _DepthOffsetEnable ("Boolean", Float) = 0.0
+
+[ToggleUI] _ConservativeDepthOffsetEnable ("Boolean", Float) = 0.0
+
+[ToggleUI] _TransparentWritingMotionVec ("Boolean", Float) = 0.0
+
+[ToggleUI] _AlphaCutoffEnable ("Boolean", Float) = 0.0
+
+_TransparentSortPriority ("_TransparentSortPriority", Float) = 0.0
+
+[ToggleUI] _UseShadowThreshold ("Boolean", Float) = 0.0
+
+[ToggleUI] _DoubleSidedEnable ("Boolean", Float) = 0.0
+
+[Enum(Flip, 0, Mirror, 1, None, 2)] _DoubleSidedNormalMode ("Float", Float) = 2.0
+
+_DoubleSidedConstants ("Vector4", Vector) = (1,1,-1,0)
+
+[Enum(Auto, 0, On, 1, Off, 2)] _DoubleSidedGIMode ("Float", Float) = 0.0
+
+[ToggleUI] _TransparentDepthPrepassEnable ("Boolean", Float) = 0.0
+
+[ToggleUI] _TransparentDepthPostpassEnable ("Boolean", Float) = 0.0
+
+_SurfaceType ("Float", Float) = 1.0
+
+_BlendMode ("Float", Float) = 0.0
+
+_SrcBlend ("Float", Float) = 1.0
+
+_DstBlend ("Float", Float) = 0.0
+
+_AlphaSrcBlend ("Float", Float) = 1.0
+
+_AlphaDstBlend ("Float", Float) = 0.0
+
+[ToggleUI] _ZWrite ("Boolean", Float) = 0.0
+
+[ToggleUI] _TransparentZWrite ("Boolean", Float) = 0.0
+
+_CullMode ("Float", Float) = 2.0
+
+[ToggleUI] _EnableFogOnTransparent ("Boolean", Float) = 0.0
+
+_CullModeForward ("Float", Float) = 2.0
+
+[Enum(Front, 1, Back, 2)] _TransparentCullMode ("Float", Float) = 1.0
+
+[Enum(UnityEditor.Rendering.HighDefinition.OpaqueCullMode)] _OpaqueCullMode ("Float", Float) = 2.0
+
+_ZTestDepthEqualForOpaque ("Float", Float) = 0.0
+
+[Enum(UnityEngine.Rendering.CompareFunction)] _ZTestTransparent ("Float", Float) = 0.0
+
+[ToggleUI] _TransparentBackfaceEnable ("Boolean", Float) = 0.0
+
+[ToggleUI] _EnableBlendModePreserveSpecularLighting ("Boolean", Float) = 0.0
+
+_StencilRef ("Float", Float) = 0.0
+
+_StencilWriteMask ("Float", Float) = 6.0
+
+_StencilRefDepth ("Float", Float) = 1.0
+
+_StencilWriteMaskDepth ("Float", Float) = 9.0
+
+_StencilRefMV ("Float", Float) = 33.0
+
+_StencilWriteMaskMV ("Float", Float) = 43.0
+
+_StencilRefDistortionVec ("Float", Float) = 4.0
+
+_StencilWriteMaskDistortionVec ("Float", Float) = 4.0
+
+unity_Lightmaps ("unity_Lightmaps", 2DArray) = "" { }
+
+unity_LightmapsInd ("unity_LightmapsInd", 2DArray) = "" { }
+
+unity_ShadowMasks ("unity_ShadowMasks", 2DArray) = "" { }
+
+}
+SubShader {
+ Tags { "DisableBatching" = "False" "QUEUE" = "Transparent+700" "RenderPipeline" = "HDRenderPipeline" "RenderType" = "HDUnlitShader" "ShaderGraphShader" = "true" "ShaderGraphTargetId" = "HDUnlitSubTarget" }
+ Pass {
+ Name "ShadowCaster"
+  Tags { "DisableBatching" = "False" "LIGHTMODE" = "SHADOWCASTER" "QUEUE" = "Transparent+700" "RenderPipeline" = "HDRenderPipeline" "RenderType" = "HDUnlitShader" "ShaderGraphShader" = "true" "ShaderGraphTargetId" = "HDUnlitSubTarget" }
+ ZClip Off
+ Cull Off
+  GpuProgramID 59546
+}
+ Pass {
+ Name "MotionVectors"
+  Tags { "DisableBatching" = "False" "LIGHTMODE" = "MOTIONVECTORS" "QUEUE" = "Transparent+700" "RenderPipeline" = "HDRenderPipeline" "RenderType" = "HDUnlitShader" "ShaderGraphShader" = "true" "ShaderGraphTargetId" = "HDUnlitSubTarget" }
+ Cull Off
+  GpuProgramID 270767
+}
+ Pass {
+ Name "DepthForwardOnly"
+  Tags { "DisableBatching" = "False" "LIGHTMODE" = "DepthForwardOnly" "QUEUE" = "Transparent+700" "RenderPipeline" = "HDRenderPipeline" "RenderType" = "HDUnlitShader" "ShaderGraphShader" = "true" "ShaderGraphTargetId" = "HDUnlitSubTarget" }
+ Cull Off
+  GpuProgramID 383923
+}
+ Pass {
+ Name "ForwardOnly"
+  Tags { "DisableBatching" = "False" "LIGHTMODE" = "ForwardOnly" "QUEUE" = "Transparent+700" "RenderPipeline" = "HDRenderPipeline" "RenderType" = "HDUnlitShader" "ShaderGraphShader" = "true" "ShaderGraphTargetId" = "HDUnlitSubTarget" }
+ ZTest Off
+ ZWrite Off
+ Cull Off
+  GpuProgramID 440801
+}
+ Pass {
+ Name "FullScreenDebug"
+  Tags { "DisableBatching" = "False" "LIGHTMODE" = "FullScreenDebug" "QUEUE" = "Transparent+700" "RenderPipeline" = "HDRenderPipeline" "RenderType" = "HDUnlitShader" "ShaderGraphShader" = "true" "ShaderGraphTargetId" = "HDUnlitSubTarget" }
+ ZWrite Off
+ Cull Off
+  GpuProgramID 484636
+}
+}
+SubShader {
+ Tags { "DisableBatching" = "False" "QUEUE" = "Transparent+700" "RenderPipeline" = "HDRenderPipeline" "RenderType" = "HDUnlitShader" "ShaderGraphShader" = "true" "ShaderGraphTargetId" = "HDUnlitSubTarget" }
+}
+Fall back "Hidden/Shader Graph/FallbackError"
+CustomEditor "UnityEditor.ShaderGraph.GenericShaderGraphMaterialGUI"
+}
