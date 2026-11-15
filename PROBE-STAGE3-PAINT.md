@@ -465,7 +465,7 @@ If step 3 still shows nothing, first set `"swapPrevNext": true` in `"paint"` and
 
 The footway step looked for road-lane pieces in the junction's **node** composition (`Composition.m_StartNode` /
 `m_EndNode`). The game marks a piece as carrying road lanes (`NetPieceFlags.HasRoadLanes`) in one place only,
-`NetCompositionHelpers.AddCompositionLanes` (decompile `Game.Prefabs/NetCompositionHelpers.cs` lines 1463-1466), and
+`NetCompositionHelpers.AddCompositionLanes` (decompile `Game.Prefabs/NetCompositionHelpers.cs` lines 1464-1465), and
 `NetCompositionSystem` calls that only for compositions that have a `NetCompositionLane` buffer
 (`Game.Prefabs/NetCompositionSystem.cs` lines 163-181). Only **edge** compositions have that buffer: the node archetype
 gets `NetCompositionCrosswalk` instead (`Game.Prefabs/NetGeometryPrefab.cs` lines 106-112). So a node composition never
@@ -477,9 +477,18 @@ and corner kerbs included. Not a Moonflower x Anchor quirk.
 1. Each arm's two outer edges: the edge's `Start/EndNodeGeometry` curves `m_Left.m_Left` and `m_Right.m_Right` (the
    pair the game uses as the slice's full width, `Game.Net/LaneSystem.cs` lines 7918-7938), from the mouth inward,
    16 chords each.
-2. Footway width each side from the arm's **edge** composition (`Composition.m_Edge`): the carriageway runs from the
-   leftmost to the rightmost piece with road lanes (or a parking lane); the rest each side is footway. If that fails,
-   the node composition is tried with the piece prefabs' own lane lists (log shows `n` after the widths).
+2. Footway width each side from the arm's **edge** composition (`Composition.m_Edge`) **lanes**: the carriageway runs
+   from the outer edge of the outermost road / bicycle / parking lane on one side to the other
+   (`NetCompositionLane.m_Position.x` +- `NetLaneData.m_Width / 2`; lane position = piece offset + piece lane
+   position, `NetCompositionHelpers.cs` line 1443); the rest each side is footway, never below 0. Not pieces (review
+   of the first 0.3.5 commit): on Small Road the "Sidewalk With Parking Piece 5" (x 3..8) holds both the parking lane
+   (x 4, 2 m wide) and the pavement, and its "- Bay" variant carries `HasRoadLanes` itself, so a piece test gave
+   footway 0|0. The kerb is at the parking lane's outer edge (asphalt to x 5): **Small Road expects footway 3|3**,
+   matching the bridge's laneMin/laneMax +-5 and clearWidth 3. If the edge has no such lanes, the node composition is
+   tried with the piece prefabs' lane lists (log shows `n` after the widths); if that fails too, the log says
+   `footway unknown (...)` and the arm shows `unknown`, never a silent `0|0`. Non-road edges (paths) joined to the
+   node are not arms (log note `non-road edge(s) (path) at the node skipped as arms`). NaN/Inf geometry gives no box
+   and a clean `non-finite input` reason.
 3. Which outer edge is the edge's left: the one whose mouth point touches the edge's own left kerb end
    (`EdgeGeometry`; composition x < 0 = left, `LaneSystem.cs` line 3648). No start/end mirroring assumption.
 4. Each outer edge is moved in by its footway (+ `kerbInset`): the kerb lines, round the corner curves.
@@ -502,14 +511,16 @@ hedge may also take paint.) If a jag stays on the carriageway, report it with a 
 ### What to look at live (one restart, game closed for the install)
 
 1. Install 0.3.5 (section 1, after main's Burst build). Log: `OnLoad version 0.3.5.0`, the settings migration line,
-   and Options shows **paint onto = Roads**.
+   and Options shows **paint onto = Roads**. (The schema version is not reset by "Reset to defaults", so a Roads +
+   Other chosen later survives restarts.)
 2. Moonflower St x Anchor St (node 874687), **Plain fill**, then **Box**:
    - **Pavements clean**: no paint on any footway or the corner kerbs.
    - **Kerb curves followed**: the box edge runs along the kerb line round both corners by Moonflower St.
    - **Stop lines**: the box starts at the Moonflower stop line and at each Anchor St mouth, not up the arms.
    - **West edge**: straight along the west mouth, ending at the kerb (no jag near the hedge).
    - **Poles clean**: street lights and signs not yellow (Roads layer).
-   - Log line: `footways (m) per arm` shows the real widths (not `0|0`), no `footway unknown`.
+   - Log line: `footways (m) per arm` shows the real widths: **3.00|3.00 on each Small Road arm** (Moonflower St,
+     Anchor St incl. the Bay arm on seg 1175972), no `unknown`, no `footway unknown`. Copy the line into the report.
 3. A junction with **zebras** on its arms: box ends at the zebra's junction-side edge, never on the stripes.
 4. A junction with an asymmetric road (footway one side only, or parking one side): box on the carriageway on both sides.
 5. Then S7-S10 (section 4) as written.

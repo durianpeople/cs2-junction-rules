@@ -12,13 +12,17 @@ namespace JunctionRules.Core
     //   Start/EndNodeGeometry; the game itself treats those two curves as the slice's full width (LaneSystem.cs 7918-7938:
     //   left.m_Left = m_Left.m_Left, left.m_Right = m_Right.m_Right; a lateral composition position x lies at
     //   t = x / width + 0.5 between them, lines 7945-7947).
-    // - Footway widths: the EDGE composition (Composition.m_Edge) pieces. A piece with road lanes carries
-    //   NetPieceFlags.HasRoadLanes, which the game sets only in NetCompositionHelpers.AddCompositionLanes
-    //   (NetCompositionHelpers.cs 1463-1466), called only for composition chunks that hold a NetCompositionLane buffer
-    //   (NetCompositionSystem.cs 163-181). Only EDGE compositions have that buffer (NetGeometryPrefab.cs 106-112), so a
-    //   NODE composition never has HasRoadLanes (why 0.3.0-0.3.4 always logged "no road-lane pieces: kerb inset 0").
-    //   A piece also counts as carriageway when a parking lane of the composition lies in it (kerb to kerb includes
-    //   parking bays).
+    // - Footway widths: the EDGE composition (Composition.m_Edge) LANES, not its pieces. The carriageway runs from the
+    //   outer edge of the outermost road / bicycle / parking lane on one side to the other: NetCompositionLane.m_Position.x
+    //   (= piece offset + the piece lane's position, NetCompositionHelpers.cs 1443) +- NetLaneData(m_Lane).m_Width / 2.
+    //   Pieces are no good for this: on Small Road the "Sidewalk With Parking Piece 5" (x 3..8) holds both the parking
+    //   lane (x 4, width 2) and the pavement, and its Bay variant even carries NetPieceFlags.HasRoadLanes, so a piece
+    //   test calls the whole 8 m half carriageway (0.3.5-probe review). The visible kerb is at the parking lane's outer
+    //   edge (asphalt to x 5, pavement 5..8: footway 3 m each side, as the bridge's laneMin/laneMax and clearWidth say).
+    //   Why 0.3.0-0.3.4 always logged "no road-lane pieces: kerb inset 0": they read the NODE composition, and
+    //   HasRoadLanes is set only in NetCompositionHelpers.AddCompositionLanes (NetCompositionHelpers.cs 1464-1465),
+    //   called only for composition chunks that hold a NetCompositionLane buffer (NetCompositionSystem.cs 163-181); only
+    //   EDGE compositions have that buffer (NetGeometryPrefab.cs 106-112), so a node composition never has the flag.
     // - Which outer curve is the edge's left: composition x &lt; 0 is the edge's left (LaneSystem.cs 3648,
     //   AttachPositionSystem.cs 299: Lerp(segment.m_Left, segment.m_Right, x / width + 0.5)); the node slice outer curve
     //   whose mouth point touches EdgeGeometry's left kerb end at that node takes the left footway.
@@ -27,12 +31,12 @@ namespace JunctionRules.Core
     //   (LaneSystem.cs 8239-8242: mouth line + tangent * crosswalk z, Curve = StraightCurve, line 8582) with the lane
     //   prefab's width (NetLaneData.m_Width, plus NodeLane.m_WidthOffset at an end, lines 8566-8567).
 
-    /// <summary>One piece across an edge composition (composition metres: x = 0 at the centre, -width/2 = the edge's left).</summary>
-    public struct CompositionPieceSpan
+    /// <summary>One lane across an edge composition (composition metres: x = 0 at the centre, -width/2 = the edge's left).</summary>
+    public struct CompositionLaneSpan
     {
-        public double Offset, Size;
+        public double Position, Width;
         public bool Carriageway;
-        public CompositionPieceSpan(double offset, double size, bool carriageway) { Offset = offset; Size = size; Carriageway = carriageway; }
+        public CompositionLaneSpan(double position, double width, bool carriageway) { Position = position; Width = width; Carriageway = carriageway; }
     }
 
     /// <summary>A marked crossing on the junction: its centre line (A to B, across the arm) and its width along the road.</summary>
@@ -67,33 +71,50 @@ namespace JunctionRules.Core
         /// <summary>Most a crossing's middle may lie from an arm's mouth line and still belong to it (metres).</summary>
         public const double CrossingAssignMax = 12.0;
 
+        // Game LaneFlags values (decompile Game.Prefabs/LaneFlags.cs): Road 0x8, Pedestrian 0x10, Parking 0x20.
+        // Bicycle lanes are Road | BicyclesOnly, so Road covers them.
+        public const int LaneFlagRoad = 0x8, LaneFlagPedestrian = 0x10, LaneFlagParking = 0x20;
+
+        /// <summary>A lane on the asphalt between the kerbs: road (incl. bicycle) or parking, never a pavement lane.</summary>
+        public static bool IsCarriagewayLane(int laneFlags)
+        {
+            if ((laneFlags & LaneFlagPedestrian) != 0) return false;
+            return (laneFlags & (LaneFlagRoad | LaneFlagParking)) != 0;
+        }
+
         /// <summary>
-        /// Footway width each side from an edge composition: the carriageway runs from the left edge of the leftmost
-        /// carriageway piece to the right edge of the rightmost one; what is left of the full width each side is footway
-        /// (verge, kerb and pavement). False when no piece is carriageway or the span is odd.
+        /// Footway width each side from an edge composition's lanes: the carriageway runs from the outer edge of the
+        /// leftmost carriageway lane (position - width/2) to the outer edge of the rightmost one; what is left of the full
+        /// width each side is footway (verge, kerb and pavement), clamped to >= 0. False (with 'why') when there is no
+        /// carriageway lane or the span is odd: the caller must then log "footway unknown", never a silent 0.
         /// </summary>
-        public static bool FootwayWidths(IList<CompositionPieceSpan> pieces, double width, out double left, out double right, out string why)
+        public static bool FootwayWidths(IList<CompositionLaneSpan> lanes, double width, out double left, out double right, out string why)
         {
             left = right = 0;
             why = null;
-            if (pieces == null || pieces.Count == 0) { why = "no composition pieces"; return false; }
-            if (!(width > 0)) { why = "composition width " + width; return false; }
+            if (lanes == null || lanes.Count == 0) { why = "no composition lanes"; return false; }
+            if (!(width > 0) || double.IsInfinity(width)) { why = "composition width " + width; return false; }
             double cmin = double.MaxValue, cmax = double.MinValue;
-            foreach (var p in pieces)
+            foreach (var l in lanes)
             {
-                if (!p.Carriageway) continue;
-                cmin = Math.Min(cmin, p.Offset - p.Size * 0.5);
-                cmax = Math.Max(cmax, p.Offset + p.Size * 0.5);
+                if (!l.Carriageway) continue;
+                if (!IsFinite(l.Position) || !IsFinite(l.Width) || l.Width < 0) continue;
+                cmin = Math.Min(cmin, l.Position - l.Width * 0.5);
+                cmax = Math.Max(cmax, l.Position + l.Width * 0.5);
             }
-            if (cmin > cmax) { why = "no carriageway pieces"; return false; }
+            if (cmin > cmax) { why = "no road, bicycle or parking lanes"; return false; }
             double half = width * 0.5;
-            double l = cmin + half, r = half - cmax;
+            double lw = cmin + half, rw = half - cmax;
             const double tol = 0.01;
-            if (l < -tol || r < -tol || cmax - cmin < 0.5) { why = $"odd carriageway span {cmin:0.00}..{cmax:0.00} of width {width:0.00}"; return false; }
-            left = Math.Max(0, l);
-            right = Math.Max(0, r);
+            if (lw < -tol || rw < -tol || cmax - cmin < 0.5) { why = $"odd carriageway span {cmin:0.00}..{cmax:0.00} of width {width:0.00}"; return false; }
+            left = Math.Max(0, lw);
+            right = Math.Max(0, rw);
             return true;
         }
+
+        public static bool IsFinite(double v) => !double.IsNaN(v) && !double.IsInfinity(v);
+        public static bool IsFinite(V3 p) => IsFinite(p.X) && IsFinite(p.Y) && IsFinite(p.Z);
+        public static bool IsFinite(V2 p) => IsFinite(p.X) && IsFinite(p.Z);
 
         /// <summary>
         /// Which node-slice outer curve takes the edge's left footway: the one whose mouth point is nearer to the edge's
@@ -196,10 +217,19 @@ namespace JunctionRules.Core
         {
             var res = new CarriagewayResult();
             if (arms == null || arms.Count < 2) { res.Failure = "fewer than 2 arms"; return res; }
+            if (!IsFinite(centre)) { res.Failure = "non-finite input (NaN/Inf) at the node centre"; return res; }
+            if (crossings != null)
+            {
+                var ok = new List<CrosswalkStrip>(crossings.Count);
+                foreach (var c in crossings) if (IsFinite(c.A) && IsFinite(c.B) && IsFinite(c.Width)) ok.Add(c);
+                if (ok.Count < crossings.Count) res.Notes.Add($"{crossings.Count - ok.Count} crossing(s) with non-finite geometry ignored");
+                crossings = ok;
+            }
             var kerbs = new List<ArmSlice>(arms.Count);
             foreach (var a in arms)
             {
                 if (a.OuterA == null || a.OuterB == null || a.OuterA.Count < 2 || a.OuterB.Count < 2) { res.Failure = "an arm has an edge line with fewer than 2 points"; return res; }
+                if (!IsFinite(a.InsetA) || !IsFinite(a.InsetB) || !a.OuterA.TrueForAll(IsFinite) || !a.OuterB.TrueForAll(IsFinite)) { res.Failure = "non-finite input (NaN/Inf) in an arm's edge lines or insets"; return res; }
                 var ka = BoxPaintGeometry.OffsetToward(a.OuterA, a.InsetA, a.OuterB[0].XZ);
                 var kb = BoxPaintGeometry.OffsetToward(a.OuterB, a.InsetB, a.OuterA[0].XZ);
                 kerbs.Add(new ArmSlice(ka, kb));

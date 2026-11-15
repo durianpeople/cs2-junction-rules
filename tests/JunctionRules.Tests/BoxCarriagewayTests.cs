@@ -92,24 +92,91 @@ namespace JunctionRules.Tests
             return best;
         }
 
+        private static void BoxCarriagewayGuardTests()
+        {
+            // ---- non-finite input: clean failure, no box
+            var arms = GameArms(new double[] { 0, 90, 180, 270 }, 7, 16, 3, out _);
+            foreach (var a in arms) { a.InsetA = 3; a.InsetB = 3; }
+            var good = CW.Build(arms, new V2(0, 0), null, 0.05);
+            Check(good.Outline != null, "guard: the clean 4-arm junction builds (baseline)");
+            var bad = GameArms(new double[] { 0, 90, 180, 270 }, 7, 16, 3, out _);
+            foreach (var a in bad) { a.InsetA = 3; a.InsetB = 3; }
+            bad[2].OuterA[5] = new V3(double.NaN, 0, 1);
+            var r = CW.Build(bad, new V2(0, 0), null, 0.05);
+            Check(r.Outline == null && r.Failure != null && r.Failure.StartsWith("non-finite") && r.Kerbs.Count == 0, "guard: a NaN edge point fails cleanly with no outline and no kerbs (" + r.Failure + ")");
+            foreach (var a in bad) { a.InsetA = 3; a.InsetB = 3; }
+            bad[2].OuterA[5] = new V3(1, 0, 1);
+            bad[1].InsetB = double.PositiveInfinity;
+            r = CW.Build(bad, new V2(0, 0), null, 0.05);
+            Check(r.Outline == null && r.Failure != null && r.Failure.StartsWith("non-finite"), "guard: an infinite inset fails cleanly (" + r.Failure + ")");
+            r = CW.Build(arms, new V2(double.NaN, 0), null, 0.05);
+            Check(r.Outline == null && r.Failure != null && r.Failure.StartsWith("non-finite"), "guard: a NaN centre fails cleanly");
+            var nanCross = new List<CrosswalkStrip> { new CrosswalkStrip(new V2(double.NaN, 0), new V2(18, 4), 3) };
+            r = CW.Build(arms, new V2(0, 0), nanCross, 0.05);
+            Check(r.Outline != null && r.Notes.Exists(n => n.Contains("non-finite geometry ignored")), "guard: a NaN crossing is dropped with a note, the box still builds");
+            Check(G.BuildPieces(null, new BoxPaintParams(), BoxPaintMode.Hatch).Failure == "no outline", "guard: no outline -> no box (BuildPieces refuses)");
+
+            // ---- Douglas-Peucker stays within tolerance along a long curve (a 400-point, 120 m radius, 150 deg arc)
+            var arc = new List<V3>();
+            const double R = 120, span = 150 * Math.PI / 180;
+            for (int i = 0; i < 400; i++) { double t = span * i / 399; arc.Add(new V3(R * Math.Cos(t), 0, R * Math.Sin(t))); }
+            foreach (double tol in new[] { 0.01, 0.05, 0.2 })
+            {
+                var st = G.Straighten(arc, tol);
+                double worst = 0;
+                foreach (var p in arc)
+                {
+                    double best = double.MaxValue;
+                    for (int i = 0; i + 1 < st.Count; i++) best = Math.Min(best, G.DistanceToSegment(p.XZ, st[i].XZ, st[i + 1].XZ));
+                    worst = Math.Max(worst, best);
+                }
+                bool ends = st.Count >= 2 && st[0].X == arc[0].X && st[0].Z == arc[0].Z && st[st.Count - 1].X == arc[399].X && st[st.Count - 1].Z == arc[399].Z;
+                Check(worst <= tol + 1e-9 && ends && st.Count < arc.Count, $"Douglas-Peucker: long arc kept within {tol} m (worst {worst:0.0000} m, {st.Count} of {arc.Count} points, ends kept)");
+            }
+        }
+
         private static void BoxCarriagewayTests()
         {
-            // ---- footway widths from composition pieces (edge composition: 3 m footway | 8 m road | 3 m footway, W 14)
-            var pieces = new List<CompositionPieceSpan>
+            // ---- footway widths from composition LANES (outer edges of road / bicycle / parking lanes), not pieces
+            const int Road = CW.LaneFlagRoad, Ped = CW.LaneFlagPedestrian, Park = CW.LaneFlagParking, Bike = CW.LaneFlagRoad | 0x2000000;
+            Check(CW.IsCarriagewayLane(Road) && CW.IsCarriagewayLane(Park) && CW.IsCarriagewayLane(Bike) && CW.IsCarriagewayLane(Park | 0x100000), "lane class: road, parking, bicycle (Road|BicyclesOnly) are carriageway");
+            Check(!CW.IsCarriagewayLane(Ped) && !CW.IsCarriagewayLane(0x800) && !CW.IsCarriagewayLane(0) && !CW.IsCarriagewayLane(Ped | Road), "lane class: pedestrian, utility, none are not");
+            // Real Small Road (W 16): road pieces -3..3 (car lanes at +-1.5, 3 m), "Sidewalk With Parking Piece 5" x 3..8 each
+            // side holding the parking lane (x +-4, 2 m) AND the pavement (pedestrian lane at +-6.5). Visible kerb at +-5.
+            var small = new List<CompositionLaneSpan>
             {
-                new CompositionPieceSpan(-5.5, 3, false), new CompositionPieceSpan(-2, 4, true), new CompositionPieceSpan(2, 4, true), new CompositionPieceSpan(5.5, 3, false),
+                new CompositionLaneSpan(-6.5, 2, CW.IsCarriagewayLane(Ped)), new CompositionLaneSpan(-4, 2, CW.IsCarriagewayLane(Park)),
+                new CompositionLaneSpan(-1.5, 3, CW.IsCarriagewayLane(Road)), new CompositionLaneSpan(1.5, 3, CW.IsCarriagewayLane(Road)),
+                new CompositionLaneSpan(4, 2, CW.IsCarriagewayLane(Park)), new CompositionLaneSpan(6.5, 2, CW.IsCarriagewayLane(Ped)),
             };
-            Check(CW.FootwayWidths(pieces, 14, out double fl, out double fr, out string why) && Math.Abs(fl - 3) < 1e-9 && Math.Abs(fr - 3) < 1e-9, $"footways: 3 | 8 | 3 m composition gives 3 m each side ({fl}, {fr}, {why})");
-            var asym = new List<CompositionPieceSpan>
+            Check(CW.FootwayWidths(small, 16, out double fl, out double fr, out string why) && Math.Abs(fl - 3) < 1e-9 && Math.Abs(fr - 3) < 1e-9, $"footways: Small Road (parking lane inside the 5 m sidewalk piece) gives 3 | 3 m, kerb at +-5 ({fl}, {fr}, {why})");
+            // Bay variant ("Sidewalk With Parking Piece 5 - Bay", a piece that carries HasRoadLanes itself): the bay is a
+            // parking lane flagged Road too; the pieces would say carriageway 8 m per side, the lanes still say kerb at +-5.
+            var bay = new List<CompositionLaneSpan>
             {
-                new CompositionPieceSpan(-6, 2, false), new CompositionPieceSpan(-4, 2, true) /* parking bay */, new CompositionPieceSpan(0, 6, true), new CompositionPieceSpan(5, 4, false),
+                new CompositionLaneSpan(-6.5, 2, CW.IsCarriagewayLane(Ped)), new CompositionLaneSpan(-4, 2, CW.IsCarriagewayLane(Park | Road)),
+                new CompositionLaneSpan(-1.5, 3, CW.IsCarriagewayLane(Road)), new CompositionLaneSpan(1.5, 3, CW.IsCarriagewayLane(Road)),
+                new CompositionLaneSpan(4, 2, CW.IsCarriagewayLane(Park | Road)), new CompositionLaneSpan(6.5, 2, CW.IsCarriagewayLane(Ped)),
+            };
+            Check(CW.FootwayWidths(bay, 16, out fl, out fr, out why) && Math.Abs(fl - 3) < 1e-9 && Math.Abs(fr - 3) < 1e-9, $"footways: Small Road Bay variant gives 3 | 3 m ({fl}, {fr}, {why})");
+            var asym = new List<CompositionLaneSpan>
+            {
+                new CompositionLaneSpan(-6, 2, false), new CompositionLaneSpan(-4, 2, CW.IsCarriagewayLane(Park)), new CompositionLaneSpan(-1.5, 3, CW.IsCarriagewayLane(Road)),
+                new CompositionLaneSpan(1.5, 3, CW.IsCarriagewayLane(Road)), new CompositionLaneSpan(5, 4, false),
             };
             Check(CW.FootwayWidths(asym, 14, out fl, out fr, out why) && Math.Abs(fl - 2) < 1e-9 && Math.Abs(fr - 4) < 1e-9, $"footways: asymmetric 2 | parking 2 + road 6 | 4 m gives 2 and 4 m ({fl}, {fr})");
-            var none = new List<CompositionPieceSpan> { new CompositionPieceSpan(0, 14, false) };
-            Check(!CW.FootwayWidths(none, 14, out _, out _, out why) && why == "no carriageway pieces", "footways: no carriageway piece is reported, not guessed (" + why + ")");
-            Check(!CW.FootwayWidths(pieces, 0, out _, out _, out _), "footways: zero width refused");
-            var odd = new List<CompositionPieceSpan> { new CompositionPieceSpan(0, 20, true) };
+            var noFoot = new List<CompositionLaneSpan> { new CompositionLaneSpan(-3.5, 7, true), new CompositionLaneSpan(3.5, 7, true) };
+            Check(CW.FootwayWidths(noFoot, 14, out fl, out fr, out _) && fl == 0 && fr == 0, "footways: lanes to the edge give a real (logged) 0 | 0");
+            var none = new List<CompositionLaneSpan> { new CompositionLaneSpan(0, 3, CW.IsCarriagewayLane(Ped)) };
+            Check(!CW.FootwayWidths(none, 14, out _, out _, out why) && why == "no road, bicycle or parking lanes", "footways: no carriageway lane is reported, not guessed (" + why + ")");
+            Check(!CW.FootwayWidths(new List<CompositionLaneSpan>(), 14, out _, out _, out why) && why == "no composition lanes", "footways: empty lane list reported (" + why + ")");
+            Check(!CW.FootwayWidths(small, 0, out _, out _, out _), "footways: zero width refused");
+            var odd = new List<CompositionLaneSpan> { new CompositionLaneSpan(0, 20, true) };
             Check(!CW.FootwayWidths(odd, 14, out _, out _, out why) && why.StartsWith("odd carriageway span"), "footways: carriageway wider than the road refused (" + why + ")");
+            var nanLane = new List<CompositionLaneSpan>(small) { new CompositionLaneSpan(double.NaN, 3, true) };
+            Check(CW.FootwayWidths(nanLane, 16, out fl, out fr, out _) && Math.Abs(fl - 3) < 1e-9 && Math.Abs(fr - 3) < 1e-9, "footways: a NaN lane is ignored");
+
+            BoxCarriagewayGuardTests();
 
             // ---- side assignment: the outer curve touching the edge's left kerb end gets the left footway
             CW.AssignSides(new V2(10, 7), new V2(10, -7), new V2(10, 7), 2, 4, out double ia, out double ib);
@@ -251,12 +318,19 @@ namespace JunctionRules.Tests
             string settings = File.ReadAllText(Path.Combine(src, "Settings", "JunctionRulesSettings.cs"));
             string mod = File.ReadAllText(Path.Combine(src, "Mod.cs"));
             string sys = StripComments(File.ReadAllText(Path.Combine(src, "Paint", "YellowBoxPaintSystem.cs")));
-            Check(settings.Contains("[SettingsUIHidden]") && settings.Contains("public int PaintSettingsVersion { get; set; }") && settings.Contains("PaintSettingsVersion = 0;"), "settings: hidden schema version, default 0 (so an old file is detected)");
+            Check(settings.Contains("[SettingsUIHidden]") && settings.Contains("public int PaintSettingsVersion { get; set; }") && !settings.Contains("PaintSettingsVersion = 0"), "settings: hidden schema version (int default 0 detects an old file), never reset by SetDefaults");
+            {
+                int a = settings.IndexOf("public override void SetDefaults()"), z = a < 0 ? -1 : settings.IndexOf("public string MigrateAfterLoad()", a);
+                Check(a >= 0 && z > a && !settings.Substring(a, z - a).Contains("PaintSettingsVersion"), "settings: SetDefaults leaves the schema version alone (Reset to defaults, then Roads + Other, survives the next load)");
+            }
             Check(settings.Contains("PaintSettingsMigration.Migrate(PaintSettingsVersion, before, out bool changed)") && settings.Contains("PaintSettingsVersion = PaintSettingsMigration.Current;") && settings.Contains("ApplyAndSave();"), "settings: migration writes the new schema version and saves");
             int load = mod.IndexOf("AssetDatabase.global.LoadSettings(", StringComparison.Ordinal), mig = mod.IndexOf("Settings.MigrateAfterLoad()", StringComparison.Ordinal);
             Check(load >= 0 && mig > load, "Mod.OnLoad migrates right after loading the saved settings");
             // 0.3.5 outline source: edge composition + carriageway builder, no node-composition road-lane test any more
             Check(!sys.Contains("no road-lane pieces") && sys.Contains("comp.m_Edge") && sys.Contains("CarriagewayOutline.Build(arms, centre, crossings,"), "paint system: footways from the edge composition, outline from CarriagewayOutline.Build");
+            Check(sys.Contains("NetCompositionLane") && sys.Contains("NetLaneData ld = em.GetComponentData<NetLaneData>(l.m_Lane)") && sys.Contains("CarriagewayOutline.IsCarriagewayLane(") && !sys.Contains("NetPieceFlags.HasRoadLanes"), "paint system: carriageway from lane extents (position +- NetLaneData width / 2), not piece spans");
+            Check(sys.Contains("footway unknown") && sys.Contains("kerbNotes.Add(\"unknown\")") && !sys.Contains("kerbNotes.Add(\"0|0\")"), "paint system: unknown footway is logged, never a silent 0|0");
+            Check(sys.Contains("!em.HasComponent<Game.Net.Road>(e)") && sys.Contains("non-road edge(s)"), "paint system: non-road edges (paths) are skipped as arms, with a note");
             Check(sys.Contains("PedestrianLaneFlags.Crosswalk") && sys.Contains("PedestrianLaneFlags.Unsafe"), "paint system: marked crossings = crosswalk lanes without Unsafe");
         }
     }

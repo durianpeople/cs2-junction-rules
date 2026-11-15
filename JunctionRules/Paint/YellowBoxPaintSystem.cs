@@ -538,6 +538,12 @@ namespace JunctionRules.Paint
                 {
                     if (!em.Exists(e) || !em.HasComponent<Edge>(e)) continue;
                     b.Edges.Add(e);
+                    if (!em.HasComponent<Game.Net.Road>(e))
+                    {
+                        // a pedestrian path (or other non-road net) joined to the node: not a carriageway arm
+                        AddOnce(notes, "non-road edge(s) (path) at the node skipped as arms");
+                        continue;
+                    }
                     Edge edge = em.GetComponentData<Edge>(e);
                     bool isStart = edge.m_Start == b.Node, isEnd = edge.m_End == b.Node;
                     if (!isStart && !isEnd) continue;   // connected in its middle: not an arm of this node
@@ -562,7 +568,7 @@ namespace JunctionRules.Paint
                         }
                         kerbNotes.Add($"{arm.InsetA:0.00}|{arm.InsetB:0.00}{src}");
                     }
-                    else kerbNotes.Add("0|0");
+                    else kerbNotes.Add("unknown");
                     arm.InsetA += extra; arm.InsetB += extra;
                     arms.Add(arm);
                 }
@@ -619,65 +625,59 @@ namespace JunctionRules.Paint
         }
 
         /// <summary>
-        /// Footway width each side of an arm, from the EDGE composition (CarriagewayOutline.FootwayWidths). Carriageway
-        /// pieces: HasRoadLanes (set on edge compositions only: NetCompositionHelpers.cs 1463-1466 via
-        /// NetCompositionSystem.cs 163-181; node compositions have no NetCompositionLane buffer, NetGeometryPrefab.cs
-        /// 106-112, so they never get the flag: the 0.3.0-0.3.4 "no road-lane pieces" cause) or a parking lane inside the
-        /// piece. Fallback: the node composition with the piece prefabs' own lanes (NetPieceLane: Road, not bicycles only,
-        /// or Parking). 'source' is "" for the edge composition, "n" for the fallback.
+        /// Footway width each side of an arm, from the EDGE composition's LANES (CarriagewayOutline.FootwayWidths):
+        /// carriageway = min..max of NetCompositionLane.m_Position.x +- NetLaneData(m_Lane).m_Width / 2 over road, bicycle
+        /// and parking lanes; footway = the rest of NetCompositionData.m_Width each side. Not pieces: a Small Road
+        /// "Sidewalk With Parking Piece 5" holds both the parking lane and the pavement (see CarriagewayOutline header).
+        /// Fallback when the edge composition has no lanes: the node composition, rebuilding the lane positions the way
+        /// the game does (piece offset + NetPieceLane.m_Position, x mirrored on an inverted section;
+        /// NetCompositionHelpers.cs 1424-1443). 'source' is "" for the edge composition, "n" for the fallback. On false a
+        /// "footway unknown" note is added.
         /// </summary>
         private static bool FootwayWidths(EntityManager em, Entity edge, bool isStart, out double left, out double right, out string source, List<string> notes)
         {
             left = right = 0;
             source = "";
-            if (!em.HasComponent<Composition>(edge)) { AddOnce(notes, "no composition: footway 0"); return false; }
+            if (!em.HasComponent<Composition>(edge)) { AddOnce(notes, "footway unknown (no composition): box edge at the outer edge"); return false; }
             Composition comp = em.GetComponentData<Composition>(edge);
             string why = "no edge composition";
-            if (comp.m_Edge != Entity.Null && em.HasComponent<NetCompositionData>(comp.m_Edge) && em.HasBuffer<NetCompositionPiece>(comp.m_Edge))
+            if (comp.m_Edge != Entity.Null && em.HasComponent<NetCompositionData>(comp.m_Edge))
             {
                 float width = em.GetComponentData<NetCompositionData>(comp.m_Edge).m_Width;
-                DynamicBuffer<NetCompositionPiece> pieces = em.GetBuffer<NetCompositionPiece>(comp.m_Edge, true);
-                bool hasLanes = em.HasBuffer<NetCompositionLane>(comp.m_Edge);
-                DynamicBuffer<NetCompositionLane> lanes = hasLanes ? em.GetBuffer<NetCompositionLane>(comp.m_Edge, true) : default;
-                var spans = new List<CompositionPieceSpan>(pieces.Length);
-                for (int i = 0; i < pieces.Length; i++)
+                var spans = new List<CompositionLaneSpan>();
+                if (em.HasBuffer<NetCompositionLane>(comp.m_Edge))
                 {
-                    NetCompositionPiece p = pieces[i];
-                    double lo = p.m_Offset.x - p.m_Size.x * 0.5, hi = p.m_Offset.x + p.m_Size.x * 0.5;
-                    bool cw = (p.m_PieceFlags & NetPieceFlags.HasRoadLanes) != 0;
-                    if (!cw && hasLanes)
+                    DynamicBuffer<NetCompositionLane> lanes = em.GetBuffer<NetCompositionLane>(comp.m_Edge, true);
+                    for (int k = 0; k < lanes.Length; k++)
                     {
-                        for (int k = 0; k < lanes.Length && !cw; k++)
-                        {
-                            NetCompositionLane l = lanes[k];
-                            if ((l.m_Flags & LaneFlags.Parking) != 0 && l.m_Position.x >= lo && l.m_Position.x <= hi) cw = true;
-                        }
+                        NetCompositionLane l = lanes[k];
+                        if (!em.HasComponent<NetLaneData>(l.m_Lane)) continue;
+                        NetLaneData ld = em.GetComponentData<NetLaneData>(l.m_Lane);
+                        spans.Add(new CompositionLaneSpan(l.m_Position.x, ld.m_Width, CarriagewayOutline.IsCarriagewayLane((int)(l.m_Flags | ld.m_Flags))));
                     }
-                    spans.Add(new CompositionPieceSpan(p.m_Offset.x, p.m_Size.x, cw));
                 }
                 if (CarriagewayOutline.FootwayWidths(spans, width, out left, out right, out why)) return true;
+                why = "edge composition: " + why;
             }
             Entity c = isStart ? comp.m_StartNode : comp.m_EndNode;
             if (c != Entity.Null && em.HasComponent<NetCompositionData>(c) && em.HasBuffer<NetCompositionPiece>(c))
             {
                 float width = em.GetComponentData<NetCompositionData>(c).m_Width;
                 DynamicBuffer<NetCompositionPiece> pieces = em.GetBuffer<NetCompositionPiece>(c, true);
-                var spans = new List<CompositionPieceSpan>(pieces.Length);
+                var spans = new List<CompositionLaneSpan>();
                 for (int i = 0; i < pieces.Length; i++)
                 {
                     NetCompositionPiece p = pieces[i];
-                    bool cw = false;
-                    if (em.HasBuffer<NetPieceLane>(p.m_Piece))
+                    if (!em.HasBuffer<NetPieceLane>(p.m_Piece)) continue;
+                    bool invert = (p.m_SectionFlags & NetSectionFlags.Invert) != 0;
+                    DynamicBuffer<NetPieceLane> pl = em.GetBuffer<NetPieceLane>(p.m_Piece, true);
+                    for (int k = 0; k < pl.Length; k++)
                     {
-                        DynamicBuffer<NetPieceLane> pl = em.GetBuffer<NetPieceLane>(p.m_Piece, true);
-                        for (int k = 0; k < pl.Length && !cw; k++)
-                        {
-                            if (!em.HasComponent<NetLaneData>(pl[k].m_Lane)) continue;
-                            LaneFlags f = em.GetComponentData<NetLaneData>(pl[k].m_Lane).m_Flags | pl[k].m_ExtraFlags;
-                            cw = ((f & LaneFlags.Road) != 0 && (f & LaneFlags.BicyclesOnly) == 0) || (f & LaneFlags.Parking) != 0;
-                        }
+                        if (!em.HasComponent<NetLaneData>(pl[k].m_Lane)) continue;
+                        NetLaneData ld = em.GetComponentData<NetLaneData>(pl[k].m_Lane);
+                        double x = p.m_Offset.x + (invert ? -pl[k].m_Position.x : pl[k].m_Position.x);
+                        spans.Add(new CompositionLaneSpan(x, ld.m_Width, CarriagewayOutline.IsCarriagewayLane((int)(ld.m_Flags | pl[k].m_ExtraFlags))));
                     }
-                    spans.Add(new CompositionPieceSpan(p.m_Offset.x, p.m_Size.x, cw));
                 }
                 if (CarriagewayOutline.FootwayWidths(spans, width, out left, out right, out string why2)) { source = "n"; return true; }
                 why += "; node composition: " + why2;

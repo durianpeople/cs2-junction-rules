@@ -106,6 +106,8 @@ namespace JunctionRules.Settings
         /// <summary>
         /// Hidden: settings schema version (0.3.5, PaintSettingsMigration). 0 = saved by 0.3.4-probe or older; the load
         /// in Mod.OnLoad migrates once (a saved Roads + Other from probe step S6 goes back to Roads) and writes 1.
+        /// Deliberately NOT reset in SetDefaults: after "Reset to defaults" a later Roads + Other choice must survive the
+        /// next load (a reset version would migrate it back to Roads).
         /// </summary>
         [SettingsUIHidden]
         public int PaintSettingsVersion { get; set; }
@@ -151,7 +153,6 @@ namespace JunctionRules.Settings
             YellowBoxPaintTest = false;
             PaintMode = BoxPaintMode.Hatch;
             PaintLayers = PaintSettingsMigration.Default;
-            PaintSettingsVersion = 0;
             DebugTiming = false;
             SkipCodeHashCheck = false;
         }
