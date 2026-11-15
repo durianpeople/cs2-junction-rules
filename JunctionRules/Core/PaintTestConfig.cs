@@ -69,7 +69,7 @@ namespace JunctionRules.Core
             EdgeNormal = C(EdgeNormal, -10, 10, 0, "edgeNormal", changed);
             EdgeNoiseX = C(EdgeNoiseX, 0, EdgeNoiseAmountMax, 0, "edgeNoise", changed);
             EdgeNoiseY = C(EdgeNoiseY, EdgeNoiseSizeMin, EdgeNoiseSizeMax, 1, "edgeNoise", changed);
-            // The shader divides by (fade.x - fade.y) x expand (blob054.asm lines 611-614): equal values give NaN = alpha 0.
+            // The shader divides by (fade.x - fade.y) x expand (blob054.asm lines 611-614): a reversed range (x < y) gives a negative divisor = alpha 0 inside, equal values 1/0; both reset.
             if (!(EdgeFadeX - EdgeFadeY >= 0.001)) { EdgeFadeX = 1; EdgeFadeY = 0; if (!changed.Contains("edgeFade")) changed.Add("edgeFade"); }
             UVScale = C(UVScale, 0.001, 1000, 1, "uvScale", changed);
             SnapRadius = C(SnapRadius, 0.5, 50, 6, "snapRadius", changed);

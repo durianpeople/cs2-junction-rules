@@ -1,6 +1,6 @@
 # Probe kit: Junction Rules 0.3.4-probe (stage 3, yellow box paint test, option E; plus the crossing settings)
 
-**0.3.4-probe (JR-T-003d), what changed since 0.3.3:** the paint test's decal now draws. Cause of "nothing visible" in
+**0.3.4-probe (JR-T-003d), what changed since 0.3.3:** the paint test's decal should now draw (cause found by reading the shader; not yet seen live). Cause of "nothing visible" in
 0.3.0-0.3.3: the paint list's default `edgeNoise` was `[0, 0]`; the game's surface shader divides by the second value, so
 every paint pixel came out fully transparent (section 13). 0.3.4 never hands the shader a zero there (default `[0, 1]`:
 clean edges). No driving change: it carries 0.3.3 as it is (`docs/vanilla_copy_check_0.3.4.txt` equals 0.3.3's, copy IL
@@ -208,7 +208,7 @@ box this differs a little. Say if it matters.
 
 - **U2/U9:** does the surface shader accept our buffers as given (zero colour buffer, all visible indices, `expand`,
   prev/next neighbour order, edge fade on thin 0.15 m strips)? If lines look broken or wedge-shaped, try
-  `"swapPrevNext": true`, then `"edgeFade": [0, 0]`.
+  `"swapPrevNext": true`, then `"edgeFade": [0, -1]` (no edge fade; from 0.3.4 an `edgeFade` with x not above y is reset to `[1, 0]`).
 - **U3:** does it look like painted G87 (wetness, wear, night, shimmer at distance)?
 - **U4:** which decal layer the junction and deck take (Roads, or Roads + Other).
 - **U7:** footway inset from the road data matches the visible kerb on all road types (the end-node side is mirrored:
@@ -444,5 +444,5 @@ changed: the diag switches stay, and driving is the same as 0.3.3.
 5. Optional, for the game's look: add `"edgeNoise": [0.5, 0.5]` to `"paint"` and press **Refresh test list** (worn,
    wobbly edges like vanilla surfaces).
 
-If step 3 still shows nothing, run section 10's D1-D3 once with the new default in place and report the log lines.
+If step 3 still shows nothing, first set `"swapPrevNext": true` in `"paint"` and press **Refresh test list** (a wrong prev/next order could make the shader discard every pixel, a second possible cause that edge noise does not touch), then run section 10's D1-D3 once with the new default in place and report the log lines.
 `"drawPath": "overlay"` is not paint: it is the area tool's unlit overlay, which tints cars too.

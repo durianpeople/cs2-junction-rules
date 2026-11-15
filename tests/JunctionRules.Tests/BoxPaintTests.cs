@@ -369,7 +369,7 @@ namespace JunctionRules.Tests
             Check(PaintTestConfig.Parse(new PaintTestConfig().Format()).Problems.Count == 0, "config: defaults format cleanly");
 
             // 0.3.4 (JR-T-003d): shader divisors are never zero. The AreaDecalShader divides by edgeNoise.y x expand and by
-            // (edgeFade.x - edgeFade.y) x expand; a zero gave NaN edge alpha = nothing drawn (0.3.0-0.3.2 had edgeNoise [0, 0]).
+            // (edgeFade.x - edgeFade.y) x expand; edgeNoise.y x expand = 0 gave NaN edge alpha = nothing drawn (0.3.0-0.3.2 had edgeNoise [0, 0]), a reversed edgeFade range gives alpha 0.
             var r0 = new PaintRenderParams();
             Check(r0.EdgeNoiseX == 0 && r0.EdgeNoiseY >= PaintRenderParams.EdgeNoiseSizeMin && r0.Clamp().Count == 0, "edge noise default: no wobble (amount 0), finite size (game minimum 0.01 or more)");
             var zn = PaintTestConfig.Parse(@"{ ""paint"": { ""edgeNoise"": [0, 0], ""expand"": 0 } }");
