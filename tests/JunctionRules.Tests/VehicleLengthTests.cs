@@ -52,13 +52,16 @@ namespace JunctionRules.Tests
             string root = RepoRoot();
             if (root == null) { Check(false, "repo root found"); return; }
             string nav = File.ReadAllText(Path.Combine(root, "JunctionRules", "Vanilla", "JRCarNavigationSystem.cs"));
-            Check(!nav.Contains("JRVehicleLength") && !nav.Contains("m_JRLayoutData") && !nav.Contains("m_JRTractorData"), "0.2.3: the job no longer computes the vehicle length (no hot-path cost)");
+            // 0.3.3 (JR-T-006): the length is back for the crossing fit, computed as a per-car LOCAL in S2-21, rule on only.
+            Check(nav.Contains("float jrVehicleLength = ") && nav.Contains("(m_JRMode & JunctionRules.Core.Stage2Mode.Rule) != 0 && m_JRLayoutData.TryGetBuffer(entity"),
+                "0.3.3: the job computes the whole vehicle length as a local in S2-21, trailers only with the rule on");
             // Review JR-T-002d: the job runs in parallel and its workers share the one job struct, so Execute must never write a
             // job field (the first 0.2.2 cut stored the per-car length in m_JRVehicleLength: a data race between cars).
             Check(!nav.Contains("m_JRVehicleLength") && !System.Text.RegularExpressions.Regex.IsMatch(nav, @"(?m)^\s*m_JR\w*\s*="),
                 "no per-car value is written to a job-struct field (parallel workers share it)");
             string jr = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRWholeJunction.cs"));
-            Check(!jr.Contains("m_VehicleLength"), "0.2.3: BeginLane no longer takes a vehicle length");
+            Check(jr.Contains("j.m_VehicleLength = vehicleLength;") && jr.Contains("CrossingPoint.Fits(m_Stretch.Length, u, previous, m_Stretch.Margin, m_VehicleLength)"),
+                "0.3.3: the iterator gets the length from Create and uses it only for the crossing fit");
             string vl = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRVehicleLength.cs"));
             string core = File.ReadAllText(Path.Combine(root, "JunctionRules", "Core", "VehicleLength.cs"));
             foreach (var (name, text) in new[] { ("JRVehicleLength", vl), ("CombinedLength", core) })

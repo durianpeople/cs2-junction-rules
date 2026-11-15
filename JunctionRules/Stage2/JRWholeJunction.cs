@@ -51,6 +51,11 @@ namespace JunctionRules.Stage2
         /// m_Mode so the 0.2.x code's "m_Mode == 0" exits are unchanged). Read only by blocks S2-08 / S2-08b / S2-11.
         /// </summary>
         public bool m_NoPushPeople;
+        /// <summary>
+        /// 0.3.3 (JR-T-006): the whole vehicle's length, trailers included (Stage2/JRVehicleLength.cs, the JR-T-002d
+        /// length), handed in by S2-21 as a per-car local (never a job field). Used only for the crossing fit test.
+        /// </summary>
+        public float m_VehicleLength;
 
         /// <summary>Set by IterateFirstLane (S2-02): the car's current lane(s); feeding lanes equal to them are its own approach.</summary>
         public Entity m_CurrentLane;
@@ -70,6 +75,8 @@ namespace JunctionRules.Stage2
         /// <summary>The car's front is past the entry spot of its current lane (it is inside the junction's paths).</summary>
         public bool m_Inside;
         private Entity m_LaneEntity;
+        /// <summary>0.3.3: the lane's overlap buffer (BeginLane), for the crossing fit test (Core/CrossingPoint.cs).</summary>
+        private DynamicBuffer<LaneOverlap> m_LaneOverlaps;
 
         // ---- 0.2.3: the car's own motion for the arrival time (BeginLane) ----
         private CarData m_Car;
@@ -130,6 +137,10 @@ namespace JunctionRules.Stage2
         private bool m_RefusedTimer;
         private bool m_RefusedStanding;
         private bool m_RefusedCyclist;
+        // ---- 0.3.3: unsafe-lane feeding skips; crossings judged at the crossing / kept at W (counted only when counting) ----
+        private bool m_FeedUnsafeSkip;
+        private bool m_CrossingAtCrossing;
+        private bool m_CrossingNoFit;
 
         public bool RuleOn
         {
@@ -152,13 +163,14 @@ namespace JunctionRules.Stage2
 
         public static JRWholeJunction Create(int mode, ComponentLookup<NodeLane> nodeLaneData, ComponentLookup<Owner> ownerData,
             ComponentLookup<Lane> laneData, BufferLookup<Game.Net.SubLane> subLanes, BufferLookup<ConnectedEdge> connectedEdges,
-            NativeArray<long> counters)
+            NativeArray<long> counters, float vehicleLength = 0f)
         {
             JRWholeJunction j = default;
             // 0.3.2: the no-push setting travels in the same handed-over int but is not part of the stage 2 mode.
             j.m_NoPushPeople = (mode & Stage2Mode.NoPushPeople) != 0;
             mode &= ~Stage2Mode.NoPushPeople;
             j.m_Mode = mode;
+            j.m_VehicleLength = vehicleLength;
             if (mode != 0)
             {
                 j.m_NodeLaneData = nodeLaneData;
@@ -187,6 +199,22 @@ namespace JunctionRules.Stage2
                 LaneOverlap o = m_Overlaps[i];
                 bool held = i < 64 ? (m_Held & (1UL << i)) != 0 : HeldByRed(o, ref m_Signals);
                 return StretchGeometry.ToConflict((int)o.m_Flags, o.m_ThisStart, o.m_ThisEnd, m_Inverse, held, out start, out end);
+            }
+        }
+
+        /// <summary>0.3.3: the lane's overlaps with their raw flags in driving coordinates (Core/CrossingPoint.cs).</summary>
+        private struct OverlapRanges : IOverlapRanges
+        {
+            public DynamicBuffer<LaneOverlap> m_Overlaps;
+            public bool m_Inverse;
+
+            public int Count => m_Overlaps.Length;
+
+            public void Get(int i, out int flags, out float start, out float end)
+            {
+                LaneOverlap o = m_Overlaps[i];
+                flags = (int)o.m_Flags;
+                StretchGeometry.ToConflict(flags, o.m_ThisStart, o.m_ThisEnd, m_Inverse, false, out start, out end);
             }
         }
 
@@ -249,6 +277,7 @@ namespace JunctionRules.Stage2
             m_Inside = m_FirstLane && m_Committed;
             m_LaneActive = true;
             m_LaneEntity = lane;
+            m_LaneOverlaps = overlaps;
             m_OwnStartRead = false;
             m_OwnTurnRead = false;
             if (RuleOn)
@@ -276,9 +305,11 @@ namespace JunctionRules.Stage2
         /// <summary>
         /// The overlap starting at <paramref name="start"/> (game lane offset) is part of the rule (yield-checked, at or
         /// after the entry spot). Also classifies it for the checks that follow and, 0.2.3, computes the car's own
-        /// arrival time at it when it is being decided or re-checked.
+        /// arrival time at it when it is being decided or re-checked. 0.3.3 (JR-T-006): <paramref name="isCrossing"/> =
+        /// the other lane is a pedestrian lane (a crossing); with the rule on and the whole vehicle fitting before it
+        /// (Core/CrossingPoint.cs) it is out of the rule: the game's own pedestrian / cyclist check at the crossing.
         /// </summary>
-        public bool InScope(float start, bool yieldChecked)
+        public bool InScope(float start, bool yieldChecked, bool isCrossing = false)
         {
             m_OvDelta = 0f;
             m_OvDiscountReservation = false;
@@ -288,6 +319,21 @@ namespace JunctionRules.Stage2
                 return false;
             }
             float u = StretchGeometry.ToDriving(start, m_Inverse);
+            if (isCrossing && RuleOn)
+            {
+                OverlapRanges ranges = default;
+                ranges.m_Overlaps = m_LaneOverlaps;
+                ranges.m_Inverse = m_Inverse;
+                float previous = CrossingPoint.PreviousEnd(ref ranges, u, m_Inverse);
+                bool fits = CrossingPoint.Fits(m_Stretch.Length, u, previous, m_Stretch.Margin, m_VehicleLength);
+                if (CrossingPoint.JudgedAtCrossing(true, true, fits))
+                {
+                    if (Counting) m_CrossingAtCrossing = true;
+                    m_OvPhase = PointPhase.Stock;
+                    return false;
+                }
+                if (Counting) m_CrossingNoFit = true;
+            }
             m_OvStart = u;
             m_OvPhase = m_Stretch.Classify(RuleOn, u, out m_OvStopWait);
             if (Projecting)
@@ -501,6 +547,12 @@ namespace JunctionRules.Stage2
             CarData car, float safeTimeStep, Bounds1 speedRange, float currentMax)
         {
             if (!Projecting) return float.MaxValue;
+            // 0.3.3 (JR-T-005): never for an Unsafe conflicting lane (unsafe U-turn etc.): its feeding cars are not taking it.
+            if (carLanes.TryGetComponent(other, out Game.Net.CarLane unsafeTest) && FeedingScan.SkipsConflictingLane((uint)unsafeTest.m_Flags))
+            {
+                if (Counting) m_FeedUnsafeSkip = true;
+                return float.MaxValue;
+            }
             // JR-T-002g: no stock car priority can win against num6 (e.g. a main-road car): nothing on a feeding lane counts.
             if (!ArrivalProjection.WinsPriority(ArrivalProjection.MaxCarPriority, num6)) return float.MaxValue;
             // 0.2.4 cheap scan: only the deciding car (not a follower) or the crossing car's own re-check; not when it is
@@ -741,6 +793,9 @@ namespace JunctionRules.Stage2
                 if (m_RefusedStanding) Add(counters, Stage2Counters.CrossingRefusedStanding, 1);
                 if (m_RefusedCyclist) Add(counters, Stage2Counters.CrossingRefusedCyclist, 1);
             }
+            if (m_FeedUnsafeSkip) Add(counters, Stage2Counters.FeedingUnsafeSkips, 1);
+            if (m_CrossingAtCrossing) Add(counters, Stage2Counters.CrossingsAtCrossing, 1);
+            if (m_CrossingNoFit) Add(counters, Stage2Counters.CrossingsNoFit, 1);
             if (Stage2Counters.IsBinding(m_HasSafety, m_SafetySpeed, finalMaxSpeed))
             {
                 Add(counters, Stage2Counters.SafetyStops, 1);

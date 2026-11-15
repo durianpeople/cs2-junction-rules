@@ -45,6 +45,19 @@ namespace JunctionRules.Core
         }
 
         /// <summary>
+        /// 0.3.3 (JR-T-005, owner 15 Nov 2026: "should not happen"): no feeding scan for a conflicting junction lane the
+        /// game marks Unsafe (Game.Net.CarLaneFlags.Unsafe: the unsafe U-turns and other last-resort connections the
+        /// pathfinder penalises). Every car on the lane feeding it would otherwise count as if it were about to take it
+        /// (the scan does not read routes), e.g. at Moonflower Street x Anchor Street a car on Anchor westbound turning
+        /// right into Moonflower counted as a U-turner on the unsafe U-turn lane that merges into the left-turner's
+        /// exit lane, so the left-turner from Moonflower was held for a car whose path never meets its own. Stock alone
+        /// never sees such a car (no reservation, no car on that lane). A car really taking the unsafe lane is still
+        /// judged by stock: its reservation (S2-06) and its presence on the lane (look-ahead, collision braking).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool SkipsConflictingLane(uint carLaneFlags) => (carLaneFlags & TurnAcross.Unsafe) != 0;
+
+        /// <summary>
         /// The upper bound a finished scan of one feeding source leaves in the memo: no car there can count against
         /// num6 / own arrival time delta when maxPriority &lt;= num6 or maxReachBase + maxSpeed * delta &lt;= 0
         /// (reach - remaining = (brakingDistance - 0.01) + speed * delta - remaining, bounded by the maxima).

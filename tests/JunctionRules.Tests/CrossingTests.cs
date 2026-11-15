@@ -80,10 +80,10 @@ namespace JunctionRules.Tests
             var dl = new long[Stage2Counters.Count];
             dl[Stage2Counters.CrossingRefused] = 7; dl[Stage2Counters.CrossingRefusedTimer] = 5; dl[Stage2Counters.CrossingRefusedStanding] = 2; dl[Stage2Counters.CrossingRefusedCyclist] = 1;
             string f = Stage2Counters.Format(1, dl, 2);
-            Check(f.Contains("; never push through people on crossings on; crossing give-ups refused 7 (5 s push 5, standing person 2, cyclist 1); points at W 0"), "counter text: " + f);
+            Check(f.Contains("; never push through people on crossings on; crossing give-ups refused 7 (5 s push 5, standing person 2, cyclist 1); crossings after W judged at the crossing 0, kept at W (vehicle does not fit) 0; points at W 0"), "counter text: " + f);
             Check(Stage2Counters.Format(1, null, 3) == "; junction gap rule stock; never push through people on crossings switched in this window", "setting reported without counters");
             Check(Stage2Counters.Format(1, null) == "; junction gap rule stock", "no push mask: line unchanged");
-            Check(Stage2Counters.CrossingRefusedCyclist == Stage2Counters.Count - 1, "new counters at the end (earlier indices unchanged)");
+            Check(Stage2Counters.CrossingRefusedCyclist == Stage2Counters.Count - 4 && Stage2Counters.CrossingsNoFit == Stage2Counters.Count - 1, "new counters at the end (earlier indices unchanged; 0.3.3 adds three after them)");
         }
 
         private static void CrossingRepoTests()

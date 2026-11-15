@@ -387,6 +387,15 @@ public class JRCarNavigationSystem : GameSystemBase
 
 		[ReadOnly]
 		public BufferLookup<ConnectedEdge> m_JRConnectedEdges;
+
+		[ReadOnly]
+		public ComponentLookup<CarTractorData> m_JRTractorData;
+
+		[ReadOnly]
+		public ComponentLookup<CarTrailerData> m_JRTrailerData;
+
+		[ReadOnly]
+		public BufferLookup<LayoutElement> m_JRLayoutData;
 		// JR-STAGE2 END
 
 		public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
@@ -1570,8 +1579,13 @@ public class JRCarNavigationSystem : GameSystemBase
 			carLaneSpeedIterator.m_MaxSpeed = speedRange.max;
 			carLaneSpeedIterator.m_CanChangeLane = 1f;
 			carLaneSpeedIterator.m_CurrentPosition = transform.m_Position;
-			// JR-STAGE2 BEGIN S2-21: hand the stage 2 mode and the read-only lookups (0.2.3: feeding lanes) to this car's iterator
-			carLaneSpeedIterator.m_JR = JunctionRules.Stage2.JRWholeJunction.Create(m_JRMode, m_NodeLaneData, m_OwnerData, m_LaneData, m_Lanes, m_JRConnectedEdges, m_JRCounters);
+			// JR-STAGE2 BEGIN S2-21: hand the stage 2 mode and the read-only lookups (0.2.3: feeding lanes) to this car's iterator; 0.3.3: whole vehicle length (trailers incl.) as a local for the crossing fit
+			float jrVehicleLength = prefabObjectGeometryData.m_Bounds.max.z - prefabObjectGeometryData.m_Bounds.min.z;
+			if ((m_JRMode & JunctionRules.Core.Stage2Mode.Rule) != 0 && m_JRLayoutData.TryGetBuffer(entity, out DynamicBuffer<LayoutElement> jrLayout))
+			{
+				jrVehicleLength = JunctionRules.Stage2.JRVehicleLength.WithTrailers(prefabObjectGeometryData, jrLayout, ref m_PrefabRefData, ref m_PrefabObjectGeometryData, ref m_JRTractorData, ref m_JRTrailerData);
+			}
+			carLaneSpeedIterator.m_JR = JunctionRules.Stage2.JRWholeJunction.Create(m_JRMode, m_NodeLaneData, m_OwnerData, m_LaneData, m_Lanes, m_JRConnectedEdges, m_JRCounters, jrVehicleLength);
 			// JR-STAGE2 END
 			JRCarLaneSpeedIterator laneIterator = carLaneSpeedIterator;
 			Game.Vehicles.CarLaneFlags carLaneFlags = (Game.Vehicles.CarLaneFlags)0u;
@@ -3099,6 +3113,9 @@ public class JRCarNavigationSystem : GameSystemBase
 		jobData.m_JRCounters = JunctionRules.Stage2.JRStage2Bridge.Counters;
 		jobData.m_JRSafetyEvents = JunctionRules.Stage2.JRStage2Bridge.SafetyEvents;
 		jobData.m_JRConnectedEdges = GetBufferLookup<ConnectedEdge>(isReadOnly: true);
+		jobData.m_JRTractorData = GetComponentLookup<CarTractorData>(isReadOnly: true);
+		jobData.m_JRTrailerData = GetComponentLookup<CarTrailerData>(isReadOnly: true);
+		jobData.m_JRLayoutData = GetBufferLookup<LayoutElement>(isReadOnly: true);
 		// JR-STAGE2 END
 		JobHandle jobHandle = JobChunkExtensions.ScheduleParallel(jobData, m_VehicleQuery, JobUtils.CombineDependencies(base.Dependency, dependencies, dependencies2, dependencies3, dependencies4));
 		m_NetSearchSystem.AddNetSearchTreeReader(jobHandle);

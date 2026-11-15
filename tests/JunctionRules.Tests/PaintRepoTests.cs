@@ -71,7 +71,7 @@ namespace JunctionRules.Tests
             Check(sys.Contains("m_Gpu.SetDiag(m_Config.Diag)") && gpu.Contains("public void SetDiag(PaintDiagParams diag)"), "a Refresh hands the new diag values to the kept GPU objects (decal layer mask, colour buffer, priority, cameras apply without a restart)");
 
             string csproj = File.ReadAllText(Path.Combine(src, "JunctionRules.csproj"));
-            Check(csproj.Contains("<Version>0.3.2</Version>") && csproj.Contains("<InformationalVersion>0.3.2-probe</InformationalVersion>"), "version 0.3.2-probe");
+            Check(csproj.Contains("<Version>0.3.3</Version>") && csproj.Contains("<InformationalVersion>0.3.3-probe</InformationalVersion>"), "version 0.3.3-probe");
 
             string kit = Path.Combine(RepoRoot(), "PROBE-STAGE3-PAINT.md");
             Check(File.Exists(kit), "probe kit PROBE-STAGE3-PAINT.md exists");

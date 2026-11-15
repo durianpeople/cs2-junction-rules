@@ -89,7 +89,7 @@
         "files": {
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
-        "reason": "Per overlap: is it part of the whole-path decision (start at or after the waiting spot, yield-checked)."
+        "reason": "Per overlap: is it part of the whole-path decision (start at or after the waiting spot, yield-checked). 0.3.3 (JR-T-006): a crossing (the other lane is a pedestrian lane) the whole vehicle fits before is out of the rule: the game's own check at the crossing."
       },
       "S2-06": {
         "files": {
@@ -143,7 +143,7 @@
         "files": {
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
-        "reason": "0.2.3 arrival-time projection: cars on the lanes feeding the conflicting junction lane, projected by the car's own arrival time, as virtual reservations through the unchanged stock reservation test (deciding / safety re-check only); 0.2.4: skips cars stopping at that lane's red / amber (the stock-read signal componentData2), scans only for the deciding car (not followers, not when already held or when the lane's own reservation holds it), per-car-update memo, bounded work."
+        "reason": "0.2.3 arrival-time projection: cars on the lanes feeding the conflicting junction lane, projected by the car's own arrival time, as virtual reservations through the unchanged stock reservation test (deciding / safety re-check only); 0.2.4: skips cars stopping at that lane's red / amber (the stock-read signal componentData2), scans only for the deciding car (not followers, not when already held or when the lane's own reservation holds it), per-car-update memo, bounded work. 0.3.3 (JR-T-005): no scan for an Unsafe conflicting lane (unsafe U-turn): its feeding cars are not taking it."
       },
       "S2-13": {
         "files": {
@@ -155,13 +155,13 @@
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
-        "reason": "Job fields: stage 2 mode, the debug counter array; 0.2.3: the safety-stop event table (debug) and a read-only ConnectedEdge buffer lookup (feeding lanes). 0.2.2's trailer lookups removed (no mid spots)."
+        "reason": "Job fields: stage 2 mode, the debug counter array; 0.2.3: the safety-stop event table (debug) and a read-only ConnectedEdge buffer lookup (feeding lanes). 0.2.2's trailer lookups removed (no mid spots). 0.3.3 (JR-T-006): read-only CarTractorData / CarTrailerData / LayoutElement lookups again (whole vehicle length for the crossing fit)."
       },
       "S2-21": {
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
-        "reason": "Hands the mode and the read-only lookups (0.2.3: Owner, Lane, SubLane, ConnectedEdge for the feeding lanes; the counter array) to each car's iterator."
+        "reason": "Hands the mode and the read-only lookups (0.2.3: Owner, Lane, SubLane, ConnectedEdge for the feeding lanes; the counter array) to each car's iterator. 0.3.3: the whole vehicle length (trailers incl., JR-T-002d) as a per-car local, for the crossing fit."
       },
       "S2-22": {
         "files": {
@@ -173,7 +173,7 @@
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
-        "reason": "OnUpdate: takes this step's mode from the main-thread handoff; 0.2.3: the safety-event table and the ConnectedEdge lookup (0.2.2 trailer lookups removed)."
+        "reason": "OnUpdate: takes this step's mode from the main-thread handoff; 0.2.3: the safety-event table and the ConnectedEdge lookup (0.2.2 trailer lookups removed). 0.3.3: the three read-only lookups for the vehicle length."
       },
       "S2-24": {
         "files": {

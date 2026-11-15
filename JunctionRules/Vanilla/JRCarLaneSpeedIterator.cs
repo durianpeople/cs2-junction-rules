@@ -1270,9 +1270,9 @@ public struct JRCarLaneSpeedIterator
 			bool flag = VehicleUtils.GetBrakingDistance(m_PrefabCar, m_CurrentSpeed, m_TimeStep) <= num5 + num;
 			int num6 = num2;
 			BlockerType blockerType = (((laneOverlap.m_Flags & overlapFlags2) != 0) ? BlockerType.Continuing : BlockerType.Crossing);
-			// JR-STAGE2 BEGIN S2-05: is this overlap part of the whole-path decision
+			// JR-STAGE2 BEGIN S2-05: is this overlap part of the whole-path decision (0.3.3: a crossing the car fits before is judged at the crossing)
 			float jrStart = math.select(@float.x, @float.y, inverse);
-			bool jrInScope = m_JR.m_Mode != 0 && m_JR.InScope(jrStart, (laneOverlap.m_Flags & overlapFlags) == 0);
+			bool jrInScope = m_JR.m_Mode != 0 && m_JR.InScope(jrStart, (laneOverlap.m_Flags & overlapFlags) == 0, m_PedestrianLaneData.HasComponent(m_Lane));
 			// JR-STAGE2 END
 			if ((laneOverlap.m_Flags & overlapFlags) == 0)
 			{

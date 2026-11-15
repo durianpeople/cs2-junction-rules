@@ -91,7 +91,13 @@ namespace JunctionRules.Core
         public const int CrossingRefusedStanding = FeedingScans + 8;
         /// <summary>0.3.2: ... because the car's ignored blocker (IgnoreBlocker creep) was a cyclist on a crossing.</summary>
         public const int CrossingRefusedCyclist = FeedingScans + 9;
-        public const int Count = FeedingScans + 10;
+        /// <summary>0.3.3 (JR-T-005): feeding scans not made because the conflicting lane is Unsafe (car-steps with at least one).</summary>
+        public const int FeedingUnsafeSkips = FeedingScans + 10;
+        /// <summary>0.3.3 (JR-T-006): car-steps where a crossing after W was left to the game's own check at the crossing (car fits).</summary>
+        public const int CrossingsAtCrossing = FeedingScans + 11;
+        /// <summary>0.3.3 (JR-T-006): car-steps where a crossing after W stayed in the decision at W (the vehicle does not fit before it).</summary>
+        public const int CrossingsNoFit = FeedingScans + 12;
+        public const int Count = FeedingScans + 13;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -173,7 +179,8 @@ namespace JunctionRules.Core
                    "; feeding scans " + deltas[FeedingScans].ToString(ci) +
                    " (skipped: follower " + deltas[FeedingFollowerSkips].ToString(ci) +
                    ", memo " + deltas[FeedingMemoSkips].ToString(ci) +
-                   "; cap hits " + deltas[FeedingCapHits].ToString(ci) + ")" +
+                   "; cap hits " + deltas[FeedingCapHits].ToString(ci) +
+                   "; unsafe lane " + deltas[FeedingUnsafeSkips].ToString(ci) + ")" +
                    "; turning across oncoming: priority changed " + deltas[TurnOverrides].ToString(ci) +
                    ", turner reservation not waited for " + deltas[TurnReservationDiscounts].ToString(ci) +
                    pushPart +
@@ -181,6 +188,8 @@ namespace JunctionRules.Core
                    " (5 s push " + deltas[CrossingRefusedTimer].ToString(ci) +
                    ", standing person " + deltas[CrossingRefusedStanding].ToString(ci) +
                    ", cyclist " + deltas[CrossingRefusedCyclist].ToString(ci) + ")" +
+                   "; crossings after W judged at the crossing " + deltas[CrossingsAtCrossing].ToString(ci) +
+                   ", kept at W (vehicle does not fit) " + deltas[CrossingsNoFit].ToString(ci) +
                    "; " + points;
         }
     }

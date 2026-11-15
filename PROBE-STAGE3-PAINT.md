@@ -1,4 +1,12 @@
-# Probe kit: Junction Rules 0.3.2-probe (stage 3, yellow box paint test, option E; plus the crossing setting)
+# Probe kit: Junction Rules 0.3.3-probe (stage 3, yellow box paint test, option E; plus the crossing settings)
+
+**0.3.3-probe (JR-T-005 + JR-T-006), what changed since 0.3.2:** two driving changes in the **Whole junction** rule,
+nothing in the paint test, no new setting. (1) Moonflower Street x Anchor Street: the car turning left out of
+Moonflower no longer waits for a car on Anchor that is turning right into Moonflower (their paths never meet; the mod
+had counted that car as a possible U-turner). (2) Pedestrian and cyclist crossings are no longer part of the decision
+at the waiting spot: a car decides there on the other cars only, and a crossing further along its path is checked by the
+game's own pedestrian check when the car gets to it. A clear crossing is driven straight through (no stop, no slowing);
+a busy one is waited for just before it. What to watch: section 12. It carries everything in 0.3.2.
 
 **0.3.2-probe (JR-T-004), what changed since 0.3.1:** one driving change, nothing in the paint test. New setting
 **Cars never push through people on crossings** (Options > Junction Rules, driving group, **on** by default): a car that
@@ -26,43 +34,44 @@ does option E look right and cost little? (Probe steps S6-S11 of the research do
 - **Fail safe.** If anything in the paint test fails, it logs one `FAILED` line and switches itself off until the game
   restarts. The rest of the mod keeps working.
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.3.2-probe/`. If that folder holds a `STALE.md`, it has only a
+Build to install: `~/Code/cs2-junction-rules/.staged/0.3.3-probe/`. If that folder holds a `STALE.md`, it has only a
 managed build (made while the game was running): main does the Burst rebuild in `STALE.md` (game closed) when the owner
 quits, then puts the new sha256s in the table and the install block below. Until then the install block refuses (the
-sums below are placeholders on purpose: `0000...`). 0.3.2-probe was Burst-built from commit 319fac8 and installed by main on 15 Nov.
+sums below are placeholders on purpose: `0000...`). 0.3.3: managed build only so far (STALE.md present).
+0.3.2-probe was Burst-built from commit 319fac8 and installed by main on 15 Nov (dll `4043fcc9...`, Burst dll `5eb55ab6...`).
 (0.3.0-probe was Burst-built from commit 82ec0ce and installed by main on 15 Nov.)
 
 | File | sha256 |
 |---|---|
-| `JunctionRules.dll` | `4043fcc952744bbda71cd562a5d62834cfe83f04b1fb7a4b18854219ad0ef44b` |
-| `JunctionRules.pdb` | `ce53742f64949ae0ee25d980a5fc13db7c9d32fe9cf5d5fa1cfec2eeee6e42b2` |
-| `JunctionRules_win_x86_64.dll` (Burst code) | `5eb55ab6319be210ba5044a18b9afeb0924b581e29b96ccc5a36e751beb8cc13` |
-| `JunctionRules_win_x86_64.pdb` | `2f0f6272b3cdcaa2e73bd28645d626322d07fc9dbf9830a517ffe7428b1c9270` |
+| `JunctionRules.dll` | `0000000000000000000000000000000000000000000000000000000000000000` |
+| `JunctionRules.pdb` | `0000000000000000000000000000000000000000000000000000000000000000` |
+| `JunctionRules_win_x86_64.dll` (Burst code) | `0000000000000000000000000000000000000000000000000000000000000000` |
+| `JunctionRules_win_x86_64.pdb` | `0000000000000000000000000000000000000000000000000000000000000000` |
 
 Built for game **1.6.4f1 (1097.158a)** only (same version gate as before: on another game version the paint test does not start, and the status says so).
 
-## 1. Install over 0.3.1-probe / 0.3.0-probe / 0.2.4 (game closed only; the 0.2.4 backup made by the 0.3.0 install is kept as it is)
+## 1. Install over 0.3.2-probe / 0.3.1-probe / 0.3.0-probe / 0.2.4 (game closed only; the 0.2.4 backup made by the 0.3.0 install is kept as it is)
 
 ```
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.3.2-probe || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.3.3-probe || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-4043fcc952744bbda71cd562a5d62834cfe83f04b1fb7a4b18854219ad0ef44b  JunctionRules.dll
-ce53742f64949ae0ee25d980a5fc13db7c9d32fe9cf5d5fa1cfec2eeee6e42b2  JunctionRules.pdb
-5eb55ab6319be210ba5044a18b9afeb0924b581e29b96ccc5a36e751beb8cc13  JunctionRules_win_x86_64.dll
-2f0f6272b3cdcaa2e73bd28645d626322d07fc9dbf9830a517ffe7428b1c9270  JunctionRules_win_x86_64.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
   fi
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
-  echo "installed 0.3.2-probe"
+  echo "installed 0.3.3-probe"
 )
 ```
 
@@ -71,7 +80,7 @@ Paste the whole block. It copies nothing unless the game is closed, the build is
 ## 2. Log checks
 
 `$CS2/Logs/JunctionRules.Mod.log` after the main menu:
-- `OnLoad version 0.3.2.0, ...`
+- `OnLoad version 0.3.3.0, ...`
 - `settings: ... cars never push through people on crossings on, ... yellow box paint test off, ...` (defaults)
 
 Options > Junction Rules has a new group **Yellow box paint test (stage 3 probe)**:
@@ -314,3 +323,55 @@ with the place and a screenshot.
 
 **Report back:** zebra and junction verdicts (good/bad), a log excerpt with the counter, and any car stuck longer than
 about a minute (place, what blocked it).
+
+## 12. 0.3.3: Moonflower x Anchor, and crossings out of the whole-junction gap
+
+Both changes act only with **Car driving** = Junction Rules copy and **Junction gap rule** = Whole junction. No new
+setting: the crossing change is how Whole junction now works (owner ruling), not a toggle.
+
+**(1) Moonflower Street x Anchor Street** (T junction, Moonflower STOP). Yellow = from Moonflower turning left onto Anchor
+eastbound; red = from Anchor westbound turning right into Moonflower. Their paths stay about 2.9 m apart (centre to
+centre), more than the 2.4 m at which the game counts two lanes as overlapping, so neither the game nor the mod has a
+conflict between them. But the junction also has the game's unsafe U-turn from Anchor westbound back to Anchor eastbound,
+which ends in yellow's exit lane. The mod (0.2.3 arrival projection) counted every car on Anchor westbound approaching the
+junction as if it might take that U-turn, and held yellow for it. 0.3.3 never does that for a lane the game marks unsafe.
+A car that really U-turns there still holds yellow (it reserves the lane and is on it).
+
+**(2) Crossings.** A car waits at its spot only for cars. A crosswalk further along its path (usually the one on the
+road it turns into) is checked when the car reaches it, by the game's own pedestrian check (and the 0.3.2 "never push
+through people" stays on). Clear crosswalk: the car drives through without stopping or slowing. People on it or about
+to step on: the car stops just before the crosswalk and goes when it is clear. The crosswalk on the car's own arm (before
+the spot) is checked first, as before. Inside the junction each later car conflict is re-checked as before (stop just
+before it only if it is no longer clear).
+- **Vehicle must fit:** this applies only when the whole vehicle (trailers counted) fits between the last car conflict
+  before the crosswalk and the crosswalk. If it does not fit (short junction, long bus or truck), the crosswalk is judged
+  at the spot as in 0.3.2 (the car waits at the spot until the crosswalk is clear too). Merges into the same exit lane
+  do not count as conflicts for this (standing there is ordinary queueing in that lane). Owner decides if that fallback
+  should stay.
+
+**What to watch** (game speed 1, close camera, timing log on for the counters):
+
+| Where | Look for | Good | Bad |
+|---|---|---|---|
+| Moonflower St x Anchor St | car leaving Moonflower to the left while a car on Anchor (from the east) turns right into Moonflower | leaves without waiting for it (it still waits for traffic from the west going east) | still waits for the right-turner |
+| Lindbergh St x Anchor St | right-turner meeting a car already in the junction | gives way to the car already in the junction (as before) | drives into it |
+| Junction with a busy zebra on the exit arm | turning car whose exit crosswalk is busy, cars clear | leaves the spot, stops just before the crosswalk, goes when clear | waits at the spot for the people (0.3.2 behaviour), or drives into people |
+| Same junction, exit crosswalk clear | turning car | drives straight through, no slowing at the crosswalk | brakes or stops at a clear crosswalk |
+| Long bus / truck at a tight junction | turning into a busy crosswalk | waits at the spot (does not fit) | stops with its tail across another lane's path |
+
+**Deadlock / blocking to look out for (reported, no safeguard):** the car stopped before a busy exit crosswalk stands
+inside the junction, but the fit test keeps its own tail clear of the car conflicts it has passed. The followers are
+the risk: a car behind it on the same path decides at its own spot on the cross traffic only (a car standing ahead on
+its own path is not a conflict), drives in and queues behind it by ordinary car-following, and can then stand across
+another lane's path (no room check for followers; the yellow box question of stage 3). Cross traffic is then held by
+that follower until the people clear the crosswalk; with a steady stream of people this can back up the other road.
+No mutual wait with people: people never wait for cars (0.3.2 finding), so it always clears when the crosswalk does.
+Same exposure as 0.3.2 had at a mid-block zebra just past a junction. Report long queues at such junctions with place
+and screenshot.
+
+**Log:** each timing line now also has `; unsafe lane N` inside the feeding-scan brackets (car-steps in which an unsafe
+conflicting lane was not scanned: above 0 at Moonflower x Anchor shows fix (1) at work) and
+`; crossings after W judged at the crossing A, kept at W (vehicle does not fit) B` (car-steps).
+
+**Report back:** verdicts for each table row, a log excerpt with the counters, and any car stuck in a junction before a
+crosswalk for longer than about a minute (place, what it blocked).
