@@ -51,6 +51,8 @@ namespace JunctionRules.Tests
             ("FeedingScanTests", FeedingScanTests),
             ("TurnAcrossTests", TurnAcrossTests),
             ("TurnAcrossRepoTests", TurnAcrossRepoTests),
+            ("CrossingPushTests", CrossingPushTests),
+            ("CrossingRepoTests", CrossingRepoTests),
             ("BoxOutlineTests", BoxOutlineTests),
             ("BoxInsetTests", BoxInsetTests),
             ("BoxHatchTests", BoxHatchTests),

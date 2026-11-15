@@ -259,7 +259,7 @@ namespace JunctionRules.Tests
             dl[Stage2Counters.SafetyStops] = 4; dl[Stage2Counters.SafetyStopEvents] = 1; dl[Stage2Counters.ProjectedLaneHits] = 3; dl[Stage2Counters.FeedingLaneHits] = 5;
             dl[Stage2Counters.FeedingScans] = 7; dl[Stage2Counters.FeedingFollowerSkips] = 9; dl[Stage2Counters.FeedingMemoSkips] = 2;
             string f0 = Stage2Counters.Format(2, dl);
-            Check(f0 == "; junction gap rule whole junction; car-steps: whole-path decisions 10, waited at entry spot for a later conflict 2, safety stops inside 4 (events 1), stopped inside for a give-way 0, stopped inside behind a crossing car 1; arrival projection: busy only by projection, junction-lane car 3, feeding-lane car 5; feeding scans 7 (skipped: follower 9, memo 2; cap hits 0); turning across oncoming: priority changed 0, turner reservation not waited for 0; points at W 0", "suffix with counters: " + f0);
+            Check(f0 == "; junction gap rule whole junction; car-steps: whole-path decisions 10, waited at entry spot for a later conflict 2, safety stops inside 4 (events 1), stopped inside for a give-way 0, stopped inside behind a crossing car 1; arrival projection: busy only by projection, junction-lane car 3, feeding-lane car 5; feeding scans 7 (skipped: follower 9, memo 2; cap hits 0); turning across oncoming: priority changed 0, turner reservation not waited for 0; crossing give-ups refused 0 (5 s push 0, standing person 0, cyclist 0); points at W 0", "suffix with counters: " + f0);
             dl[Stage2Counters.PointSamples] = 4; dl[Stage2Counters.PointDistanceSumCm] = 4000; dl[Stage2Counters.ArrivalSumMs] = 8000;
             dl[Stage2Counters.DistanceHistogram + 2] = 1; dl[Stage2Counters.DistanceHistogram + 3] = 3;
             dl[Stage2Counters.ArrivalHistogram + 3] = 2; dl[Stage2Counters.ArrivalHistogram + 4] = 2;
@@ -348,7 +348,7 @@ namespace JunctionRules.Tests
             string bridgeCode = System.Text.RegularExpressions.Regex.Replace(bridge, @"//.*", "");
             Check(!System.Text.RegularExpressions.Regex.IsMatch(bridgeCode, @"\bnew\s+(?!PathNode\()\w"), "job-side struct has no 'new' except the PathNode value type (no managed allocation)");
             string proj = File.ReadAllText(Path.Combine(src, "JunctionRules.csproj"));
-            Check(proj.Contains("<Version>0.3.1</Version>"), "version 0.3.1 (stage 2 code unchanged since 0.2.4)");
+            Check(proj.Contains("<Version>0.3.2</Version>") && proj.Contains("<InformationalVersion>0.3.2-probe</InformationalVersion>"), "version 0.3.2-probe (0.3.2: cars never push through people on crossings)");
         }
     }
 }

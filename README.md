@@ -40,7 +40,7 @@ the mod draws a UK yellow box (TSRGD diagram 1043; TSM chapter 5 dimensions: 200
 2.5 m spacing) on the junctions in `ModsData/JunctionRules/paint-test.json`, with the game's own surface shader and its
 own buffers (option E of `docs/STAGE3-PAINT-RESEARCH.md`). Draw only: nothing goes into the city or the save, driving is
 unchanged. Off = the system does not run. Any failure logs one line and switches the test off for the session.
-In-game test: PROBE-STAGE3-PAINT.md. 0.3.1-probe adds opt-in diagnostic switches (a `"diag"` object in the same
+0.3.2-probe adds the driving setting **Cars never push through people on crossings** (default on: no 5 s creep through people on zebras and crosswalks; PROBE-STAGE3-PAINT.md section 11). In-game test: PROBE-STAGE3-PAINT.md. 0.3.1-probe adds opt-in diagnostic switches (a `"diag"` object in the same
 file: draw path, decal layer mask, test square, forced alpha, ...) because 0.3.0 drew nothing visible; see
 PROBE-STAGE3-PAINT.md section 10.
 
@@ -59,7 +59,7 @@ PROBE-STAGE3-PAINT.md section 10.
 | `tools/IlHash/` | Prints the vanilla code hash used by the version gate; `--copy` compares the copy's IL with Game.dll. |
 | `tests/JunctionRules.Tests/` | Console test runner. |
 | `DEVIATIONS.md`, `REFERENCERS.md`, `PROBE-STAGE1.md`, `PROBE-STAGE2.md`, `PROBE-STAGE3-PAINT.md` | Every change to the game code; who uses the copied types; in-game test kits. |
-| `docs/STAGE2-ANALYSIS.md` | Where the game decides conflict by conflict, the change, per-case table, deadlock/starvation, owner rulings. `docs/vanilla_copy_*_0.2.0.txt` ... `*_0.3.1.txt`: the diff script's output per version. |
+| `docs/STAGE2-ANALYSIS.md` | Where the game decides conflict by conflict, the change, per-case table, deadlock/starvation, owner rulings. `docs/vanilla_copy_*_0.2.0.txt` ... `*_0.3.2.txt`: the diff script's output per version. |
 
 ## Settings
 

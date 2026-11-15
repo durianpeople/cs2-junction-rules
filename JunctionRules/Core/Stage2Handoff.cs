@@ -27,12 +27,12 @@ namespace JunctionRules.Core
 
         /// <summary>Returns a log line when the requested mode changed (or on the first call), else null.</summary>
         public string Step(JunctionGapRule rule, bool counting, out int mode, JunctionWaitingSpot spot = JunctionWaitingSpot.BeforeFirstCrossing,
-            bool turnGivesWay = false, bool leftHandTraffic = false)
+            bool turnGivesWay = false, bool leftHandTraffic = false, bool noPushPeople = false)
         {
-            mode = Stage2Mode.For(rule, counting, spot, turnGivesWay, leftHandTraffic);
+            mode = Stage2Mode.For(rule, counting, spot, turnGivesWay, leftHandTraffic, noPushPeople);
             if (m_Has && mode == m_Mode) return null;
             bool first = !m_Has;
-            bool ruleChanged = !first && ((mode ^ m_Mode) & (Stage2Mode.Rule | Stage2Mode.AtLine | Stage2Mode.TurnGivesWay | Stage2Mode.LeftHandTraffic)) != 0;
+            bool ruleChanged = !first && ((mode ^ m_Mode) & (Stage2Mode.Rule | Stage2Mode.AtLine | Stage2Mode.TurnGivesWay | Stage2Mode.LeftHandTraffic | Stage2Mode.NoPushPeople)) != 0;
             m_Has = true;
             int old = m_Mode;
             m_Mode = mode;
@@ -83,7 +83,15 @@ namespace JunctionRules.Core
         public const int TurnOverrides = FeedingScans + 4;
         /// <summary>0.2.4: give-ways a straight car did NOT make for a turner's reservation alone (the turner gives way).</summary>
         public const int TurnReservationDiscounts = FeedingScans + 5;
-        public const int Count = FeedingScans + 6;
+        /// <summary>0.3.2: car-steps in which a creep through people or a cyclist on a crossing was refused (any reason below; setting "Cars never push through people on crossings").</summary>
+        public const int CrossingRefused = FeedingScans + 6;
+        /// <summary>0.3.2: ... because of the game's 5 s PushBlockers timer (the owner's "waits a few seconds, then drives through").</summary>
+        public const int CrossingRefusedTimer = FeedingScans + 7;
+        /// <summary>0.3.2: ... because the person stood still (no Moving component or slower than 0.1 m/s; the game creeps at once).</summary>
+        public const int CrossingRefusedStanding = FeedingScans + 8;
+        /// <summary>0.3.2: ... because the car's ignored blocker (IgnoreBlocker creep) was a cyclist on a crossing.</summary>
+        public const int CrossingRefusedCyclist = FeedingScans + 9;
+        public const int Count = FeedingScans + 10;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -138,11 +146,15 @@ namespace JunctionRules.Core
         /// <summary>
         /// The suffix of the copy's timing line. ruleMask: bit 0 = a step ran with stock, bit 1 = with whole junction
         /// (both = the rule was switched inside the window). deltas: null when counters were not on for the whole window.
+        /// pushMask (0.3.2), same encoding for the setting "Cars never push through people on crossings" (bit 0 = a step ran
+        /// with it off, bit 1 = on); 0 = not reported.
         /// </summary>
-        public static string Format(int ruleMask, long[] deltas)
+        public static string Format(int ruleMask, long[] deltas, int pushMask = 0)
         {
             string rule = ruleMask == 1 ? "stock" : ruleMask == 2 ? "whole junction" : ruleMask == 3 ? "mixed (switched in this window)" : "none";
-            if (deltas == null || deltas.Length < Count) return "; junction gap rule " + rule;
+            string push = pushMask == 1 ? "off" : pushMask == 2 ? "on" : pushMask == 3 ? "switched in this window" : null;
+            string pushPart = push == null ? "" : "; never push through people on crossings " + push;
+            if (deltas == null || deltas.Length < Count) return "; junction gap rule " + rule + pushPart;
             var ci = CultureInfo.InvariantCulture;
             long n = deltas[PointSamples];
             string points = n <= 0 ? "points at W 0"
@@ -164,6 +176,11 @@ namespace JunctionRules.Core
                    "; cap hits " + deltas[FeedingCapHits].ToString(ci) + ")" +
                    "; turning across oncoming: priority changed " + deltas[TurnOverrides].ToString(ci) +
                    ", turner reservation not waited for " + deltas[TurnReservationDiscounts].ToString(ci) +
+                   pushPart +
+                   "; crossing give-ups refused " + deltas[CrossingRefused].ToString(ci) +
+                   " (5 s push " + deltas[CrossingRefusedTimer].ToString(ci) +
+                   ", standing person " + deltas[CrossingRefusedStanding].ToString(ci) +
+                   ", cyclist " + deltas[CrossingRefusedCyclist].ToString(ci) + ")" +
                    "; " + points;
         }
     }

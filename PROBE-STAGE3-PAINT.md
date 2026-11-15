@@ -1,4 +1,10 @@
-# Probe kit: Junction Rules 0.3.1-probe (stage 3, yellow box paint test, option E)
+# Probe kit: Junction Rules 0.3.2-probe (stage 3, yellow box paint test, option E; plus the crossing setting)
+
+**0.3.2-probe (JR-T-004), what changed since 0.3.1:** one driving change, nothing in the paint test. New setting
+**Cars never push through people on crossings** (Options > Junction Rules, driving group, **on** by default): a car that
+waits for people on a zebra or a junction crosswalk keeps waiting until the crossing is clear. No timeout (owner ruling:
+no starvation safeguard). Before, the game let it creep through at walking pace after 5 s. Car against car is exactly
+as before. What to watch: section 11. The paint test below is unchanged from 0.3.1.
 
 **0.3.1-probe (JR-T-003c), what changed since 0.3.0:** in 0.3.0 the boxes were built (80 hatch / 11 plain triangles),
 the draw ran every frame without errors, and nothing showed in any mode. A static check of the game code and of the
@@ -15,15 +21,15 @@ does option E look right and cost little? (Probe steps S6-S11 of the research do
 - **Off by default.** Setting **Yellow box paint test** = off: the paint system does not run at all.
 - **Draw only.** Nothing is written to the city or the save: no entities, no components, no areas, no nets. The boxes
   exist only on screen. The only file it writes is the test list (when you press the add button).
-- **No change to driving.** The navigation copy and stage 2 are exactly as 0.2.4 (`docs/vanilla_copy_check_0.3.1.txt`
+- **No change to driving from the paint test.** (0.3.2 adds only the crossing setting, section 11.) Up to 0.3.1 the navigation copy and stage 2 were exactly as 0.2.4 (`docs/vanilla_copy_check_0.3.1.txt`
   equals the 0.3.0 and 0.2.4 files; the copy's IL in the 0.3.1 dll equals 0.3.0's).
 - **Fail safe.** If anything in the paint test fails, it logs one `FAILED` line and switches itself off until the game
   restarts. The rest of the mod keeps working.
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.3.1-probe/`. If that folder holds a `STALE.md`, it has only a
+Build to install: `~/Code/cs2-junction-rules/.staged/0.3.2-probe/`. If that folder holds a `STALE.md`, it has only a
 managed build (made while the game was running): main does the Burst rebuild in `STALE.md` (game closed) when the owner
 quits, then puts the new sha256s in the table and the install block below. Until then the install block refuses (the
-sums below are placeholders on purpose: `0000...`). 0.3.1: managed build only so far (STALE.md present).
+sums below are placeholders on purpose: `0000...`). 0.3.2: managed build only so far (STALE.md present).
 (0.3.0-probe was Burst-built from commit 82ec0ce and installed by main on 15 Nov.)
 
 | File | sha256 |
@@ -35,13 +41,13 @@ sums below are placeholders on purpose: `0000...`). 0.3.1: managed build only so
 
 Built for game **1.6.4f1 (1097.158a)** only (same version gate as before: on another game version the paint test does not start, and the status says so).
 
-## 1. Install over 0.3.0-probe / 0.2.4 (game closed only; the 0.2.4 backup made by the 0.3.0 install is kept as it is)
+## 1. Install over 0.3.1-probe / 0.3.0-probe / 0.2.4 (game closed only; the 0.2.4 backup made by the 0.3.0 install is kept as it is)
 
 ```
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.3.1-probe || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.3.2-probe || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
@@ -56,7 +62,7 @@ SUMS
   fi
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
-  echo "installed 0.3.1-probe"
+  echo "installed 0.3.2-probe"
 )
 ```
 
@@ -65,8 +71,8 @@ Paste the whole block. It copies nothing unless the game is closed, the build is
 ## 2. Log checks
 
 `$CS2/Logs/JunctionRules.Mod.log` after the main menu:
-- `OnLoad version 0.3.1.0, ...`
-- `settings: ... yellow box paint test off, ...` (off is the default)
+- `OnLoad version 0.3.2.0, ...`
+- `settings: ... cars never push through people on crossings on, ... yellow box paint test off, ...` (defaults)
 
 Options > Junction Rules has a new group **Yellow box paint test (stage 3 probe)**:
 - **Yellow box paint test** (on/off)
@@ -271,3 +277,37 @@ and report that step: it names the cause.
 | D7 | (control, after a step that showed paint) that step + `"flipWinding": true` | winding convention is the wrong way round (report it) | expected: nothing (the shader keeps CCW only) |
 
 Then remove the `"diag"` object, press Refresh, and carry on with S6-S11 using whatever setting worked.
+
+## 11. 0.3.2: cars never push through people on crossings
+
+**The setting:** Options > Junction Rules > **Cars never push through people on crossings**, on by default. It acts
+while **Car driving** is on (the Junction Rules copy drives), with either junction gap rule. Off = the game's behaviour.
+
+**Why cars drove through people before:** the game gives up waiting in two ways (both in CarLaneSpeedIterator.CheckPedestrian):
+- **5 s push:** once a car has waited 5 s for people, the game lets it creep at about 3 m/s (11 km/h) through anyone
+  still on the crossing. This is "waits a few seconds, then drives through the pedestrians". It happened at mid-block
+  zebras and at junction crosswalks. At junctions it also overrode the whole-junction rule's wait at the spot.
+- **Standing person:** someone standing still on the crossing (or a collapsed accident victim) is crept through at once.
+With the setting on, both become a full stop. Cyclists riding a crossing are also never crept through.
+
+**What to watch** (game speed 1, close camera, timing log on if you want the counter):
+
+| Where | Look for | Good | Bad |
+|---|---|---|---|
+| Busy mid-block zebra | a car stopped at the zebra while people keep crossing, for longer than 5 s | it stays stopped until the zebra is clear, then goes | it rolls through people after a few seconds |
+| Busy junction crosswalk (turning car) | a car turning into a road whose crosswalk is busy | waits at the stop spot before the junction (whole-junction rule) or at the crosswalk (stock rule), then goes when clear | creeps into the crossing people |
+| Same junctions, setting **off** | the same scene | old behaviour returns (creep after about 5 s) | |
+| Car against car | queues, gap taking at junctions | exactly as 0.3.1 | any change |
+
+Expect longer waits and more queueing behind busy crossings (no timeout on purpose). Look out for a car stuck for
+minutes behind a person who never leaves the crossing (an accident victim, until the ambulance comes): that is the
+known cost of "no timeout"; report where.
+
+**Log:** with **timing log** on, each timing line has `; never push through people on crossings on` and
+`; crossing give-ups refused N (5 s push A, standing person B, cyclist C)`: N = car-steps in the window where the game
+would have crept through a person or cyclist and the setting made the car stop instead. N above 0 at a busy zebra shows
+the setting at work; N = 0 with the setting on and cars still driving through people means another path: report it
+with the place and a screenshot.
+
+**Report back:** zebra and junction verdicts (good/bad), a log excerpt with the counter, and any car stuck longer than
+about a minute (place, what blocked it).

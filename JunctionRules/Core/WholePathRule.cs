@@ -39,21 +39,28 @@ namespace JunctionRules.Core
         public const int TurnGivesWay = 8;
         /// <summary>0.2.4, with <see cref="TurnGivesWay"/> only: the city drives on the left (CityConfigurationSystem.leftHandTraffic).</summary>
         public const int LeftHandTraffic = 16;
+        /// <summary>
+        /// 0.3.2 (JR-T-004), independent of the rule: cars never push through people on crossings (Core/CrossingPush.cs).
+        /// The job side strips this bit from the stage 2 mode (JRWholeJunction.Create), so every "m_Mode == 0" early exit of
+        /// the 0.2.x code stays as it was; only the 0.3.2 lines in blocks S2-08 / S2-08b / S2-11 / S2-11b read it.
+        /// </summary>
+        public const int NoPushPeople = 32;
 
         /// <summary>
         /// The mode bits. The 0.2.4 turn bits are set only with the rule on, so the rule-off mode (and with it every
-        /// "m_Mode == 0" early exit of the job) is unchanged.
+        /// "m_Mode == 0" early exit of the job) is unchanged. 0.3.2: <see cref="NoPushPeople"/> with either rule.
         /// </summary>
         public static int For(JunctionGapRule rule, bool counting, JunctionWaitingSpot spot = JunctionWaitingSpot.BeforeFirstCrossing,
-            bool turnGivesWay = false, bool leftHandTraffic = false) =>
+            bool turnGivesWay = false, bool leftHandTraffic = false, bool noPushPeople = false) =>
             (rule == JunctionGapRule.WholeJunction
                 ? Rule | (spot == JunctionWaitingSpot.StopLine ? AtLine : 0) | (turnGivesWay ? TurnGivesWay | (leftHandTraffic ? LeftHandTraffic : 0) : 0)
-                : 0) | (counting ? Count : 0);
+                : 0) | (counting ? Count : 0) | (noPushPeople ? NoPushPeople : 0);
 
         public static string RuleName(int mode) =>
-            (mode & Rule) == 0 ? "stock"
+            ((mode & Rule) == 0 ? "stock"
             : ((mode & AtLine) != 0 ? "whole junction (wait at the stop line)" : "whole junction")
-              + ((mode & TurnGivesWay) != 0 ? ", turning across oncoming gives way (" + ((mode & LeftHandTraffic) != 0 ? "left" : "right") + "-hand traffic)" : "");
+              + ((mode & TurnGivesWay) != 0 ? ", turning across oncoming gives way (" + ((mode & LeftHandTraffic) != 0 ? "left" : "right") + "-hand traffic)" : ""))
+            + ((mode & NoPushPeople) != 0 ? "; cars never push through people on crossings" : "");
     }
 
     /// <summary>

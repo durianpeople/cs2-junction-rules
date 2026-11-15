@@ -71,7 +71,7 @@ namespace JunctionRules.Tests
             Check(sys.Contains("m_Gpu.SetDiag(m_Config.Diag)") && gpu.Contains("public void SetDiag(PaintDiagParams diag)"), "a Refresh hands the new diag values to the kept GPU objects (decal layer mask, colour buffer, priority, cameras apply without a restart)");
 
             string csproj = File.ReadAllText(Path.Combine(src, "JunctionRules.csproj"));
-            Check(csproj.Contains("<Version>0.3.1</Version>") && csproj.Contains("<InformationalVersion>0.3.1-probe</InformationalVersion>"), "version 0.3.1-probe");
+            Check(csproj.Contains("<Version>0.3.2</Version>") && csproj.Contains("<InformationalVersion>0.3.2-probe</InformationalVersion>"), "version 0.3.2-probe");
 
             string kit = Path.Combine(RepoRoot(), "PROBE-STAGE3-PAINT.md");
             Check(File.Exists(kit), "probe kit PROBE-STAGE3-PAINT.md exists");
@@ -82,7 +82,7 @@ namespace JunctionRules.Tests
                     Check(k.Contains(step), "probe kit has step " + step.Trim('|', ' '));
                 Check(k.Contains("paint-test.json") && k.Contains("FAILED while") && k.Contains("paint cost over"), "probe kit names the list file, the failure line and the cost line");
                 Check(k.Contains("\"diag\"") && k.Contains("drawPath") && k.Contains("decalLayerMask") && k.Contains("testSquare"), "probe kit documents the 0.3.1 diag switches");
-                Check(k.Contains("0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll") || !File.Exists(Path.Combine(RepoRoot(), ".staged", "0.3.1-probe", "STALE.md")), "probe kit install sums stay placeholders while the staged build is stale");
+                Check(k.Contains("0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll") || !File.Exists(Path.Combine(RepoRoot(), ".staged", "0.3.2-probe", "STALE.md")), "probe kit install sums stay placeholders while the staged build is stale");
             }
         }
     }

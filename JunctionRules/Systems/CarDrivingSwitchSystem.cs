@@ -105,7 +105,8 @@ namespace JunctionRules.Systems
             // value into its job). Counters run only with the timing log on.
             string ruleNote = m_GapRule.Step(Mod.Settings != null ? Mod.Settings.GapRule : JunctionGapRule.Stock, probes, out int stage2Mode,
                 Mod.Settings != null ? Mod.Settings.WaitingSpot : JunctionWaitingSpot.BeforeFirstCrossing,
-                Mod.Settings == null || Mod.Settings.TurnAcrossGivesWay, LeftHandTraffic());
+                Mod.Settings == null || Mod.Settings.TurnAcrossGivesWay, LeftHandTraffic(),
+                Mod.Settings == null || Mod.Settings.NoPushThroughPeople);
             Stage2Handoff.Publish(stage2Mode);
             if (ruleNote != null) Mod.log.Info(ruleNote);
             if (!m_ProbesApplied || probes != m_ProbesOn)

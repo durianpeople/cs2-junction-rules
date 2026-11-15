@@ -1404,12 +1404,15 @@ public struct JRCarLaneSpeedIterator
 				}
 				if (m_CreatureData.HasComponent(laneObject.m_LaneObject))
 				{
-					// JR-STAGE2 BEGIN S2-08: pedestrian on a crossing of the path: wait at the spot before commit
+					// JR-STAGE2 BEGIN S2-08: pedestrian on a crossing of the path: wait at the spot before commit; 0.3.2: never push through people (the game's check runs against an open limit)
 					float jrPedNum5 = num5;
 					num5 = m_JR.PedestrianDistance(jrInScope, num5);
+					float jrPedMax = m_MaxSpeed; Entity jrPedBlocker = m_Blocker; BlockerType jrPedType = m_BlockerType;
+					if (m_JR.m_NoPushPeople) m_MaxSpeed = float.MaxValue;
 					// JR-STAGE2 END
 					CheckPedestrian(overlapLine, laneObject.m_LaneObject, laneObject.m_CurvePosition.y, num5, giveSpace, inverse);
-					// JR-STAGE2 BEGIN S2-08b: restore the game's distance
+					// JR-STAGE2 BEGIN S2-08b: 0.3.2: full stop instead of the game's creep (5 s push timer, standing person); restore the game's distance
+					if (m_JR.m_NoPushPeople) m_JR.NoPushPedestrian(ref m_MaxSpeed, ref m_Blocker, ref m_BlockerType, jrPedMax, jrPedBlocker, jrPedType, laneObject.m_LaneObject, num5, m_PushBlockers, ref m_MovingData, m_PrefabCar, m_SafeTimeStep, m_SpeedRange);
 					num5 = jrPedNum5;
 					// JR-STAGE2 END
 					continue;
@@ -1458,14 +1461,17 @@ public struct JRCarLaneSpeedIterator
 				}
 				objectSpeed = math.select(objectSpeed, -objectSpeed, inverse);
 				float3 currentPos = MathUtils.Position(m_Curve.m_Bezier, math.select(m_CurveOffset.x, m_CurveOffset.y, flag2 != inverse));
-				// JR-STAGE2 BEGIN S2-11: car on a conflicting lane: wait at the spot before commit
+				// JR-STAGE2 BEGIN S2-11: car on a conflicting lane: wait at the spot before commit; 0.3.2: no ignore-blocker creep through a cyclist on a crossing
 				float jrNum5 = num5;
 				float jrMaxBefore = m_MaxSpeed;
 				num5 = m_JR.VehicleDistance(jrInScope, num5, jrProjected, blockerType == BlockerType.Continuing);
+				Entity jrIgnore = m_Ignore;
+				if (m_JR.m_NoPushPeople) m_Ignore = m_JR.CrossingIgnore(m_Ignore, laneObject.m_LaneObject, m_Lane, ref m_BicycleData, ref m_PedestrianLaneData);
 				// JR-STAGE2 END
 				UpdateMaxSpeed(laneObject.m_LaneObject, blockerType, objectSpeed, curvePosition.x, distanceFactor, num5, num4, laneOffset, laneObject.m_LaneObject == m_Ignore, inverse, flag2, inverseLaneOffset, currentPos);
-				// JR-STAGE2 BEGIN S2-11b: restore the game's distance; counters
+				// JR-STAGE2 BEGIN S2-11b: restore the game's distance and (0.3.2) the ignored blocker; counters
 				num5 = jrNum5;
+				m_Ignore = jrIgnore;
 				m_JR.AfterVehicle(jrInScope, jrMaxBefore, m_MaxSpeed, jrProjected, blockerType == BlockerType.Continuing, jrStart);
 				// JR-STAGE2 END
 			}

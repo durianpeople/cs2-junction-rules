@@ -107,13 +107,13 @@
         "files": {
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
-        "reason": "Pedestrian on a crossing of the path: distance swapped to the waiting spot before commit."
+        "reason": "Pedestrian on a crossing of the path: distance swapped to the waiting spot before commit; 0.3.2: saves the speed limit and blocker and opens the limit when 'Cars never push through people on crossings' is on."
       },
       "S2-08b": {
         "files": {
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
-        "reason": "Restores the game's distance after the pedestrian check."
+        "reason": "Restores the game's distance after the pedestrian check; 0.3.2: with the setting on, the game's creep (5 s push timer, standing person) becomes a full stop and the saved limit is merged back."
       },
       "S2-09": {
         "files": {
@@ -131,13 +131,13 @@
         "files": {
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
-        "reason": "Car on a conflicting lane: braking distance swapped to the waiting spot before commit (projected cars, crossings)."
+        "reason": "Car on a conflicting lane: braking distance swapped to the waiting spot before commit (projected cars, crossings); 0.3.2: with the setting on, a cyclist on a crossing is not the ignored blocker (no 3 m/s creep)."
       },
       "S2-11b": {
         "files": {
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
-        "reason": "Restores the game's distance after the vehicle check; counters."
+        "reason": "Restores the game's distance after the vehicle check; counters; 0.3.2: restores m_Ignore."
       },
       "S2-12": {
         "files": {

@@ -56,6 +56,15 @@ namespace JunctionRules.Settings
         [SettingsUISection(kSection, kDrivingGroup)]
         public bool TurnAcrossGivesWay { get; set; }
 
+        /// <summary>
+        /// 0.3.2 (JR-T-004, owner ask 15 Nov 2026): a car held by people on a crossing of its path (zebra, junction
+        /// crosswalk, footway across a driveway) or by a cyclist riding the crossing stays stopped until they are clear:
+        /// no creep through them after the game's 5 s timer, none through a person standing still (Core/CrossingPush.cs).
+        /// Car against car stays stock. Default on; acts while the copy drives (with either gap rule); next simulation step.
+        /// </summary>
+        [SettingsUISection(kSection, kDrivingGroup)]
+        public bool NoPushThroughPeople { get; set; }
+
         /// <summary>Read-only: what runs now and the version gate result.</summary>
         [SettingsUISection(kSection, kDrivingGroup)]
         public string Status => StatusText();
@@ -131,6 +140,7 @@ namespace JunctionRules.Settings
             GapRule = JunctionGapRule.Stock;
             WaitingSpot = JunctionWaitingSpot.BeforeFirstCrossing;
             TurnAcrossGivesWay = true;
+            NoPushThroughPeople = true;
             YellowBoxPaintTest = false;
             PaintMode = BoxPaintMode.Hatch;
             PaintLayers = BoxPaintLayers.Roads;
@@ -180,6 +190,10 @@ namespace JunctionRules.Settings
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.TurnAcrossGivesWay)), "Whole junction: turning across oncoming traffic gives way" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.TurnAcrossGivesWay)),
                     "Only with the Whole junction rule. On (default): where neither direction has a sign or signal priority over the other, a car turning across the oncoming traffic (right turns where cars drive on the left, left turns where they drive on the right) gives way to the oncoming cars going straight on, and an oncoming car going straight on does not wait just because the turner has reserved its way through; it still brakes for a turner that is physically in its path. Off: the game's own priority. Changes take effect at the next simulation step." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.NoPushThroughPeople)), "Cars never push through people on crossings" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.NoPushThroughPeople)),
+                    "On (default): a car waiting for people on a crossing of its path (a zebra, a crossing at a junction, a footway across a driveway), or for a cyclist riding across it, keeps waiting until they are clear, however long that takes. Off: the game's own behaviour, where after about 5 seconds the car creeps on at walking pace through the people (and creeps at once past a person standing still). Cars waiting for other cars are not changed. Works with either junction gap rule, only while Car driving is the Junction Rules copy. Changes take effect at the next simulation step." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.Status)), "Status" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.Status)), "What runs now, the result of the version check made at game start, and whether the copy can run (set up at the first simulation step). Reopen the options page to refresh." },

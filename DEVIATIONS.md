@@ -156,6 +156,22 @@ reservation's priority beats `num6`. No shared component or `LaneOverlap` data i
 setting travel in the stage 2 mode bits (set only with the rule on, so the rule-off mode is unchanged); no navigation
 job block changed for them. Version 0.2.4.
 
+
+0.3.2 (JR-T-004, owner ask 15 Nov 2026: "keep stopping until it has a gap, no timeout"; no starvation safeguard,
+standing owner ruling). A **deviation from stock behaviour**, setting **Cars never push through people on crossings**
+(default on; acts whenever the copy drives, with either gap rule). The game lets a car creep at >= 3 m/s through people
+on a pedestrian lane its path crosses in `CheckPedestrian`: (a) after the car's `PushBlockers` lane flag, set by
+`UpdateNavigationTarget` after 5 s of lane duration held by a `Temporary` (people) blocker; (b) at once for a person with
+no `Moving` component or slower than 0.1 m/s. With the setting on both become the game's walking-person value (full
+stop at the same distance), so the car waits until the crossing is clear. At a junction this acts on the distance S2-08
+chose (the spot W before commit), so it completes the S2-08 hold instead of duplicating it; mid-block zebras (no W) and
+crosswalks before W or after commit get the same refusal at the game's own distance. A cyclist on a crossing (bicycle on
+a pedestrian lane) is never the ignored blocker (IgnoreBlocker 3 m/s creep). No new block ids: S2-08, S2-08b, S2-11 and
+S2-11b grow by 2, 1, 2 and 1 lines (adding blocks at those anchors would sit next to them). Nav-side flags are left
+as stock (`PushBlockers`, `IgnoreBlocker` still set; their effect on people and cyclists is refused in the iterator).
+The setting bit (`Stage2Mode.NoPushPeople` = 32) is stripped from the job's stage 2 mode, so the 0.2.x blocks are
+unchanged with the rule off. Counter: timing line `crossing give-ups refused N (5 s push A, standing person B, cyclist
+C)`. Pure logic in `Core/CrossingPush.cs` (tests `CrossingPushTests`, `CrossingRepoTests`). Version 0.3.2-probe.
 | Id | File | Sites | Lines inside | Where | What |
 |---|---|---|---|---|---|
 | S2-01 | iterator | 1 | 1 | after field `m_LaneOffsetPush` | Field `m_JR` (JRWholeJunction): the car's stage 2 state. |
@@ -165,10 +181,10 @@ job block changed for them. Version 0.2.4.
 | S2-05 | iterator | 1 | 2 | after `blockerType` in the loop | `jrStart` (overlap start seen from the car), `jrInScope` (at or after W and yield-checked). |
 | S2-06 | iterator | 1 | 1 | after `maxBrakingSpeed` (blocking reservation) | Per point phase (0.2.1): later stretch / deciding: brake to the spot; crossing with a busy uncrossed point: safety stop before the first uncrossed point if it can stop, else no give-way; cannot stop at the spot: stock. 0.2.4 (text unchanged): no hold when S2-13 marked the overlap (turner's reservation alone, turner gives way). |
 | S2-07 | iterator | 1 | 1 | after `maxBrakingSpeed3` (space request) | 0.2.1 `SpaceYield`: holds a car at its spot; dropped while crossing (deadlock). |
-| S2-08 / S2-08b | iterator | 1 / 1 | 2 / 1 | around `CheckPedestrian` | Before commit the pedestrian check uses the distance to W; the game's `num5` is restored after. |
+| S2-08 / S2-08b | iterator | 1 / 1 | 4 / 2 | around `CheckPedestrian` | Before commit the pedestrian check uses the distance to W; the game's `num5` is restored after. 0.3.2: with "Cars never push through people on crossings" on, the check runs against an open limit (saved before), then `NoPushPedestrian` replaces the game's creep (5 s push timer or standing person) by the full-stop speed at the same distance and merges the saved limit back. |
 | S2-09 | iterator | 1 | 1 | after `GetObjectSpeed` in the object loop | Keeps the other car's position before the 2 s priority look-ahead. |
 | S2-10 | iterator | 1 | 2 | after the look-ahead block | `AfterProjection`: while crossing (no safety stop) the look-ahead is undone unless the other car is already past the overlap start; 0.2.3: while deciding at W or in the safety re-check it becomes `2 s + own arrival time`; `jrProjected` = the car counts only through the look-ahead. |
-| S2-11 / S2-11b | iterator | 1 / 1 | 3 / 2 | around `UpdateMaxSpeed` in `CheckOverlappingLanes` | Before commit: braking distance to W for projected cars and cars in a crossing (merge followers stay stock); `num5` restored after; debug counters. |
+| S2-11 / S2-11b | iterator | 1 / 1 | 5 / 3 | around `UpdateMaxSpeed` in `CheckOverlappingLanes` | Before commit: braking distance to W for projected cars and cars in a crossing (merge followers stay stock); `num5` restored after; debug counters. 0.3.2: with the setting on, `m_Ignore` is hidden for this one call when the object is a bicycle on a pedestrian lane (no IgnoreBlocker creep through a cyclist on a crossing); restored after. |
 | S2-12 | iterator | 1 | 10 | `CheckOverlappingLanes`, after the reservation priority `num6 -= num9` | 0.2.3 `FeedingLaneYield`: while deciding / re-checking, every car on the lanes feeding this conflicting junction lane that wins the stock priority test (`GetPriority(car) - num6 > 0`, as S2-10; JR-T-002g) as a virtual reservation (stock reach + speed x own arrival time) through the stock test `offset > num10 \|\| priority > num6` with the game's own `num10` / `num6`; on a hit, the stop at the spot / before the first uncrossed point is applied like a blocking reservation. 0.2.4: also passes the stock-read conflicting-lane signal (`componentData2`) and the read-only `CarLane` / `ObjectGeometryData` / `LaneReservation` lookups: cars stopping at that lane's red / amber are skipped; deciding car only, memo, cap. |
 | S2-13 | iterator | 1 | 1 | `CheckOverlappingLanes`, right after `num6 -= num9` (before S2-12) | 0.2.4 `TurnAcrossPriority` (deviation from stock priority, owner-approved 14 Nov 2026; setting on and whole junction only): turn across the oncoming flow `+1`, the oncoming straight `-1` when sign status is equal and no sign / signal override applies; marks the straight car's overlap so `Yield` (S2-06) does not hold it for the turner's reservation alone (unless that reservation's priority beats `num6`). |
 | S2-20 | nav | 1 | 12 | `UpdateNavigationJob` fields | `m_JRMode` (int, by value), `m_JRCounters` (persistent `NativeArray<long>`, atomic adds, safety restriction off: debug-only counters); 0.2.3: `m_JRSafetyEvents` (persistent `NativeArray<long>` event table, compare-exchange, debug only) and `[ReadOnly] m_JRConnectedEdges` (`BufferLookup<ConnectedEdge>`). The 0.2.2 trailer lookups are gone. |
@@ -177,7 +193,7 @@ job block changed for them. Version 0.2.4.
 | S2-23 | nav | 1 | 4 | `OnUpdate`, before `ScheduleParallel` | Main thread: takes this step's mode from `Stage2Handoff` (published by `CarDrivingSwitchSystem` earlier in the same step) into the job struct by value; 0.2.3: sets the event table and `GetBufferLookup<ConnectedEdge>(isReadOnly: true)`. |
 | S2-24 | nav | 1 | 8 | new `OnDestroy` (none in vanilla) | Completes the job and frees the counter array. |
 
-Total: 21 blocks, 66 lines inside (as `vanilla_copy.py check` reports; 0.2.3: 20 blocks, 65 lines; 0.2.2: 19 blocks, 60 lines; 0.2.1: 19 blocks, 43 lines; S2-24 counts its trailing blank line).
+Total: 21 blocks, 72 lines inside (as `vanilla_copy.py check` reports; 0.2.4 to 0.3.1: 21 blocks, 66 lines; 0.2.3: 20 blocks, 65 lines; 0.2.2: 19 blocks, 60 lines; 0.2.1: 19 blocks, 43 lines; S2-24 counts its trailing blank line).
 
 Effect on `tools/IlHash --copy` (expected): 48 of 80 identical (was 54), 21 shape only (was 19), 11 content
 differences (was 7: the four stage 2 methods `IterateFirstLane` x2, `IterateNextLane`, `UpdateNavigationTarget` join

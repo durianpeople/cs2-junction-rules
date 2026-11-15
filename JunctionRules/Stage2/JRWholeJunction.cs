@@ -44,8 +44,13 @@ namespace JunctionRules.Stage2
         public BufferLookup<ConnectedEdge> m_ConnectedEdges;
         /// <summary>Debug counters (created only when counting; the job's persistent array).</summary>
         public NativeArray<long> m_Counters;
-        /// <summary>Stage2Mode bits; 0 = off.</summary>
+        /// <summary>Stage2Mode bits; 0 = off. Never holds Stage2Mode.NoPushPeople (stripped in Create, see m_NoPushPeople).</summary>
         public int m_Mode;
+        /// <summary>
+        /// 0.3.2 (JR-T-004): setting "Cars never push through people on crossings" (Stage2Mode.NoPushPeople, kept out of
+        /// m_Mode so the 0.2.x code's "m_Mode == 0" exits are unchanged). Read only by blocks S2-08 / S2-08b / S2-11.
+        /// </summary>
+        public bool m_NoPushPeople;
 
         /// <summary>Set by IterateFirstLane (S2-02): the car's current lane(s); feeding lanes equal to them are its own approach.</summary>
         public Entity m_CurrentLane;
@@ -121,6 +126,10 @@ namespace JunctionRules.Stage2
         private int m_FeedFollowerSkips;
         private int m_FeedMemoSkips;
         private int m_FeedCapHits;
+        // ---- 0.3.2: crossing give-ups refused this car-step (counted only when counting) ----
+        private bool m_RefusedTimer;
+        private bool m_RefusedStanding;
+        private bool m_RefusedCyclist;
 
         public bool RuleOn
         {
@@ -146,6 +155,9 @@ namespace JunctionRules.Stage2
             NativeArray<long> counters)
         {
             JRWholeJunction j = default;
+            // 0.3.2: the no-push setting travels in the same handed-over int but is not part of the stage 2 mode.
+            j.m_NoPushPeople = (mode & Stage2Mode.NoPushPeople) != 0;
+            mode &= ~Stage2Mode.NoPushPeople;
             j.m_Mode = mode;
             if (mode != 0)
             {
@@ -337,6 +349,63 @@ namespace JunctionRules.Stage2
         {
             if (!inScope) return stockDistance;
             return WholePathRule.Distance(StretchState.ForPedestrian(m_OvPhase), stockDistance, m_OvStopWait);
+        }
+
+        /// <summary>
+        /// 0.3.2 (JR-T-004, block S2-08b; only called with m_NoPushPeople): the game's CheckPedestrian has just run for
+        /// person <paramref name="obj"/> against an open limit (S2-08 saved the iterator's limit, blocker and blocker type
+        /// and set the limit to float.MaxValue), so maxSpeed &lt; float.MaxValue exactly when the game's own gate counted
+        /// this person, and then maxSpeed is the game's own speed for them (creep or stop). With a push reason
+        /// (Core/CrossingPush.cs: the car's 5 s PushBlockers timer, or a standing person) the car brakes to a full stop
+        /// instead, the game's walking-person value <c>GetMaxBrakingSpeed(car, distance, safeTimeStep)</c> clamped to the
+        /// speed range. Then the saved state is restored and the result applied exactly as CheckPedestrian applies its own
+        /// (lower than the limit: limit, blocker = the person, type Temporary). Without a push reason, or when the gate did
+        /// not count the person, the outcome equals the game's. distance = the value the game's check got (S2-08's
+        /// waiting-spot distance before commit, else the game's), so the stop lands where stage 2 put it.
+        /// </summary>
+        public void NoPushPedestrian(ref float maxSpeed, ref Entity blocker, ref BlockerType blockerType, float savedMax, Entity savedBlocker,
+            BlockerType savedType, Entity obj, float distance, bool pushBlockers, ref ComponentLookup<Moving> movingData, CarData car,
+            float safeTimeStep, Bounds1 speedRange)
+        {
+            float result = float.MaxValue;
+            if (maxSpeed < float.MaxValue)
+            {
+                float stock = maxSpeed;
+                bool hasMoving = movingData.TryGetComponent(obj, out Moving moving);
+                CrossingPush.PushReason reason = CrossingPush.Pedestrian(pushBlockers, hasMoving, hasMoving ? math.lengthsq(moving.m_Velocity) : 0f);
+                float fullStop = reason == CrossingPush.PushReason.None ? stock
+                    : MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, distance, safeTimeStep), speedRange);
+                result = CrossingPush.PedestrianSpeed(true, reason, stock, fullStop);
+                if (Counting && result < stock && result < savedMax)
+                {
+                    if (reason == CrossingPush.PushReason.Timer) m_RefusedTimer = true;
+                    else m_RefusedStanding = true;
+                }
+            }
+            maxSpeed = savedMax;
+            blocker = savedBlocker;
+            blockerType = savedType;
+            if (result < maxSpeed)
+            {
+                maxSpeed = result;
+                blocker = obj;
+                blockerType = BlockerType.Temporary;
+            }
+        }
+
+        /// <summary>
+        /// 0.3.2 (JR-T-004, block S2-11; only called with m_NoPushPeople): the m_Ignore entity for the game's
+        /// UpdateMaxSpeed call on object <paramref name="obj"/> of the overlapping lane <paramref name="lane"/>: Entity.Null
+        /// when obj is the car's ignored blocker (IgnoreBlocker creep) and a bicycle on a pedestrian lane (a cyclist on a
+        /// crossing), else unchanged. S2-11b restores the field after the call.
+        /// </summary>
+        public Entity CrossingIgnore(Entity ignore, Entity obj, Entity lane, ref ComponentLookup<Game.Vehicles.Bicycle> bicycles,
+            ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
+        {
+            if (ignore == Entity.Null || obj != ignore) return ignore;
+            if (!CrossingPush.RefuseIgnore(true, true, bicycles.HasComponent(obj), pedestrianLanes.HasComponent(lane))) return ignore;
+            if (Counting) m_RefusedCyclist = true;
+            return Entity.Null;
         }
 
         /// <summary>
@@ -665,6 +734,13 @@ namespace JunctionRules.Stage2
             if (m_FeedCapHits != 0) Add(counters, Stage2Counters.FeedingCapHits, m_FeedCapHits);
             if (m_TurnOverrides != 0) Add(counters, Stage2Counters.TurnOverrides, m_TurnOverrides);
             if (m_TurnDiscounts != 0) Add(counters, Stage2Counters.TurnReservationDiscounts, m_TurnDiscounts);
+            if (m_RefusedTimer || m_RefusedStanding || m_RefusedCyclist)
+            {
+                Add(counters, Stage2Counters.CrossingRefused, 1);
+                if (m_RefusedTimer) Add(counters, Stage2Counters.CrossingRefusedTimer, 1);
+                if (m_RefusedStanding) Add(counters, Stage2Counters.CrossingRefusedStanding, 1);
+                if (m_RefusedCyclist) Add(counters, Stage2Counters.CrossingRefusedCyclist, 1);
+            }
             if (Stage2Counters.IsBinding(m_HasSafety, m_SafetySpeed, finalMaxSpeed))
             {
                 Add(counters, Stage2Counters.SafetyStops, 1);
