@@ -366,7 +366,7 @@ namespace JunctionRules.Paint
             Mod.log.Info($"yellow box paint test: list {path}: {m_Config.Junctions.Count} junction(s); border {m_Config.Geometry.BorderWidth} m, lines {m_Config.Geometry.LineWidth} m, spacing {(m_Config.Geometry.Spacing > 0 ? m_Config.Geometry.Spacing + " m" : "auto (TSM 2 m / 2.5 m)")}, angle {m_Config.Geometry.AngleDeg} deg, kerb inset +{m_Config.Geometry.KerbInset} m");
             foreach (string p in m_Config.Problems) Mod.log.Warn("yellow box paint test: list file: " + p);
             Mod.log.Info("yellow box paint test: diag switches (effective): " + m_Config.Diag.Describe()
-                + $"; render: volume -{m_Config.Render.VolumeBelow}/+{m_Config.Render.VolumeAbove} m, expand {m_Config.Render.Expand}, edgeFade [{m_Config.Render.EdgeFadeX}, {m_Config.Render.EdgeFadeY}], swapPrevNext {m_Config.Render.SwapPrevNext}, plainTextures {m_Config.Render.PlainTextures}, colour [{string.Join(", ", m_Config.Render.Color)}]");
+                + $"; render: volume -{m_Config.Render.VolumeBelow}/+{m_Config.Render.VolumeAbove} m, expand {m_Config.Render.Expand}, edgeFade [{m_Config.Render.EdgeFadeX}, {m_Config.Render.EdgeFadeY}], edgeNoise [{m_Config.Render.EdgeNoiseX}, {m_Config.Render.EdgeNoiseY}], swapPrevNext {m_Config.Render.SwapPrevNext}, plainTextures {m_Config.Render.PlainTextures}, colour [{string.Join(", ", m_Config.Render.Color)}]");
         }
 
         private void AddCameraJunction()

@@ -1,4 +1,11 @@
-# Probe kit: Junction Rules 0.3.3-probe (stage 3, yellow box paint test, option E; plus the crossing settings)
+# Probe kit: Junction Rules 0.3.4-probe (stage 3, yellow box paint test, option E; plus the crossing settings)
+
+**0.3.4-probe (JR-T-003d), what changed since 0.3.3:** the paint test's decal now draws. Cause of "nothing visible" in
+0.3.0-0.3.3: the paint list's default `edgeNoise` was `[0, 0]`; the game's surface shader divides by the second value, so
+every paint pixel came out fully transparent (section 13). 0.3.4 never hands the shader a zero there (default `[0, 1]`:
+clean edges). No driving change: it carries 0.3.3 as it is (`docs/vanilla_copy_check_0.3.4.txt` equals 0.3.3's, copy IL
+identical). Short live test: section 13, one restart.
+
 
 **0.3.3-probe (JR-T-005 + JR-T-006), what changed since 0.3.2:** two driving changes in the **Whole junction** rule,
 nothing in the paint test, no new setting. (1) Moonflower Street x Anchor Street: the car turning left out of
@@ -34,10 +41,11 @@ does option E look right and cost little? (Probe steps S6-S11 of the research do
 - **Fail safe.** If anything in the paint test fails, it logs one `FAILED` line and switches itself off until the game
   restarts. The rest of the mod keeps working.
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.3.3-probe/`. If that folder holds a `STALE.md`, it has only a
+Build to install: `~/Code/cs2-junction-rules/.staged/0.3.4-probe/`. If that folder holds a `STALE.md`, it has only a
 managed build (made while the game was running): main does the Burst rebuild in `STALE.md` (game closed) when the owner
 quits, then puts the new sha256s in the table and the install block below. Until then the install block refuses (the
-sums below are placeholders on purpose: `0000...`). 0.3.3: managed build only so far (STALE.md present).
+sums below are placeholders on purpose: `0000...`). 0.3.4: managed build only so far (STALE.md present); 0.3.3 was never
+Burst-built or installed, 0.3.4 carries it.
 0.3.2-probe was Burst-built from commit 319fac8 and installed by main on 15 Nov (dll `4043fcc9...`, Burst dll `5eb55ab6...`).
 (0.3.0-probe was Burst-built from commit 82ec0ce and installed by main on 15 Nov.)
 
@@ -50,13 +58,13 @@ sums below are placeholders on purpose: `0000...`). 0.3.3: managed build only so
 
 Built for game **1.6.4f1 (1097.158a)** only (same version gate as before: on another game version the paint test does not start, and the status says so).
 
-## 1. Install over 0.3.2-probe / 0.3.1-probe / 0.3.0-probe / 0.2.4 (game closed only; the 0.2.4 backup made by the 0.3.0 install is kept as it is)
+## 1. Install over 0.3.3-probe / 0.3.2-probe / 0.3.1-probe / 0.3.0-probe / 0.2.4 (game closed only; the 0.2.4 backup made by the 0.3.0 install is kept as it is)
 
 ```
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.3.3-probe || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.3.4-probe || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
@@ -71,7 +79,7 @@ SUMS
   fi
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
-  echo "installed 0.3.3-probe"
+  echo "installed 0.3.4-probe"
 )
 ```
 
@@ -80,7 +88,7 @@ Paste the whole block. It copies nothing unless the game is closed, the build is
 ## 2. Log checks
 
 `$CS2/Logs/JunctionRules.Mod.log` after the main menu:
-- `OnLoad version 0.3.3.0, ...`
+- `OnLoad version 0.3.4.0, ...`
 - `settings: ... cars never push through people on crossings on, ... yellow box paint test off, ...` (defaults)
 
 Options > Junction Rules has a new group **Yellow box paint test (stage 3 probe)**:
@@ -375,3 +383,66 @@ conflicting lane was not scanned: above 0 at Moonflower x Anchor shows fix (1) a
 
 **Report back:** verdicts for each table row, a log excerpt with the counters, and any car stuck in a junction before a
 crosswalk for longer than about a minute (place, what it blocked).
+
+## 13. 0.3.4: why the decal never showed (cause found), and the one-restart test
+
+### Cause
+
+Every 0.3.0-0.3.3 draw sent `colossal_EdgeNoise = (0, 0)` (our old default `"edgeNoise": [0, 0]`). The diag runs (D0-D6)
+never changed it, so every switch failed the same way.
+
+- The DBufferMesh pixel shader (`docs/shader-areadecal/blob054.asm`) divides by the noise size. Lines 208-210 compute
+  `r6.w = 1 / (cb4[12].z * cb4[17].x)`, where `cb4[12].z` = `colossal_EdgeNoise.y` (UnityPerMaterial byte 200) and
+  `cb4[17].x` = `colossal_AreaParameters.x` (expand, byte 272). The layout comes from the shader's parameter blob 44
+  (`docs/shader-areadecal/blob044.params.txt`).
+- Size 0 gives 1/0 = inf, so the simplex noise coordinates become inf and `frc` returns NaN (lines 353, 375). The noise
+  amount (0) times NaN is still NaN (lines 604-608). `mul_sat` of NaN is 0 under D3D rules (lines 611-617), so the edge
+  fade is 0 on every pixel.
+- Alpha = BaseColorMap.a x `_BaseColor.a` x LOD fade x edge fade = 0 (lines 668-670, output `o0.w` line 968). The
+  normal and mask targets carry the same 0 (`o1.w`, `o2.w`, `o3.xy`). HDRP blends DBufferMesh with SrcAlpha /
+  OneMinusSrcAlpha, so every write was a no-op: the draw ran, the pixels passed, nothing changed.
+- The game never sends 0. `Game.Prefabs.RenderedArea.m_EdgeNoise` is `[RangeN(0f, 1f, 0.01f, 10f)]`, default (0.5, 0.5)
+  (decompile `Game.Prefabs/RenderedArea.cs`, lines 87-88). Expand 0 would divide by zero the same way (line 600).
+
+Ruled out by the same reading, besides section 10's table: the material clone, mesh, draw call, render queue (2000 is
+inside HDRP's DBufferMesh range), bounds, winding, colour masks (the cloned 'Rendered Area Material' has DBuffer masks
+15/15/11/8) and the decal layers.
+
+### How the game gets area decals into the DBuffer (and ours now does the same)
+
+1. `Game.Rendering.AreaBatchSystem` clones the batch material: `new Material(RenderedArea.m_Material ??
+   AreasConfigurationPrefab.m_RenderedAreaMaterial)`, with render queue = shader queue and the per-prefab
+   `colossal_AreaParameters`, `colossal_EdgeNoise` etc. (`AreaBatchSystem.cs` lines 2083-2119).
+2. `Game.Rendering.AreaRenderSystem.Render`, hooked to `RenderPipelineManager.beginContextRendering`, calls
+   `Graphics.RenderMeshIndirect` for each non-preview camera with the "Area triangle volume" mesh, that material and the
+   triangle buffers (`AreaRenderSystem.cs`, `Render`, lines 71-210).
+3. HDRP's `RenderDBuffer` builds a renderer list for the `DBufferMesh` pass, opaque queues 1000-2500, draws it with
+   `CoreUtils.DrawRendererList`, then calls `DecalSystem.instance.RenderIntoDBuffer` for projector decals. HDRP 14.0.12
+   (the game runs Unity 2022.3.71f1 with HDRP 14.0.x): `Runtime/RenderPipeline/HDRenderPipeline.Prepass.cs`
+   `RenderDBuffer` line 933, renderer list lines 973-977, `DrawRendererList` line 998, `RenderIntoDBuffer` line 1000;
+   `Runtime/RenderPipeline/HDRenderQueue.cs` line 91 (`k_RenderQueue_AllOpaque`); the DBufferMesh blend, colour mask
+   and stencil states are in `Editor/Material/Decal/ShaderGraph/DecalSubTarget.cs` lines 424-425 and 457-469. The
+   game's own HDRP build has the same code (decompiled `HDRenderPipeline.RenderDBuffer`).
+
+### Fix (0.3.4)
+
+`"edgeNoise"` defaults to `[0, 1]` (no wobble: clean edges). Values are clamped to the game's range: amount 0-1, size
+0.01-10. `"expand"` has a floor of 0.001. An `"edgeFade"` with no gap (x - y under 0.001) resets to `[1, 0]`. A clamp
+writes the usual warning line, and the `diag switches (effective)` line now shows `edgeNoise [x, y]`. Nothing else
+changed: the diag switches stay, and driving is the same as 0.3.3.
+
+### Live test order (one restart)
+
+1. Game closed: install 0.3.4 (section 1). In `paint-test.json` delete the `"diag"` object and any `"edgeNoise"` key (an
+   old `[0, 0]` would be raised to `[0, 0.01]`, which also works, with a warning).
+2. Start the game and load the city. Check the log for `OnLoad version 0.3.4.0` and
+   `diag switches (effective): ... edgeNoise [0, 1]`.
+3. Options > Junction Rules: test **on**, **Plain fill**, one at-grade junction listed (the 0.3.0 one is fine). Daylight,
+   no infoview, camera 100-200 m away. **Expect yellow paint on the road, under the cars** (cars are not tinted).
+   Screenshot.
+4. Switch to **Box mode** (hatch). Screenshot. Then run S6-S11 (section 4) as written.
+5. Optional, for the game's look: add `"edgeNoise": [0.5, 0.5]` to `"paint"` and press **Refresh test list** (worn,
+   wobbly edges like vanilla surfaces).
+
+If step 3 still shows nothing, run section 10's D1-D3 once with the new default in place and report the log lines.
+`"drawPath": "overlay"` is not paint: it is the area tool's unlit overlay, which tints cars too.

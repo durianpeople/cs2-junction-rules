@@ -28,8 +28,19 @@ namespace JunctionRules.Core
         public double Metallic = 0.0;
         /// <summary>colossal_NormalOpacity (0 = paint does not change the road's normals).</summary>
         public double NormalOpacity = 0.0;
-        /// <summary>colossal_EdgeFadeRange.xy, colossal_EdgeNormal, colossal_EdgeNoise.xy (G87 junction box: fade 1,0; edge normal 0).</summary>
-        public double EdgeFadeX = 1.0, EdgeFadeY = 0.0, EdgeNormal = 0.0, EdgeNoiseX = 0.0, EdgeNoiseY = 0.0;
+        /// <summary>colossal_EdgeFadeRange.xy, colossal_EdgeNormal (G87 junction box: fade 1,0; edge normal 0).</summary>
+        public double EdgeFadeX = 1.0, EdgeFadeY = 0.0, EdgeNormal = 0.0;
+        /// <summary>
+        /// colossal_EdgeNoise.xy = (edge wobble amount, wobble size). 0.3.4 (JR-T-003d): the AreaDecalShader divides by
+        /// size x expand (DBufferMesh pixel shader, docs/shader-areadecal/blob054.asm lines 208-210), so size 0 makes the edge
+        /// noise NaN and every pixel's alpha 0: the cause of "nothing visible" in 0.3.0-0.3.2. The game never allows it:
+        /// RenderedArea.m_EdgeNoise is [RangeN(0, 1, 0.01, 10)], default (0.5, 0.5). Amount 0 = clean edges (0 x finite noise).
+        /// </summary>
+        public double EdgeNoiseX = 0.0, EdgeNoiseY = 1.0;
+        /// <summary>Game limits for colossal_EdgeNoise (Game.Prefabs.RenderedArea.m_EdgeNoise RangeN attribute).</summary>
+        public const double EdgeNoiseAmountMax = 1.0, EdgeNoiseSizeMin = 0.01, EdgeNoiseSizeMax = 10.0;
+        /// <summary>Smallest expand (colossal_AreaParameters.x); the shader divides by it. Game minimum for surfaces: 0.01 x 0.75 x 0.5 = 0.00375.</summary>
+        public const double ExpandMin = 0.001;
         /// <summary>colossal_UVScale (only matters if a texture is used; we use 1x1 plain textures).</summary>
         public double UVScale = 1.0;
         /// <summary>Replace the base material's textures with plain 1x1 textures (white colour, flat normal, non-metal mask).</summary>
@@ -49,15 +60,17 @@ namespace JunctionRules.Core
             for (int i = 0; i < 4; i++) Color[i] = C(Color[i], 0, 1, i == 3 ? 1.0 : 0.5, "color", changed);
             VolumeBelow = C(VolumeBelow, 0.05, 200, 1.0, "volumeBelow", changed);
             VolumeAbove = C(VolumeAbove, 0.05, 200, 1.0, "volumeAbove", changed);
-            Expand = C(Expand, 0, 1, 0.0075, "expand", changed);
+            Expand = C(Expand, ExpandMin, 1, 0.0075, "expand", changed);
             Smoothness = C(Smoothness, 0, 1, 0.35, "smoothness", changed);
             Metallic = C(Metallic, 0, 1, 0, "metallic", changed);
             NormalOpacity = C(NormalOpacity, 0, 1, 0, "normalOpacity", changed);
             EdgeFadeX = C(EdgeFadeX, -10, 10, 1, "edgeFade", changed);
             EdgeFadeY = C(EdgeFadeY, -10, 10, 0, "edgeFade", changed);
             EdgeNormal = C(EdgeNormal, -10, 10, 0, "edgeNormal", changed);
-            EdgeNoiseX = C(EdgeNoiseX, -10, 10, 0, "edgeNoise", changed);
-            EdgeNoiseY = C(EdgeNoiseY, -10, 10, 0, "edgeNoise", changed);
+            EdgeNoiseX = C(EdgeNoiseX, 0, EdgeNoiseAmountMax, 0, "edgeNoise", changed);
+            EdgeNoiseY = C(EdgeNoiseY, EdgeNoiseSizeMin, EdgeNoiseSizeMax, 1, "edgeNoise", changed);
+            // The shader divides by (fade.x - fade.y) x expand (blob054.asm lines 611-614): equal values give NaN = alpha 0.
+            if (!(EdgeFadeX - EdgeFadeY >= 0.001)) { EdgeFadeX = 1; EdgeFadeY = 0; if (!changed.Contains("edgeFade")) changed.Add("edgeFade"); }
             UVScale = C(UVScale, 0.001, 1000, 1, "uvScale", changed);
             SnapRadius = C(SnapRadius, 0.5, 50, 6, "snapRadius", changed);
             LogIntervalSeconds = C(LogIntervalSeconds, 2, 3600, 30, "logIntervalSeconds", changed);

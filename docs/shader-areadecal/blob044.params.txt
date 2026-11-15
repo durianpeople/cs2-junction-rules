@@ -1,0 +1,60 @@
+== blob 44 2592
+202012090 7 0 0 0 0 
+"$Globals" 400 9 
+"colossal_TerrainScale" 0 1 4 0 0 80 
+"colossal_TerrainOffset" 0 1 4 0 0 96 
+"colossal_TerrainTextureArrayLODRange" 0 1 4 0 0 256 
+"colossal_TerrainTextureArrayBaseLod" 1 1 1 0 0 272 
+"colossal_TerrainHeightScaleOffset" 0 1 4 0 0 288 
+"colossal_TerrainNormalSampleRadius" 0 1 4 0 0 304 
+"colossal_SnowScale" 0 1 4 0 0 352 
+"colossal_LodParameters" 0 1 4 0 0 384 
+"colossal_TerrainTextureArrayLODArea" 0 4 4 1 0 192 0 
+"ShaderVariablesGlobal" 2912 7 
+"_WorldSpaceCameraPos_Internal" 0 1 4 0 0 704 
+"_ScreenSize" 0 1 4 0 0 736 
+"_ProjectionParams" 0 1 4 0 0 864 
+"_ScreenParams" 0 1 4 0 0 896 
+"_GlobalMipBias" 0 1 1 0 0 1268 
+"_ViewMatrix" 0 4 4 1 0 0 
+"_InvViewProjMatrix" 0 4 4 1 0 448 0 
+"UnityPerDraw" 624 1 
+"unity_WorldTransformParams" 0 1 4 0 0 144 0 
+"UnityDrawCallInfo" 16 1 
+"unity_BaseInstanceID" 1 1 1 0 0 0 0 
+"UnityPerMaterial" 352 15 
+"_BaseColor" 0 1 4 0 0 80 
+"_Metallic" 0 1 1 0 0 144 
+"_Smoothness" 0 1 1 0 0 148 
+"_NormalOpacity" 0 1 1 0 0 152 
+"_MetallicOpacity" 0 1 1 0 0 156 
+"_NormalAlphaSource" 0 1 1 0 0 160 
+"_MetallicAlphaSource" 0 1 1 0 0 164 
+"colossal_UVScale" 0 1 1 0 0 168 
+"colossal_EdgeFadeRange" 0 1 2 0 0 176 
+"colossal_EdgeNormalRange" 0 1 2 0 0 184 
+"colossal_EdgeNormal" 0 1 1 0 0 192 
+"colossal_EdgeNoise" 0 1 2 0 0 196 
+"_Wetness" 0 1 1 0 0 224 
+"_Porosity" 0 1 1 0 0 232 
+"colossal_AreaParameters" 0 1 4 0 0 272 0 
+"Infoviews" 6480 1 
+"colossal_InfoviewOn" 1 1 1 0 0 6468 0 19 
+"_CameraDepthTexture" 0 0 -1 10 
+"_Texture2DAsset_941ecb7ff20748f8822a3c28ab0c099d_Out_0_Texture2D" 0 1 -1 4 
+"_BaseColorMap" 0 2 1 4 
+"_NormalMap" 0 3 2 4 
+"_MaskMap" 0 4 3 4 
+"_Snow_BaseColorMap" 0 5 -1 4 
+"_SnowMap" 0 9 4 4 
+"colossal_TerrainTextureArray" 0 10 5 10 
+"_DecalPrepassTexture" 0 11 -1 10 
+"$Globals" 1 0 0 
+"ShaderVariablesGlobal" 1 1 0 
+"UnityPerDraw" 1 2 0 
+"UnityDrawCallInfo" 1 3 0 
+"UnityPerMaterial" 1 4 0 
+"Infoviews" 1 5 0 
+"colossal_AreaBatchBuffer" 2 6 1 
+"colossal_AreaBatchColors" 2 7 1 
+"colossal_VisibleIndices" 2 8 1 0 4 0 2

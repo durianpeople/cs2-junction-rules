@@ -368,6 +368,23 @@ namespace JunctionRules.Tests
             Check(back.Junctions.Count == 2 && back.Junctions[1].Y == 23.5 && back.Junctions[0].Name == "Valley x Carlisle" && back.Geometry.AngleDeg == 40 && back.Render.SwapPrevNext && back.Problems.Count == 0, "config: Format round-trips");
             Check(PaintTestConfig.Parse(new PaintTestConfig().Format()).Problems.Count == 0, "config: defaults format cleanly");
 
+            // 0.3.4 (JR-T-003d): shader divisors are never zero. The AreaDecalShader divides by edgeNoise.y x expand and by
+            // (edgeFade.x - edgeFade.y) x expand; a zero gave NaN edge alpha = nothing drawn (0.3.0-0.3.2 had edgeNoise [0, 0]).
+            var r0 = new PaintRenderParams();
+            Check(r0.EdgeNoiseX == 0 && r0.EdgeNoiseY >= PaintRenderParams.EdgeNoiseSizeMin && r0.Clamp().Count == 0, "edge noise default: no wobble (amount 0), finite size (game minimum 0.01 or more)");
+            var zn = PaintTestConfig.Parse(@"{ ""paint"": { ""edgeNoise"": [0, 0], ""expand"": 0 } }");
+            Check(zn.Render.EdgeNoiseY == PaintRenderParams.EdgeNoiseSizeMin && zn.Render.EdgeNoiseX == 0 && zn.Problems.Exists(p => p.Contains("edgeNoise")), "edgeNoise size 0 is raised to the game minimum 0.01 and reported");
+            Check(zn.Render.Expand == PaintRenderParams.ExpandMin && zn.Problems.Exists(p => p.Contains("expand")), "expand 0 is raised to the minimum and reported");
+            var gn = PaintTestConfig.Parse(@"{ ""paint"": { ""edgeNoise"": [0.5, 0.5] } }");
+            Check(gn.Render.EdgeNoiseX == 0.5 && gn.Render.EdgeNoiseY == 0.5 && gn.Problems.Count == 0, "game default edge noise (0.5, 0.5) is accepted as given");
+            var bn = PaintTestConfig.Parse(@"{ ""paint"": { ""edgeNoise"": [-1, 50] } }");
+            Check(bn.Render.EdgeNoiseX == 0 && bn.Render.EdgeNoiseY == PaintRenderParams.EdgeNoiseSizeMax && bn.Problems.Exists(p => p.Contains("edgeNoise")), "edge noise outside the game range (amount 0..1, size 0.01..10) is clamped and reported");
+            var ef = PaintTestConfig.Parse(@"{ ""paint"": { ""edgeFade"": [0.5, 0.5] } }");
+            Check(ef.Render.EdgeFadeX == 1 && ef.Render.EdgeFadeY == 0 && ef.Problems.Exists(p => p.Contains("edgeFade")), "edgeFade with x not above y (zero shader divisor) falls back to [1, 0] and is reported");
+            var ok = PaintTestConfig.Parse(@"{ ""paint"": { ""edgeFade"": [0, -1], ""expand"": 0.5 } }");
+            Check(ok.Render.EdgeFadeX == 0 && ok.Render.EdgeFadeY == -1 && ok.Render.Expand == 0.5 && ok.Problems.Count == 0, "the 0.3.1 full-alpha probe values (edgeFade [0, -1], expand 0.5) stay allowed");
+            Check(PaintTestConfig.Parse(new PaintTestConfig().Format()).Render.EdgeNoiseY == r0.EdgeNoiseY, "edge noise round-trips through the list file");
+
             // 0.3.1 diag switches: defaults = normal draw; values read, bad ones reported; kept on write-back.
             var dd = new PaintTestConfig().Diag;
             Check(dd.DrawPath == "decal" && dd.DrawDecal && !dd.DrawOverlay && dd.MaterialFrom == "" && dd.DecalLayerMask == -1 && dd.ColorBuffer[2] == 0 && dd.LodFactor == 0
