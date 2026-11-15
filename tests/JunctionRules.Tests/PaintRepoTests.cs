@@ -64,8 +64,13 @@ namespace JunctionRules.Tests
             Check(settings.Contains("PaintLayers = BoxPaintLayers.Roads;") && settings.Contains("PaintMode = BoxPaintMode.Hatch;"), "paint defaults: hatch, Roads layer");
             Check((int)BoxPaintLayers.Roads == 2 && (int)BoxPaintLayers.RoadsAndOther == 34 && (int)BoxPaintLayers.AllButVehicles == 39, "decal layer values match Game.Rendering.DecalLayers");
 
+            // 0.3.1 (JR-T-003c): the diag switches are read-only probe aids; defaults reproduce the normal draw.
+            string gpu = StripComments(File.ReadAllText(Path.Combine(paintDir, "PaintGpu.cs")));
+            Check(gpu.Contains("m_Diag.DecalLayerMask >= 0 ? m_Diag.DecalLayerMask : (int)layers") && gpu.Contains("diag.RenderQueue >= 0 ? diag.RenderQueue : baseMat.shader.renderQueue"), "diag mask / queue overrides fall back to the normal values");
+            Check(sys.Contains("diag switches (effective)") && sys.Contains("m_Config.Diag.GpuKey"), "effective diag switches logged when the list is read; draw-path changes remake the GPU objects");
+
             string csproj = File.ReadAllText(Path.Combine(src, "JunctionRules.csproj"));
-            Check(csproj.Contains("<Version>0.3.0</Version>") && csproj.Contains("<InformationalVersion>0.3.0-probe</InformationalVersion>"), "version 0.3.0-probe");
+            Check(csproj.Contains("<Version>0.3.1</Version>") && csproj.Contains("<InformationalVersion>0.3.1-probe</InformationalVersion>"), "version 0.3.1-probe");
 
             string kit = Path.Combine(RepoRoot(), "PROBE-STAGE3-PAINT.md");
             Check(File.Exists(kit), "probe kit PROBE-STAGE3-PAINT.md exists");
@@ -75,7 +80,8 @@ namespace JunctionRules.Tests
                 foreach (string step in new[] { "| S6 |", "| S7 |", "| S8 |", "| S9 |", "| S10 |", "| S11 |" })
                     Check(k.Contains(step), "probe kit has step " + step.Trim('|', ' '));
                 Check(k.Contains("paint-test.json") && k.Contains("FAILED while") && k.Contains("paint cost over"), "probe kit names the list file, the failure line and the cost line");
-                Check(k.Contains("0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll") || !File.Exists(Path.Combine(RepoRoot(), ".staged", "0.3.0-probe", "STALE.md")), "probe kit install sums stay placeholders while the staged build is stale");
+                Check(k.Contains("\"diag\"") && k.Contains("drawPath") && k.Contains("decalLayerMask") && k.Contains("testSquare"), "probe kit documents the 0.3.1 diag switches");
+                Check(k.Contains("0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll") || !File.Exists(Path.Combine(RepoRoot(), ".staged", "0.3.1-probe", "STALE.md")), "probe kit install sums stay placeholders while the staged build is stale");
             }
         }
     }

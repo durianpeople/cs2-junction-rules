@@ -348,7 +348,7 @@ namespace JunctionRules.Tests
             string bridgeCode = System.Text.RegularExpressions.Regex.Replace(bridge, @"//.*", "");
             Check(!System.Text.RegularExpressions.Regex.IsMatch(bridgeCode, @"\bnew\s+(?!PathNode\()\w"), "job-side struct has no 'new' except the PathNode value type (no managed allocation)");
             string proj = File.ReadAllText(Path.Combine(src, "JunctionRules.csproj"));
-            Check(proj.Contains("<Version>0.3.0</Version>"), "version 0.3.0 (stage 2 code unchanged since 0.2.4)");
+            Check(proj.Contains("<Version>0.3.1</Version>"), "version 0.3.1 (stage 2 code unchanged since 0.2.4)");
         }
     }
 }

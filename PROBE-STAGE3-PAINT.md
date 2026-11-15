@@ -1,4 +1,12 @@
-# Probe kit: Junction Rules 0.3.0-probe (stage 3, yellow box paint test, option E)
+# Probe kit: Junction Rules 0.3.1-probe (stage 3, yellow box paint test, option E)
+
+**0.3.1-probe (JR-T-003c), what changed since 0.3.0:** in 0.3.0 the boxes were built (80 hatch / 11 plain triangles),
+the draw ran every frame without errors, and nothing showed in any mode. A static check of the game code and of the
+shader itself found no certain cause (section 10 has the evidence and the ranked suspects). So 0.3.1 adds **opt-in
+diagnostic switches** (a `"diag"` object in `paint-test.json`, section 10) and more log lines, so that **one game
+restart** settles it: edit the file, press **Refresh test list**, look, and go on to the next switch. Without a `"diag"` object
+the draw is the same as 0.3.0 except: the material buffers are set before each draw (as the game does), the DBufferMesh
+pass is checked and switched on if it is off, and `volumeBelow`/`volumeAbove` may go up to 200 m. Driving is unchanged.
 
 0.3.0-probe adds a **visual test only**: Junction Rules draws a UK yellow box (TSRGD diagram 1043) on junctions you
 list, with the game's own surface shader (option E of `docs/STAGE3-PAINT-RESEARCH.md`). It answers one question:
@@ -7,47 +15,48 @@ does option E look right and cost little? (Probe steps S6-S11 of the research do
 - **Off by default.** Setting **Yellow box paint test** = off: the paint system does not run at all.
 - **Draw only.** Nothing is written to the city or the save: no entities, no components, no areas, no nets. The boxes
   exist only on screen. The only file it writes is the test list (when you press the add button).
-- **No change to driving.** The navigation copy and stage 2 are exactly as 0.2.4 (`docs/vanilla_copy_check_0.3.0.txt`
-  equals the 0.2.4 file).
+- **No change to driving.** The navigation copy and stage 2 are exactly as 0.2.4 (`docs/vanilla_copy_check_0.3.1.txt`
+  equals the 0.3.0 and 0.2.4 files; the copy's IL in the 0.3.1 dll equals 0.3.0's).
 - **Fail safe.** If anything in the paint test fails, it logs one `FAILED` line and switches itself off until the game
   restarts. The rest of the mod keeps working.
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.3.0-probe/`. If that folder holds a `STALE.md`, it has only a
+Build to install: `~/Code/cs2-junction-rules/.staged/0.3.1-probe/`. If that folder holds a `STALE.md`, it has only a
 managed build (made while the game was running): main does the Burst rebuild in `STALE.md` (game closed) when the owner
 quits, then puts the new sha256s in the table and the install block below. Until then the install block refuses (the
-sums below are placeholders on purpose: `0000...`). Done 15 Nov: Burst build from commit 82ec0ce, installed by main.
+sums below are placeholders on purpose: `0000...`). 0.3.1: managed build only so far (STALE.md present).
+(0.3.0-probe was Burst-built from commit 82ec0ce and installed by main on 15 Nov.)
 
 | File | sha256 |
 |---|---|
-| `JunctionRules.dll` | `54ef9fd207aafd7b2f3924730109a21e42fa7ec60714ea8366434f4aca335cd5` |
-| `JunctionRules.pdb` | `ce9cc40430bd030ec23c72c73369c4c5ef3b527df5f67d9b9861f9d21cdf01b9` |
-| `JunctionRules_win_x86_64.dll` (Burst code) | `081f37cc8541f069e9434af26e78bee1498364e4c9f28539203f7b1cecdfb5d1` |
-| `JunctionRules_win_x86_64.pdb` | `717abe48d0cb2f12385dbac5752c98e1870a1c6dec7b10da5cf358ba71c0ba54` |
+| `JunctionRules.dll` | `0000000000000000000000000000000000000000000000000000000000000000` |
+| `JunctionRules.pdb` | `0000000000000000000000000000000000000000000000000000000000000000` |
+| `JunctionRules_win_x86_64.dll` (Burst code) | `0000000000000000000000000000000000000000000000000000000000000000` |
+| `JunctionRules_win_x86_64.pdb` | `0000000000000000000000000000000000000000000000000000000000000000` |
 
 Built for game **1.6.4f1 (1097.158a)** only (same version gate as before: on another game version the paint test does not start, and the status says so).
 
-## 1. Install over 0.2.4 (game closed only; backs up the installed 0.2.4)
+## 1. Install over 0.3.0-probe / 0.2.4 (game closed only; the 0.2.4 backup made by the 0.3.0 install is kept as it is)
 
 ```
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.3.0-probe || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.3.1-probe || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-54ef9fd207aafd7b2f3924730109a21e42fa7ec60714ea8366434f4aca335cd5  JunctionRules.dll
-ce9cc40430bd030ec23c72c73369c4c5ef3b527df5f67d9b9861f9d21cdf01b9  JunctionRules.pdb
-081f37cc8541f069e9434af26e78bee1498364e4c9f28539203f7b1cecdfb5d1  JunctionRules_win_x86_64.dll
-717abe48d0cb2f12385dbac5752c98e1870a1c6dec7b10da5cf358ba71c0ba54  JunctionRules_win_x86_64.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
   fi
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
-  echo "installed 0.3.0-probe"
+  echo "installed 0.3.1-probe"
 )
 ```
 
@@ -56,7 +65,7 @@ Paste the whole block. It copies nothing unless the game is closed, the build is
 ## 2. Log checks
 
 `$CS2/Logs/JunctionRules.Mod.log` after the main menu:
-- `OnLoad version 0.3.0.0, ...`
+- `OnLoad version 0.3.1.0, ...`
 - `settings: ... yellow box paint test off, ...` (off is the default)
 
 Options > Junction Rules has a new group **Yellow box paint test (stage 3 probe)**:
@@ -97,7 +106,8 @@ between stacked nodes; a node within 6 m in plan is taken):
 from the kerb (metres). `volumeBelow`/`volumeAbove`: how far below/above the road the paint reaches (S10).
 Other keys (for the shader tests): `expand`, `smoothness`, `metallic`, `normalOpacity`, `edgeFade` [2], `edgeNormal`,
 `edgeNoise` [2], `uvScale`, `plainTextures`, `swapPrevNext`, `snapRadius`, `mitreLimit`, `straightenTolerance`,
-`maxLinesPerFamily`. Bad values are clamped and logged.
+`maxLinesPerFamily`. Bad values are clamped and logged. 0.3.1: an optional `"diag"` object holds the diagnostic
+switches (section 10); the add button keeps the ones you set.
 
 ## 4. The steps
 
@@ -189,3 +199,75 @@ box this differs a little. Say if it matters.
 
 The log lines of section 2; per step: screenshots, the per-box line, the cost line, any `FAILED` or `list file` line,
 and which mode / layer setting worked. S6 verdict first: GO or NO-GO.
+
+## 10. 0.3.1: why nothing showed, and the one-restart switch order
+
+### What the static check found
+
+Sources: the 13 Nov 2026 decompile (`~/Code/decomp/yb-2026-11-13/full`) and the shader itself (AreaDecalShader,
+`Cities2_Data/resources.assets` path id 559, DBufferMesh pass, variant `_MATERIAL_AFFECTS_*` + `PROCEDURAL_INSTANCING_ON`,
+disassembled from the DXBC). Our material, mesh, buffers and draw call match the game's in every value checked:
+
+| Suspect (brief) | Evidence | Verdict |
+|---|---|---|
+| Colour buffer all zero | The pixel shader reads `colossal_AreaBatchColors[i].z` only when `colossal_InfoviewOn` = 1; then alpha = z x edge alpha. Outside infoviews it is not read. `AreaColorSystem` gives vanilla surfaces zero too. | Cause only with an infoview on (same as vanilla surfaces) |
+| LOD factor / offsetDir | LodDistanceFactor only fades alpha: `max(0, 1 - (d^2 / (lod x colossal_LodParameters.x)^2)^2)`; ours (about 12.7 for a 31 m box) gives several km. OffsetDir only feeds the UVs. | Not the cause |
+| Volume (YMinMax, AreaParameters.y) | The vertex shader builds the prism from A/B/C xz and YMinMax only; AreaParameters.y is unused there. +-1 m encloses the road surface. | Not the cause (unless the heights are wrong: the 0.3.1 upload line shows them) |
+| Shader enabled / keywords | ENABLE_VT is a local keyword the area materials do not set; `RenderingSystem.IsShaderEnabled` is a debug switch only. The base material ('Rendered Area Material') does not disable DBufferMesh. | Not the cause |
+| Decal layer bits | The pixel shader discards unless `(decal-layer prepass value & colossal_DecalLayerMask) != 0`; a prepass value 0 counts as 1 (Terrain). Net compositions write 2 (Roads; `ManagedBatchSystem.cs:888`), so mask 2 is right on paper. | **Top runtime suspect**: a single discard that hides everything if road pixels do not carry 2 |
+| Winding | The shader discards a pixel unless it is inside the triangle with (B-A) x (C-A) > 0 in plan, the same as the game's triangles (`GeometrySystem` Snip) and ours (test `diag: every box triangle has the winding the area shader keeps`). | Matches |
+| Bounds | Same `RenderingUtils.ToBounds` of the triangle bounds as the game. | Matches |
+
+Ranked suspects for the restart: (1) decal layer discard; (2) the decal draw not reaching the DBuffer at run time (only
+a live test shows it: the overlay draw path); (3) wrong triangle heights or positions at run time (upload line, test
+square); (4) alpha forced to 0 by a value we have not seen (forced-alpha step); (5) something about the cloned material
+(vanilla surface material step).
+
+### New log lines (0.3.1)
+
+- `diag switches (effective): drawPath decal, materialFrom (areas configuration), decalLayerMask (settings), ...` on every list read.
+- `decal material from '...' (shader '...', render queue ..., shader queue ...); passes [...], keywords [...]; DBufferMesh pass enabled`
+- `upload: N triangles, 0 with non-positive shader winding; bounds ... ; lod factor ..; first: A .. B .. C .., y (min, max), offsetDir ..`
+  Check: 0 bad winding, the y values within a metre of the node height in the per-box line.
+- `first draw: N triangles, bounds centre .. size ..; cameras ['Main Camera' Game, ...]; decal draws n, overlay draws m`
+  Check: a Game camera is listed and the decal draws count is above 0.
+
+### The switches (all optional, in a top-level `"diag"` object; defaults = normal draw)
+
+| Key | Default | Does |
+|---|---|---|
+| `drawPath` | `"decal"` | `"overlay"`: draw with the area tool's overlay shader (AreaShader of the Surface area type, not a decal; like the colour shown while drawing a surface); `"both"` |
+| `materialFrom` | `""` | name of an area prefab whose own material is cloned instead of the areas configuration's (a wrong name logs the list of names) |
+| `decalLayerMask` | `-1` (settings) | the mask as a number: 255 = every layer, 1 Terrain, 2 Roads, 4 Buildings, 32 Other |
+| `colorBuffer` | `[0, 0, 0]` | the per-triangle colour; `[0, 0, 1]` keeps the paint visible with an infoview on |
+| `lodFactor` | `0` (computed) | LodDistanceFactor; `1e6` = never fades |
+| `flipWinding` | `false` | clockwise triangles; a control: should show **nothing** |
+| `offsetDir` | box | `[x, z, dirX, dirZ]` UV origin and direction |
+| `testSquare` | `0` | metres: one plain square of that side on each listed node, at node height, instead of the box |
+| `setBuffersEachFrame` | `true` | bind the buffers before every draw (game does) |
+| `rendererPriority` | `0` | RenderParams priority |
+| `renderQueue` | `-1` (shader's) | material queue, e.g. 1904 (the base material's own queue) |
+| `cameras` | `"nonPreview"` | `"game"`: Game and SceneView cameras only |
+
+Related `"paint"` keys: `volumeBelow` / `volumeAbove` up to 200; `expand` and `edgeFade` (`"expand": 0.5, "edgeFade": [0, -1]` gives full alpha everywhere inside each triangle).
+
+### Order for the one restart
+
+Setup: install 0.3.1, start the game, load the city, Options > Junction Rules: test **on**, **Plain fill**, list one
+at-grade junction (the 0.3.0 one is fine). Daylight, **no infoview**, camera 100-200 m away, looking down at it. After
+each edit of `paint-test.json` press **Refresh test list**, wait a second, take a screenshot and copy the new log lines.
+Keep the junction list; replace only the `"diag"` / `"paint"` parts as shown. Stop at the first step that shows paint
+and report that step: it names the cause.
+
+| Step | `paint-test.json` (besides `"junctions"`) | If paint shows | If nothing shows |
+|---|---|---|---|
+| D0 | no `"diag"` (defaults) | 0.3.1's buffer binding / pass check fixed it | read the 4 log lines above, go on |
+| D1 | `"diag": { "testSquare": 20 }, "paint": { "volumeBelow": 50, "volumeAbove": 50 }` | yellow 20 m square on the node: the box geometry or heights were the cause | go on |
+| D2 | D1 + `"decalLayerMask": 255` in `"diag"` | **decal layer** was the cause: try 1, then 32, then 4 to find which layer the road carries | go on |
+| D3 | D2 + `"colorBuffer": [0, 0, 1], "lodFactor": 1e6` in `"diag"`, `"expand": 0.5, "edgeFade": [0, -1]` in `"paint"` | an alpha factor was the cause: remove them one at a time | go on |
+| D4 | D3 with `"drawPath": "overlay"` | square visible as an area-tool style overlay: the triangles and draw call reach the screen, so the **decal path** is the cause (report D0-D3 lines) | the draw itself or the triangle positions are wrong: report the upload and first-draw lines |
+| D5 | D3 with `"materialFrom": "?"` (logs the area prefab names), then a vanilla surface name from that list | the cloned configuration material was the cause | go on |
+| D6 | D3 with `"renderQueue": 1904, "rendererPriority": 100, "cameras": "game"` | queue / priority / camera filter was the cause | report all lines: no cause found by switches |
+| D7 | (control, after a step that showed paint) that step + `"flipWinding": true` | winding convention is the wrong way round (report it) | expected: nothing (the shader keeps CCW only) |
+
+Then remove the `"diag"` object, press Refresh, and carry on with S6-S11 using whatever setting worked.

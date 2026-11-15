@@ -21,7 +21,7 @@ using UnityEngine.Scripting;
 namespace JunctionRules.Paint
 {
     /// <summary>
-    /// Stage 3 probe (0.3.0-probe, JR-T-003b): draws UK yellow boxes on the junctions of a local test list with the
+    /// Stage 3 probe (0.3.0-probe, JR-T-003b; 0.3.1-probe JR-T-003c adds the diag switches): draws UK yellow boxes on the junctions of a local test list with the
     /// game's own surface (area) shader, option E of docs/STAGE3-PAINT-RESEARCH.md. Draw-only and opt-in:
     /// - OFF (default): this system is disabled (Enabled = false, OnUpdate never runs) and its draw callback is not
     ///   subscribed, so it does no work at all.
@@ -260,12 +260,29 @@ namespace JunctionRules.Paint
             try
             {
                 if (!m_InCity) { s_Status = "on, waiting for a city"; return; }
+                if (m_NeedReload)
+                {
+                    // 0.3.1: the list (with its diag switches) is read before the GPU objects are made, so the switches
+                    // that choose the material / draw path apply at once; a change of those on Refresh remakes them.
+                    step = "reading the test list";
+                    m_NeedReload = false;
+                    LoadList();
+                    m_NeedMaterial = true;
+                    m_NeedResolve = true;
+                    if (m_Gpu != null && m_Gpu.GpuKey != m_Config.Diag.GpuKey)
+                    {
+                        Mod.log.Info("yellow box paint test: draw path / material switches changed, remaking the GPU objects");
+                        m_Gpu.Dispose();
+                        m_Gpu = null;
+                    }
+                }
                 if (m_Gpu == null)
                 {
                     step = "setting up the material and buffers";
-                    m_Gpu = PaintGpu.Create(m_PrefabSystem, m_AreasConfigQuery, out string gpuFailure);
+                    m_Gpu = PaintGpu.Create(m_PrefabSystem, EntityManager, m_AreasConfigQuery, m_Config.Diag, out string gpuFailure);
                     if (m_Gpu == null) { Fail(step + ": " + gpuFailure, null); return; }
                     m_NeedMaterial = true;
+                    m_NeedRebuildAll = true;   // new buffers: upload again
                     Subscribe();
                 }
                 if (m_NeedMaterial)
@@ -273,14 +290,6 @@ namespace JunctionRules.Paint
                     step = "setting material values";
                     m_NeedMaterial = false;
                     m_Gpu.ApplyMaterial(m_Config.Render, m_Layers);
-                }
-                if (m_NeedReload)
-                {
-                    step = "reading the test list";
-                    m_NeedReload = false;
-                    LoadList();
-                    m_Gpu.ApplyMaterial(m_Config.Render, m_Layers);
-                    m_NeedResolve = true;
                 }
                 if (m_AddCameraRequested)
                 {
@@ -355,6 +364,8 @@ namespace JunctionRules.Paint
             m_Config = PaintTestConfig.Parse(File.ReadAllText(path));
             Mod.log.Info($"yellow box paint test: list {path}: {m_Config.Junctions.Count} junction(s); border {m_Config.Geometry.BorderWidth} m, lines {m_Config.Geometry.LineWidth} m, spacing {(m_Config.Geometry.Spacing > 0 ? m_Config.Geometry.Spacing + " m" : "auto (TSM 2 m / 2.5 m)")}, angle {m_Config.Geometry.AngleDeg} deg, kerb inset +{m_Config.Geometry.KerbInset} m");
             foreach (string p in m_Config.Problems) Mod.log.Warn("yellow box paint test: list file: " + p);
+            Mod.log.Info("yellow box paint test: diag switches (effective): " + m_Config.Diag.Describe()
+                + $"; render: volume -{m_Config.Render.VolumeBelow}/+{m_Config.Render.VolumeAbove} m, expand {m_Config.Render.Expand}, edgeFade [{m_Config.Render.EdgeFadeX}, {m_Config.Render.EdgeFadeY}], swapPrevNext {m_Config.Render.SwapPrevNext}, plainTextures {m_Config.Render.PlainTextures}, colour [{string.Join(", ", m_Config.Render.Color)}]");
         }
 
         private void AddCameraJunction()
@@ -551,9 +562,15 @@ namespace JunctionRules.Paint
                 }
                 BoxPaintResult res = BoxPaintGeometry.BuildPieces(outline, m_Config.Geometry, m_Mode);
                 if (!res.Ok) { Mod.log.Warn($"yellow box paint test: {b.Label}: no box: {res.Failure}"); return; }
+                if (m_Config.Diag.TestSquare > 0)
+                {
+                    // diag.testSquare: one plain square on the node instead of the box (rules out the outline/hatch geometry).
+                    res.Pieces = new List<PaintPiece> { PaintDiagParams.Square(b.LastPos, m_Config.Diag.TestSquare) };
+                    notes.Add($"diag.testSquare: drawing a {m_Config.Diag.TestSquare} m square on the node instead of the box");
+                }
                 notes.AddRange(res.Warnings);
                 if (roundabout) notes.Add("roundabout node: whole node boxed from the outer kerbs, island not cut out (probe S6 looks at it)");
-                b.Tris = ToTriangles(res, m_Config.Render, out b.Bounds);
+                b.Tris = ToTriangles(res, m_Config.Render, m_Config.Diag, out b.Bounds);
                 long ticks = Stopwatch.GetTimestamp() - t0;
                 Mod.log.Info($"yellow box paint test: {b.Label}: node {b.Node} at {b.LastPos}, {arms.Count} arms, outline {res.Outline.Count} pts / {BoxPaintGeometry.SignedArea(res.Outline):0.0} m2, box {res.Rect.LenU:0.0} x {res.Rect.LenV:0.0} m, spacing {res.SpacingUsed} m, pieces {res.Pieces.Count}, triangles {b.Tris.Length}, built in {ticks * 1000.0 / Stopwatch.Frequency:0.000} ms" + (notes.Count > 0 ? "; notes: " + string.Join("; ", notes) : ""));
             }
@@ -607,20 +624,24 @@ namespace JunctionRules.Paint
         private static void AddOnce(List<string> notes, string s) { if (!notes.Contains(s)) notes.Add(s); }
 
         /// <summary>Pieces -> the game's AreaTriangleData layout (Game.Rendering.AreaTriangleData), one per triangle.</summary>
-        private static AreaTriangleData[] ToTriangles(BoxPaintResult res, PaintRenderParams rp, out Bounds3 bounds)
+        private static AreaTriangleData[] ToTriangles(BoxPaintResult res, PaintRenderParams rp, PaintDiagParams diag, out Bounds3 bounds)
         {
             var list = new List<AreaTriangleData>(res.TriangleCount);
             bounds = new Bounds3(new float3(float.MaxValue), new float3(float.MinValue));
             float size = (float)Math.Max(1.0, Math.Max(res.Rect.LenU, res.Rect.LenV));
-            float lodFactor = RenderingUtils.CalculateDistanceFactor(RenderingUtils.CalculateLodLimit(RenderingUtils.GetRenderingSize(new float3(size, 1f, size))));
+            float lodFactor = diag.LodFactor > 0 ? (float)diag.LodFactor
+                : RenderingUtils.CalculateDistanceFactor(RenderingUtils.CalculateLodLimit(RenderingUtils.GetRenderingSize(new float3(size, 1f, size))));
             V2 left = res.Rect.U.Left;
-            var offsetDir = new float4((float)res.Rect.Origin.X, (float)res.Rect.Origin.Z, (float)left.X, (float)left.Z);
+            var offsetDir = diag.OffsetDir != null
+                ? new float4((float)diag.OffsetDir[0], (float)diag.OffsetDir[1], (float)diag.OffsetDir[2], (float)diag.OffsetDir[3])
+                : new float4((float)res.Rect.Origin.X, (float)res.Rect.Origin.Z, (float)left.X, (float)left.Z);
             foreach (PaintPiece piece in res.Pieces)
             {
                 int n = piece.Ring.Count;
                 for (int t = 0; t + 2 < piece.Triangles.Count; t += 3)
                 {
                     int ia = piece.Triangles[t], ib = piece.Triangles[t + 1], ic = piece.Triangles[t + 2];
+                    if (diag.FlipWinding) { int sw = ib; ib = ic; ic = sw; }   // negative control: clockwise
                     var d = new AreaTriangleData
                     {
                         m_APos = F3(piece.Ring[ia]),
@@ -662,11 +683,30 @@ namespace JunctionRules.Paint
                 bounds |= b.Bounds;
             }
             m_TriangleCount = all.Count;
-            m_Gpu.Upload(all.ToArray(), bounds);
+            m_Gpu.Upload(all.ToArray(), bounds, m_Config.Render);
+            LogSanity(all, bounds);
             int painted = 0;
             foreach (Box b in m_Boxes) if (b.Tris.Length > 0) painted++;
             s_Status = $"on, {painted} of {m_Config.Junctions.Count} listed junction(s) painted, {m_TriangleCount} triangles";
         }
+
+        /// <summary>0.3.1: one line per upload with what the shader gets (winding, heights, bounds, first triangle).</summary>
+        private void LogSanity(List<AreaTriangleData> all, Bounds3 bounds)
+        {
+            if (all.Count == 0) { Mod.log.Info("yellow box paint test: upload: no triangles"); return; }
+            int bad = 0;
+            float lodMin = float.MaxValue, lodMax = float.MinValue;
+            foreach (AreaTriangleData t in all)
+            {
+                if (PaintDiagParams.ShaderCross(V(t.m_APos), V(t.m_BPos), V(t.m_CPos)) <= 0) bad++;
+                lodMin = math.min(lodMin, t.m_LodDistanceFactor);
+                lodMax = math.max(lodMax, t.m_LodDistanceFactor);
+            }
+            AreaTriangleData f = all[0];
+            Mod.log.Info($"yellow box paint test: upload: {all.Count} triangles, {bad} with non-positive shader winding; bounds {bounds.min} .. {bounds.max}; lod factor {lodMin:0.###}..{lodMax:0.###}; first: A {f.m_APos} B {f.m_BPos} C {f.m_CPos}, A prev/next {f.m_APrevXZ}/{f.m_ANextXZ}, y {f.m_YMinMax}, offsetDir {f.m_OffsetDir}");
+        }
+
+        private static V3 V(float3 p) => new V3(p.x, p.y, p.z);
 
         // ------------------------------------------------------------------ draw (per camera, only while on)
 

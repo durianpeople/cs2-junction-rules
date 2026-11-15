@@ -20,7 +20,7 @@ namespace JunctionRules.Core
     {
         /// <summary>RGBA 0..1. Default: a UK road-marking yellow.</summary>
         public double[] Color = { 1.0, 0.78, 0.05, 1.0 };
-        /// <summary>Paint volume below / above the lowest / highest vertex of each triangle, metres (research: about +-1 m round the deck).</summary>
+        /// <summary>Paint volume below / above the lowest / highest vertex of each triangle, metres (research: about +-1 m round the deck; 0.3.1: up to 200 m as a probe aid).</summary>
         public double VolumeBelow = 1.0, VolumeAbove = 1.0;
         /// <summary>colossal_AreaParameters.x (the game's corner rounding / expand amount; game minimum for surfaces 0.0075).</summary>
         public double Expand = 0.0075;
@@ -47,8 +47,8 @@ namespace JunctionRules.Core
             if (Color == null || Color.Length < 3) { Color = new[] { 1.0, 0.78, 0.05, 1.0 }; changed.Add("color"); }
             if (Color.Length == 3) Color = new[] { Color[0], Color[1], Color[2], 1.0 };
             for (int i = 0; i < 4; i++) Color[i] = C(Color[i], 0, 1, i == 3 ? 1.0 : 0.5, "color", changed);
-            VolumeBelow = C(VolumeBelow, 0.05, 10, 1.0, "volumeBelow", changed);
-            VolumeAbove = C(VolumeAbove, 0.05, 10, 1.0, "volumeAbove", changed);
+            VolumeBelow = C(VolumeBelow, 0.05, 200, 1.0, "volumeBelow", changed);
+            VolumeAbove = C(VolumeAbove, 0.05, 200, 1.0, "volumeAbove", changed);
             Expand = C(Expand, 0, 1, 0.0075, "expand", changed);
             Smoothness = C(Smoothness, 0, 1, 0.35, "smoothness", changed);
             Metallic = C(Metallic, 0, 1, 0, "metallic", changed);
@@ -83,6 +83,8 @@ namespace JunctionRules.Core
         public List<PaintTestJunction> Junctions = new List<PaintTestJunction>();
         public BoxPaintParams Geometry = new BoxPaintParams();
         public PaintRenderParams Render = new PaintRenderParams();
+        /// <summary>0.3.1-probe: opt-in diagnostic switches (the optional "diag" object); defaults = normal draw.</summary>
+        public PaintDiagParams Diag = new PaintDiagParams();
         public List<string> Problems = new List<string>();
 
         public static PaintTestConfig Parse(string text)
@@ -150,6 +152,12 @@ namespace JunctionRules.Core
             }
             else if (obj.ContainsKey("paint")) cfg.Problems.Add("paint is not an object");
 
+            if (obj.TryGetValue("diag", out object dg))
+            {
+                if (dg is Dictionary<string, object> dd) cfg.Diag = PaintDiagParams.Read(dd, cfg.Problems);
+                else cfg.Problems.Add("diag is not an object");
+            }
+
             foreach (string c in cfg.Geometry.Clamp()) cfg.Problems.Add("paint." + c + " out of range, adjusted");
             foreach (string c in cfg.Render.Clamp()) cfg.Problems.Add("paint." + c + " out of range, adjusted");
             return cfg;
@@ -187,7 +195,16 @@ namespace JunctionRules.Core
                 $"\"snapRadius\": {F(r.SnapRadius)}", $"\"logIntervalSeconds\": {F(r.LogIntervalSeconds)}",
             };
             for (int i = 0; i < lines.Count; i++) sb.Append("    ").Append(lines[i]).Append(i < lines.Count - 1 ? ",\n" : "\n");
-            sb.Append("  }\n}\n");
+            sb.Append("  }");
+            // Diagnostic switches the owner set are kept (only the non-default ones; the mod never adds any).
+            List<string> diag = Diag.FormatMembers();
+            if (diag.Count > 0)
+            {
+                sb.Append(",\n  \"diag\": {\n");
+                for (int i = 0; i < diag.Count; i++) sb.Append("    ").Append(diag[i]).Append(i < diag.Count - 1 ? ",\n" : "\n");
+                sb.Append("  }");
+            }
+            sb.Append("\n}\n");
             return sb.ToString();
         }
 

@@ -368,6 +368,39 @@ namespace JunctionRules.Tests
             Check(back.Junctions.Count == 2 && back.Junctions[1].Y == 23.5 && back.Junctions[0].Name == "Valley x Carlisle" && back.Geometry.AngleDeg == 40 && back.Render.SwapPrevNext && back.Problems.Count == 0, "config: Format round-trips");
             Check(PaintTestConfig.Parse(new PaintTestConfig().Format()).Problems.Count == 0, "config: defaults format cleanly");
 
+            // 0.3.1 diag switches: defaults = normal draw; values read, bad ones reported; kept on write-back.
+            var dd = new PaintTestConfig().Diag;
+            Check(dd.DrawPath == "decal" && dd.DrawDecal && !dd.DrawOverlay && dd.MaterialFrom == "" && dd.DecalLayerMask == -1 && dd.ColorBuffer[2] == 0 && dd.LodFactor == 0
+                && !dd.FlipWinding && dd.OffsetDir == null && dd.TestSquare == 0 && dd.SetBuffersEachFrame && dd.RendererPriority == 0 && dd.RenderQueue == -1 && dd.Cameras == "nonPreview" && dd.FormatMembers().Count == 0,
+                "diag: defaults are the normal draw and write nothing back");
+            Check(!new PaintTestConfig().Format().Contains("diag"), "diag: default list file has no diag object");
+            var dg = PaintTestConfig.Parse(@"{ ""diag"": { ""drawPath"": ""both"", ""materialFrom"": ""Concrete Surface 01"", ""decalLayerMask"": 255, ""colorBuffer"": [0, 0, 1], ""lodFactor"": 1e6,
+                ""flipWinding"": true, ""offsetDir"": [1, 2, 0, 1], ""testSquare"": 20, ""setBuffersEachFrame"": false, ""rendererPriority"": 5, ""renderQueue"": 2000, ""cameras"": ""game"", ""later"": 1 },
+                ""paint"": { ""volumeBelow"": 50, ""volumeAbove"": 50 } }");
+            var di = dg.Diag;
+            Check(dg.Problems.Count == 0 && di.DrawDecal && di.DrawOverlay && di.MaterialFrom == "Concrete Surface 01" && di.DecalLayerMask == 255 && di.ColorBuffer[2] == 1 && di.LodFactor == 1e6
+                && di.FlipWinding && di.OffsetDir[1] == 2 && di.TestSquare == 20 && !di.SetBuffersEachFrame && di.RendererPriority == 5 && di.RenderQueue == 2000 && di.Cameras == "game",
+                "diag: every switch read (" + string.Join("; ", dg.Problems) + ")");
+            Check(dg.Render.VolumeBelow == 50 && dg.Render.VolumeAbove == 50, "diag: huge volume allowed (up to 200 m)");
+            string ds = di.Describe();
+            Check(ds.Contains("drawPath both") && ds.Contains("decalLayerMask 255") && ds.Contains("testSquare 20 m") && ds.Contains("cameras game"), "diag: effective line " + ds);
+            var dback = PaintTestConfig.Parse(dg.Format()).Diag;
+            Check(dback.Describe() == ds && dback.GpuKey == di.GpuKey, "diag: switches survive the list write-back");
+            var dbad = PaintTestConfig.Parse(@"{ ""diag"": { ""drawPath"": ""laser"", ""decalLayerMask"": 300, ""colorBuffer"": [1], ""flipWinding"": 1, ""offsetDir"": [1, 2], ""testSquare"": -3, ""renderQueue"": 1.5 } }");
+            Check(dbad.Diag.DrawPath == "decal" && dbad.Diag.DecalLayerMask == -1 && dbad.Diag.ColorBuffer.Length == 3 && !dbad.Diag.FlipWinding && dbad.Diag.OffsetDir == null && dbad.Diag.TestSquare == 0 && dbad.Diag.RenderQueue == -1
+                && dbad.Problems.Count >= 7, "diag: bad values fall back to defaults and are reported (" + dbad.Problems.Count + ")");
+            Check(PaintTestConfig.Parse(@"{ ""diag"": 3 }").Problems.Exists(p => p.Contains("diag is not an object")), "diag: non-object reported");
+            Check(PaintTestConfig.Parse(@"{ ""paint"": { ""volumeAbove"": 500 } }").Render.VolumeAbove == 200, "diag: volume clamp at 200 m");
+            var sq = PaintDiagParams.Square(new V3(10, 5, -4), 20);
+            Check(sq.Ring.Count == 4 && sq.Triangles.Count == 6 && sq.Ring.TrueForAll(q => q.Y == 5)
+                && PaintDiagParams.ShaderCross(sq.Ring[0], sq.Ring[1], sq.Ring[2]) > 0 && PaintDiagParams.ShaderCross(sq.Ring[0], sq.Ring[2], sq.Ring[3]) > 0
+                && Math.Abs(G.TrianglesArea(G.ToXZ(sq.Ring), sq.Triangles) - 400) < 1e-9, "diag: test square is 20 x 20 m at node height with shader-positive winding");
+            // The shader's winding test agrees with the geometry's CCW rings (pieces from BuildPieces).
+            var pr = G.BuildPieces(new List<V3> { new V3(0, 0, 0), new V3(20, 0, 0), new V3(20, 0, 12), new V3(0, 0, 12) }, new BoxPaintParams(), BoxPaintMode.Hatch);
+            bool allPos = true;
+            foreach (var pc in pr.Pieces) for (int t = 0; t + 2 < pc.Triangles.Count; t += 3) if (PaintDiagParams.ShaderCross(pc.Ring[pc.Triangles[t]], pc.Ring[pc.Triangles[t + 1]], pc.Ring[pc.Triangles[t + 2]]) <= 0) allPos = false;
+            Check(pr.Ok && allPos, "diag: every box triangle has the winding the area shader keeps");
+
             // Node picking.
             var nodes = new List<V3> { new V3(0, 0, 0), new V3(0.3, 12, 0.2), new V3(4, 0, 0), new V3(50, 0, 50) };
             var j = new PaintTestJunction { X = 0.1, Z = 0.1 };
