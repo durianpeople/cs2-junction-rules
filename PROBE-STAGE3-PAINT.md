@@ -29,15 +29,15 @@ does option E look right and cost little? (Probe steps S6-S11 of the research do
 Build to install: `~/Code/cs2-junction-rules/.staged/0.3.2-probe/`. If that folder holds a `STALE.md`, it has only a
 managed build (made while the game was running): main does the Burst rebuild in `STALE.md` (game closed) when the owner
 quits, then puts the new sha256s in the table and the install block below. Until then the install block refuses (the
-sums below are placeholders on purpose: `0000...`). 0.3.2: managed build only so far (STALE.md present).
+sums below are placeholders on purpose: `0000...`). 0.3.2-probe was Burst-built from commit 319fac8 and installed by main on 15 Nov.
 (0.3.0-probe was Burst-built from commit 82ec0ce and installed by main on 15 Nov.)
 
 | File | sha256 |
 |---|---|
-| `JunctionRules.dll` | `0000000000000000000000000000000000000000000000000000000000000000` |
-| `JunctionRules.pdb` | `0000000000000000000000000000000000000000000000000000000000000000` |
-| `JunctionRules_win_x86_64.dll` (Burst code) | `0000000000000000000000000000000000000000000000000000000000000000` |
-| `JunctionRules_win_x86_64.pdb` | `0000000000000000000000000000000000000000000000000000000000000000` |
+| `JunctionRules.dll` | `4043fcc952744bbda71cd562a5d62834cfe83f04b1fb7a4b18854219ad0ef44b` |
+| `JunctionRules.pdb` | `ce53742f64949ae0ee25d980a5fc13db7c9d32fe9cf5d5fa1cfec2eeee6e42b2` |
+| `JunctionRules_win_x86_64.dll` (Burst code) | `5eb55ab6319be210ba5044a18b9afeb0924b581e29b96ccc5a36e751beb8cc13` |
+| `JunctionRules_win_x86_64.pdb` | `2f0f6272b3cdcaa2e73bd28645d626322d07fc9dbf9830a517ffe7428b1c9270` |
 
 Built for game **1.6.4f1 (1097.158a)** only (same version gate as before: on another game version the paint test does not start, and the status says so).
 
@@ -52,10 +52,10 @@ Built for game **1.6.4f1 (1097.158a)** only (same version gate as before: on ano
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
+4043fcc952744bbda71cd562a5d62834cfe83f04b1fb7a4b18854219ad0ef44b  JunctionRules.dll
+ce53742f64949ae0ee25d980a5fc13db7c9d32fe9cf5d5fa1cfec2eeee6e42b2  JunctionRules.pdb
+5eb55ab6319be210ba5044a18b9afeb0924b581e29b96ccc5a36e751beb8cc13  JunctionRules_win_x86_64.dll
+2f0f6272b3cdcaa2e73bd28645d626322d07fc9dbf9830a517ffe7428b1c9270  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
