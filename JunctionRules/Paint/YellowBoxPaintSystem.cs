@@ -275,6 +275,7 @@ namespace JunctionRules.Paint
                         m_Gpu.Dispose();
                         m_Gpu = null;
                     }
+                    else if (m_Gpu != null) m_Gpu.SetDiag(m_Config.Diag);   // review fix: the kept GPU objects read the new switch values
                 }
                 if (m_Gpu == null)
                 {

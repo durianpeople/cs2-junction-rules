@@ -67,6 +67,13 @@ namespace JunctionRules.Paint
 
         public string GpuKey => m_Diag.GpuKey;
 
+        /// <summary>
+        /// Refresh test list: the list was read again, so the switches that do not need new GPU objects (decal layer mask,
+        /// colour buffer, priority, cameras, buffer binding) must come from the new values, not from the ones the objects
+        /// were made with. Only called when the draw path / material / queue (GpuKey) are unchanged.
+        /// </summary>
+        public void SetDiag(PaintDiagParams diag) { if (diag != null) m_Diag = diag; }
+
         /// <summary>Makes the material(s) and mesh. Returns null with a clear reason when something the shader needs is missing.</summary>
         public static PaintGpu Create(PrefabSystem prefabSystem, EntityManager em, EntityQuery areasConfigQuery, PaintDiagParams diag, out string failure)
         {

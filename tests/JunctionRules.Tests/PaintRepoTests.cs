@@ -68,6 +68,7 @@ namespace JunctionRules.Tests
             string gpu = StripComments(File.ReadAllText(Path.Combine(paintDir, "PaintGpu.cs")));
             Check(gpu.Contains("m_Diag.DecalLayerMask >= 0 ? m_Diag.DecalLayerMask : (int)layers") && gpu.Contains("diag.RenderQueue >= 0 ? diag.RenderQueue : baseMat.shader.renderQueue"), "diag mask / queue overrides fall back to the normal values");
             Check(sys.Contains("diag switches (effective)") && sys.Contains("m_Config.Diag.GpuKey"), "effective diag switches logged when the list is read; draw-path changes remake the GPU objects");
+            Check(sys.Contains("m_Gpu.SetDiag(m_Config.Diag)") && gpu.Contains("public void SetDiag(PaintDiagParams diag)"), "a Refresh hands the new diag values to the kept GPU objects (decal layer mask, colour buffer, priority, cameras apply without a restart)");
 
             string csproj = File.ReadAllText(Path.Combine(src, "JunctionRules.csproj"));
             Check(csproj.Contains("<Version>0.3.1</Version>") && csproj.Contains("<InformationalVersion>0.3.1-probe</InformationalVersion>"), "version 0.3.1-probe");
