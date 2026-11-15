@@ -259,7 +259,7 @@ Related `"paint"` keys: `volumeBelow` / `volumeAbove` up to 200; `expand` and `e
 
 ### Order for the one restart
 
-Setup: install 0.3.1, start the game, load the city, Options > Junction Rules: test **on**, **Plain fill**, list one
+Setup: install 0.3.2 (it carries the 0.3.1 switches), start the game, load the city, Options > Junction Rules: test **on**, **Plain fill**, list one
 at-grade junction (the 0.3.0 one is fine). Daylight, **no infoview**, camera 100-200 m away, looking down at it. After
 each edit of `paint-test.json` press **Refresh test list**, wait a second, take a screenshot and copy the new log lines.
 Keep the junction list; replace only the `"diag"` / `"paint"` parts as shown. Stop at the first step that shows paint
@@ -300,12 +300,15 @@ With the setting on, both become a full stop. Cyclists riding a crossing are als
 | Car against car | queues, gap taking at junctions | exactly as 0.3.1 | any change |
 
 Expect longer waits and more queueing behind busy crossings (no timeout on purpose). Look out for a car stuck for
-minutes behind a person who never leaves the crossing (an accident victim, until the ambulance comes): that is the
-known cost of "no timeout"; report where.
+minutes behind a person who never leaves the crossing (a collapsed accident victim): that is the known cost of "no
+timeout"; report where. Note that the game gives emergency vehicles no exemption in this check, so an ambulance or hearse
+sent to such a victim is held by the same person if its path crosses that crossing: the victim cannot be collected, a real
+mutual wait. Rare (it needs a collapsed person lying on a crossing), not tested offline: report it if you see it.
 
 **Log:** with **timing log** on, each timing line has `; never push through people on crossings on` and
 `; crossing give-ups refused N (5 s push A, standing person B, cyclist C)`: N = car-steps in the window where the game
-would have crept through a person or cyclist and the setting made the car stop instead. N above 0 at a busy zebra shows
+would have crept through a person and the setting made the car stop instead (cyclist: car-steps in which the car's ignored
+blocker was a cyclist on a crossing; counted when seen, whether or not the creep would have mattered that step). N above 0 at a busy zebra shows
 the setting at work; N = 0 with the setting on and cars still driving through people means another path: report it
 with the place and a screenshot.
 

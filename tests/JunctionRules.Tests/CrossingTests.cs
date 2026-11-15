@@ -109,8 +109,15 @@ namespace JunctionRules.Tests
                 Check(nav.Contains("currentLane.m_LaneFlags |= Game.Vehicles.CarLaneFlags.IgnoreBlocker;") && nav.Contains("if (!m_MovingData.HasComponent(laneIterator.m_Blocker))"),
                     "stock IgnoreBlocker only after IsBlocked, which needs a blocker without Moving");
                 string col = File.ReadAllText(colPath);
-                Check(!col.Contains("CarData") && !col.Contains("CarLane"), "people do not look at cars (CreatureCollisionIterator reads no car data)");
+                Check(!col.Contains("CarData") && !col.Contains("CarLane"), "CreatureCollisionIterator has no car-specific code (cars are generic Moving / static objects to it)");
+                // JR-T-004 review: why a person never stops for a car. Both collision branches floor the person's speed at
+                // m_MinSpeed (0.4-0.6 m/s) or 0.5 m/s, and the speed snaps to 0 only below 0.1 m/s; the queue stop (down to 0)
+                // needs a Creature as the other object (CheckQueue).
+                Check(col.Contains("num4 = math.min(num4, math.max(m_MinSpeed, math.max(1f, math.lerp(math.dot(float3, componentData2.m_Velocity), m_SpeedRange.max, num3 / num2)) - num8));"), "moving object (a car too): person keeps at least m_MinSpeed");
+                Check(col.Contains("num12 = math.min(num12, math.max(0.5f, math.max(1f, m_SpeedRange.max * num11 / num10) - num15));"), "static object (a stopped car too): person keeps at least 0.5 m/s");
+                Check(col.Contains("if (m_CreatureData.TryGetComponent(other, out var componentData) && componentData.m_QueueArea.radius > 0f)"), "queue stop (to 0) only behind another creature");
                 string hum = File.ReadAllText(humPath);
+                Check(hum.Contains("creatureCollisionIterator.m_MinSpeed = random.NextFloat(0.4f, 0.6f);"), "person's collision floor m_MinSpeed 0.4-0.6 m/s");
                 Check(CountOf(hum, "currentLane.m_Flags |= CreatureLaneFlags.WaitSignal;") == 1, "people stop for signals only (one WaitSignal site, from LaneSignal)");
             }
             else
