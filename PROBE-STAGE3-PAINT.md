@@ -1,4 +1,13 @@
-# Probe kit: Junction Rules 0.3.4-probe (stage 3, yellow box paint test, option E; plus the crossing settings)
+# Probe kit: Junction Rules 0.3.5-probe (stage 3, yellow box paint test, option E; plus the crossing settings)
+
+**0.3.5-probe (JR-T-003e), what changed since 0.3.4:** paint test only, no driving change. (1) The box is now on the
+**carriageway only**: kerb to kerb, following the kerb corner curves, from each arm's stop / give-way line, or from the
+far side of a zebra on that arm. 0.3.4 boxed the whole node outline, pavements included: the footway step read the
+junction's own (node) road data, which never marks the road-lane pieces, so it always found no footway ("no road-lane
+pieces: kerb inset 0"). It now reads the arm's edge road data (section 14). (2) **paint onto** defaults to **Roads**, and
+a saved Roads + Other (left over from the old step S6 advice) is moved back to Roads once; Roads + Other stays
+selectable. (3) Kerb curves are kept within 5 cm (the point thinning no longer adds up along a curve). What to look at
+live: section 14. Driving is 0.3.4's as it is (`docs/vanilla_copy_check_0.3.5.txt` equals 0.3.4's).
 
 **0.3.4-probe (JR-T-003d), what changed since 0.3.3:** the paint test's decal should now draw (cause found by reading the shader; not yet seen live). Cause of "nothing visible" in
 0.3.0-0.3.3: the paint list's default `edgeNoise` was `[0, 0]`; the game's surface shader divides by the second value, so
@@ -41,45 +50,45 @@ does option E look right and cost little? (Probe steps S6-S11 of the research do
 - **Fail safe.** If anything in the paint test fails, it logs one `FAILED` line and switches itself off until the game
   restarts. The rest of the mod keeps working.
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.3.4-probe/`. If that folder holds a `STALE.md`, it has only a
+Build to install: `~/Code/cs2-junction-rules/.staged/0.3.5-probe/`. If that folder holds a `STALE.md`, it has only a
 managed build (made while the game was running): main does the Burst rebuild in `STALE.md` (game closed) when the owner
 quits, then puts the new sha256s in the table and the install block below. Until then the install block refuses (the
-sums below are placeholders on purpose: `0000...`). 0.3.4-probe was Burst-built from commit 559ae78 and installed by main on 15 Nov; 0.3.3 was never
+sums below are placeholders on purpose: `0000...`). 0.3.5-probe is staged as a managed build only (STALE.md). 0.3.4-probe was Burst-built from commit 559ae78 and installed by main on 15 Nov (dll `405b5772...`, Burst dll `d3f10173...`; the rollback, in `.staged/0.3.4-probe`); 0.3.3 was never
 Burst-built or installed, 0.3.4 carries it.
 0.3.2-probe was Burst-built from commit 319fac8 and installed by main on 15 Nov (dll `4043fcc9...`, Burst dll `5eb55ab6...`).
 (0.3.0-probe was Burst-built from commit 82ec0ce and installed by main on 15 Nov.)
 
 | File | sha256 |
 |---|---|
-| `JunctionRules.dll` | `405b5772da2e0c0b4d3de2ddc00d712bb077b68f4cac2a098b9131a9ce6d834e` |
-| `JunctionRules.pdb` | `86dc78c7e09f767f76b4599a606c8508c2932a70ab58c269bba4aaca4986fecf` |
-| `JunctionRules_win_x86_64.dll` (Burst code) | `d3f10173e02bb947091785be9e2b251875720b0bad3c8292d579aedc4d4427ab` |
-| `JunctionRules_win_x86_64.pdb` | `94175e0591787009cc09acf87b393dfcf6a8041203ac3ab47ddf2e66fce94ded` |
+| `JunctionRules.dll` | `0000000000000000000000000000000000000000000000000000000000000000` |
+| `JunctionRules.pdb` | `0000000000000000000000000000000000000000000000000000000000000000` |
+| `JunctionRules_win_x86_64.dll` (Burst code) | `0000000000000000000000000000000000000000000000000000000000000000` |
+| `JunctionRules_win_x86_64.pdb` | `0000000000000000000000000000000000000000000000000000000000000000` |
 
 Built for game **1.6.4f1 (1097.158a)** only (same version gate as before: on another game version the paint test does not start, and the status says so).
 
-## 1. Install over 0.3.3-probe / 0.3.2-probe / 0.3.1-probe / 0.3.0-probe / 0.2.4 (game closed only; the 0.2.4 backup made by the 0.3.0 install is kept as it is)
+## 1. Install over 0.3.4-probe / 0.3.3-probe / 0.3.2-probe / 0.3.1-probe / 0.3.0-probe / 0.2.4 (game closed only; the 0.2.4 backup made by the 0.3.0 install is kept as it is)
 
 ```
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.3.4-probe || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.3.5-probe || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-405b5772da2e0c0b4d3de2ddc00d712bb077b68f4cac2a098b9131a9ce6d834e  JunctionRules.dll
-86dc78c7e09f767f76b4599a606c8508c2932a70ab58c269bba4aaca4986fecf  JunctionRules.pdb
-d3f10173e02bb947091785be9e2b251875720b0bad3c8292d579aedc4d4427ab  JunctionRules_win_x86_64.dll
-94175e0591787009cc09acf87b393dfcf6a8041203ac3ab47ddf2e66fce94ded  JunctionRules_win_x86_64.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
   fi
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
-  echo "installed 0.3.4-probe"
+  echo "installed 0.3.5-probe"
 )
 ```
 
@@ -88,7 +97,9 @@ Paste the whole block. It copies nothing unless the game is closed, the build is
 ## 2. Log checks
 
 `$CS2/Logs/JunctionRules.Mod.log` after the main menu:
-- `OnLoad version 0.3.4.0, ...`
+- `OnLoad version 0.3.5.0, ...`
+- first start of 0.3.5 only: `settings migrated (schema 0 -> 1): yellow box paint onto RoadsAndOther -> Roads ...` (or
+  `settings schema 0 -> 1: ... kept` when it was not Roads + Other)
 - `settings: ... cars never push through people on crossings on, ... yellow box paint test off, ...` (defaults)
 
 Options > Junction Rules has a new group **Yellow box paint test (stage 3 probe)**:
@@ -211,10 +222,11 @@ box this differs a little. Say if it matters.
   `"swapPrevNext": true`, then `"edgeFade": [0, -1]` (no edge fade; from 0.3.4 an `edgeFade` with x not above y is reset to `[1, 0]`).
 - **U3:** does it look like painted G87 (wetness, wear, night, shimmer at distance)?
 - **U4:** which decal layer the junction and deck take (Roads, or Roads + Other).
-- **U7:** footway inset from the road data matches the visible kerb on all road types (the end-node side is mirrored:
-  an assumption). Use `kerbInset` to test corrections.
+- **U7:** footway inset from the road data matches the visible kerb on all road types. 0.3.5: read from the arm's edge
+  road data, side found from the edge's own left kerb (no mirroring assumption); see section 14. Use `kerbInset` to
+  test corrections.
 - **U8:** texture mapping (`uvScale`, `plainTextures`; with `plainTextures` false the material's own textures are used).
-- **Roundabout node:** boxed whole from the outer kerbs; the island is not cut out yet.
+- **Roundabout node:** boxed from the kerbs (0.3.5); the island is not cut out yet.
 - **Node replacement:** an edit that replaces the node is followed if the new node is within 2 m; otherwise press
   **Refresh test list**.
 
@@ -446,3 +458,61 @@ changed: the diag switches stay, and driving is the same as 0.3.3.
 
 If step 3 still shows nothing, first set `"swapPrevNext": true` in `"paint"` and press **Refresh test list** (a wrong prev/next order could make the shader discard every pixel, a second possible cause that edge noise does not touch), then run section 10's D1-D3 once with the new default in place and report the log lines.
 `"drawPath": "overlay"` is not paint: it is the area tool's unlit overlay, which tints cars too.
+
+## 14. 0.3.5: box on the carriageway only, Roads by default
+
+### Why 0.3.4 painted the pavements ("no road-lane pieces: kerb inset 0")
+
+The footway step looked for road-lane pieces in the junction's **node** composition (`Composition.m_StartNode` /
+`m_EndNode`). The game marks a piece as carrying road lanes (`NetPieceFlags.HasRoadLanes`) in one place only,
+`NetCompositionHelpers.AddCompositionLanes` (decompile `Game.Prefabs/NetCompositionHelpers.cs` lines 1463-1466), and
+`NetCompositionSystem` calls that only for compositions that have a `NetCompositionLane` buffer
+(`Game.Prefabs/NetCompositionSystem.cs` lines 163-181). Only **edge** compositions have that buffer: the node archetype
+gets `NetCompositionCrosswalk` instead (`Game.Prefabs/NetGeometryPrefab.cs` lines 106-112). So a node composition never
+has the flag, the step found no carriageway at any junction, and the box used the outer edge of the node: pavements
+and corner kerbs included. Not a Moonflower x Anchor quirk.
+
+### How the outline is built now (`Core/CarriagewayOutline.cs`, unit-tested)
+
+1. Each arm's two outer edges: the edge's `Start/EndNodeGeometry` curves `m_Left.m_Left` and `m_Right.m_Right` (the
+   pair the game uses as the slice's full width, `Game.Net/LaneSystem.cs` lines 7918-7938), from the mouth inward,
+   16 chords each.
+2. Footway width each side from the arm's **edge** composition (`Composition.m_Edge`): the carriageway runs from the
+   leftmost to the rightmost piece with road lanes (or a parking lane); the rest each side is footway. If that fails,
+   the node composition is tried with the piece prefabs' own lane lists (log shows `n` after the widths).
+3. Which outer edge is the edge's left: the one whose mouth point touches the edge's own left kerb end
+   (`EdgeGeometry`; composition x < 0 = left, `LaneSystem.cs` line 3648). No start/end mirroring assumption.
+4. Each outer edge is moved in by its footway (+ `kerbInset`): the kerb lines, round the corner curves.
+5. Stop line: the mouth (where the edge's lanes end, where the white stop / give-way line is). Where the arm has a
+   **marked** zebra (crosswalk lane without the Unsafe flag, `LaneSystem.cs` lines 8571-8580), the arm starts at the
+   zebra's junction-side edge instead (its line plus half the crossing lane width). Unmarked crossings are boxed over.
+6. The kerb lines are merged into one ring as before (corners cut where neighbouring kerbs meet).
+
+Log per box: `footways (m) per arm 3.00|3.00, ...` and, when the node has crossings,
+`N zebra(s), M unmarked crossing(s); box starts per arm at +[...] m from the mouth`.
+
+### The jagged west border in the 0.3.4 hatch shot
+
+Not the outline. The 0.3.4 outline's west side is one straight mouth segment (the two mouth points of the west arm;
+the merge adds no point on a mouth), and the jag follows the hedge's leafy silhouette in both the plain and the hatch
+shots: the hedge on the south-west pavement stands in front of the painted pavement from that camera, and its shadow
+falls on it. With 0.3.5 the box stops at the kerb, so that pavement is no longer painted. (With Roads + Other the
+hedge may also take paint.) If a jag stays on the carriageway, report it with a top-down shot: that would be outline.
+
+### What to look at live (one restart, game closed for the install)
+
+1. Install 0.3.5 (section 1, after main's Burst build). Log: `OnLoad version 0.3.5.0`, the settings migration line,
+   and Options shows **paint onto = Roads**.
+2. Moonflower St x Anchor St (node 874687), **Plain fill**, then **Box**:
+   - **Pavements clean**: no paint on any footway or the corner kerbs.
+   - **Kerb curves followed**: the box edge runs along the kerb line round both corners by Moonflower St.
+   - **Stop lines**: the box starts at the Moonflower stop line and at each Anchor St mouth, not up the arms.
+   - **West edge**: straight along the west mouth, ending at the kerb (no jag near the hedge).
+   - **Poles clean**: street lights and signs not yellow (Roads layer).
+   - Log line: `footways (m) per arm` shows the real widths (not `0|0`), no `footway unknown`.
+3. A junction with **zebras** on its arms: box ends at the zebra's junction-side edge, never on the stripes.
+4. A junction with an asymmetric road (footway one side only, or parking one side): box on the carriageway on both sides.
+5. Then S7-S10 (section 4) as written.
+
+Report: screenshots of 2-4 (one top-down), the `footways` / `zebra` log lines, and any arm where the box edge is off
+the kerb (by how much, which side).

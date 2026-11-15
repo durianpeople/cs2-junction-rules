@@ -61,7 +61,7 @@ namespace JunctionRules.Tests
 
             string settings = StripComments(File.ReadAllText(Path.Combine(src, "Settings", "JunctionRulesSettings.cs")));
             Check(Regex.IsMatch(settings, @"SetDefaults\(\)[\s\S]*?YellowBoxPaintTest = false;"), "Yellow box paint test defaults to off");
-            Check(settings.Contains("PaintLayers = BoxPaintLayers.Roads;") && settings.Contains("PaintMode = BoxPaintMode.Hatch;"), "paint defaults: hatch, Roads layer");
+            Check(settings.Contains("PaintLayers = PaintSettingsMigration.Default;") && settings.Contains("m_PaintLayers = PaintSettingsMigration.Default;") && PaintSettingsMigration.Default == BoxPaintLayers.Roads && settings.Contains("PaintMode = BoxPaintMode.Hatch;"), "paint defaults: hatch, Roads layer (0.3.5: one constant for the field and SetDefaults)");
             Check((int)BoxPaintLayers.Roads == 2 && (int)BoxPaintLayers.RoadsAndOther == 34 && (int)BoxPaintLayers.AllButVehicles == 39, "decal layer values match Game.Rendering.DecalLayers");
 
             // 0.3.1 (JR-T-003c): the diag switches are read-only probe aids; defaults reproduce the normal draw.
@@ -71,7 +71,7 @@ namespace JunctionRules.Tests
             Check(sys.Contains("m_Gpu.SetDiag(m_Config.Diag)") && gpu.Contains("public void SetDiag(PaintDiagParams diag)"), "a Refresh hands the new diag values to the kept GPU objects (decal layer mask, colour buffer, priority, cameras apply without a restart)");
 
             string csproj = File.ReadAllText(Path.Combine(src, "JunctionRules.csproj"));
-            Check(csproj.Contains("<Version>0.3.4</Version>") && csproj.Contains("<InformationalVersion>0.3.4-probe</InformationalVersion>"), "version 0.3.4-probe");
+            Check(csproj.Contains("<Version>0.3.5</Version>") && csproj.Contains("<InformationalVersion>0.3.5-probe</InformationalVersion>"), "version 0.3.5-probe");
             // 0.3.4 (JR-T-003d): the edge noise handed to the shader comes from the clamped config (wobble size never 0).
             Check(gpu.Contains("new Vector4((float)rp.EdgeNoiseX, (float)rp.EdgeNoiseY, 0f, 0f)") && sys.Contains("edgeNoise ["), "edge noise set from the clamped config and logged with the effective switches");
 

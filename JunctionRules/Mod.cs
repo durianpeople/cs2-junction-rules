@@ -36,11 +36,20 @@ namespace JunctionRules
             Settings.RegisterInOptionsUI();
             GameManager.instance.localizationManager.AddSource("en-US", new LocaleEN(Settings));
             AssetDatabase.global.LoadSettings(nameof(JunctionRules), Settings, new JunctionRulesSettings(this));
+            try
+            {
+                string migrated = Settings.MigrateAfterLoad();
+                if (migrated != null) log.Info(migrated);
+            }
+            catch (Exception e)
+            {
+                log.Warn("settings migration failed (settings kept as loaded): " + e.GetType().Name + ": " + e.Message);
+            }
 
             Gate = EvaluateGate(Settings.SkipCodeHashCheck);
             if (Gate.CopyAllowed) log.Info("version check: " + Gate.Verdict + ": " + Gate.Message);
             else log.Warn("version check: " + Gate.Verdict + ": " + Gate.Message);
-            log.Info($"settings: car driving {Settings.CarDriving}, junction gap rule {Settings.GapRule}, waiting spot {Settings.WaitingSpot}, turning across oncoming gives way {(Settings.TurnAcrossGivesWay ? "on" : "off")}, cars never push through people on crossings {(Settings.NoPushThroughPeople ? "on" : "off")}, timing log {(Settings.DebugTiming ? "on" : "off")}, yellow box paint test {(Settings.YellowBoxPaintTest ? "on" : "off")}, skip code hash check {(Settings.SkipCodeHashCheck ? "on" : "off")}");
+            log.Info($"settings: car driving {Settings.CarDriving}, junction gap rule {Settings.GapRule}, waiting spot {Settings.WaitingSpot}, turning across oncoming gives way {(Settings.TurnAcrossGivesWay ? "on" : "off")}, cars never push through people on crossings {(Settings.NoPushThroughPeople ? "on" : "off")}, timing log {(Settings.DebugTiming ? "on" : "off")}, yellow box paint test {(Settings.YellowBoxPaintTest ? "on" : "off")} (paint onto {Settings.PaintLayers}), skip code hash check {(Settings.SkipCodeHashCheck ? "on" : "off")}");
 
             // The copy pair and the probes are registered only when the gate allows the copy. Their types are named only
             // inside CopyPair (NoInlining), so on another game version, where loading them could throw TypeLoadException,

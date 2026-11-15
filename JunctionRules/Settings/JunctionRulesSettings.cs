@@ -73,7 +73,7 @@ namespace JunctionRules.Settings
 
         private bool m_YellowBoxPaintTest;
         private BoxPaintMode m_PaintMode;
-        private BoxPaintLayers m_PaintLayers = BoxPaintLayers.Roads;
+        private BoxPaintLayers m_PaintLayers = PaintSettingsMigration.Default;
 
         /// <summary>
         /// Stage 3 probe: paints UK yellow boxes on the junctions listed in ModsData/JunctionRules/paint-test.json with
@@ -102,6 +102,13 @@ namespace JunctionRules.Settings
             get => m_PaintLayers;
             set { m_PaintLayers = value; PaintControl.ApplySettings(); }
         }
+
+        /// <summary>
+        /// Hidden: settings schema version (0.3.5, PaintSettingsMigration). 0 = saved by 0.3.4-probe or older; the load
+        /// in Mod.OnLoad migrates once (a saved Roads + Other from probe step S6 goes back to Roads) and writes 1.
+        /// </summary>
+        [SettingsUIHidden]
+        public int PaintSettingsVersion { get; set; }
 
         /// <summary>Re-reads the test list file and rebuilds every box.</summary>
         [SettingsUIButton]
@@ -143,9 +150,29 @@ namespace JunctionRules.Settings
             NoPushThroughPeople = true;
             YellowBoxPaintTest = false;
             PaintMode = BoxPaintMode.Hatch;
-            PaintLayers = BoxPaintLayers.Roads;
+            PaintLayers = PaintSettingsMigration.Default;
+            PaintSettingsVersion = 0;
             DebugTiming = false;
             SkipCodeHashCheck = false;
+        }
+
+        /// <summary>
+        /// One-time migration after loading the saved settings (0.3.5): a "paint onto" of Roads + Other saved by the
+        /// 0.3.0-0.3.4 probe step goes back to the Roads default; any other value is kept. Returns a log line, or null
+        /// when nothing was due.
+        /// </summary>
+        public string MigrateAfterLoad()
+        {
+            if (PaintSettingsVersion >= PaintSettingsMigration.Current) return null;
+            BoxPaintLayers before = PaintLayers;
+            BoxPaintLayers after = PaintSettingsMigration.Migrate(PaintSettingsVersion, before, out bool changed);
+            if (changed) PaintLayers = after;
+            int from = PaintSettingsVersion;
+            PaintSettingsVersion = PaintSettingsMigration.Current;
+            ApplyAndSave();
+            return changed
+                ? $"settings migrated (schema {from} -> {PaintSettingsMigration.Current}): yellow box paint onto {before} -> {after} (the new default; {before} stays selectable)"
+                : $"settings schema {from} -> {PaintSettingsMigration.Current}: yellow box paint onto {before} kept";
         }
 
         public static string StatusText()
@@ -208,7 +235,7 @@ namespace JunctionRules.Settings
                 { m_Setting.GetEnumValueLocaleID(BoxPaintMode.PlainFill), "Plain fill" },
                 { m_Setting.GetEnumValueLocaleID(BoxPaintMode.OutlineOnly), "Outline only" },
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.PaintLayers)), "Yellow box paint test: paint onto" },
-                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.PaintLayers)), "Which surfaces take the paint. Roads (default). Roads + Other: try this if the box does not show on some junctions or decks. Everything but vehicles: what the G87 junction box surface uses; it can also paint the ground (debug comparison only)." },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.PaintLayers)), "Which surfaces take the paint. Roads (default): the road surface only. Roads + Other: also poles and signs (seen live 15 Nov 2026); try it only if the box does not show on some junctions or decks. Everything but vehicles: what the G87 junction box surface uses; it can also paint the ground (debug comparison only)." },
                 { m_Setting.GetEnumValueLocaleID(BoxPaintLayers.Roads), "Roads" },
                 { m_Setting.GetEnumValueLocaleID(BoxPaintLayers.RoadsAndOther), "Roads + Other" },
                 { m_Setting.GetEnumValueLocaleID(BoxPaintLayers.AllButVehicles), "Everything but vehicles (G87 value)" },

@@ -385,27 +385,40 @@ namespace JunctionRules.Core
             return r;
         }
 
-        /// <summary>Drops points that lie within tol of the straight line through their neighbours (open polyline).</summary>
+        /// <summary>
+        /// Drops points of an open polyline while every original point stays within tol of the simplified line
+        /// (Douglas-Peucker). 0.3.5: before, each point was tested only against its current neighbours, so on a long kerb
+        /// curve the removals added up (about 0.1 m off a 6 m kerb radius with tol 0.05, chords cutting onto the pavement).
+        /// </summary>
         public static List<V3> Straighten(IList<V3> line, double tol)
         {
             var r = new List<V3>();
             foreach (var p in line) if (r.Count == 0 || V2.Distance(r[r.Count - 1].XZ, p.XZ) > 1e-6) r.Add(p);
             if (tol <= 0 || r.Count < 3) return r;
-            bool removed = true;
-            while (removed && r.Count > 2)
+            var keep = new bool[r.Count];
+            keep[0] = keep[r.Count - 1] = true;
+            var stack = new Stack<(int a, int b)>();
+            stack.Push((0, r.Count - 1));
+            while (stack.Count > 0)
             {
-                removed = false;
-                for (int i = 1; i < r.Count - 1; i++)
+                var (a, b) = stack.Pop();
+                double worst = -1;
+                int at = -1;
+                for (int i = a + 1; i < b; i++)
                 {
-                    if (DistanceToSegment(r[i].XZ, r[i - 1].XZ, r[i + 1].XZ) <= tol)
-                    {
-                        r.RemoveAt(i);
-                        removed = true;
-                        break;
-                    }
+                    double d = DistanceToSegment(r[i].XZ, r[a].XZ, r[b].XZ);
+                    if (d > worst) { worst = d; at = i; }
+                }
+                if (at >= 0 && worst > tol)
+                {
+                    keep[at] = true;
+                    stack.Push((a, at));
+                    stack.Push((at, b));
                 }
             }
-            return r;
+            var o = new List<V3>();
+            for (int i = 0; i < r.Count; i++) if (keep[i]) o.Add(r[i]);
+            return o;
         }
 
         // ------------------------------------------------------------------ outline from arm slices

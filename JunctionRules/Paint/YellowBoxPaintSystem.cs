@@ -527,8 +527,9 @@ namespace JunctionRules.Paint
                 }
                 float3 np = em.GetComponentData<Game.Net.Node>(b.Node).m_Position;
                 b.LastPos = new V3(np.x, np.y, np.z);
-                var arms = new List<ArmSlice>();
+                var arms = new List<ArmInput>();
                 var notes = new List<string>();
+                var kerbNotes = new List<string>();
                 bool roundabout = false;
                 DynamicBuffer<ConnectedEdge> connected = em.GetBuffer<ConnectedEdge>(b.Node, true);
                 var edges = new List<Entity>(connected.Length);
@@ -544,22 +545,46 @@ namespace JunctionRules.Paint
                     if (isStart) { if (!em.HasComponent<StartNodeGeometry>(e)) continue; g = em.GetComponentData<StartNodeGeometry>(e).m_Geometry; }
                     else { if (!em.HasComponent<EndNodeGeometry>(e)) continue; g = em.GetComponentData<EndNodeGeometry>(e).m_Geometry; }
                     if (g.m_MiddleRadius > 0f) roundabout = true;
-                    KerbInsets(em, e, isStart, out double insetLeft, out double insetRight, notes);
-                    List<V3> left = Sample(g.m_Left.m_Left), right = Sample(g.m_Right.m_Right);
+                    // Outer edges of the slice: the game's own full-width pair for a non-roundabout node slice
+                    // (LaneSystem.cs 7918-7938). Index 0 = the .a end = the mouth (where the edge's lanes end).
+                    var arm = new ArmInput { OuterA = Sample(g.m_Left.m_Left), OuterB = Sample(g.m_Right.m_Right) };
                     double extra = m_Config.Geometry.KerbInset;
-                    var l2 = BoxPaintGeometry.OffsetToward(left, insetLeft + extra, right[0].XZ);
-                    var r2 = BoxPaintGeometry.OffsetToward(right, insetRight + extra, left[0].XZ);
-                    arms.Add(new ArmSlice(l2, r2));
+                    if (FootwayWidths(em, e, isStart, out double footLeft, out double footRight, out string src, notes))
+                    {
+                        V2 edgeLeft = EdgeLeftEnd(em, e, isStart, out bool haveEdge);
+                        if (haveEdge)
+                            CarriagewayOutline.AssignSides(arm.OuterA[0].XZ, arm.OuterB[0].XZ, edgeLeft, footLeft, footRight, out arm.InsetA, out arm.InsetB);
+                        else
+                        {
+                            // no EdgeGeometry: assume start node = composition left on m_Left (mirrored at the end node)
+                            arm.InsetA = isStart ? footLeft : footRight; arm.InsetB = isStart ? footRight : footLeft;
+                            AddOnce(notes, "no edge geometry: footway sides assumed");
+                        }
+                        kerbNotes.Add($"{arm.InsetA:0.00}|{arm.InsetB:0.00}{src}");
+                    }
+                    else kerbNotes.Add("0|0");
+                    arm.InsetA += extra; arm.InsetB += extra;
+                    arms.Add(arm);
                 }
                 foreach (Entity e in b.Edges) m_Tracked.Add(e);
                 m_Tracked.Add(b.Node);
                 if (arms.Count < 2) { Mod.log.Info($"yellow box paint test: {b.Label}: {arms.Count} arm(s), no box"); return; }
                 var centre = new V2(np.x, np.z);
-                List<V3> outline = BoxPaintGeometry.BuildOutline(arms, centre, m_Config.Geometry.StraightenTolerance, out string why);
+                List<CrosswalkStrip> crossings = MarkedCrossings(em, b.Node, out int unmarked);
+                CarriagewayResult cw = CarriagewayOutline.Build(arms, centre, crossings, m_Config.Geometry.StraightenTolerance);
+                notes.Add("footways (m) per arm " + string.Join(", ", kerbNotes) + (m_Config.Geometry.KerbInset != 0 ? $" +{m_Config.Geometry.KerbInset} m kerbInset" : ""));
+                if (crossings.Count > 0 || unmarked > 0)
+                {
+                    var stops = new List<string>();
+                    if (cw.StopDistance != null) foreach (double d in cw.StopDistance) stops.Add(d.ToString("0.0"));
+                    notes.Add($"{crossings.Count} zebra(s), {unmarked} unmarked crossing(s); box starts per arm at +[{string.Join(", ", stops)}] m from the mouth");
+                }
+                notes.AddRange(cw.Notes);
+                List<V3> outline = cw.Outline;
                 if (outline == null)
                 {
-                    notes.Add("outline merge failed (" + why + "), using the convex hull of the kerbs");
-                    outline = BoxPaintGeometry.HullOutline(arms);
+                    notes.Add("outline merge failed (" + cw.Failure + "), using the convex hull of the kerbs");
+                    outline = cw.Kerbs.Count >= 2 ? BoxPaintGeometry.HullOutline(cw.Kerbs) : null;
                 }
                 BoxPaintResult res = BoxPaintGeometry.BuildPieces(outline, m_Config.Geometry, m_Mode);
                 if (!res.Ok) { Mod.log.Warn($"yellow box paint test: {b.Label}: no box: {res.Failure}"); return; }
@@ -570,7 +595,7 @@ namespace JunctionRules.Paint
                     notes.Add($"diag.testSquare: drawing a {m_Config.Diag.TestSquare} m square on the node instead of the box");
                 }
                 notes.AddRange(res.Warnings);
-                if (roundabout) notes.Add("roundabout node: whole node boxed from the outer kerbs, island not cut out (probe S6 looks at it)");
+                if (roundabout) notes.Add("roundabout node: boxed kerb to kerb, island not cut out (probe S6 looks at it)");
                 b.Tris = ToTriangles(res, m_Config.Render, m_Config.Diag, out b.Bounds);
                 long ticks = Stopwatch.GetTimestamp() - t0;
                 Mod.log.Info($"yellow box paint test: {b.Label}: node {b.Node} at {b.LastPos}, {arms.Count} arms, outline {res.Outline.Count} pts / {BoxPaintGeometry.SignedArea(res.Outline):0.0} m2, box {res.Rect.LenU:0.0} x {res.Rect.LenV:0.0} m, spacing {res.SpacingUsed} m, pieces {res.Pieces.Count}, triangles {b.Tris.Length}, built in {ticks * 1000.0 / Stopwatch.Frequency:0.000} ms" + (notes.Count > 0 ? "; notes: " + string.Join("; ", notes) : ""));
@@ -583,7 +608,7 @@ namespace JunctionRules.Paint
 
         private static List<V3> Sample(Bezier4x3 c)
         {
-            const int n = 8;
+            const int n = 16;   // kerb corner curves: 16 chords keep the offset kerb within a few cm of the curve
             var r = new List<V3>(n + 1);
             for (int i = 0; i <= n; i++)
             {
@@ -594,32 +619,116 @@ namespace JunctionRules.Paint
         }
 
         /// <summary>
-        /// Footway width each side from the node-side composition: the span of the pieces with road lanes is the
-        /// carriageway; what is left of the full width each side is footway (research Q5 "Carriageway only"; U7).
-        /// Start node: left = composition left; end node: mirrored (the end-node slice faces the other way). Unproven
-        /// assumption, checked by eye in probe S7-S10.
+        /// Footway width each side of an arm, from the EDGE composition (CarriagewayOutline.FootwayWidths). Carriageway
+        /// pieces: HasRoadLanes (set on edge compositions only: NetCompositionHelpers.cs 1463-1466 via
+        /// NetCompositionSystem.cs 163-181; node compositions have no NetCompositionLane buffer, NetGeometryPrefab.cs
+        /// 106-112, so they never get the flag: the 0.3.0-0.3.4 "no road-lane pieces" cause) or a parking lane inside the
+        /// piece. Fallback: the node composition with the piece prefabs' own lanes (NetPieceLane: Road, not bicycles only,
+        /// or Parking). 'source' is "" for the edge composition, "n" for the fallback.
         /// </summary>
-        private static void KerbInsets(EntityManager em, Entity edge, bool isStart, out double left, out double right, List<string> notes)
+        private static bool FootwayWidths(EntityManager em, Entity edge, bool isStart, out double left, out double right, out string source, List<string> notes)
         {
             left = right = 0;
-            if (!em.HasComponent<Composition>(edge)) { AddOnce(notes, "no composition: kerb inset 0"); return; }
+            source = "";
+            if (!em.HasComponent<Composition>(edge)) { AddOnce(notes, "no composition: footway 0"); return false; }
             Composition comp = em.GetComponentData<Composition>(edge);
-            Entity c = isStart ? comp.m_StartNode : comp.m_EndNode;
-            if (c == Entity.Null || !em.HasComponent<NetCompositionData>(c) || !em.HasBuffer<NetCompositionPiece>(c)) { AddOnce(notes, "no node composition: kerb inset 0"); return; }
-            float width = em.GetComponentData<NetCompositionData>(c).m_Width;
-            DynamicBuffer<NetCompositionPiece> pieces = em.GetBuffer<NetCompositionPiece>(c, true);
-            double cmin = double.MaxValue, cmax = double.MinValue;
-            for (int i = 0; i < pieces.Length; i++)
+            string why = "no edge composition";
+            if (comp.m_Edge != Entity.Null && em.HasComponent<NetCompositionData>(comp.m_Edge) && em.HasBuffer<NetCompositionPiece>(comp.m_Edge))
             {
-                NetCompositionPiece p = pieces[i];
-                if ((p.m_PieceFlags & NetPieceFlags.HasRoadLanes) == 0) continue;
-                cmin = Math.Min(cmin, p.m_Offset.x - p.m_Size.x * 0.5);
-                cmax = Math.Max(cmax, p.m_Offset.x + p.m_Size.x * 0.5);
+                float width = em.GetComponentData<NetCompositionData>(comp.m_Edge).m_Width;
+                DynamicBuffer<NetCompositionPiece> pieces = em.GetBuffer<NetCompositionPiece>(comp.m_Edge, true);
+                bool hasLanes = em.HasBuffer<NetCompositionLane>(comp.m_Edge);
+                DynamicBuffer<NetCompositionLane> lanes = hasLanes ? em.GetBuffer<NetCompositionLane>(comp.m_Edge, true) : default;
+                var spans = new List<CompositionPieceSpan>(pieces.Length);
+                for (int i = 0; i < pieces.Length; i++)
+                {
+                    NetCompositionPiece p = pieces[i];
+                    double lo = p.m_Offset.x - p.m_Size.x * 0.5, hi = p.m_Offset.x + p.m_Size.x * 0.5;
+                    bool cw = (p.m_PieceFlags & NetPieceFlags.HasRoadLanes) != 0;
+                    if (!cw && hasLanes)
+                    {
+                        for (int k = 0; k < lanes.Length && !cw; k++)
+                        {
+                            NetCompositionLane l = lanes[k];
+                            if ((l.m_Flags & LaneFlags.Parking) != 0 && l.m_Position.x >= lo && l.m_Position.x <= hi) cw = true;
+                        }
+                    }
+                    spans.Add(new CompositionPieceSpan(p.m_Offset.x, p.m_Size.x, cw));
+                }
+                if (CarriagewayOutline.FootwayWidths(spans, width, out left, out right, out why)) return true;
             }
-            if (cmin > cmax) { AddOnce(notes, "no road-lane pieces: kerb inset 0"); return; }
-            double l = cmin + width * 0.5, r = width * 0.5 - cmax;
-            if (l < 0 || r < 0 || l > width * 0.5 || r > width * 0.5) { AddOnce(notes, $"odd carriageway span {cmin:0.00}..{cmax:0.00} of width {width:0.00}: kerb inset 0"); return; }
-            if (isStart) { left = l; right = r; } else { left = r; right = l; }
+            Entity c = isStart ? comp.m_StartNode : comp.m_EndNode;
+            if (c != Entity.Null && em.HasComponent<NetCompositionData>(c) && em.HasBuffer<NetCompositionPiece>(c))
+            {
+                float width = em.GetComponentData<NetCompositionData>(c).m_Width;
+                DynamicBuffer<NetCompositionPiece> pieces = em.GetBuffer<NetCompositionPiece>(c, true);
+                var spans = new List<CompositionPieceSpan>(pieces.Length);
+                for (int i = 0; i < pieces.Length; i++)
+                {
+                    NetCompositionPiece p = pieces[i];
+                    bool cw = false;
+                    if (em.HasBuffer<NetPieceLane>(p.m_Piece))
+                    {
+                        DynamicBuffer<NetPieceLane> pl = em.GetBuffer<NetPieceLane>(p.m_Piece, true);
+                        for (int k = 0; k < pl.Length && !cw; k++)
+                        {
+                            if (!em.HasComponent<NetLaneData>(pl[k].m_Lane)) continue;
+                            LaneFlags f = em.GetComponentData<NetLaneData>(pl[k].m_Lane).m_Flags | pl[k].m_ExtraFlags;
+                            cw = ((f & LaneFlags.Road) != 0 && (f & LaneFlags.BicyclesOnly) == 0) || (f & LaneFlags.Parking) != 0;
+                        }
+                    }
+                    spans.Add(new CompositionPieceSpan(p.m_Offset.x, p.m_Size.x, cw));
+                }
+                if (CarriagewayOutline.FootwayWidths(spans, width, out left, out right, out string why2)) { source = "n"; return true; }
+                why += "; node composition: " + why2;
+            }
+            AddOnce(notes, "footway unknown (" + why + "): box edge at the outer edge");
+            return false;
+        }
+
+        /// <summary>The edge's left kerb end at this node (EdgeGeometry m_Start.m_Left.a at the start node, m_End.m_Left.d at the end).</summary>
+        private static V2 EdgeLeftEnd(EntityManager em, Entity edge, bool isStart, out bool ok)
+        {
+            ok = em.HasComponent<EdgeGeometry>(edge);
+            if (!ok) return default;
+            EdgeGeometry eg = em.GetComponentData<EdgeGeometry>(edge);
+            float3 p = isStart ? eg.m_Start.m_Left.a : eg.m_End.m_Left.d;
+            return new V2(p.x, p.z);
+        }
+
+        /// <summary>
+        /// The node's marked crossings: crosswalk sub-lanes (PedestrianLane.Crosswalk) without Unsafe (Unsafe = the node
+        /// composition has no Crosswalk flag, no zebra drawn: LaneSystem.cs 8571-8580). Width = the lane prefab's
+        /// NetLaneData.m_Width plus the larger NodeLane width offset (LaneSystem.cs 8566-8567).
+        /// </summary>
+        private static List<CrosswalkStrip> MarkedCrossings(EntityManager em, Entity node, out int unmarked)
+        {
+            var r = new List<CrosswalkStrip>();
+            unmarked = 0;
+            if (!em.HasBuffer<Game.Net.SubLane>(node)) return r;
+            DynamicBuffer<Game.Net.SubLane> subs = em.GetBuffer<Game.Net.SubLane>(node, true);
+            for (int i = 0; i < subs.Length; i++)
+            {
+                Entity l = subs[i].m_SubLane;
+                if (!em.Exists(l) || em.HasComponent<Deleted>(l) || !em.HasComponent<Game.Net.PedestrianLane>(l) || !em.HasComponent<Curve>(l)) continue;
+                PedestrianLaneFlags f = em.GetComponentData<Game.Net.PedestrianLane>(l).m_Flags;
+                if ((f & PedestrianLaneFlags.Crosswalk) == 0) continue;
+                if ((f & PedestrianLaneFlags.Unsafe) != 0) { unmarked++; continue; }
+                double width = 0;
+                if (em.HasComponent<PrefabRef>(l))
+                {
+                    Entity prefab = em.GetComponentData<PrefabRef>(l).m_Prefab;
+                    if (em.HasComponent<NetLaneData>(prefab)) width = em.GetComponentData<NetLaneData>(prefab).m_Width;
+                }
+                if (em.HasComponent<NodeLane>(l))
+                {
+                    float2 wo = em.GetComponentData<NodeLane>(l).m_WidthOffset;
+                    width += Math.Max(0, Math.Max(wo.x, wo.y));
+                }
+                Bezier4x3 bz = em.GetComponentData<Curve>(l).m_Bezier;
+                r.Add(new CrosswalkStrip(new V2(bz.a.x, bz.a.z), new V2(bz.d.x, bz.d.z), width));
+            }
+            return r;
         }
 
         private static void AddOnce(List<string> notes, string s) { if (!notes.Contains(s)) notes.Add(s); }

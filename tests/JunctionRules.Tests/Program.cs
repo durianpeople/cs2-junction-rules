@@ -61,6 +61,8 @@ namespace JunctionRules.Tests
             ("BoxInsetTests", BoxInsetTests),
             ("BoxHatchTests", BoxHatchTests),
             ("BoxRectHeightTests", BoxRectHeightTests),
+            ("BoxCarriagewayTests", BoxCarriagewayTests),
+            ("PaintMigrationTests", PaintMigrationTests),
             ("PaintConfigTests", PaintConfigTests),
             ("PaintRepoTests", PaintRepoTests),
         };
