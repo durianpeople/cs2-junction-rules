@@ -128,7 +128,7 @@ namespace JunctionRules.Tests
             if (root == null) { Check(false, "repo root found"); return; }
             string iter = File.ReadAllText(Path.Combine(root, "JunctionRules", "Vanilla", "JRCarLaneSpeedIterator.cs"));
             int open = iter.IndexOf("if (m_JR.m_NoPushPeople) m_MaxSpeed = float.MaxValue;", StringComparison.Ordinal);
-            int call = iter.IndexOf("CheckPedestrian(overlapLine, laneObject.m_LaneObject, laneObject.m_CurvePosition.y, num5, giveSpace, inverse);", StringComparison.Ordinal);
+            int call = open < 0 ? -1 : iter.IndexOf("CheckPedestrian(overlapLine, laneObject.m_LaneObject, laneObject.m_CurvePosition.y, num5, giveSpace, inverse);", open, StringComparison.Ordinal); // JR-T-014d: S2-50 has its own call earlier
             int fix = iter.IndexOf("if (m_JR.m_NoPushPeople) m_JR.NoPushPedestrian(ref m_MaxSpeed, ref m_Blocker, ref m_BlockerType, jrPedMax, jrPedBlocker, jrPedType, laneObject.m_LaneObject, num5, m_PushBlockers,", StringComparison.Ordinal);
             int restore = iter.IndexOf("num5 = jrPedNum5;", StringComparison.Ordinal);
             Check(open > 0 && call > open && fix > call && restore > fix, "S2-08 opens the limit, the game's check, S2-08b refuses the creep with the same distance, then restores num5");

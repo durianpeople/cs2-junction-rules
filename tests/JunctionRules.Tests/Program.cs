@@ -73,6 +73,10 @@ namespace JunctionRules.Tests
             ("BoxSelectionTests", BoxSelectionTests),
             ("BoxRecordTests", BoxRecordTests),
             ("EntranceBoxTests", EntranceBoxTests),
+            // JR-T-014d (G11)
+            ("UnmarkedCrossingTests", UnmarkedCrossingTests),
+            ("UnmarkedTraceTests", UnmarkedTraceTests),
+            ("UnmarkedRepoTests", UnmarkedRepoTests),
             ("PaintMigrationTests", PaintMigrationTests),
             ("PaintConfigTests", PaintConfigTests),
             ("PaintRepoTests", PaintRepoTests),

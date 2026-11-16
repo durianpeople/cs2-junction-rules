@@ -264,6 +264,18 @@
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
         "reason": "JR-T-013b (G3): CheckOverlappingLanes, after S2-25 and before S2-29, only with the setting 'Cars obey yellow boxes': BoxTurnRoomHold re-runs the box exit-room test (HasRoomPast, own path only) for a turner whose next spot is its UK right-turn spot inside the box; no room = stop at the turn spot (GetMaxBrakingSpeed, blocker Entity.Null, type Continuing), clear of the oncoming lane."
+      },
+      "S2-50": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "JR-T-014d (G11, owner rule 17 Nov 2026): CheckOverlappingLanes creature branch, before S2-08, only with the setting 'People give way at unmarked crossings': for a person on an unmarked crossing (crosswalk lane with Unsafe, no signal; never a driveway SideConnection lane or a sidewalk) who is not yet on its carriageway the game's CheckPedestrian is skipped (continue; run once per car-step against the saved limit only to count 'car-steps not held for people'); a person already on the carriageway gets the game's check at the crossing (jrInScope false: no whole-junction waiting spot), the safety floor."
+      },
+      "S2-50b": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "JR-T-014d (G11): right after S2-27, diagnostics only: AfterUnmarkedFloor counts / records a car braked for a person already on the carriageway of an unmarked crossing; restores jrInScope for the next lane object."
       }
     }
   }

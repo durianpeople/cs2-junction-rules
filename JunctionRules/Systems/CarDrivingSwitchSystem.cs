@@ -182,7 +182,9 @@ namespace JunctionRules.Systems
                 !m_EntranceBoxes.IsEmptyIgnoreFilter,
                 (float)JunctionRules.Boxes.BoxStore.EntranceLength,
                 // 0.4.4 (JR-T-012): vehicles leaving buildings give way.
-                Mod.Settings == null || Mod.Settings.ExitGiveWay);
+                Mod.Settings == null || Mod.Settings.ExitGiveWay,
+                // JR-T-014d (G11): people give way at unmarked crossings.
+                Mod.Settings == null || Mod.Settings.PeopleGiveWayUnmarked);
             Stage2Handoff.Publish(stage2Mode);
             // 0.4.7 (G1): the per-vehicle exit trace (logged by the copy side, rate-limited).
             ExitTraceHandoff.Publish(Mod.Settings != null && Mod.Settings.ExitTrace);
