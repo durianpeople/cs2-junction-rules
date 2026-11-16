@@ -22,6 +22,7 @@ namespace JunctionRules.Tests
         {
             ("G9EntranceDrivingTests", G9EntranceDrivingTests),
             ("G9EntranceBoxTests", G9EntranceBoxTests),
+            ("G9EntranceLogTests", G9EntranceLogTests),
             ("G10FallbackArrowTests", G10FallbackArrowTests),
             ("VersionGateTests", VersionGateTests),
             ("VersionGateCheckTests", VersionGateCheckTests),
