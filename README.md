@@ -43,6 +43,13 @@ game's own measure: a moving car ahead counts its braking distance; **room margi
 the whole vehicle cannot wait between two zebras (Z C Z), or between Cs and a zebra (a bus), they are one decision
 before the first. Carries 0.4.0 and 0.3.6.
 
+0.4.2-probe (JR-T-007b; PROBE-STAGE4-BOXTOOL.md section 11): **straight-sided yellow boxes** (junction and
+entrance): mouths slide forward along their arm until the straight sides stay on the carriageway; priority arms keep
+their mouths, give-way / STOP arms slide, signals = all equal (Core/StraightBox.cs). Boxes keep **0.5 m from the
+painted edge** of zebras and stop / give-way lines (setting **Yellow box: gap to road markings**, paint list
+`"markingMargin"`). The tool hover is a thin outline like Traffic's Priorities tool (white = adds, orange = removes).
+Paint and tool only: cars drive as in 0.4.1.
+
 Stage 4 probe (0.4.0-probe, JR-T-007; PROBE-STAGE4-BOXTOOL.md): the **yellow box tool** (toolbar button top left,
 Ctrl+Y, rebindable; Options > Yellow boxes). Click an at-grade road junction (3+ road arms; not highways, bridges,
 tunnels, elevated roads, roundabouts, level crossings, assets' own nodes) or a building's road access to add / remove a
@@ -91,6 +98,8 @@ PROBE-STAGE3-PAINT.md section 10.
   (extra free space past a zebra on top of the vehicle's length). Acts while Car driving is the copy, with either gap
   rule (Stock: zebras and room only); applies at the next simulation step. Timing log: zebra entries held (people,
   Cs after, no room past) and merged sections.
+- **Yellow box: gap to road markings (m)** (0.4.2): 0-2 m, default 0.5 m, from the painted edge of zebras and stop /
+  give-way lines (entrance boxes: also from junction mouths); redraws all boxes at once.
 - **Yellow box paint test** (stage 3 probe): off (default) or on; **what to draw** (Box / Plain fill / Outline only);
   **paint onto** (Roads (default) / Roads + Other / Everything but vehicles); buttons Refresh test list, Add junction at
   camera centre, Log paint cost now; Paint test status. See PROBE-STAGE3-PAINT.md.

@@ -1,4 +1,15 @@
-# Probe kit: Junction Rules 0.4.1-probe (stage 4, yellow box selection tool; cars never stop on a zebra)
+# Probe kit: Junction Rules 0.4.2-probe (stage 4, yellow box selection tool; cars never stop on a zebra; straight-sided boxes)
+
+**0.4.2-probe (JR-T-007b), what changed since 0.4.1:** box shapes and the tool's hover look only (section 11). Every
+yellow box (junction and entrance) is now **straight-sided**: each arm's mouth line slides forward along its own arm,
+parallel to itself, until the straight sides between neighbouring mouths stay on the carriageway; arms with priority
+keep their mouths, give-way / STOP arms slide (signals: all arms equal). Every box edge keeps **0.5 m clear of the
+painted edge** of zebras and stop / give-way lines (new Options slider; paint list `"markingMargin"`). The tool shows
+the box it would add as a **thin outline** like Traffic's Priorities tool (white = adds, orange = removes) instead of
+the glow. Fixes boxes running over the kerb at skewed junctions (Lindbergh x Anchor). Cars drive exactly as in 0.4.1.
+`docs/vanilla_copy_check_0.4.2.txt` equals 0.4.1's (0 unexplained differences). Carries 0.4.1 (below) and everything
+before.
+
 
 **0.4.1-probe (JR-T-009), what changed since 0.4.0:** new driving rule **Cars never stop on a zebra** (default on;
 section 10). Driving changes only while Car driving is the Junction Rules copy; with the setting off cars drive exactly
@@ -12,7 +23,7 @@ differences). Also: the T-junction through-side kerb fix (section 6) and the ent
 0.3.6 (JR-T-008, people pass a car blocking their crossing; merged from 784ba28) and everything before it
 (PROBE-STAGE3-PAINT.md).
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.4.1-probe/`. 0.4.1-probe was Burst-built from bf4a26b and installed by main on 16 Nov. While that folder holds a `STALE.md` it is a managed
+Build to install: `~/Code/cs2-junction-rules/.staged/0.4.2-probe/`. 0.4.1-probe was Burst-built from bf4a26b and installed by main on 16 Nov (its sums are in git at 07cc519). While `.staged/0.4.2-probe` holds a `STALE.md` it is a managed
 build only: main does the Burst build in `STALE.md` (game closed, at the owner's quit), then puts the five sums into the
 install block below. Until then the block refuses (placeholder sums `0000...`).
 
@@ -25,27 +36,27 @@ copy does not run; the boxes stay in the save).
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.4.1-probe || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.4.2-probe || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-af5b1322e93c233252d21f40203815e44457c7b165302c9c448fcb9ec543fa7b  JunctionRules.dll
-db04729fe845eb186ce3f88ec3abf0b227dcce494cca19623edcfee27f60e443  JunctionRules.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
 9e8f8a397f70bbeb121ef7224981278773595c1fe2ce7e31de01d4c4df2b65bf  JunctionRules.mjs
-5acf010473f4f6e0e979c487fc57e7f19dde2ab2ad775ca01fdcb0e72055df00  JunctionRules_win_x86_64.dll
-d5762071c997c245f6086ede665d96622e1e90738f6753072db5568b0b4a0ada  JunctionRules_win_x86_64.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
   fi
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules.mjs JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
-  echo "installed 0.4.1-probe"
+  echo "installed 0.4.2-probe"
 )
 ```
 
-Rollback: to 0.4.0 (boxes kept, zebra rule gone): the same block with `.staged/0.4.0-probe` and its sums (switching the
+Rollback: to 0.4.1 (boxes kept, 0.4.1 shapes and glow): the same block with `.staged/0.4.1-probe` and its sums (git 07cc519). To 0.4.0 (boxes kept, zebra rule gone): the same block with `.staged/0.4.0-probe` and its sums (switching the
 setting off in Options does the same without reinstalling). Further back: the block from `.staged/0.3.5-probe`
 (PROBE-STAGE3-PAINT.md), then delete `Mods/JunctionRules/JunctionRules.mjs`.
 A save with boxes still loads after a rollback or with the mod removed (section 7).
@@ -56,8 +67,8 @@ A save with boxes still loads after a rollback or with the mod removed (section 
   Junction Rules > Yellow boxes > Yellow box tool shortcut, or the game's Keybinding page under "Junction Rules"), or the
   Options button **Open / close the yellow box tool**. The same button / shortcut closes it.
 - Point at a junction, or at the road in front of a building's access (or at the building itself). What can take a box
-  **glows**: yellow = click adds a box, orange = it has one, click removes it. A junction glows as a circle over the
-  node, an entrance as a band across the road at the access point, entrance length long.
+  shows a **thin outline of the exact box it would get** (0.4.2, the same shape the paint uses; Traffic Priorities
+  look, no fill): **white** = click adds the box, **orange** = it has one, click removes it.
 - **Left click** toggles. The paint appears / disappears at once (no Refresh, no restart).
 - **Right click or Esc** leaves the tool (back to the game's default tool).
 - Pointing at something that cannot take a box logs one line with the reason (once per reason in a row), e.g.
@@ -90,11 +101,15 @@ an access inside a junction's node area.
 
 ## 4. Box shapes
 
-- **Junction box**: as 0.3.5 (carriageway only, kerb to kerb round the corner curves, from each arm's stop line or the
-  far side of a zebra), with the 0.4.0 T through-side fix (section 6).
-- **Entrance box**: a band across the **whole carriageway** (kerb line to kerb line, both directions), **8 m along the
-  road** (paint list `"entranceLength"`, 2..40 m), centred on the access point, following the road's curve, clipped
-  to the edge's own part (never into a junction). Kerb lines use the same inset logic as the junction box (edge
+- **Junction box** (0.4.2, section 11): carriageway only, **straight sides**: one straight line across each arm (its
+  mouth, kerb to kerb, 0.5 m clear of the arm's zebra or stop / give-way line), joined to the neighbouring arms' mouths
+  by straight sides on the kerb lines. Where a straight side would cut over a kerb corner, the give-way / STOP arm's
+  mouth slides forward until it does not (priority arms keep theirs). The 0.4.0 T through-side fix (section 6) stays.
+- **Entrance box** (0.4.2, same solver): straight sides across the **whole carriageway** (kerb line to kerb line, both
+  directions), **8 m along the road** (paint list `"entranceLength"`, 2..40 m: the distance between the two road
+  mouths), centred on the access point, clipped to the edge's own part and kept 0.5 m clear of the junction mouths and
+  of any zebra or stop line on the road (never into a junction). On a bend the road mouths slide in until both long
+  sides stay on the carriageway. Kerb lines use the same inset logic as the junction box (edge
   composition footway each side, the stop-bay rule, plus `kerbInset`). UK style: TSRGD diagram 1043 hatching (the
   paint mode setting applies), the same as at junctions.
 
@@ -104,10 +119,10 @@ an access inside a junction's node area.
 |---|---|---|
 | B1 | Load the city | log `yellow boxes: 0 junction box(es) and 0 entrance box(es) saved in this city`; no paint system running (`yellow box painting` not ON) |
 | B2 | Ctrl+Y, the toolbar button, the Options button | tool on / off each time; log `yellow box tool: on` / `off` |
-| B3 | Hover a 4-way, a T, a highway node, a bridge end, a path joint, a dead end, a roundabout | only the 4-way and the T glow; others log their reason |
-| B4 | Click the T at **Moonflower St x Anchor St** | box appears at once; **the through-side kerb (south) is inset like the arms**: no paint on the pavement, no step halfway along |
+| B3 | Hover a 4-way, a T, a highway node, a bridge end, a path joint, a dead end, a roundabout | only the 4-way and the T show a thin white outline (their box); others log their reason |
+| B4 | Click the T at **Moonflower St x Anchor St** | box appears at once; **the through-side kerb (south) is inset like the arms**: no paint on the pavement, no step halfway along; 0.4.2: a straight four-sided box, the Moonflower side on the Anchor north kerb line (section 11, S2) |
 | B5 | Click it again | box disappears at once |
-| B6 | Hover the road in front of a house / shop, click | band across the road at the driveway, 8 m long, kerb to kerb |
+| B6 | Hover the road in front of a house / shop, click | white outline, then a straight-sided band across the road at the driveway, about 8 m long, kerb to kerb |
 | B7 | Right click, Esc | tool closes; Esc may also open the pause menu (game key), harmless |
 | B8 | Save (city name first), reload | same boxes painted; log counts them |
 | B9 | Change one arm's road type at a boxed junction (upgrade) | box stays (node updated in place) and repaints |
@@ -223,3 +238,52 @@ stands inside another junction (or across its zebra) and waits on traffic that t
 traffic, or the car behind it), so nothing ever moves. With No Despawn these cycles are **permanent**: note the
 location (junction names / coordinates) and report it, do not wait for it to clear; a person stepping onto a later zebra of a merged
 section after the car went (the car then stops before that zebra; it may stand on the earlier one: same as 0.4.0).
+
+## 11. 0.4.2: straight-sided boxes, marking margin, hover outline (JR-T-007b)
+
+**Hover outline.** Drawn like Traffic's Priorities tool (Traffic 0.2.13 OverlayRenderingHelpers.DrawNodeOutline): thin
+lines through the game's `OverlayRenderSystem.Buffer.DrawLine`, no fill, 0.225 m wide (Traffic: feedback line width
+0.3 x 0.75). **White** = a click adds this box (Traffic's hover colour), **orange** = it has one and a click removes it
+(Traffic's warning orange 1, 0.65, 0). The outline is the exact shape the paint will use (same code, Boxes/BoxShapes.cs),
+re-solved twice a second while hovered. No outline (but a log line) when no box shape can be built there.
+
+**Marking margin.** Options > Yellow boxes > **Yellow box: gap to road markings (m)**, 0-2 m, default 0.5 m; the paint
+list key `"markingMargin"` overrides it while present. Measured from the **painted edge** of the marking on the box
+side: zebra = centre line + (lane width + the node lane's width offset) / 2; stop / give-way line = centre line +
+(painted width = the larger of the lane's width and its geometry size) / 2. 0.4.0-0.4.1 put the box edge flush on the
+zebra's painted edge and did not read stop lines at all. Entrance boxes keep the same gap from the junction mouths
+and from zebras / stop lines on their road. Changing the slider redraws every box at once (log `yellow boxes: marking
+margin X m (options); boxes rebuilt`).
+
+**Straight sides (which mouth moves).** Each arm's mouth is a straight line kerb to kerb; the box's sides join
+neighbouring mouths along the kerb lines. When a side would cut over a kerb corner or come within the margin of a
+marking, a mouth slides forward along its own arm (staying parallel) until it does not:
+1. Priority arms keep their mouths; only give-way / STOP arms slide (`priority-road`).
+2. Signals at the node: all arms equal.
+3. All arms equal, or the yielding arms alone cannot clear: the smallest total slide over all arms, never pushing a
+   point where two car paths cross out of the box (`fallback-equal` / `fallback-cannot-clear`). Where no slide does
+   both, that side stays as it is and the log says so.
+Per box the log has `shape rule ...; mouth shift per arm [...] m` plus the arms' sign status and conflict-point count.
+Measured on the live fixtures: **Moonflower x Anchor** (T, STOP on Moonflower) `priority-road`, Anchor mouths 0 m,
+Moonflower 3.58 m: a four-sided box with the Moonflower side on the Anchor north kerb line. **Lindbergh x Anchor**
+(skewed 4-way, STOP on both Anchor arms) `fallback-cannot-clear` (the Anchor arms alone cannot clear the Lindbergh SW
+corner), Lindbergh SW 3.83 m, NE 3.93 m, Anchor 0 m; 0.4.0's box there ran up to 2.6 m over the pavement.
+
+**Entrance boxes** use the same solver: the road's two directions are two priority mouths at the window ends (entrance
+length apart), the driveway is the yielding side with no mouth of its own (the game gives it no geometry). On a
+straight road the box is a rectangle; on a bend the mouths slide in (`fallback-cannot-clear`) until both long sides
+stay on the carriageway. 0.4.1 entrance check at Moonflower (house at the access 32 m along a 7.4-48 m edge part):
+the band was 28-36 m, 12 m clear of the junction; the box seen near it was the next junction's box.
+
+**No hull fallback.** If no straight-sided box can be built (invalid ring), there is no box and a warning line, never
+a convex-hull box over the pavement.
+
+| # | Do | Expect |
+|---|---|---|
+| S1 | Hover junctions and driveways with the tool | thin white outline exactly where the paint later lands; orange on boxed ones; no glow |
+| S2 | Box Moonflower x Anchor | four straight sides, Moonflower side on the Anchor north kerb line; log `shape rule priority-road` |
+| S3 | Box Lindbergh x Anchor | no paint on any pavement corner; log `shape rule fallback-cannot-clear` |
+| S4 | Box a junction with zebras / stop lines, slider 0, 0.5, 2 | box edge flush / 0.5 m / 2 m short of the stripes and lines, redrawn at once |
+| S5 | Entrance box on a bend | straight-sided, on the carriageway both sides |
+| S6 | Signalled junction | log `signals`, rule `fallback-equal` |
+

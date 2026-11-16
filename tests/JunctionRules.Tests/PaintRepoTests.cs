@@ -72,7 +72,7 @@ namespace JunctionRules.Tests
             Check(sys.Contains("m_Gpu.SetDiag(m_Config.Diag)") && gpu.Contains("public void SetDiag(PaintDiagParams diag)"), "a Refresh hands the new diag values to the kept GPU objects (decal layer mask, colour buffer, priority, cameras apply without a restart)");
 
             string csproj = File.ReadAllText(Path.Combine(src, "JunctionRules.csproj"));
-            Check(csproj.Contains("<Version>0.4.1</Version>") && csproj.Contains("<InformationalVersion>0.4.1-probe</InformationalVersion>"), "version 0.4.1-probe");
+            Check(csproj.Contains("<Version>0.4.2</Version>") && csproj.Contains("<InformationalVersion>0.4.2-probe</InformationalVersion>"), "version 0.4.2-probe");
 
             // 0.4.0 (JR-T-007): saved boxes are added / removed only by Boxes/BoxStore.cs, and only our own two components;
             // the paint code drops an invalid saved box through it (its sole write) and never names the tool.
