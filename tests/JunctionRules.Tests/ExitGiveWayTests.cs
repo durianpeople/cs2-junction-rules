@@ -113,9 +113,76 @@ namespace JunctionRules.Tests
             Check(!ExitGiveWay.CanHoldArea(-3f, 0f), "area exit: clearly past the stop point (on its way onto the road): not held");
             Check(!ExitGiveWay.CanHoldArea(0.5f, BrakingDistance(14f)), "area exit: a fast vehicle that cannot stop in time is left to the game");
             Check(ExitGiveWay.CanHoldArea(30f, BrakingDistance(14f)), "area exit: the same vehicle 30 m before the stop point: held");
+            // 0.4.6: the scan starts before the stock hand-over to the road lane (CarNavigationSystem num8 = braking distance at 11.1 m/s + 1 m + pivot).
+            const float laneSpeed = 11.111112f;
+            float handOver = BrakingDistance(laneSpeed) + 1f + 1.5f;   // a car with a 1.5 m pivot
+            Check(ExitGiveWay.AreaScanMetres(BrakingDistance(laneSpeed) + 1f, 2f) > handOver, "area exit: the scan reaches back past the stock hand-over distance (a vehicle is judged before it joins the road lane)");
+            Check(ExitGiveWay.AreaScanMetres(0f, 0f) == ExitGiveWay.AreaScanMin && ExitGiveWay.AreaScanMin >= 25f, "area exit: never a scan shorter than the minimum");
+            // A tractor-trailer (front offset 3.2 m, train length 17 m): the front distance, not half the train, is the margin to the join point.
+            const float front = 3.2f, train = 17f;
+            float posToJoin = 12f;                               // pivot 12 m from the join point
+            float byFront = posToJoin - front, byHalfTrain = posToJoin - train * 0.5f;
+            Check(ExitGiveWay.CanHoldArea(byFront - 1f, BrakingDistance(4f)), "area exit: a tractor-trailer 12 m from the join point at 4 m/s can still stop (front-based distance)");
+            Check(!ExitGiveWay.CanHoldArea(byHalfTrain - 1f - 6f, BrakingDistance(4f)), "area exit: with 0.4.5's half-train distance the same vehicle 6 m closer looked committed and was left to the game");
+            Check(byFront - byHalfTrain > 5f, "area exit: half the train (0.4.5) under-measured a long vehicle's distance by more than 5 m");
             Check(ExitGiveWay.Decide(true, ExCarPriority, false, true, true, true) == ExitGiveWay.Decision.WaitGap
                 && ExitGiveWay.Decide(true, ExCarPriority, true, true, true, false) == ExitGiveWay.Decision.WaitBox
                 && ExitGiveWay.Decide(true, ExCarPriority, true, true, true, true) == ExitGiveWay.Decision.Go, "lot exit: the same gap AND box decision as every exit");
+        }
+
+        private static void ExitEventTests()
+        {
+            // 0.4.6: counters are per vehicle episode (0.4.4 / 0.4.5 counted every car-step: one waiting truck = dozens of "waits").
+            var slots = new ArraySlots { Values = new long[64] };
+            int truck = 1234;
+            int newWaits = 0;
+            for (uint frame = 1000; frame < 1000 + 16 * 20; frame += 16)   // 20 consecutive updates of one waiting vehicle
+                if (SafetyStopEvents.Record(ref slots, ExitGiveWay.EventKey(truck, 1), frame)) newWaits++;
+            Check(newWaits == 1, "a vehicle waiting through 20 updates is one wait event, not 20");
+            Check(SafetyStopEvents.Record(ref slots, ExitGiveWay.EventKey(truck, 1), 1000 + 16 * 20 + 600), "the same vehicle waiting again at another exit later is a second event");
+            Check(SafetyStopEvents.Record(ref slots, ExitGiveWay.EventKey(truck, 3), 1000), "go decisions of the same vehicle are a separate kind (not swallowed by its wait)");
+            Check(SafetyStopEvents.Record(ref slots, ExitGiveWay.EventKey(truck + 1, 1), 1000), "another vehicle is its own event");
+            Check(ExitGiveWay.EventKey(0, 1) > 0 && ExitGiveWay.EventKey(0, ExitGiveWay.EventKinds - 1) > ExitGiveWay.EventKey(0, 1)
+                && ExitGiveWay.EventKey(ExitGiveWay.EventKindStride - 1, 1) < ExitGiveWay.EventKey(0, 2), "event keys of different kinds never collide, and stay inside an int");
+            Check((long)ExitGiveWay.EventKinds * ExitGiveWay.EventKindStride < int.MaxValue, "event keys fit an int for every kind");
+            Check(ExitGiveWay.EventKey(777, 0) == 777, "kind 0 is the plain entity index (the safety stops keep their keys)");
+        }
+
+        private static void ExitPriorityTests()
+        {
+            // Emergency passthroughs: only a stock priority of 108 (VehicleUtils.GetPriority(Car) = 108 only with CarFlags.Emergency; every other car 100).
+            Check(!ExitGiveWay.IsEmergency(100) && !ExitGiveWay.IsEmergency(ExCarPriority) && !ExitGiveWay.IsEmergency(107), "an ordinary vehicle (priority 100, a truck, a van) is never an emergency passthrough");
+            Check(ExitGiveWay.IsEmergency(108) && ExitGiveWay.IsEmergency(110), "priority 108 (on-duty emergency vehicle) is");
+            Check(ExitGiveWay.Applies(true, 100) && !ExitGiveWay.Applies(true, 108) && !ExitGiveWay.Applies(false, 100), "the give-way applies to priority 100 with the setting on, not to emergency, not with the setting off");
+            Check(ExitGiveWay.Decide(true, 100, false, false, false, true) == ExitGiveWay.Decision.WaitGap, "an ordinary truck with a busy road waits (the decision never reads it as an emergency)");
+            string root = RepoRoot();
+            if (root == null) return;
+            string glue = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRExitGiveWay.cs"));
+            string nav = File.ReadAllText(Path.Combine(root, "JunctionRules", "Vanilla", "JRCarNavigationSystem.cs"));
+            string it = File.ReadAllText(Path.Combine(root, "JunctionRules", "Vanilla", "JRCarLaneSpeedIterator.cs"));
+            string decomp = Path.Combine(Environment.GetEnvironmentVariable("HOME") ?? "", "Code", "decomp", "yb-2026-11-13", "full", "Game.Vehicles", "VehicleUtils.cs");
+            if (File.Exists(decomp))
+            {
+                string vu = File.ReadAllText(decomp);
+                Check(vu.Contains("return math.select(100, 108, (carData.m_Flags & CarFlags.Emergency) != 0);"), "decompile: Car priority is 108 only with CarFlags.Emergency, otherwise 100");
+            }
+            Check(nav.Contains("laneIterator.m_JR.ExitConnectionHold(entity, laneIterator.m_Priority,") && nav.Contains("laneIterator.m_JR.ExitAreaHold(entity, priority,")
+                && it.Contains("m_JR.ExitDrivewayHold(lane, bufferData, curveOffset.x, length, origDistance, num, inverse, m_Priority,"), "every exit hook is handed the stock priority of the vehicle itself (never a lane or a neighbour value)");
+            // 0.4.6 lot exit: the scan is not filtered by the braking speed, the front offset is used, the counters are not lost.
+            int a = glue.IndexOf("public float ExitAreaHold", StringComparison.Ordinal);
+            int aEnd = glue.IndexOf("public const float AreaLaneSpeed", StringComparison.Ordinal);
+            string area = a < 0 || aEnd < a ? "" : glue.Substring(a, aEnd - a);
+            Check(area.Length > 0 && !area.Contains("hold < currentMax") && !area.Contains("m_VehicleLength") && area.Contains("AreaScanMetres(") && area.Contains("frontOffset"),
+                "lot exit: no 'hold < currentMax' filter before the judgement, distance from the front (not half the whole train), scan from AreaScanMetres");
+            Check(glue.Contains("bool requireBuilding") && glue.Contains("ExitJoinLane(areaLane, priority, next, false,") && glue.Contains("ExitJoinLane(connection, priority, next, true,"),
+                "an AREA lane needs no building owner chain, a Connection lane does (outside connections stay stock)");
+            Check(!glue.Contains("m_ExitEdgeData.HasComponent(roadOwner.m_Owner)") && glue.Contains("m_SubLanes.HasBuffer(roadOwner.m_Owner)"), "the joined road lane may belong to a junction node, not only an edge");
+            int s32 = nav.IndexOf("// JR-STAGE2 BEGIN S2-32", StringComparison.Ordinal);
+            string b32 = s32 < 0 ? "" : nav.Substring(s32, nav.IndexOf("// JR-STAGE2 END", s32, StringComparison.Ordinal) - s32);
+            Check(b32.Contains("AddCounts(") && b32.Contains("prefabObjectGeometryData.m_Bounds.max.z"), "S2-32 feeds the counters (the area branch skips the later AddCounts) and passes the front offset");
+            int s34 = nav.IndexOf("// JR-STAGE2 BEGIN S2-34", StringComparison.Ordinal);
+            Check(s34 > nav.IndexOf("// JR-STAGE2 BEGIN S2-33", StringComparison.Ordinal) && nav.IndexOf("ExitJoinProbe(", s34, StringComparison.Ordinal) > s34
+                && nav.IndexOf("ApplySideEffects(ref currentLane", s34, StringComparison.Ordinal) > s34, "S2-34 hand-over probe after S2-33, before the lane switch");
         }
 
         private static void ExitModeTests()
@@ -138,11 +205,13 @@ namespace JunctionRules.Tests
             d[Stage2Counters.ExitHeld] = 7; d[Stage2Counters.ExitHeldAcross] = 3; d[Stage2Counters.ExitHeldSpawn] = 2;
             d[Stage2Counters.ExitGo] = 11; d[Stage2Counters.ExitEmergencyPass] = 1; d[Stage2Counters.ExitSpawnBoxHeld] = 4; d[Stage2Counters.ExitCapHits] = 5;
             string f = Stage2Counters.Format(1, d, 0, 0, 0, 2);
-            Check(f.Contains("vehicles leaving buildings give way on") && f.Contains("building exits: waits 7 (turning across 3, spawn/gate 2), go decisions 11, emergency passthroughs 1, boxed spawn exit no room 4, cap hits 5"),
+            d[Stage2Counters.ExitJoinArea] = 6; d[Stage2Counters.ExitJoinConnection] = 2; d[Stage2Counters.ExitJoinOther] = 1;
+            f = Stage2Counters.Format(1, d, 0, 0, 0, 2);
+            Check(f.Contains("vehicles leaving buildings give way on") && f.Contains("building exits: waits 7 (turning across 3, spawn/gate 2), go decisions 11, emergency passthroughs 1, boxed spawn exit no room 4, cap hits 5, hand-overs to the road from: lot 6, gate 2, other 1"),
                 "timing line: exit waits, go decisions, emergency passthroughs");
             Check(!Stage2Counters.Format(1, d, 0, 0, 0, 1).Contains("building exits:") && Stage2Counters.Format(1, d, 0, 0, 0, 1).Contains("give way off"), "setting off: no exit counters, says off");
             Check(!Stage2Counters.Format(1, d).Contains("leaving buildings"), "0.4.3 callers (no exit mask): unchanged text");
-            Check(Stage2Counters.ExitCapHits == Stage2Counters.Count - 1 && Stage2Counters.ExitHeld == Stage2Counters.EntranceHeldLeaving + 1, "exit counters appended after the 0.4.3 ones");
+            Check(Stage2Counters.ExitCapHits == Stage2Counters.Count - 4 && Stage2Counters.ExitJoinArea == Stage2Counters.ExitCapHits + 1 && Stage2Counters.ExitJoinOther == Stage2Counters.Count - 1 && Stage2Counters.ExitHeld == Stage2Counters.EntranceHeldLeaving + 1, "exit counters appended after the 0.4.3 ones");
         }
 
         private static void ExitRepoTests()

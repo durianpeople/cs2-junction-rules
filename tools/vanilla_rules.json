@@ -233,13 +233,19 @@
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
-        "reason": "0.4.5 (JR-T-012 fix): UpdateNavigationTarget, tail of the branch for a vehicle on an AREA lane (a building lot's connection lane; the stock code never runs the lane speed iterator for it), only with the exit setting: a vehicle whose next lane is a public road lane brakes to stop short of the join point while the road lane it joins or a road lane it crosses is not clear, or (yellow box rule) a boxed exit band has no room past it. The S2-30 decision for lot exits."
+        "reason": "0.4.5 / 0.4.6 (JR-T-012 fix; 0.4.6 also feeds the counters from here, the branch skips the later AddCounts): UpdateNavigationTarget, tail of the branch for a vehicle on an AREA lane (a building lot's connection lane; the stock code never runs the lane speed iterator for it), only with the exit setting: a vehicle whose next lane is a public road lane brakes to stop short of the join point while the road lane it joins or a road lane it crosses is not clear, or (yellow box rule) a boxed exit band has no room past it. The S2-30 decision for lot exits."
       },
       "S2-33": {
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
         "reason": "0.4.5 (JR-T-012 fix): in the target loop, before a vehicle on an area lane would switch to its next lane: a vehicle held by S2-32 this update stays on its area lane (break)."
+      },
+      "S2-34": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
+        },
+        "reason": "0.4.6 (JR-T-012 fix 2, probe counters only): in the target loop, right before the lane switch: with the debug counters on, a hand-over from a building lane (area lane, Connection lane, other building-owned lane) to a public road lane is counted by kind. No driving effect."
       }
     }
   }

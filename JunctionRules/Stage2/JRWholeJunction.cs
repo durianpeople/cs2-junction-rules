@@ -1276,16 +1276,17 @@ namespace JunctionRules.Stage2
             if (Stage2Counters.IsStandingOn(m_HasBoxTurnWait, m_BoxTurnWaitSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxTurnWaits, 1);
             if (Stage2Counters.IsStandingOn(m_HasEntranceMain, m_EntranceMainSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.EntranceHeldMain, 1);
             if (Stage2Counters.IsStandingOn(m_HasEntranceLeaving, m_EntranceLeavingSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.EntranceHeldLeaving, 1);
-            // 0.4.4: vehicles leaving buildings give way.
-            if (Stage2Counters.IsStandingOn(m_HasExitHold, m_ExitHoldSpeed, finalMaxSpeed, currentSpeed))
+            // 0.4.4: vehicles leaving buildings give way. 0.4.6: counted once per vehicle episode (consecutive updates of one vehicle
+            // are one event, per kind; 0.4.4 / 0.4.5 added one per car-step, so a single waiting truck made dozens).
+            if (Stage2Counters.IsStandingOn(m_HasExitHold, m_ExitHoldSpeed, finalMaxSpeed, currentSpeed) && ExitEvent(eventTable, entity, frame, 1))
             {
                 Add(counters, Stage2Counters.ExitHeld, 1);
                 if (m_ExitAcross) Add(counters, Stage2Counters.ExitHeldAcross, 1);
                 if (m_ExitSpawn) Add(counters, Stage2Counters.ExitHeldSpawn, 1);
             }
-            if (Stage2Counters.IsStandingOn(m_HasExitBox, m_ExitBoxSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.ExitSpawnBoxHeld, 1);
-            if (m_ExitGo) Add(counters, Stage2Counters.ExitGo, 1);
-            if (m_ExitEmergency) Add(counters, Stage2Counters.ExitEmergencyPass, 1);
+            if (Stage2Counters.IsStandingOn(m_HasExitBox, m_ExitBoxSpeed, finalMaxSpeed, currentSpeed) && ExitEvent(eventTable, entity, frame, 2)) Add(counters, Stage2Counters.ExitSpawnBoxHeld, 1);
+            if (m_ExitGo && ExitEvent(eventTable, entity, frame, 3)) Add(counters, Stage2Counters.ExitGo, 1);
+            if (m_ExitEmergency && ExitEvent(eventTable, entity, frame, 4)) Add(counters, Stage2Counters.ExitEmergencyPass, 1);
             if (m_ExitCapHit) Add(counters, Stage2Counters.ExitCapHits, 1);
             if (Stage2Counters.IsBinding(m_HasSafety, m_SafetySpeed, finalMaxSpeed))
             {
@@ -1300,6 +1301,20 @@ namespace JunctionRules.Stage2
                 }
                 if (isNew) Add(counters, Stage2Counters.SafetyStopEvents, 1);
             }
+        }
+
+        /// <summary>
+        /// 0.4.6: true when this update starts a new event of the given kind (1 wait, 2 box wait, 3 go, 4 emergency, 5 hand-over) for
+        /// the vehicle, false when it continues one (the shared event table, keys in a per-kind range: Core ExitGiveWay.EventKey).
+        /// Without a table every update counts (as before).
+        /// </summary>
+        private static unsafe bool ExitEvent(NativeArray<long> eventTable, Entity entity, uint frame, int kind)
+        {
+            if (!eventTable.IsCreated) return true;
+            TableSlots slots = default;
+            slots.m_P = (long*)NativeArrayUnsafeUtility.GetUnsafeBufferPointerWithoutChecks(eventTable);
+            slots.m_N = eventTable.Length;
+            return SafetyStopEvents.Record(ref slots, ExitGiveWay.EventKey(entity.Index, kind), frame);
         }
 
         private static unsafe void Add(NativeArray<long> counters, int index, long value)

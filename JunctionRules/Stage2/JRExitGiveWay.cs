@@ -5,6 +5,7 @@ using Game.Objects;
 using Game.Prefabs;
 using Game.Vehicles;
 using JunctionRules.Core;
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 
@@ -174,7 +175,7 @@ namespace JunctionRules.Stage2
         {
             m_ExitWaiting = false;
             if (!m_ExitRule || !m_ExitLookups) return float.MaxValue;
-            if (!ExitJoinLane(connection, priority, next, ref carLanes, ref curves, out Entity road, out Curve roadCurve, out Owner roadOwner)) return float.MaxValue;
+            if (!ExitJoinLane(connection, priority, next, true, ref carLanes, ref curves, out Entity road, out Curve roadCurve, out Owner roadOwner)) return float.MaxValue;
             if (!curves.TryGetComponent(connection, out Curve connCurve)) return float.MaxValue;
             // 0.4.4: the vehicle appears on the join lane with its body behind the join point and no arrival time of its own.
             bool wait = ExitJoinWaits(self, priority, next.m_CurvePosition.x, road, roadCurve, roadOwner, connCurve.m_Bezier.a, 0f, safeTimeStep,
@@ -203,8 +204,13 @@ namespace JunctionRules.Stage2
         /// to the nearest road lane) was never looked at. Same decision as a Connection exit, applied while the vehicle drives
         /// up to the join point: it brakes to stop short of it (the hold is the braking speed to a point one margin before
         /// the join point, never an abrupt 0 far from it) and <see cref="ExitWaiting"/> keeps it on its area lane (S2-33).
+        /// 0.4.6: the vehicle is judged from Core <see cref="ExitGiveWay.AreaScanMetres"/> before the join point on EVERY update
+        /// (0.4.5 skipped a vehicle whose braking speed was not yet below its limit, and the stock hand-over to the road lane
+        /// happens up to ~20 m before the join point, so a vehicle was handed over unjudged); the distance is measured from the
+        /// vehicle's FRONT (<paramref name="frontOffset"/> = geometry max z of the tractor), not half the whole train (a
+        /// tractor-trailer's trailers made it look committed 8 m too early, which left it to the game).
         /// </summary>
-        public float ExitAreaHold(Entity self, int priority, Entity areaLane, CarNavigationLane next, float3 position, CarData car, float currentSpeed, float timeStep,
+        public float ExitAreaHold(Entity self, int priority, Entity areaLane, CarNavigationLane next, float3 position, float frontOffset, CarData car, float currentSpeed, float timeStep,
             float safeTimeStep, Bounds1 speedRange, float currentMax,
             ref ComponentLookup<Game.Net.CarLane> carLanes, ref ComponentLookup<LaneSignal> signals, ref BufferLookup<LaneObject> laneObjects,
             ref ComponentLookup<Curve> curves, ref ComponentLookup<Moving> moving, ref ComponentLookup<Car> cars, ref ComponentLookup<Controller> controllers,
@@ -213,17 +219,17 @@ namespace JunctionRules.Stage2
         {
             m_ExitWaiting = false;
             if (!m_ExitRule || !m_ExitLookups) return float.MaxValue;
-            if (!ExitJoinLane(areaLane, priority, next, ref carLanes, ref curves, out Entity road, out Curve roadCurve, out Owner roadOwner)) return float.MaxValue;
+            if (!ExitJoinLane(areaLane, priority, next, false, ref carLanes, ref curves, out Entity road, out Curve roadCurve, out Owner roadOwner)) return float.MaxValue;
             float t = next.m_CurvePosition.x;
             float3 join = MathUtils.Position(roadCurve.m_Bezier, t);
-            float ownLength = m_VehicleLength > 0f ? m_VehicleLength : 4f;
-            // Metres its front may still travel before the join point (the pivot is taken as the middle of the body).
-            float toJoin = math.distance(position.xz, join.xz) - ownLength * 0.5f;
+            float front = frontOffset > 0f ? frontOffset : 0f;
+            // Metres its front may still travel before the join point (the pivot sits a front offset behind the front).
+            float toJoin = math.distance(position.xz, join.xz) - front;
+            float scan = ExitGiveWay.AreaScanMetres(VehicleUtils.GetBrakingDistance(car, math.min(car.m_MaxSpeed, AreaLaneSpeed), timeStep) + 1f, front);
+            if (toJoin > scan) return float.MaxValue;
             float wait = toJoin - ExitAreaMargin;
             if (!ExitGiveWay.CanHoldArea(wait, VehicleUtils.GetBrakingDistance(car, currentSpeed, timeStep))) return float.MaxValue;
             float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, wait > 0f ? wait : 0f, safeTimeStep), speedRange);
-            // Only the vehicle at its exit decides: further back (or held harder already) it does not scan.
-            if (!(hold < currentMax)) return float.MaxValue;
             float arrival = 0f;
             if (carLanes.TryGetComponent(road, out Game.Net.CarLane roadLane))
             {
@@ -249,15 +255,35 @@ namespace JunctionRules.Stage2
             return hold;
         }
 
+        /// <summary>The speed (m/s) the stock navigation takes as the area lane's target speed (CarNavigationSystem num3 = 11.111): its hand-over distance uses the braking distance from it.</summary>
+        public const float AreaLaneSpeed = 11.111112f;
+
+        /// <summary>
+        /// S2-34 (0.4.6, probe, counting only): a vehicle hands over from its current lane to its next navigation lane and the next
+        /// lane is a public road lane. Counts which kind of lane it came from: a lot's area lane, a building Connection lane, or
+        /// another building-owned lane (expected none: a driveway reaches the road through its SideConnection lane). Road to road
+        /// hand-overs (the normal case) are not counted. Every hand-over from a building to the road shows here whether or not
+        /// the exit rule judged it, so a way out of a building the hooks do not cover is visible in the timing line.
+        /// </summary>
+        public void ExitJoinProbe(NativeArray<long> counters, Entity from, Game.Vehicles.CarLaneFlags fromFlags, CarNavigationLane next,
+            ref ComponentLookup<Game.Net.CarLane> carLanes, ref ComponentLookup<Curve> curves)
+        {
+            if (!Counting || !m_ExitRule || !m_ExitLookups || !counters.IsCreated) return;
+            if (!ExitJoinLane(from, 0, next, false, ref carLanes, ref curves, out _, out _, out _)) return;
+            if ((fromFlags & Game.Vehicles.CarLaneFlags.Area) != 0) Add(counters, Stage2Counters.ExitJoinArea, 1);
+            else if ((fromFlags & Game.Vehicles.CarLaneFlags.Connection) != 0) { if (LeavesBuilding(from)) Add(counters, Stage2Counters.ExitJoinConnection, 1); }
+            else if (LeavesBuilding(from)) Add(counters, Stage2Counters.ExitJoinOther, 1);
+        }
+
         /// <summary>Metres short of the join point an area exit holds its vehicle's front (the stop margin of a waiting vehicle).</summary>
         public const float ExitAreaMargin = 1f;
 
         /// <summary>
         /// The lane a vehicle leaving a building (from its Connection lane or its area lane) joins: the next navigation lane,
-        /// a public road car lane (a car lane of an edge nobody owns, not a drive's side connection). False = stock (not a
+        /// a public road car lane (a car lane of an edge or junction node nobody owns, not a drive's side connection). False = stock (not a
         /// building exit, an on-duty emergency vehicle, a lane against its curve, no geometry).
         /// </summary>
-        private bool ExitJoinLane(Entity from, int priority, CarNavigationLane next, ref ComponentLookup<Game.Net.CarLane> carLanes, ref ComponentLookup<Curve> curves,
+        private bool ExitJoinLane(Entity from, int priority, CarNavigationLane next, bool requireBuilding, ref ComponentLookup<Game.Net.CarLane> carLanes, ref ComponentLookup<Curve> curves,
             out Entity road, out Curve roadCurve, out Owner roadOwner)
         {
             road = next.m_Lane;
@@ -267,9 +293,11 @@ namespace JunctionRules.Stage2
             if ((next.m_Flags & notRoad) != 0) return false;
             // A public road lane: a car lane of a road edge that no building / other object owns.
             if (!carLanes.TryGetComponent(road, out Game.Net.CarLane roadLane) || (roadLane.m_Flags & Game.Net.CarLaneFlags.SideConnection) != 0) return false;
-            if (!m_OwnerData.TryGetComponent(road, out roadOwner) || !m_ExitEdgeData.HasComponent(roadOwner.m_Owner) || m_OwnerData.HasComponent(roadOwner.m_Owner))
+            // 0.4.6: an edge's lane or a junction node's lane (a lot beside a junction joins a node lane); the owner is ownerless (public network).
+            if (!m_OwnerData.TryGetComponent(road, out roadOwner) || m_OwnerData.HasComponent(roadOwner.m_Owner) || !m_SubLanes.HasBuffer(roadOwner.m_Owner))
                 return false;
-            if (!LeavesBuilding(from)) return false;
+            // A Connection lane must belong to a building (outside connections stay stock); an AREA lane (a lot, a surface) needs no owner chain: any area leaving onto a public road gives way.
+            if (requireBuilding && !LeavesBuilding(from)) return false;
             if (ExitGiveWay.IsEmergency(priority))
             {
                 if (Counting) m_ExitEmergency = true;

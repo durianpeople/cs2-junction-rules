@@ -132,7 +132,7 @@ namespace JunctionRules.Core
         public const int EntranceHeldMain = FeedingScans + 22;
         /// <summary>0.4.2: car-steps in which a car leaving a driveway stood at the road because there was no room for it past the band on its target lane.</summary>
         public const int EntranceHeldLeaving = FeedingScans + 23;
-        /// <summary>0.4.4 (JR-T-012): car-steps in which a vehicle leaving a building stood at its exit waiting for a gap (setting "Vehicles leaving buildings give way").</summary>
+        /// <summary>0.4.4 (JR-T-012): exit events (0.4.6: one per vehicle episode, not per car-step) in which a vehicle leaving a building stood at its exit waiting for a gap (setting "Vehicles leaving buildings give way").</summary>
         public const int ExitHeld = FeedingScans + 24;
         /// <summary>0.4.4: ... of those, a driveway turn across the near traffic (left-hand traffic: right turn; right-hand: left turn; the game's flag).</summary>
         public const int ExitHeldAcross = FeedingScans + 25;
@@ -146,7 +146,13 @@ namespace JunctionRules.Core
         public const int ExitSpawnBoxHeld = FeedingScans + 29;
         /// <summary>0.4.4: exit scans stopped by the work cap (vehicles not read do not count).</summary>
         public const int ExitCapHits = FeedingScans + 30;
-        public const int Count = FeedingScans + 31;
+        /// <summary>0.4.6 (probe): lane hand-overs of a vehicle from a lot's AREA lane to a public road lane (one per hand-over; each is judged by the exit rule just before it).</summary>
+        public const int ExitJoinArea = FeedingScans + 31;
+        /// <summary>0.4.6 (probe): ... from a building Connection lane (spawn location / car park gate) to a public road lane.</summary>
+        public const int ExitJoinConnection = FeedingScans + 32;
+        /// <summary>0.4.6 (probe): ... from any other building-owned lane to a public road lane (expected 0: a driveway goes through its SideConnection lane; a nonzero count is an ungated way out of a building).</summary>
+        public const int ExitJoinOther = FeedingScans + 33;
+        public const int Count = FeedingScans + 34;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -270,7 +276,10 @@ namespace JunctionRules.Core
                          ", go decisions " + deltas[ExitGo].ToString(ci) +
                          ", emergency passthroughs " + deltas[ExitEmergencyPass].ToString(ci) +
                          ", boxed spawn exit no room " + deltas[ExitSpawnBoxHeld].ToString(ci) +
-                         ", cap hits " + deltas[ExitCapHits].ToString(ci)
+                         ", cap hits " + deltas[ExitCapHits].ToString(ci) +
+                         ", hand-overs to the road from: lot " + deltas[ExitJoinArea].ToString(ci) +
+                         ", gate " + deltas[ExitJoinConnection].ToString(ci) +
+                         ", other " + deltas[ExitJoinOther].ToString(ci)
                        : "") +
                    "; " + points;
         }

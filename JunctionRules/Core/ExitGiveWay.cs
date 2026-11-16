@@ -154,6 +154,37 @@ namespace JunctionRules.Core
         public static bool CanHoldArea(float waitDistance, float brakingDistance) =>
             waitDistance >= -AreaHoldSlack && brakingDistance <= (waitDistance > 0f ? waitDistance : 0f) + AreaHoldSlack;
 
+        /// <summary>
+        /// 0.4.6: distance (m) before the join point from which a lot exit is judged and held. The stock area branch hands a vehicle
+        /// over to the road lane as soon as the end of its area path is within max(look-ahead, braking distance at 11.1 m/s + 1 m +
+        /// pivot) of it (CarNavigationSystem 1767-1772, MoveAreaTarget 2529), up to ~20 m before the join point; 0.4.5 only judged
+        /// a vehicle whose braking speed was already below its current limit (the "hold &lt; currentMax" filter) and measured the
+        /// distance with half the WHOLE train (trailers) instead of the tractor's front, so a truck was handed over to the road
+        /// lane before it was ever judged. The scan must therefore start before that hand-over: the braking distance at the lane
+        /// speed plus the vehicle's front offset plus <see cref="AreaScanExtra"/> (the join point lies up to a lane or two beyond
+        /// the end of the area path), never less than <see cref="AreaScanMin"/>.
+        /// </summary>
+        public static float AreaScanMetres(float brakingAtLaneSpeed, float frontOffset)
+        {
+            float v = (brakingAtLaneSpeed > 0f ? brakingAtLaneSpeed : 0f) + (frontOffset > 0f ? frontOffset : 0f) + AreaScanExtra;
+            return v > AreaScanMin ? v : AreaScanMin;
+        }
+
+        /// <summary>Extra metres of the lot exit scan beyond the stock hand-over distance (join point beyond the area path end).</summary>
+        public const float AreaScanExtra = 15f;
+
+        /// <summary>Least lot exit scan distance (m).</summary>
+        public const float AreaScanMin = 25f;
+
+        /// <summary>Counter episodes (0.4.6): a vehicle's consecutive exit decisions (at most <see cref="Core.SafetyStopEvents.ContinueFrames"/> apart) are one event, per kind.</summary>
+        public const int EventKinds = 6;
+
+        /// <summary>Key of an exit-counter event: the entity index shifted into a per-kind range of the shared event table (kind 0 stays the plain index = the safety stops).</summary>
+        public static int EventKey(int entityIndex, int kind) => entityIndex + kind * EventKindStride;
+
+        /// <summary>Entity indices stay below this (entity ids of a city never reach 64 million).</summary>
+        public const int EventKindStride = 1 << 26;
+
         public enum Decision : byte
         {
             /// <summary>May leave.</summary>

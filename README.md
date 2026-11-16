@@ -114,9 +114,9 @@ PROBE-STAGE3-PAINT.md section 10.
 - **Whole junction: waiting spot**: `Before the first crossing` (default, owner ruling) or `At the stop line`.
 - **Whole junction: turning across oncoming traffic gives way** (0.2.4): on (default) or off (= 0.2.3). Acts only
   with the Whole junction rule; applies at the next simulation step; traffic side from the game's own city setting.
-- **Vehicles leaving buildings give way** (0.4.4, lot exits 0.4.5): on (default) or off (= 0.4.3). "Cars coming out of ANY building
+- **Vehicles leaving buildings give way** (0.4.4, lot exits 0.4.5, judged earlier 0.4.6): on (default) or off (= 0.4.3). "Cars coming out of ANY building
   must give way, and when that building exit is a yellow box, must ALSO obey the yellow box rules." Timing log:
-  building exits: waits (turning across, spawn/gate), go decisions, emergency passthroughs, cap hits.
+  building exits: waits (turning across, spawn/gate), go decisions, emergency passthroughs, cap hits, hand-overs to the road (lot, gate, other); since 0.4.6 counted per vehicle, not per car-step.
 - **Cars never stop on a zebra** (0.4.1): on (default) or off (= 0.4.0); **room margin (m)** 0-10 m, default 1 m
   (extra free space past a zebra on top of the vehicle's length). Acts while Car driving is the copy, with either gap
   rule (Stock: zebras and room only); applies at the next simulation step. Timing log: zebra entries held (people,

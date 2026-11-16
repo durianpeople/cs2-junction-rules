@@ -96,6 +96,8 @@ namespace JunctionRules.Tests
             ("ExitGapTests", ExitGapTests),
             ("ExitDecisionTests", ExitDecisionTests),
             ("ExitAreaTests", ExitAreaTests),
+            ("ExitEventTests", ExitEventTests),
+            ("ExitPriorityTests", ExitPriorityTests),
             ("ExitModeTests", ExitModeTests),
             ("ExitRepoTests", ExitRepoTests),
         };
