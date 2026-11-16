@@ -118,6 +118,25 @@ namespace JunctionRules.Tests
             long roomWait = ExitTrace.Pack(ExitTrace.Event.Wait, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, ExitGiveWay.Decision.WaitRoom, ExitTrace.ReasonDecided, false);
             Check(ExitTrace.Format(1, 0, roomWait, 0).Contains("wait (no room on the lane it joins)"), "trace: the room wait");
 
+            // --- compact trace (0.4.8, on by default) ---
+            Check(ExitTrace.Notable(unjudgedFacts) && !ExitTrace.Notable(judgedFacts) && !ExitTrace.Notable(roomWait), "notable: a sidewalk crossing without a judgement; a judged one and a normal wait are only sampled");
+            long stuck = ExitTrace.Pack(ExitTrace.Event.StuckOnRoad, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, ExitGiveWay.Decision.Go, ExitTrace.ReasonDecided, false);
+            long longHold = ExitTrace.Pack(ExitTrace.Event.LongHold, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, ExitGiveWay.Decision.WaitRoom, ExitTrace.ReasonDecided, false);
+            long handUnjudged = ExitTrace.Pack(ExitTrace.Event.HandOver, ExitPaths.Path.BuildingLane, ExitPaths.LaneKind.CarLane, ExitGiveWay.Decision.Go, 0, false);
+            long handEmergency = ExitTrace.Pack(ExitTrace.Event.HandOver, ExitPaths.Path.BuildingLane, ExitPaths.LaneKind.CarLane, ExitGiveWay.Decision.Go, ExitTrace.ReasonEmergency, false);
+            Check(ExitTrace.Notable(stuck) && ExitTrace.Notable(longHold) && ExitTrace.Notable(handUnjudged) && !ExitTrace.Notable(handEmergency), "notable: stuck on the road, long hold, unjudged hand-over; not an on-duty emergency");
+            Check(ExitTrace.Format(1, 0, stuck, 0).Contains("NOTABLE stands on the road after leaving") && ExitTrace.Format(1, 0, longHold, 0).Contains("NOTABLE held 25 s+ at the exit")
+                && ExitTrace.Format(1, 0, longHold, 0).Contains("wait (no room on the lane it joins)") && ExitTrace.Format(1, 0, handUnjudged, 0).Contains("NOTABLE joins road"), "notable lines say so");
+            var sampler = new TraceSampler();
+            int logged = 0;
+            for (int i = 0; i < 200; i++) if (sampler.Allow(i % 50 == 0, 10.0 + i * 0.1)) logged++;
+            Check(logged == TraceSampler.SampleMax + 4, "200 events in 20 s: the 4 notable ones and 6 normal samples logged");
+            Check(sampler.TakeSummary(40.0) == null, "no summary before the minute is over");
+            string sum = sampler.TakeSummary(70.5);
+            Check(sum != null && sum.Contains("200 exit events, notable 4 (all logged), normal sample 6 of 196"), "one summary line a minute");
+            Check(sampler.TakeSummary(200.0) == null, "no summary for an empty minute");
+            Check(sampler.Allow(false, 300.0), "a new window samples again");
+
             // --- counters text ---
             var deltas = new long[Stage2Counters.Count];
             deltas[Stage2Counters.ExitHeldBeforeSidewalk] = 7;
@@ -125,7 +144,7 @@ namespace JunctionRules.Tests
             deltas[Stage2Counters.ExitDriveEntries] = 12;
             deltas[Stage2Counters.ExitDriveUnjudged] = 0;
             string line = Stage2Counters.Format(2, deltas, 2, 2, 2, 2);
-            Check(line.Contains("exits held before the sidewalk 7 (no room on the lane it joins 3)") && line.Contains("driveway exits crossing the sidewalk 12, of them without a full judgement 0 (must be 0)"),
+            Check(line.Contains("exits held before the sidewalk 7 (no room on the lane it joins 3)") && line.Contains("driveway exits crossing the sidewalk 12, of them without a full judgement 0 (must be 0); standing on the road after leaving a driveway (5 s+) 0"),
                 "timing line: the sidewalk proof counters");
         }
 
@@ -146,13 +165,18 @@ namespace JunctionRules.Tests
             Check(body.IndexOf("ExitGiveWay.CanHold(", StringComparison.Ordinal) < body.IndexOf("ConflictBusy(", StringComparison.Ordinal), "the decision is taken only while it can still stop before the spot");
             Check(wj.Contains("elements.m_SidewalkZebra = m_ExitRule") && wj.Contains("(m_SidewalkZebra || ZebraSections.IsZebra("), "zebra sections: a driveway's sidewalk is a Z (people, ZC merge, room past)");
             Check(it.Contains("ref m_LaneOverlapData, ref m_PedestrianLaneData);\n\t\t\tif (jrExitHold < m_MaxSpeed)"), "S2-29 hands the overlap and pedestrian lookups");
-            Check(nav.Contains("ExitHandOver(m_JRCounters, m_JRSafetyEvents, entity") && nav.Contains("m_JR.NoteExit(m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane)"),
+            Check(nav.Contains("ExitHandOver(m_JRCounters, m_JRSafetyEvents, entity") && nav.Contains("m_JR.NoteExit(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane, num2, currentLane.m_Duration"),
                 "S2-34 checks the drive entry against the recorded Go; S2-22 records it");
             int s22 = nav.IndexOf("// JR-STAGE2 BEGIN S2-22", StringComparison.Ordinal);
             int s34 = nav.IndexOf("// JR-STAGE2 BEGIN S2-34", StringComparison.Ordinal);
             Check(s22 > 0 && s34 > s22 && nav.IndexOf("NoteExit(", s22, StringComparison.Ordinal) < s34, "the Go is recorded before the same update's hand-over");
             Check(glue.Contains("roomJoin = HasRoomPast(road, t, false"), "spawn point / gate / parking / lot / building road exits need room on the lane they join");
             Check(glue.Contains("float back = lot ? SidewalkBack("), "lot exits stop before the sidewalk line");
+            string settings = File.ReadAllText(Path.Combine(root, "JunctionRules", "Settings", "JunctionRulesSettings.cs"));
+            string mod = File.ReadAllText(Path.Combine(root, "JunctionRules", "Mod.cs"));
+            Check(settings.Contains("DebugTiming = true;") && settings.Contains("ExitTrace = true;") && settings.Contains("public string MigrateDiagnostics()") && mod.Contains("Settings.MigrateDiagnostics()"),
+                "0.4.8 probe: timing log and compact exit trace on by default, switched on once over an older saved off");
+            Check(glue.Contains("Add(counters, Stage2Counters.ExitStuckOnRoad, 1)"), "standing on the road after leaving is counted");
             Check(glue.Contains("if (unjudged && FreshGo(eventTable, self, frame)) unjudged = false;"), "a hand-over after a recent Go is judged (0.4.7 building-road 'not judged' artefact)");
         }
     }

@@ -199,6 +199,31 @@ namespace JunctionRules.Core
             /// <summary>0.4.8 (G7): the vehicle enters a driveway's leaving lane (its front is at / past the sidewalk): the
             /// decision it entered with ("go" from a full judgement before the sidewalk, or not judged).</summary>
             EnterDrive = 2,
+            /// <summary>0.4.8 (G7 diagnostics): a vehicle has stood at its exit spot for <see cref="LongHoldSeconds"/> or more (once per lane stay).</summary>
+            LongHold = 3,
+            /// <summary>0.4.8 (G7 diagnostics): a vehicle stands still on a driveway's leaving lane, i.e. past the sidewalk, on / across the road (once per episode).</summary>
+            StuckOnRoad = 4,
+        }
+
+        /// <summary>0.4.8: a wait at an exit this long (s, the game's time on the current lane) is logged as notable.</summary>
+        public const float LongHoldSeconds = 25f;
+
+        /// <summary>0.4.8: a vehicle standing this long (s) on a driveway's leaving lane is logged as stuck on the road.</summary>
+        public const float StuckSeconds = 5f;
+
+        /// <summary>
+        /// 0.4.8 (owner: diagnostics on by default, compact): a record that is always logged (rate limit only): a vehicle let
+        /// out without a full judgement (drive entry or hand-over), a long hold, a vehicle standing on the road after leaving.
+        /// Every other record (normal waits / goes) is only sampled (<see cref="TraceSampler"/>).
+        /// </summary>
+        public static bool Notable(long facts)
+        {
+            Unpack(facts, out Event e, out ExitPaths.Path path, out _, out _, out int reasons, out _);
+            if (e == Event.LongHold || e == Event.StuckOnRoad) return true;
+            if ((reasons & ReasonEmergency) != 0) return false;
+            if (e == Event.EnterDrive) return (reasons & ReasonDecided) == 0;
+            if (e == Event.HandOver) return (reasons & ReasonDecided) == 0 && path != ExitPaths.Path.Drive;
+            return false;
         }
 
         /// <summary>Why the decision came out as it did (bit flags).</summary>
@@ -241,13 +266,55 @@ namespace JunctionRules.Core
             string bld = building == 0 ? "none" : Ent(building);
             if (e == Event.EnterDrive)
                 decided = (reasons & ReasonDecided) != 0 ? "go (full judgement before the sidewalk)" : "NOT judged before the sidewalk";
-            return "exit trace: " + (e == Event.Wait ? "waits" : e == Event.EnterDrive ? "crosses the sidewalk" : "joins road") + " vehicle " + Ent(vehicle) + " building " + bld
+            string what = e == Event.Wait ? "waits" : e == Event.EnterDrive ? "crosses the sidewalk" : e == Event.LongHold ? "NOTABLE held " + LongHoldSeconds.ToString("0", ci) + " s+ at the exit"
+                : e == Event.StuckOnRoad ? "NOTABLE stands on the road after leaving (driveway lane, " + StuckSeconds.ToString("0", ci) + " s+)" : "joins road";
+            if (e == Event.EnterDrive && (reasons & ReasonDecided) == 0) what = "NOTABLE crosses the sidewalk";
+            if (e == Event.HandOver && (reasons & (ReasonDecided | ReasonEmergency)) == 0 && path != ExitPaths.Path.Drive) what = "NOTABLE joins road";
+            return "exit trace: " + what + " vehicle " + Ent(vehicle) + " building " + bld
                    + " path " + ExitPaths.Name(path) + " (" + ExitPaths.Name(kind) + ")"
                    + " road owner " + ((int)(frameRoad >> 32)).ToString(ci) + ((reasons & ReasonNodeJoin) != 0 ? " (junction)" : "")
                    + " decision " + decided + " boxed " + (boxed ? "yes" : "no") + " frame " + ((uint)frameRoad).ToString(ci);
         }
 
         private static string Ent(long packed) => ((int)(uint)packed).ToString(CultureInfo.InvariantCulture) + ":" + ((int)(packed >> 32)).ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// 0.4.8 (owner: the exit trace is on by default and compact): notable records always pass (the caller's rate limit
+    /// still applies); normal records pass at most <see cref="SampleMax"/> per <see cref="WindowSeconds"/> window. At the end of
+    /// a window with any record, <see cref="TakeSummary"/> gives one summary line. Main thread only.
+    /// </summary>
+    public sealed class TraceSampler
+    {
+        public const int SampleMax = 6;
+        public const double WindowSeconds = 60.0;
+        private double m_WindowStart = double.NegativeInfinity;
+        public long Records { get; private set; }
+        public long Notable { get; private set; }
+        public long Sampled { get; private set; }
+
+        /// <summary>True = log this record now.</summary>
+        public bool Allow(bool notable, double seconds)
+        {
+            if (seconds - m_WindowStart >= WindowSeconds && Records == 0) m_WindowStart = seconds;
+            Records++;
+            if (notable) { Notable++; return true; }
+            if (Sampled >= SampleMax) return false;
+            Sampled++;
+            return true;
+        }
+
+        /// <summary>The window is over and had records: the summary line (and a new window), else null.</summary>
+        public string TakeSummary(double seconds)
+        {
+            if (Records == 0 || seconds - m_WindowStart < WindowSeconds) return null;
+            string line = "exit trace (compact) last " + ((int)(seconds - m_WindowStart)).ToString(CultureInfo.InvariantCulture) + " s: " + Records.ToString(CultureInfo.InvariantCulture)
+                + " exit events, notable " + Notable.ToString(CultureInfo.InvariantCulture) + " (all logged), normal sample " + Sampled.ToString(CultureInfo.InvariantCulture)
+                + " of " + (Records - Notable).ToString(CultureInfo.InvariantCulture);
+            Records = Notable = Sampled = 0;
+            m_WindowStart = seconds;
+            return line;
+        }
     }
 
     /// <summary>Main-thread line budget: at most maxPerSecond lines in any one-second window; the rest are counted as dropped.</summary>

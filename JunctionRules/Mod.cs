@@ -44,6 +44,8 @@ namespace JunctionRules
             {
                 string migrated = Settings.MigrateAfterLoad();
                 if (migrated != null) log.Info(migrated);
+                string diagnostics = Settings.MigrateDiagnostics();
+                if (diagnostics != null) log.Info(diagnostics);
             }
             catch (Exception e)
             {

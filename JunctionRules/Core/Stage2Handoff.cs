@@ -198,7 +198,9 @@ namespace JunctionRules.Core
         public const int ExitDriveEntries = FeedingScans + 46;
         /// <summary>0.4.8 (G7): of those, entered without a full judgement (gap + room / box) taken while they could still stop before the sidewalk. Must be 0.</summary>
         public const int ExitDriveUnjudged = FeedingScans + 47;
-        public const int Count = FeedingScans + 48;
+        /// <summary>0.4.8 (G7): vehicles standing 5 s+ on a driveway's leaving lane (past the sidewalk, on / across the road; episodes). Expected ~0.</summary>
+        public const int ExitStuckOnRoad = FeedingScans + 48;
+        public const int Count = FeedingScans + 49;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -344,7 +346,8 @@ namespace JunctionRules.Core
                        ? "; exits held before the sidewalk " + deltas[ExitHeldBeforeSidewalk].ToString(ci) +
                          " (no room on the lane it joins " + deltas[ExitHeldRoom].ToString(ci) + ")" +
                          "; driveway exits crossing the sidewalk " + deltas[ExitDriveEntries].ToString(ci) +
-                         ", of them without a full judgement " + deltas[ExitDriveUnjudged].ToString(ci) + " (must be 0)"
+                         ", of them without a full judgement " + deltas[ExitDriveUnjudged].ToString(ci) + " (must be 0)" +
+                         "; standing on the road after leaving a driveway (5 s+) " + deltas[ExitStuckOnRoad].ToString(ci)
                        : "") +
                    "; " + points;
         }

@@ -246,6 +246,29 @@ namespace JunctionRules.Settings
         [SettingsUIHidden]
         public int PaintSettingsVersion { get; set; }
 
+        /// <summary>
+        /// Hidden (0.4.8): diagnostics schema. Owner 17 Nov: the probe's evidence must not depend on switching settings on, so
+        /// the first load of 0.4.8 turns "Log navigation timing" and "Exit trace (log)" on once (a saved off from an older
+        /// build is overridden once and logged); the owner may switch them off again afterwards. Not reset in SetDefaults.
+        /// </summary>
+        [SettingsUIHidden]
+        public int DiagnosticsVersion { get; set; }
+
+        public const int DiagnosticsCurrent = 1;
+
+        /// <summary>0.4.8: the one-time diagnostics switch-on (Mod.OnLoad, after MigrateAfterLoad); returns a log line or null.</summary>
+        public string MigrateDiagnostics()
+        {
+            if (DiagnosticsVersion >= DiagnosticsCurrent) return null;
+            bool timing = DebugTiming, trace = ExitTrace;
+            DebugTiming = true;
+            ExitTrace = true;
+            DiagnosticsVersion = DiagnosticsCurrent;
+            ApplyAndSave();
+            return "settings: 0.4.8 probe diagnostics switched on once (Log navigation timing " + (timing ? "on" : "off -> on") + ", Exit trace (log) " + (trace ? "on" : "off -> on")
+                + "; compact; switch off in Options if not wanted)";
+        }
+
         /// <summary>Re-reads the test list file and rebuilds every box.</summary>
         [SettingsUIButton]
         [SettingsUISection(kSection, kPaintGroup)]
@@ -318,8 +341,8 @@ namespace JunctionRules.Settings
             PaintMode = BoxPaintMode.Hatch;
             PaintLayers = PaintSettingsMigration.Default;
             NoParkingInBoxes = true;
-            DebugTiming = false;
-            ExitTrace = false;
+            DebugTiming = true;    // 0.4.8 probe: diagnostics on by default (owner 17 Nov)
+            ExitTrace = true;      // 0.4.8 probe: compact exit trace on by default
             SkipCodeHashCheck = false;
         }
 
@@ -454,7 +477,7 @@ namespace JunctionRules.Settings
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.PaintStatus)), "Off, on (how many junctions are painted), or failed (what failed; restart the game to try again). Reopen the options page to refresh." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.ExitTrace)), "Exit trace (log)" },
-                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.ExitTrace)), "Writes one line to the mod log for each vehicle leaving a building or a parking space: when it starts waiting at the exit and when it joins the road. Each line names the vehicle, the building, the way out (lot, gate, spawn point, building or kerbside parking, building road, drive), the decision (wait or go, and why) and whether the exit has a yellow box. At most 20 lines a second; the rest are counted as dropped. Needs Vehicles leaving buildings give way and the Junction Rules copy. Default off. Changes take effect at the next simulation step." },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.ExitTrace)), "Writes one line to the mod log for each vehicle leaving a building or a parking space: when it starts waiting at the exit and when it joins the road. Each line names the vehicle, the building, the way out (lot, gate, spawn point, building or kerbside parking, building road, drive), the decision (wait or go, and why) and whether the exit has a yellow box. 0.4.8 compact: every notable event (let out without a full judgement, held 25 s+, standing on the road after leaving), a sample of 6 normal events a minute and one summary line a minute; at most 20 lines a second. Needs Vehicles leaving buildings give way and the Junction Rules copy. Default on in the 0.4.8 probe. Changes take effect at the next simulation step." },
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.DebugTiming)), "Log navigation timing" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.DebugTiming)), "Every 1024 simulation frames, write the timing of the running car-navigation job (game's own or copy, measured the same way) and the simulation rate to the mod log; the copy's line also names the junction gap rule that ran and its stage 2 counters. Off: nothing is measured. Only available when the version check passed at game start." },
 

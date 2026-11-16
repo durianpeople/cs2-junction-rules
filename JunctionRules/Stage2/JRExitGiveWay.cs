@@ -556,9 +556,32 @@ namespace JunctionRules.Stage2
         /// (S2-29) in the event table (read back at the drive entry, <see cref="DriveEntry"/>, and at every exit hand-over), and the exit trace's "waits" line
         /// for a driveway exit held before the sidewalk (once per wait episode).
         /// </summary>
-        public void NoteExit(NativeArray<long> eventTable, Entity self, uint frame, Entity currentLane)
+        public void NoteExit(NativeArray<long> counters, NativeArray<long> eventTable, Entity self, uint frame, Entity currentLane, float speed, float laneSeconds,
+            ref ComponentLookup<Game.Net.CarLane> carLanes)
         {
             if (!m_ExitRule) return;
+            // 0.4.8 diagnostics (on by default): a vehicle standing on a driveway's leaving lane = past the sidewalk, on / across
+            // the road (the G7 failure itself); and a long wait at an exit spot. Both once per episode (event table).
+            bool standing = speed < Stage2Counters.StandingSpeed;
+            if (standing && laneSeconds >= ExitTrace.StuckSeconds && !m_ExitEmergency && carLanes.TryGetComponent(currentLane, out Game.Net.CarLane onLane)
+                && ExitGiveWay.IsDrivewayExitLane((uint)onLane.m_Flags) && ExitEvent(eventTable, self, frame, ExitGiveWay.StuckKind))
+            {
+                if (Counting && counters.IsCreated) Add(counters, Stage2Counters.ExitStuckOnRoad, 1);
+                if (m_TraceOn) TraceWrite(m_TraceRing, self, ExitBuilding(currentLane), ExitTrace.Pack(ExitTrace.Event.StuckOnRoad, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane,
+                    ExitGiveWay.Decision.Go, ExitTrace.ReasonDecided, false), frame, OwnerOf(currentLane));
+            }
+            bool held = m_HasDriveHold || m_ExitWaiting || m_HasExitHold || m_HasExitBox;
+            if (m_TraceOn && held && standing && laneSeconds >= ExitTrace.LongHoldSeconds && ExitEvent(eventTable, self, frame, ExitGiveWay.LongHoldKind))
+            {
+                bool drive = m_HasDriveHold;
+                Entity from = drive ? currentLane : m_ExitFrom;
+                Entity building = ExitBuilding(from);
+                bool isCar = !drive && from != Entity.Null && m_LaneData.HasComponent(from) && (m_ExitFromFlags & (uint)NotRoadLane) == 0;
+                ExitPaths.Path path = drive ? ExitPaths.Path.Drive : ExitPaths.Classify(m_ExitFromFlags, building != Entity.Null, isCar, false);
+                ExitPaths.LaneKind kind = drive ? ExitPaths.LaneKind.DriveLane : ExitPaths.Kind(m_ExitFromFlags, isCar, false);
+                TraceWrite(m_TraceRing, self, building, ExitTrace.Pack(ExitTrace.Event.LongHold, path, kind, drive ? m_DriveDecision : m_ExitDecision,
+                    ExitTrace.ReasonDecided | TraceReasons(), drive ? m_DriveBoxed : m_ExitBoxed), frame, drive ? OwnerOf(m_DriveLane) : m_ExitRoadOwner);
+            }
             // Any exit path's Go (S2-29 drive, S2-30/32/35/36 through ExitJoinWaits or a signalled arm): read back at its hand-over.
             if (m_ExitDecided && m_ExitDecision == ExitGiveWay.Decision.Go && !m_DriveJudged)
             {

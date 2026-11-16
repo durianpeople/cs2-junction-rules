@@ -41,7 +41,7 @@ namespace JunctionRules.Stage2
             bool trace = ExitTraceHandoff.Requested;
             if (!s_TraceLogged || trace != TraceOn)
             {
-                if (trace) Mod.log.Info("exit trace (log) on: one line per vehicle leaving a building or parking space (first wait, hand-over to the road), at most "
+                if (trace) Mod.log.Info("exit trace (log) on, compact: every NOTABLE exit event (let out without a full judgement, held " + ExitTrace.LongHoldSeconds + " s+, standing on the road after leaving), a sample of " + TraceSampler.SampleMax + " normal ones a minute and one summary line a minute; at most "
                     + ExitTrace.MaxLinesPerSecond + " lines a second" + ((AppliedMode & Stage2Mode.ExitGiveWay) == 0 ? "; needs Vehicles leaving buildings give way (off now: no lines)" : ""));
                 else if (s_TraceLogged) Mod.log.Info("exit trace (log) off");
                 s_TraceLogged = true;
@@ -67,7 +67,7 @@ namespace JunctionRules.Stage2
             // Review F5: nothing new and nothing to sum up (the usual case, also with the trace off): no clock read, no
             // delegate; the drain itself uses cached delegates (no allocation per step).
             bool fresh = ExitTraceReader.HasNew(head, s_TraceReader.Next);
-            if (!fresh && s_TraceLimiter.Dropped == 0 && s_TraceReader.Lost == 0) return;
+            if (!fresh && s_TraceLimiter.Dropped == 0 && s_TraceReader.Lost == 0 && s_TraceSampler.Records == 0) return;
             double now = System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
             s_TraceNow = now;
             if (fresh) s_TraceReader.Drain(head, s_ReadTrace, s_EmitTrace);
@@ -77,15 +77,20 @@ namespace JunctionRules.Stage2
                 if (dropped > 0 || lost > 0) Mod.log.Info("exit trace: " + dropped + " lines dropped (rate limit), " + lost + " records lost (ring overrun)");
                 s_TraceLastSummary = now;
             }
+            // 0.4.8: compact trace (on by default): one summary line per minute with any exit event.
+            string summary = s_TraceSampler.TakeSummary(now);
+            if (summary != null) Mod.log.Info(summary);
         }
 
         private static double s_TraceNow;
+        private static readonly TraceSampler s_TraceSampler = new TraceSampler();
         private static readonly System.Func<int, long> s_ReadTrace = ReadTrace;
         private static readonly System.Action<long, long, long, long> s_EmitTrace = EmitTrace;
 
         private static void EmitTrace(long v, long b, long f, long fr)
         {
-            if (s_TraceLimiter.Allow(s_TraceNow)) Mod.log.Info(ExitTrace.Format(v, b, f, fr));
+            // 0.4.8 (owner: diagnostics on by default, compact): notable records always (rate limit), normal ones sampled.
+            if (s_TraceSampler.Allow(ExitTrace.Notable(f), s_TraceNow) && s_TraceLimiter.Allow(s_TraceNow)) Mod.log.Info(ExitTrace.Format(v, b, f, fr));
         }
 
         private static unsafe long ReadTrace(int i)

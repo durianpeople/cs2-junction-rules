@@ -233,8 +233,8 @@ namespace JunctionRules.Tests
             string dtb = dt < 0 ? "" : bridge.Substring(dt, bridge.IndexOf("private static unsafe long ReadTrace", dt, StringComparison.Ordinal) - dt);
             Check(dtb.IndexOf("return;", dtb.IndexOf("HasNew(", StringComparison.Ordinal), StringComparison.Ordinal) < dtb.IndexOf("Stopwatch.GetTimestamp", StringComparison.Ordinal)
                 && dtb.Contains("Drain(head, s_ReadTrace, s_EmitTrace)") && !dtb.Contains("=>"), "F5: DrainTrace returns early with nothing to read and uses cached delegates (no closure)");
-            Check(settings.Contains("public bool ExitTrace { get; set; }") && settings.Contains("ExitTrace = false;") && settings.Contains("\"Exit trace (log)\"")
-                && settings.Contains("GetOptionDescLocaleID(nameof(JunctionRulesSettings.ExitTrace))"), "setting Exit trace (log): default off, label and description");
+            Check(settings.Contains("public bool ExitTrace { get; set; }") && settings.Contains("ExitTrace = true;") && settings.Contains("\"Exit trace (log)\"")
+                && settings.Contains("GetOptionDescLocaleID(nameof(JunctionRulesSettings.ExitTrace))"), "setting Exit trace (log): default on (0.4.8 probe, compact), label and description");
         }
     }
 }

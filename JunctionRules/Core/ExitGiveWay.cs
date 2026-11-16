@@ -236,7 +236,13 @@ namespace JunctionRules.Core
         public const float AreaScanMin = 25f;
 
         /// <summary>Counter episodes (0.4.6): a vehicle's consecutive exit decisions (at most <see cref="Core.SafetyStopEvents.ContinueFrames"/> apart) are one event, per kind.</summary>
-        public const int EventKinds = 12;
+        public const int EventKinds = 14;
+
+        /// <summary>0.4.8 (diagnostics): event kind of the trace's "held long" line (one per lane stay of 30 s, the game resets its lane timer).</summary>
+        public const int LongHoldKind = 12;
+
+        /// <summary>0.4.8 (diagnostics): event kind of "stands on the road after leaving" (counter + trace, one per episode).</summary>
+        public const int StuckKind = 13;
 
         /// <summary>0.4.8 (G7): event kind of "a full Go judgement before the sidewalk" (the frame is read back at the drive entry).</summary>
         public const int DriveGoKind = 8;
