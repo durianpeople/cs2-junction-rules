@@ -350,6 +350,7 @@ namespace JunctionRules.Paint
             MergedBoxes.Clear();
             m_Tracked.Clear();
             m_Hider.Forget();   // 0.4.4: the old city's lanes / objects went with it
+            PublishParking();
             // 0.4.0: saved boxes in this city? (two empty-query checks, once per load)
             int j = m_InCity ? m_SavedJunctionQuery.CalculateEntityCount() : 0, en = m_InCity ? m_SavedEntranceQuery.CalculateEntityCount() : 0;
             s_SavedPresent = j + en > 0;
@@ -388,6 +389,7 @@ namespace JunctionRules.Paint
             MergedBoxes.Clear();
             m_Tracked.Clear();
             m_TriangleCount = 0;
+            PublishParking();
             s_Status = "off";
             if (wasActive && why != null) Mod.log.Info("yellow box painting OFF (" + why + "); nothing drawn, nothing left behind");
         }
@@ -489,6 +491,7 @@ namespace JunctionRules.Paint
                     step = "uploading the boxes";
                     Upload();
                     m_NeedMarkings = true;
+                    PublishParking();
                     if (!m_TestOn && !s_SavedPresent) { Deactivate("paint test off and no saved boxes left"); return; }
                 }
                 if (MergedBoxes.Version != m_MarkVersion) m_NeedMarkings = true;   // the merged groups changed
@@ -1086,6 +1089,43 @@ namespace JunctionRules.Paint
 
         /// <summary>G2: the clear is done (and logged) by MarkingRenderSystem before the next PreCullingSystem (also while painting is off).</summary>
         private void ClearMarkings() => m_Hider.RequestClear();
+
+        // ------------------------------------------------------------------ 0.4.7: no parking in the boxes (G6)
+
+        /// <summary>
+        /// The no-parking input (Parking/BoxParkingSystem.cs): one group per painted saved box (its outline and the road node /
+        /// edges it was built from). Paint-test list boxes are left out (they are not boxes in the city). Fed the per-box
+        /// outlines (not #17's merged rings): the parking system merges the ranges of a lane, so a merged group blocks the same.
+        /// </summary>
+        internal static List<JunctionRules.Parking.BoxParkingSystem.Group> ParkingGroups(IEnumerable<(List<V3> Outline, Entity Node, IEnumerable<Entity> Edges)> boxes)
+        {
+            var groups = new List<JunctionRules.Parking.BoxParkingSystem.Group>();
+            foreach (var b in boxes)
+            {
+                if (b.Outline == null || b.Outline.Count < 3) continue;
+                var g = new JunctionRules.Parking.BoxParkingSystem.Group();
+                g.Rings.Add(b.Outline);
+                if (b.Node != Entity.Null) g.Sources.Add(b.Node);
+                foreach (Entity e in b.Edges) if (e != Entity.Null) g.Sources.Add(e);
+                groups.Add(g);
+            }
+            return groups;
+        }
+
+        /// <summary>Hands the current saved boxes to the parking system (empty when painting stops). Never throws.</summary>
+        private void PublishParking()
+        {
+            try
+            {
+                var input = new List<(List<V3>, Entity, IEnumerable<Entity>)>();
+                foreach (Box b in m_Boxes) if (b.Kind != BoxKind.ListJunction && b.Outline != null && b.Tris.Length == 0) input.Add((b.Outline, b.Node, b.Edges));   // JR-T-013m: per-box outlines (#17 draws merged groups; the parking system unions a lane's ranges, so merged groups come out the same)
+                JunctionRules.Parking.BoxParkingSystem.Publish(ParkingGroups(input));
+            }
+            catch (Exception e)
+            {
+                try { Mod.log.Error(e, "yellow boxes: handing the boxes to the no-parking system failed"); } catch { }
+            }
+        }
 
         private void Upload()
         {
