@@ -1800,11 +1800,13 @@ public class JRCarNavigationSystem : GameSystemBase
 			// JR-STAGE2 END
 			navigation.m_MaxSpeed = laneIterator.m_MaxSpeed;
 			CheckBlocker(ref currentLane, ref blocker, ref laneIterator);
-			// JR-STAGE2 BEGIN S2-22: debug counters (only when counting); JR-T-013b: watch-one-junction events
+			// JR-STAGE2 BEGIN S2-22: debug counters (only when counting); JR-T-013b: watch-one-junction events; 0.4.7 review: vehicles placed straight onto a road lane
 			if ((m_JRMode & JunctionRules.Core.Stage2Mode.Count) != 0)
 			{
 				laneIterator.m_JR.AddCounts(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, laneIterator.m_MaxSpeed, num2);
 				laneIterator.m_JR.Watch(m_JRWatch, entity, laneIterator.m_MaxSpeed, num2, laneIterator.m_Blocker, laneIterator.m_BlockerType);
+				// 0.4.7 review (G1 F1): a vehicle placed straight onto a public road lane (not judged; counted only)
+				laneIterator.m_JR.CountRoadStart(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane, currentLane.m_LaneFlags, m_UnspawnedData.HasComponent(entity), ref laneIterator.m_CarLaneData);
 			}
 			// JR-STAGE2 END
 			if (laneIterator.m_TempBuffer.IsCreated)

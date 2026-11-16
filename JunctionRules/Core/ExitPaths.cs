@@ -134,6 +134,15 @@ namespace JunctionRules.Core
         public static bool CountsAgainstBudget(float rear, float conflictEnd, float gapToConflict) =>
             rear < conflictEnd && gapToConflict <= ExitGiveWay.MaxScanMetres;
 
+        /// <summary>
+        /// 0.4.7 review (G1 F2): as above, and a vehicle standing still before the conflict (not on it) does not count
+        /// either: <see cref="ExitGiveWay.VehicleBlocks"/> never lets it block, so a standing queue of more than the budget
+        /// on a road lane (a jam that stopped short of the exit) must not turn into "dense traffic: wait" for ever.
+        /// speed = its speed along the lane (m/s, &gt;= 0).
+        /// </summary>
+        public static bool CountsAgainstBudget(float rear, float conflictEnd, float gapToConflict, float speed) =>
+            CountsAgainstBudget(rear, conflictEnd, gapToConflict) && !(gapToConflict > 0f && !(speed > 0f));
+
         public static string Name(Path p)
         {
             switch (p)
@@ -192,6 +201,9 @@ namespace JunctionRules.Core
         /// <summary>Why the decision came out as it did (bit flags).</summary>
         public const int ReasonDecided = 1, ReasonLaneCap = 2, ReasonVehicleCap = 4, ReasonEmergency = 8, ReasonNodeJoin = 16;
 
+        /// <summary>Review F6 (0.4.7): a building road joining a signalled arm: the signal decides (S2-36 holds nothing there).</summary>
+        public const int ReasonSignal = 32;
+
         /// <summary>Slot base index (into the ring) of sequence number seq (1-based).</summary>
         public static int SlotBase(long seq) => 1 + (int)((seq - 1) % Slots) * Words;
 
@@ -220,6 +232,7 @@ namespace JunctionRules.Core
             else if ((reasons & ReasonDecided) == 0) decided = path == ExitPaths.Path.Drive ? "judged before the hand-over (driveway give-way)" : "not judged";
             else if (decision == ExitGiveWay.Decision.WaitGap) decided = (reasons & ReasonVehicleCap) != 0 ? "wait (dense traffic: vehicle cap)" : "wait (gap)";
             else if (decision == ExitGiveWay.Decision.WaitBox) decided = "wait (box: no room past)";
+            else if ((reasons & ReasonSignal) != 0) decided = "go (signalled arm)";
             else decided = (reasons & ReasonLaneCap) != 0 ? "go (gap clear; lane cap hit, far lanes not read)" : "go (gap clear)";
             string bld = building == 0 ? "none" : Ent(building);
             return "exit trace: " + (e == Event.Wait ? "waits" : "joins road") + " vehicle " + Ent(vehicle) + " building " + bld
@@ -277,6 +290,12 @@ namespace JunctionRules.Core
         private long m_Next = 1;
 
         public long Lost { get; private set; }
+
+        /// <summary>Review F5 (0.4.7): the next sequence number to read (records 1..Next-1 are done).</summary>
+        public long Next => m_Next;
+
+        /// <summary>Review F5: the ring head names a record not read yet (else the caller skips the drain).</summary>
+        public static bool HasNew(long head, long next) => head >= next;
 
         /// <summary>
         /// Reads every finished record up to head. read(i) = the ring value at i. emit(vehicle, building, facts, frameRoad).

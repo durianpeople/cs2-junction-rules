@@ -154,6 +154,14 @@ namespace JunctionRules.Tests
             string reg = File.ReadAllText(Path.Combine(root, "JunctionRules", "Boxes", "BoxRegistration.cs"));
             Check(reg.Contains("updateSystem.UpdateBefore<JunctionRules.Parking.BoxParkingSystem, Game.Pathfind.ParkingLaneDataSystem>(SystemUpdatePhase.ModificationEnd);"), "registered ahead of the game's ParkingLaneDataSystem");
             Check(reg.Contains("updateSystem.UpdateBefore<JunctionRules.Parking.BoxParkingSaveGuardSystem>(SystemUpdatePhase.Serialize);"), "save guard in the Serialize phase");
+            // 0.4.7 review fixes (G6).
+            Check(sys.Contains("ComponentType.ReadOnly<Game.Net.Node>(), ComponentType.ReadOnly<Game.Net.Edge>()") && sys.Contains("!m_UpdatedNetQuery.IsEmptyIgnoreFilter") && sys.Contains("need = LostOurs(em);")
+                && sys.Contains("ParkingMask.HasExactly(current, kv.Value)"), "F1: a road update next to a box (non-Updated edge rebuilt by LaneOverlapSystem) re-checks and re-applies our entries");
+            int gate = reg.IndexOf("if (!Mod.Gate.CopyAllowed)", StringComparison.Ordinal);
+            Check(gate > 0 && gate < reg.IndexOf("UpdateBefore<JunctionRules.Parking.BoxParkingSystem", StringComparison.Ordinal) && gate < reg.IndexOf("UpdateBefore<JunctionRules.Parking.BoxParkingSaveGuardSystem>", StringComparison.Ordinal)
+                && gate > reg.IndexOf("UpdateAt<YellowBoxToolSystem>", StringComparison.Ordinal), "F2: no-parking system and save guard registered only when the version gate allows the copy (the tool still registers)");
+            Check(sys.Contains("m_Writing.Add(kv.Key);") && sys.IndexOf("m_Writing.Add(kv.Key);", StringComparison.Ordinal) < sys.IndexOf("if (WriteOurs(em, kv.Key, kv.Value))", StringComparison.Ordinal)
+                && sys.Contains("open.UnionWith(m_Writing);"), "F3: Fail opens the lanes the failed Apply wrote too");
             string set = File.ReadAllText(Path.Combine(root, "JunctionRules", "Settings", "JunctionRulesSettings.cs"));
             Check(set.Contains("NoParkingInBoxes = true;") && set.Contains("\"No parking in yellow boxes\""), "setting 'No parking in yellow boxes', default ON");
             string paint = File.ReadAllText(Path.Combine(root, "JunctionRules", "Paint", "YellowBoxPaintSystem.cs"));

@@ -239,6 +239,8 @@ namespace JunctionRules.Stage2
         private Entity m_ExitFrom;
         private uint m_ExitFromFlags;
         private Entity m_ExitRoadOwner;
+        /// <summary>Review F6: the building road joins a signalled arm (the signal decides; trace reason).</summary>
+        private bool m_ExitSignalArm;
         /// <summary>Setting "Exit trace (log)": the ring (Stage2/JRStage2Bridge.cs TraceRing) handed in by S2-26 SetTrace.</summary>
         private bool m_TraceOn;
         private NativeArray<long> m_TraceRing;

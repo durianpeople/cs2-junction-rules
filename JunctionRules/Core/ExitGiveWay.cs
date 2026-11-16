@@ -180,10 +180,13 @@ namespace JunctionRules.Core
         public const float AreaScanMin = 25f;
 
         /// <summary>Counter episodes (0.4.6): a vehicle's consecutive exit decisions (at most <see cref="Core.SafetyStopEvents.ContinueFrames"/> apart) are one event, per kind.</summary>
-        public const int EventKinds = 7;
+        public const int EventKinds = 8;
 
         /// <summary>0.4.7: event kind of the exit trace's "starts waiting" line (one per wait episode).</summary>
         public const int TraceWaitKind = 6;
+
+        /// <summary>0.4.7 review (G1 F1): event kind of "placed straight onto a public road lane" (one count per vehicle and episode).</summary>
+        public const int RoadStartKind = 7;
 
         /// <summary>Key of an exit-counter event: the entity index shifted into a per-kind range of the shared event table (kind 0 stays the plain index = the safety stops).</summary>
         public static int EventKey(int entityIndex, int kind) => entityIndex + kind * EventKindStride;

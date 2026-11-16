@@ -211,8 +211,16 @@ namespace JunctionRules.Tests
                 "timing line: exit waits, go decisions, emergency passthroughs");
             Check(!Stage2Counters.Format(1, d, 0, 0, 0, 1).Contains("building exits:") && Stage2Counters.Format(1, d, 0, 0, 0, 1).Contains("give way off"), "setting off: no exit counters, says off");
             Check(!Stage2Counters.Format(1, d).Contains("leaving buildings"), "0.4.3 callers (no exit mask): unchanged text");
-            Check(Stage2Counters.ExitCapHits == Stage2Counters.Count - 13 && Stage2Counters.ExitJoinArea == Stage2Counters.ExitCapHits + 1 && Stage2Counters.ExitJoinOther == Stage2Counters.Count - 10 && Stage2Counters.ExitHeld == Stage2Counters.EntranceHeldLeaving + 1, "exit counters appended after the 0.4.3 ones");
-            Check(Stage2Counters.ExitJoinSpawnPoint == Stage2Counters.ExitJoinOther + 1 && Stage2Counters.ExitCapVehicles == Stage2Counters.Count - 2, "0.4.7 G1 counters appended after 0.4.6 (the G3 counter after them)"); 
+            Check(Stage2Counters.ExitCapHits == Stage2Counters.Count - 14 && Stage2Counters.ExitJoinArea == Stage2Counters.ExitCapHits + 1 && Stage2Counters.ExitJoinOther == Stage2Counters.Count - 11 && Stage2Counters.ExitHeld == Stage2Counters.EntranceHeldLeaving + 1, "exit counters appended after the 0.4.3 ones");
+            Check(Stage2Counters.ExitJoinSpawnPoint == Stage2Counters.ExitJoinOther + 1 && Stage2Counters.ExitCapVehicles == Stage2Counters.Count - 3, "0.4.7 G1 counters appended after 0.4.6 (the G3 counter after them)"); 
+            Check(Stage2Counters.ExitRoadStart == Stage2Counters.BoxTurnRoomWaits + 1 && Stage2Counters.ExitRoadStart == Stage2Counters.Count - 1, "review F1 counter appended at the end (after G3)");
+            long[] rs = new long[Stage2Counters.Count];
+            rs[Stage2Counters.ExitRoadStart] = 3;
+            string rsOn = Stage2Counters.Format(2, rs, 2, 2, 2, 2);
+            Check(rsOn.Contains("; placed straight onto a road lane (not judged) 3") && rsOn.IndexOf("right-turn waits for exit room", StringComparison.Ordinal) < rsOn.IndexOf("placed straight", StringComparison.Ordinal)
+                && rsOn.IndexOf("; points at W", StringComparison.Ordinal) > rsOn.IndexOf("placed straight", StringComparison.Ordinal), "timing line: road-start count at the end, before the points: " + rsOn);
+            Check(!Stage2Counters.Format(2, rs, 2, 2, 2, 1).Contains("placed straight"), "exit setting off: no road-start count");
+            Check(ExitGiveWay.RoadStartKind < ExitGiveWay.EventKinds && ExitGiveWay.RoadStartKind != ExitGiveWay.TraceWaitKind && (long)ExitGiveWay.EventKinds * ExitGiveWay.EventKindStride < int.MaxValue, "road-start episodes: own event kind, keys fit"); 
         }
 
         private static void ExitRepoTests()

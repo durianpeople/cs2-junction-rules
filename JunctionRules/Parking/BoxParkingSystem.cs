@@ -69,6 +69,10 @@ namespace JunctionRules.Parking
         private bool m_SettingOn;
         private bool m_SettingKnown;
         private EntityQuery m_ChangedParkingQuery;
+        /// <summary>Review F1: road nodes / edges with lanes updated this frame (an edit next to a box: see OnUpdate).</summary>
+        private EntityQuery m_UpdatedNetQuery;
+        /// <summary>Review F3: lanes whose buffer the current Apply wrote, until m_Applied holds them (Fail opens them too).</summary>
+        private readonly HashSet<Entity> m_Writing = new HashSet<Entity>();
         private SaveGameSystem m_SaveSystem;
 
         /// <summary>The paint system's boxes changed (or went): main thread. Never throws.</summary>
@@ -88,6 +92,12 @@ namespace JunctionRules.Parking
                 Any = new[] { ComponentType.ReadOnly<Updated>(), ComponentType.ReadOnly<Deleted>() },
                 None = new[] { ComponentType.ReadOnly<Temp>() },
             });
+            m_UpdatedNetQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] { ComponentType.ReadOnly<Game.Net.SubLane>(), ComponentType.ReadOnly<Updated>() },
+                Any = new[] { ComponentType.ReadOnly<Game.Net.Node>(), ComponentType.ReadOnly<Game.Net.Edge>() },
+                None = new[] { ComponentType.ReadOnly<Temp>(), ComponentType.ReadOnly<Deleted>() },
+            });
             m_SaveSystem = World.GetOrCreateSystemManaged<SaveGameSystem>();
             s_Instance = this;
         }
@@ -104,6 +114,7 @@ namespace JunctionRules.Parking
             base.OnGameLoadingComplete(purpose, mode);
             // the old city's lanes went with it (and LaneOverlapSystem rebuilds every buffer after a load)
             m_Applied.Clear();
+            m_Writing.Clear();
             m_Sources.Clear();
             m_AfterSave.Clear();
             m_SeenVersion = -1;
@@ -135,6 +146,16 @@ namespace JunctionRules.Parking
                 {
                     step = "checking updated parking lanes";
                     need = TouchesOurs(em);
+                }
+                // Review F1: the game's LaneOverlapSystem also rebuilds the overlap buffers of every edge connected to an
+                // Updated node, without tagging those lanes Updated (LaneOverlapSystem.cs 26-56 AddNonUpdatedEdgesJob, buffer
+                // cleared in UpdateLaneOverlapsJob 1077). A box does not list the far-end node of its edges, so an edit at the
+                // next junction (a sign, a lane connection) wiped our entries unseen. On any road update: re-check our lanes.
+                if (!need && m_Applied.Count > 0 && !m_UpdatedNetQuery.IsEmptyIgnoreFilter)
+                {
+                    step = "checking the box parking lanes after a road update";
+                    need = LostOurs(em);
+                    if (need) Mod.log.Info("yellow boxes: no parking in boxes: a road update next to a box removed the block from a parking lane; putting it back");
                 }
                 if (!need) return;
                 bool settingChanged = m_SettingKnown && on != m_SettingOn;
@@ -170,8 +191,24 @@ namespace JunctionRules.Parking
             }
         }
 
+        /// <summary>Review F1: true when a lane we block no longer holds exactly our entries (the game rebuilt its buffer).</summary>
+        private bool LostOurs(EntityManager em)
+        {
+            foreach (var kv in m_Applied)
+            {
+                Entity lane = kv.Key;
+                if (!em.Exists(lane) || em.HasComponent<Deleted>(lane) || !em.HasBuffer<LaneOverlap>(lane)) continue;
+                DynamicBuffer<LaneOverlap> buf = em.GetBuffer<LaneOverlap>(lane, true);
+                var current = new List<OverlapEntry>(buf.Length);
+                for (int i = 0; i < buf.Length; i++) current.Add(new OverlapEntry(buf[i].m_ThisStart, buf[i].m_ThisEnd, IsOurs(buf[i], lane), i));
+                if (!ParkingMask.HasExactly(current, kv.Value)) return true;
+            }
+            return false;
+        }
+
         private void Apply(EntityManager em, List<Group> groups, bool settingChanged)
         {
+            m_Writing.Clear();
             long t0 = Stopwatch.GetTimestamp();
             var want = new Dictionary<Entity, List<TRange>>();
             var info = new Dictionary<Entity, LaneInfo>();
@@ -218,12 +255,14 @@ namespace JunctionRules.Parking
             foreach (Entity lane in m_Applied.Keys)
             {
                 if (wantBytes.ContainsKey(lane)) continue;
+                m_Writing.Add(lane);
                 if (WriteOurs(em, lane, null)) { touched.Add(lane); freed++; }
             }
             int ranges2 = 0, slots = 0, slotted = 0;
             foreach (var kv in wantBytes)
             {
                 ranges2 += kv.Value.Count;
+                m_Writing.Add(kv.Key);   // review F3: before the write, so a throw inside it is opened by Fail too
                 if (WriteOurs(em, kv.Key, kv.Value)) touched.Add(kv.Key);
                 if (info.TryGetValue(kv.Key, out LaneInfo li) && li.SlotCount > 0)
                 {
@@ -233,6 +272,7 @@ namespace JunctionRules.Parking
             }
             m_Applied.Clear();
             foreach (var kv in wantBytes) m_Applied[kv.Key] = kv.Value;
+            m_Writing.Clear();
             int updated = AddPathfindUpdated(em, touched);
             double ms = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
             s_Status = m_SettingOn
@@ -342,7 +382,10 @@ namespace JunctionRules.Parking
             {
                 EntityManager em = EntityManager;
                 var touched = new List<Entity>();
-                foreach (Entity l in m_Applied.Keys) { try { if (WriteOurs(em, l, null)) touched.Add(l); } catch { } }
+                // review F3: also the lanes the failed Apply wrote before it threw (not yet in m_Applied)
+                var open = new HashSet<Entity>(m_Applied.Keys);
+                open.UnionWith(m_Writing);
+                foreach (Entity l in open) { try { if (WriteOurs(em, l, null)) touched.Add(l); } catch { } }
                 AddPathfindUpdated(em, touched);
             }
             catch (Exception e2)
@@ -350,6 +393,7 @@ namespace JunctionRules.Parking
                 try { Mod.log.Error(e2, "yellow boxes: opening the parking in the boxes again failed"); } catch { }
             }
             m_Applied.Clear();
+            m_Writing.Clear();
             m_Sources.Clear();
             Enabled = false;
         }

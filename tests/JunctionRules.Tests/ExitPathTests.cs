@@ -84,6 +84,22 @@ namespace JunctionRules.Tests
             for (int i = 0; i < 40; i++) if (ExitPaths.CountsAgainstBudget(-10f - 6f * i, 20f, 14f + 6f * i)) counted++;
             Check(counted == 40 && counted <= ExitGiveWay.MaxVehiclesPerScan, "busy road: only the 40 approaching vehicles count, no cap hit");
             Check(190 > ExitGiveWay.MaxVehiclesPerScan, "the same lane hit the 0.4.6 cap");
+            // Review F2: a standing jam of 100 vehicles before the conflict (stopped short of the exit). None of them blocks
+            // (VehicleBlocks), so none may use the budget: 0.4.7 before the fix counted them, hit the cap and waited for ever.
+            // 100 vehicles on four queued lanes (the join lane and its feeders), 25 each, 6 m apart, all within reach.
+            int standing = 0, before = 0;
+            bool anyBlocks = false;
+            for (int i = 0; i < 100; i++)
+            {
+                float gap = 2f + 6f * (i % 25), front = 20f - gap, rear = front - 4.5f;
+                if (ExitPaths.CountsAgainstBudget(rear, 24f, gap)) before++;
+                if (ExitPaths.CountsAgainstBudget(rear, 24f, gap, 0f)) standing++;
+                if (ExitGiveWay.VehicleBlocks(gap, false, 0f, 0f, 1f)) anyBlocks = true;
+            }
+            Check(before == 100 && before > ExitGiveWay.MaxVehiclesPerScan, "the jam hit the vehicle cap before the review fix (busy: wait for ever)");
+            Check(standing == 0 && !anyBlocks, "standing jam of 100 before the exit: no budget used, nobody blocks: go");
+            Check(ExitPaths.CountsAgainstBudget(15f, 24f, 0f, 0f) && ExitPaths.CountsAgainstBudget(15f, 24f, -2f, 0f), "a standing vehicle on the conflict still counts (it blocks)");
+            Check(ExitPaths.CountsAgainstBudget(-40f, 20f, 35f, 0.1f), "a moving approaching vehicle in reach still counts");
         }
 
         private static void ExitTraceTests()
@@ -109,6 +125,9 @@ namespace JunctionRules.Tests
             Check(go.Contains("joins road") && go.Contains("(junction)") && go.Contains("go (gap clear; lane cap hit") && go.Contains("boxed no"), "trace line: hand-over, junction join, lane cap");
             string vc = ExitTrace.Format(veh, bld, ExitTrace.Pack(ExitTrace.Event.Wait, ExitPaths.Path.Gate, ExitPaths.LaneKind.ConnectionLane, ExitGiveWay.Decision.WaitGap, ExitTrace.ReasonDecided | ExitTrace.ReasonVehicleCap, false), 1);
             Check(vc.Contains("wait (dense traffic: vehicle cap)"), "trace line: vehicle cap wait");
+            string sig = ExitTrace.Format(veh, bld, ExitTrace.Pack(ExitTrace.Event.HandOver, ExitPaths.Path.BuildingLane, ExitPaths.LaneKind.CarLane, ExitGiveWay.Decision.Go, ExitTrace.ReasonDecided | ExitTrace.ReasonSignal | ExitTrace.ReasonNodeJoin, false), 1);
+            Check(sig.Contains("decision go (signalled arm)") && !sig.Contains("gap clear"), "trace line: building road at a signalled arm says so (review F6): " + sig);
+            Check(ExitTrace.ReasonSignal < 0x100 && (ExitTrace.ReasonSignal & (ExitTrace.ReasonDecided | ExitTrace.ReasonLaneCap | ExitTrace.ReasonVehicleCap | ExitTrace.ReasonEmergency | ExitTrace.ReasonNodeJoin)) == 0, "signal reason: its own bit, fits the packed byte");
             string un = ExitTrace.Format(veh, bld, ExitTrace.Pack(ExitTrace.Event.HandOver, ExitPaths.Path.Other, ExitPaths.LaneKind.NoCarLane, ExitGiveWay.Decision.Go, 0, false), 1);
             string dr = ExitTrace.Format(veh, 0, ExitTrace.Pack(ExitTrace.Event.HandOver, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, ExitGiveWay.Decision.Go, 0, false), 1);
             string em = ExitTrace.Format(veh, bld, ExitTrace.Pack(ExitTrace.Event.HandOver, ExitPaths.Path.Gate, ExitPaths.LaneKind.ConnectionLane, ExitGiveWay.Decision.Go, ExitTrace.ReasonEmergency, false), 1);
@@ -140,6 +159,11 @@ namespace JunctionRules.Tests
             int sb = ExitTrace.SlotBase(next);
             ring[sb + 1] = 999; ring[sb] = next;
             Check(reader.Drain(ring[0], i => ring[i], (v, bl, f, fr) => got.Add(v)) == 1 && got[0] == 999, "reader: ... and read once finished");
+            Check(reader.Next == ring[0] + 1 && !ExitTraceReader.HasNew(ring[0], reader.Next), "reader: all read, nothing new (the bridge skips the drain: review F5)");
+            Write(1000);
+            Check(ExitTraceReader.HasNew(ring[0], reader.Next), "reader: a new record is seen");
+            var fresh = new ExitTraceReader();
+            Check(!ExitTraceReader.HasNew(0, fresh.Next) && fresh.Next == 1, "reader: an empty ring has nothing new");
 
             // Rate limit.
             var lim = new LineRateLimiter(ExitTrace.MaxLinesPerSecond);
@@ -183,10 +207,22 @@ namespace JunctionRules.Tests
             Check(Block("S2-23").Contains("JRStage2Bridge.TraceOn") && Block("S2-23").Contains("JRStage2Bridge.TraceRing") && Block("S2-26").Contains("SetTrace(m_JRExitTrace)"), "trace setting and ring handed to the job and the vehicle");
             int vb = glue.IndexOf("private bool VehiclesBlock", StringComparison.Ordinal);
             string vblock = vb < 0 ? "" : glue.Substring(vb);
-            Check(vblock.IndexOf("CountsAgainstBudget(", StringComparison.Ordinal) > 0 && vblock.IndexOf("CountsAgainstBudget(", StringComparison.Ordinal) < vblock.IndexOf("++budget.m_Vehicles", StringComparison.Ordinal)
+            Check(vblock.IndexOf("CountsAgainstBudget(rear, cEnd, gap, speed)", StringComparison.Ordinal) > vblock.IndexOf("float speed = 0f;", StringComparison.Ordinal) && vblock.IndexOf("float speed = 0f;", StringComparison.Ordinal) > 0
+                && vblock.IndexOf("CountsAgainstBudget(", StringComparison.Ordinal) < vblock.IndexOf("++budget.m_Vehicles", StringComparison.Ordinal)
                 && vblock.Contains("return ExitPaths.CapBusy(false, true);"), "vehicle budget counts only relevant vehicles; a vehicle cap hit is busy");
             Check(glue.Contains("ExitJoinLane(from, priority, next, !parking,") && glue.Contains("ExitJoinLane(lane, priority, next, true,"), "spawn point and building road need a building owner, a parking space does not");
             Check(glue.Contains("WholePathRule.Water | WholePathRule.MergeStart") && glue.Contains("m_ExitNodeJoin = nodeJoin;"), "junction joins judged from the joined lane's overlaps (not the edge-lane lateral rule)");
+            // 0.4.7 review fixes (G1).
+            Check(Block("S2-22").Contains("CountRoadStart(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane, currentLane.m_LaneFlags, m_UnspawnedData.HasComponent(entity)")
+                && glue.Contains("(flags & (NotRoadLane | Game.Vehicles.CarLaneFlags.ResetSpeed)) != 0) return;"), "F1: vehicles placed straight onto a road lane counted in S2-22 (gate exits with ResetSpeed not)");
+            Check(glue.Contains("feed == reads.m_OwnLane") && glue.Contains("reads.m_OwnLane = ownLane;") && glue.Contains("reads.m_OwnLane = lane;")
+                && glue.Contains("ExitApproachHold(self, lane, priority,"), "F3: the leaving vehicle's own lane is never a feeding lane");
+            Check(glue.Contains("m_ExitSignalArm = true;") && glue.Contains("ExitTrace.ReasonSignal"), "F6: signalled arm reason set and traced");
+            string bridge = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRStage2Bridge.cs"));
+            int dt = bridge.IndexOf("private static void DrainTrace()", StringComparison.Ordinal);
+            string dtb = dt < 0 ? "" : bridge.Substring(dt, bridge.IndexOf("private static unsafe long ReadTrace", dt, StringComparison.Ordinal) - dt);
+            Check(dtb.IndexOf("return;", dtb.IndexOf("HasNew(", StringComparison.Ordinal), StringComparison.Ordinal) < dtb.IndexOf("Stopwatch.GetTimestamp", StringComparison.Ordinal)
+                && dtb.Contains("Drain(head, s_ReadTrace, s_EmitTrace)") && !dtb.Contains("=>"), "F5: DrainTrace returns early with nothing to read and uses cached delegates (no closure)");
             Check(settings.Contains("public bool ExitTrace { get; set; }") && settings.Contains("ExitTrace = false;") && settings.Contains("\"Exit trace (log)\"")
                 && settings.Contains("GetOptionDescLocaleID(nameof(JunctionRulesSettings.ExitTrace))"), "setting Exit trace (log): default off, label and description");
         }

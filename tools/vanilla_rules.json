@@ -167,7 +167,7 @@
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
-        "reason": "Debug counters, once per car and step, only when counting (0.2.3: safety-stop events via the car's entity and the simulation frame)."
+        "reason": "Debug counters, once per car and step, only when counting (0.2.3: safety-stop events via the car's entity and the simulation frame). 0.4.7 review (G1 F1): also counts, once per vehicle and episode, a vehicle that is Unspawned on a public road car lane with no Connection / Area / TransformTarget / ParkingSpace / ResetSpeed flag (placed straight onto the road lane: a path starting on the road lane itself; read-only, no driving effect)."
       },
       "S2-23": {
         "files": {

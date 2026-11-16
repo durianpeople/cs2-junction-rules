@@ -183,7 +183,14 @@ namespace JunctionRules.Core
         public const int ExitCapVehicles = FeedingScans + 41;
         /// <summary>JR-T-013b (G3): car-steps in which a car turning across oncoming traffic stood at its turn spot inside a box because its exit had no room (room test re-run at the turn spot).</summary>
         public const int BoxTurnRoomWaits = FeedingScans + 42;
-        public const int Count = FeedingScans + 43;
+        /// <summary>
+        /// 0.4.7 review (G1 F1): vehicles that appear directly in a public road lane, not through a building lane / spawn object
+        /// / parking space (unspawned, current lane a public road car lane, no Connection / ResetSpeed flag): a path that starts
+        /// on the road lane itself (PathfindTargetSeeker cargo spawn branch 610-613 / 660-668, the front-connection fallback
+        /// AddEdgeTargets(Building.m_RoadEdge)). Not judged by the exit rule (counted only); one per vehicle and episode.
+        /// </summary>
+        public const int ExitRoadStart = FeedingScans + 43;
+        public const int Count = FeedingScans + 44;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -322,6 +329,8 @@ namespace JunctionRules.Core
                        : "") +
                    // JR-T-013b (G3): newest counter, at the end of the text (before the points).
                    (boxMask >= 2 ? "; right-turn waits for exit room " + deltas[BoxTurnRoomWaits].ToString(ci) : "") +
+                   // 0.4.7 review (G1 F1): newest counter, after the G3 one.
+                   (exitMask >= 2 ? "; placed straight onto a road lane (not judged) " + deltas[ExitRoadStart].ToString(ci) : "") +
                    "; " + points;
         }
     }

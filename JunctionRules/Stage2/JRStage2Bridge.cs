@@ -64,17 +64,28 @@ namespace JunctionRules.Stage2
         {
             if (!s_TraceRing.IsCreated) return;
             long head = ReadTrace(0);
+            // Review F5: nothing new and nothing to sum up (the usual case, also with the trace off): no clock read, no
+            // delegate; the drain itself uses cached delegates (no allocation per step).
+            bool fresh = ExitTraceReader.HasNew(head, s_TraceReader.Next);
+            if (!fresh && s_TraceLimiter.Dropped == 0 && s_TraceReader.Lost == 0) return;
             double now = System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
-            s_TraceReader.Drain(head, ReadTrace, (v, b, f, fr) =>
-            {
-                if (s_TraceLimiter.Allow(now)) Mod.log.Info(ExitTrace.Format(v, b, f, fr));
-            });
+            s_TraceNow = now;
+            if (fresh) s_TraceReader.Drain(head, s_ReadTrace, s_EmitTrace);
             if (now - s_TraceLastSummary >= 1.0)
             {
                 long dropped = s_TraceLimiter.TakeDropped(), lost = s_TraceReader.TakeLost();
                 if (dropped > 0 || lost > 0) Mod.log.Info("exit trace: " + dropped + " lines dropped (rate limit), " + lost + " records lost (ring overrun)");
                 s_TraceLastSummary = now;
             }
+        }
+
+        private static double s_TraceNow;
+        private static readonly System.Func<int, long> s_ReadTrace = ReadTrace;
+        private static readonly System.Action<long, long, long, long> s_EmitTrace = EmitTrace;
+
+        private static void EmitTrace(long v, long b, long f, long fr)
+        {
+            if (s_TraceLimiter.Allow(s_TraceNow)) Mod.log.Info(ExitTrace.Format(v, b, f, fr));
         }
 
         private static unsafe long ReadTrace(int i)

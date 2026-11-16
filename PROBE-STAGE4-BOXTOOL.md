@@ -725,31 +725,43 @@ and a building's own road meeting a public junction. Now:
 - **S2-33**: every held exit vehicle stays on its lane (the game cannot hand it to the road while it waits).
 - Junction joins take their crossing points from the joined lane's own overlaps (the old side-by-side rule only fits a
   straight road).
-- Caps: only vehicles still ahead of the exit and within reach count against the 96-vehicle cap; hitting it now means
-  busy (wait); the lane cap went 24 -> 48 and still means go.
-- Not hooked: a vehicle whose path starts directly on the road lane (a building with no spawn point); it is traffic.
+- Caps: only vehicles still ahead of the exit and within reach count against the 96-vehicle cap, and (review fix) not
+  a vehicle standing still short of the exit (it never blocks, so a long standing queue no longer reads as "dense
+  traffic: wait" for ever); hitting the cap means busy (wait); the lane cap went 24 -> 48 and still means go.
+- Review fix: cars queued behind the held car on its own building road / drive no longer count as traffic it must
+  wait for (only the lanes it crosses or joins do).
+- Not hooked: a vehicle whose path starts directly on the road lane (a building with no spawn point; or a cargo
+  spawn point whose path starts on its road lane, in the game code only off-road work vehicles inside a lot); it is
+  already in the lane, so holding it would leave it standing in traffic. Counted instead (see the log line below);
+  expected 0 or close.
+- Known (not changed): a kerbside car waiting to pull out is no longer a parked car for the game, so its space shows as
+  free and another car may be sent to it meanwhile (the newcomer re-paths or waits behind it).
 
 **Settings.** **Vehicles leaving buildings give way** (existing, default on) now covers all of the above. New **Exit
 trace (log)** (Debug, default **off**; needs the setting above and the copy): one line when a vehicle starts waiting at
 an exit and one when it joins the road, at most 20 lines a second, with a per-second dropped / lost summary.
 
 **Log lines / counters.** The timing line keeps its 0.4.6 text and appends:
-`..., hand-overs to the road from: lot L, gate G, other O, spawn point S, building parking P, kerbside parking K, building road B, drive D; hand-overs not judged U; cap hits by kind: lanes X (go), vehicles Y (wait)`.
+`..., hand-overs to the road from: lot L, gate G, other O, spawn point S, building parking P, kerbside parking K, building road B, drive D; hand-overs not judged U; cap hits by kind: lanes X (go), vehicles Y (wait)`
+and, at the very end (after the G3 count, before `points at W`), `; placed straight onto a road lane (not judged) R`
+(vehicles that appeared directly in a road lane, once per vehicle).
 `other` now means only paths still unclassified (expected 0); `hand-overs not judged` expected 0 (on-duty emergency
 not included). Trace lines: `exit trace: waits vehicle ... path spawn point (spawn location object) ... decision wait (gap) boxed yes ...`,
 `exit trace: joins road ... decision go (gap clear) ...`; decisions `wait (gap)`, `wait (box: no room past)`,
 `wait (dense traffic: vehicle cap)`, `go (gap clear)`, `go (gap clear; lane cap hit, far lanes not read)`,
+`go (signalled arm)` (a building road joining at a signal: the signal decides),
 `go (on-duty emergency, stock)`, `judged before the hand-over (driveway give-way)`, `not judged` (should not appear).
 
 **What to check in game.**
 
 | # | Do | Expect |
 |---|---|---|
-| G1-1 | Log navigation timing on; read a few windows | `spawn point` and/or `building parking` / `kerbside parking` above 0; `other` 0 or close; `hand-overs not judged` 0; `waits` clearly above 0.4.6's ~5 per window |
+| G1-1 | Log navigation timing on; read a few windows | `spawn point` and/or `building parking` / `kerbside parking` above 0; `other` 0 or close; `hand-overs not judged` 0; `placed straight onto a road lane` 0 or close (clearly above 0: send the log, some traffic still skips the give-way); `waits` clearly above 0.4.6's ~5 per window |
 | G1-2 | Alderwood boxed exits (the 0.4.6 screenshot), queue past the box in the far lane | a truck turning right out of the building does not enter the box; it waits hidden at its spawn point until there is room past the box and a gap |
 | G1-3 | A busy road with kerbside parking | parked cars pull out only into a gap |
 | G1-4 | Exit trace (log) on for a minute near Alderwood | each leaving vehicle shows `waits` and/or `joins road`; the boxed-exit truck shows `wait (box: no room past)` or `wait (gap)`; any `not judged` line: report it (names the uncovered path) |
 | G1-5 | Watch for deadlocks (no time limit) | an exit onto a road that never clears, or a kerbside car that never gets out: report the trace line |
+| G1-6 | An exit beside a long standing queue (a jam that stopped short of it), exit trace on | the exit vehicle goes when nobody is moving towards it (`go (gap clear)`), no endless `wait (dense traffic: vehicle cap)` |
 
 ### G2: road-marking hide, #17 review fixes (JR-T-013e)
 
@@ -867,14 +879,21 @@ longer counts them as free. Each box's own outline is used (a merged group block
 unioned). Cars already parked are not moved; they leave when their owner drives off. Runtime only: before every save
 (manual, autosave, quit) the blocked lanes get back the game's own free-space value (`ParkingLane.m_FreeSpace`, the
 only saved value touched); after the save the blocks are back. Removing a box, switching the setting off or painting
-stopping opens the slots again within a frame.
+stopping opens the slots again within a frame. Review fixes: an edit at the next junction (a sign, a lane connection)
+made the game rebuild the box road's parking lanes without telling them apart; the block is now put back in the same
+frame. The feature runs only when the version check allows the copy (else one log line, parking stays stock). A
+failure also reopens lanes it had just closed. Known, not changed: the block is rounded outward to the game's 1/255
+lane steps, so it may close one extra slot at a box edge (at most ~16 cm of a 40 m lane); a box whose shape could not
+be built (no outline: refused / failed paint) does not block parking.
 
 **Settings.** New **No parking in yellow boxes** (Yellow boxes group, default **on**).
 
 **Log lines.** On every change: `yellow boxes: no parking in boxes ON: N box(es), L parking lane(s) with R blocked
 range(s) (S marked space(s) on M slotted lane(s)); O lane(s) opened again; U lane(s) recomputed; x ms` (`OFF` when
 switched off). Each save: `yellow boxes: no parking in boxes: before the save, L parking lane(s) carry the game's own
-free space (C changed)` and `... after the save, L parking lane(s) recomputed with the boxes again`. Failure:
+free space (C changed)` and `... after the save, L parking lane(s) recomputed with the boxes again`. After an edit next to a box: `yellow boxes: no parking in boxes: a road update next to a box removed the block from a
+parking lane; putting it back`, then the `ON` line. Version check refused the copy: `yellow boxes: no parking in boxes
+not registered (version check did not allow the copy); ...`. Failure:
 `yellow boxes: no parking in boxes failed while ...; switched off until the game restarts, parking in the boxes opened
 again`: send that log.
 
@@ -889,3 +908,4 @@ again`: send that log.
 | G6-5 | Setting off, then on | off: cars may park in boxes; on: slots closed again, parked cars stay until they leave |
 | G6-6 | Save (manual and an autosave), then load the save **without the mod** (on a copy, as section 7) | both save log lines appear; kerbside parking under the old boxes intact, cars park there as in 0.4.6, no error, no lane shown full |
 | G6-7 | Upgrade / replace a boxed road (or let Traffic / RoadBuilder rewrite its lanes) | the box is rebuilt (paint log) and the parking block comes back (no-parking log line); no parked car moved by the mod |
+| G6-8 | Next to a boxed junction with kerbside parking on the joining road: edit the NEXT junction along that road (a sign or a lane connection) | log `... a road update next to a box removed the block from a parking lane; putting it back` and the `ON` line; the box slots stay closed (no new car parks there) |

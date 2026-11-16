@@ -17,6 +17,13 @@ namespace JunctionRules.Boxes
             updateSystem.UpdateAt<YellowBoxToolSystem>(SystemUpdatePhase.ToolUpdate);
             updateSystem.UpdateAt<YellowBoxUISystem>(SystemUpdatePhase.UIUpdate);
             // 0.4.7 (JR-T-013d, G6): no parking in the boxes. Its own try/catch: a failure here leaves the tool working.
+            // Review F2: only when the version gate allows the copy (it writes the game's LaneOverlap buffers by the 1.6.4f1
+            // parking code and its save guard runs a copy of the game's free-space code; pattern of PeoplePassSystem, Mod.cs).
+            if (!Mod.Gate.CopyAllowed)
+            {
+                try { Mod.log.Info("yellow boxes: no parking in boxes not registered (version check did not allow the copy); parking in boxes stays as the game has it"); } catch { }
+                return;
+            }
             try
             {
                 // ModificationEnd, ahead of the game's ParkingLaneDataSystem (after LaneOverlapSystem, Modification4B, and
