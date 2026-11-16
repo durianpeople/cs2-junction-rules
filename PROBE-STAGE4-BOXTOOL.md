@@ -44,7 +44,7 @@ differences). Also: the T-junction through-side kerb fix (section 6) and the ent
 0.3.6 (JR-T-008, people pass a car blocking their crossing; merged from 784ba28) and everything before it
 (PROBE-STAGE3-PAINT.md).
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.4.4-probe-jr012/` (JR-T-012 only; `.staged/0.4.4-probe` holds the paused JR-T-011 managed build: never install that one for this probe). 0.4.3-probe (installed) is the rollback. Earlier: 0.4.2-probe (jr-t-010 line) is installed live by main (code 59e731f, sums c781df0); never write into `.staged/0.4.2-probe`. While `.staged/0.4.3-probe` holds a `STALE.md` it is a managed
+Build to install: `~/Code/cs2-junction-rules/.staged/0.4.5-probe/` (JR-T-012 fix, branch jr-t-012; managed build only until main does the Burst build, see its `STALE.md`; the block below refuses on the `0000...` placeholder sums and while `STALE.md` exists). 0.4.4-probe (installed, `.staged/0.4.4-probe-jr012`, sums in commit 853ea2b) is the rollback. Earlier note: (JR-T-012 only; `.staged/0.4.4-probe` holds the paused JR-T-011 managed build: never install that one for this probe). 0.4.3-probe (installed) is the rollback. Earlier: 0.4.2-probe (jr-t-010 line) is installed live by main (code 59e731f, sums c781df0); never write into `.staged/0.4.2-probe`. While `.staged/0.4.3-probe` holds a `STALE.md` it is a managed
 build only: main does the Burst build in `STALE.md` (game closed, at the owner's quit), then puts the five sums into the
 install block below. 0.4.3-probe was Burst-built from a14445d and installed by main on 16 Nov. (0.4.2-probe stays in `.staged/0.4.2-probe` as the rollback.) Until then the block refuses (placeholder sums `0000...`).
 
@@ -57,27 +57,27 @@ copy does not run; the boxes stay in the save).
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.4.4-probe-jr012 || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.4.5-probe || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-f13e036d555b6236b4e8113f82061a2616a470f9095e90ed9620e4534151960c  JunctionRules.dll
-30f37117390b1a1bc4623ae7b9b7ae7ad4cfee5e0bc4939b45c1e9109af79e7a  JunctionRules.pdb
-9e8f8a397f70bbeb121ef7224981278773595c1fe2ce7e31de01d4c4df2b65bf  JunctionRules.mjs
-aff4ffbd6b9c7bdb9f090633fa8b969a82e0e4596a1d4ac331f0a385bc515e7d  JunctionRules_win_x86_64.dll
-2c02ae3ffcad4ba0cc925ad9abc0e9dd7ae91d37d72e0bfad513e665fe40ab20  JunctionRules_win_x86_64.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.mjs
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
   fi
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules.mjs JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
-  echo "installed 0.4.4-probe"
+  echo "installed 0.4.5-probe"
 )
 ```
 
-Rollback: to 0.4.3 (installed 16 Nov, Burst from a14445d): the same block with `.staged/0.4.3-probe` and its sums (commit 1441805). To 0.4.2 (the JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
+Rollback: to 0.4.4 (JR-T-012 first build, Burst from ba75f0b, installed 16 Nov): the same block with `.staged/0.4.4-probe-jr012` and its sums (commit 853ea2b). To 0.4.3 (installed 16 Nov, Burst from a14445d): the same block with `.staged/0.4.3-probe` and its sums (commit 1441805). To 0.4.2 (the JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
 its loader, so exit boxes fall back to one entrance box per building): the same block with `.staged/0.4.2-probe` and
 its sums (full sums in commit c781df0). To 0.4.1 (boxes kept, box driving rule gone): the same block with `.staged/0.4.1-probe` and its sums
 (dll af5b1322..., pdb db04729f..., mjs 9e8f8a39..., win dll 5acf0104..., win pdb d5762071...; full sums in the 0.4.1 commit 07cc519)
@@ -553,7 +553,28 @@ onto a permanently queued road where the queue stands ON the drive, or onto a ro
 Signs: `waits` keeps rising at one place while `go decisions` stays flat; a building whose deliveries / commuters never
 leave; behind a held driveway vehicle the building's internal queue grows (only the front vehicle scans). A vehicle
 held at a spawn gate is invisible (unspawned inside the building); the game's "stuck" handling may still despawn it
-after a long wait (not checked). Known limits: exits through an area (car park surface lot onto the road) are not
-gated; trams are not counted as approaching traffic; on a two-way lane only vehicles driving with its curve count;
+after a long wait (not checked). Known limits: (0.4.5: exits through an area, a building lot onto the road, ARE gated, see below); trams are not counted as approaching traffic; on a two-way lane only vehicles driving with its curve count;
 road vehicles about to turn INTO the building still count as approaching (cautious); when the work cap is hit the
 vehicles not read do not count (errs to go). Report any exit that stays blocked with the timing line and a screenshot.
+
+### 0.4.5-probe (JR-T-012 fix): lot exits were never gated in 0.4.4
+
+**Cause.** The live 0.4.4 log showed `spawn/gate 0` and `boxed spawn exit no room 0` although a truck still pulled
+out of a boxed exit. 0.4.4 hooked the wait into the `Connection` lane tail only (S2-30, `IL_09cd`). But a building's
+lot (the lane from the spawn point / gate across the lot to the road) is a `ConnectionLane` with
+`ConnectionLaneFlags.Area`, and that becomes `CarLaneFlags.Area`, not `Connection` (`InitializeSystem.cs` 288,
+`CarNavigationSystem.cs` 672, 1037, `TripNeededSystem.cs` 773). `CarNavigationSystem` runs the Area branch
+(`if ((LaneFlags & Area) == 0)` ~1596, `MoveAreaTarget` 1795-1803 / 2406) without ever calling the lane speed
+iterator, so the road lane the lot joins is never looked at and S2-30 is never reached: the vehicle drove the area
+lane at full speed and entered the road. The driveway case (road-owned node lane, S2-29) was fine (24 waits logged).
+
+**Fix (S2-32, S2-33; DEVIATIONS.md).** A vehicle on an Area lane whose next navigation lane is a public road car lane
+brakes to stop 1 m before the join point (`ExitAreaHold`) while the same gap decision as every other exit
+(`ExitJoinLane` + `ExitJoinWaits`, shared with S2-30; boxed exit: room past the band too) says wait; S2-33 keeps it on
+its area lane (like S2-31 for connection lanes). It only scans when it has to brake (`hold < max speed`); a vehicle
+that cannot stop in time, or is already clearly past the stop point, is left to the game (`CanHoldArea`). On-duty
+emergency vehicles keep stock behaviour. Timing log: lot exits count in `spawn/gate` (waits) and `go decisions`.
+Setting OFF = 0.4.4 / 0.4.3. `docs/vanilla_copy_check_0.4.5.txt`: 0 unexplained differences, 31 marked blocks.
+
+Not yet tested live (managed build only): decompile-derived diagnosis. E4 now also covers a lot exit: a held lot
+vehicle waits visibly on its lot lane just before the road and goes in a gap (one that cannot stop in time rolls out).

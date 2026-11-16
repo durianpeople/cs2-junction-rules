@@ -6,7 +6,7 @@
 // tools/vanilla_rules.json (and DEVIATIONS.md) and run `python3 tools/vanilla_copy.py generate`.
 // Changes applied: R-01, R-02, R-03, D-01 (see DEVIATIONS.md). Logic is otherwise the game's, unchanged.
 // Exception: hand-written code only inside '// JR-STAGE2 BEGIN <id>' ... '// JR-STAGE2 END' blocks
-// (S2-20, S2-21, S2-22, S2-23, S2-24, S2-26, S2-30, S2-31; see DEVIATIONS.md). `check` proves everything outside them is the above.
+// (S2-20, S2-21, S2-22, S2-23, S2-24, S2-26, S2-30, S2-31, S2-32, S2-33; see DEVIATIONS.md). `check` proves everything outside them is the above.
 // ==== end of header; the code below is the game's, changed only as listed in DEVIATIONS.md ====
 
 using System.Runtime.CompilerServices;
@@ -1713,6 +1713,17 @@ public class JRCarNavigationSystem : GameSystemBase
 				blocker.m_Blocker = Entity.Null;
 				blocker.m_Type = BlockerType.None;
 				blocker.m_MaxSpeed = byte.MaxValue;
+				// JR-STAGE2 BEGIN S2-32: 0.4.5 vehicles leaving buildings give way, lot exit: a vehicle on an AREA lane (a building's lot) whose next navigation lane is a public road lane brakes to stop short of the join point while the road lanes it joins / crosses are busy (the area branch never reaches the lane speed iterator)
+				if (laneIterator.m_JR.m_ExitRule && (currentLane.m_LaneFlags & Game.Vehicles.CarLaneFlags.Area) != 0 && navigationLanes.Length > 0)
+				{
+					float jrAreaExit = laneIterator.m_JR.ExitAreaHold(entity, priority, currentLane.m_Lane, navigationLanes[0], transform.m_Position, prefabCarData, num2, num, laneIterator.m_SafeTimeStep, speedRange, navigation.m_MaxSpeed, ref laneIterator.m_CarLaneData, ref laneIterator.m_LaneSignalData, ref laneIterator.m_LaneObjectData, ref laneIterator.m_CurveData, ref laneIterator.m_MovingData, ref laneIterator.m_CarData, ref laneIterator.m_ControllerData, ref laneIterator.m_PrefabRefData, ref laneIterator.m_PrefabCarData, ref laneIterator.m_PrefabObjectGeometryData, ref laneIterator.m_LaneOverlapData, ref laneIterator.m_PedestrianLaneData);
+					if (jrAreaExit < navigation.m_MaxSpeed)
+					{
+						navigation.m_MaxSpeed = jrAreaExit;
+						blocker.m_Type = BlockerType.Crossing;
+					}
+				}
+				// JR-STAGE2 END
 			}
 			goto IL_0a0a;
 			IL_09cd:
@@ -1992,6 +2003,12 @@ public class JRCarNavigationSystem : GameSystemBase
 							carNavigationLane2.m_Flags |= Game.Vehicles.CarLaneFlags.ResetSpeed;
 						}
 					}
+					// JR-STAGE2 BEGIN S2-33: 0.4.5 a vehicle held at its lot exit (S2-32) stays on its area lane
+					if ((currentLane.m_LaneFlags & Game.Vehicles.CarLaneFlags.Area) != 0 && laneIterator.m_JR.ExitWaiting)
+					{
+						break;
+					}
+					// JR-STAGE2 END
 					if ((currentLane.m_LaneFlags & Game.Vehicles.CarLaneFlags.HighBeams) != 0 && m_CarLaneData.TryGetComponent(carNavigationLane2.m_Lane, out var componentData9) && (componentData9.m_Flags & Game.Net.CarLaneFlags.Highway) != 0 && !IsLit(carNavigationLane2.m_Lane))
 					{
 						carNavigationLane2.m_Flags |= Game.Vehicles.CarLaneFlags.HighBeams;

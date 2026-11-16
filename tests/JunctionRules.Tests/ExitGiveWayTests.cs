@@ -104,6 +104,20 @@ namespace JunctionRules.Tests
                 "road lanes (plain, give-way sign, turning): not an exit, road cars not held");
         }
 
+        private static void ExitAreaTests()
+        {
+            // Area exit (0.4.5): a hold short of the join point; committed / unstoppable vehicles are left to the game.
+            Check(ExitGiveWay.CanHoldArea(8f, BrakingDistance(5f)), "area exit: 8 m to the stop point at 5 m/s: can hold");
+            Check(ExitGiveWay.CanHoldArea(0f, 0f), "area exit: stopped at the stop point: held");
+            Check(ExitGiveWay.CanHoldArea(-1f, 0f), "area exit: a stopped vehicle that crept 1 m past the stop point is still held (no release by drift)");
+            Check(!ExitGiveWay.CanHoldArea(-3f, 0f), "area exit: clearly past the stop point (on its way onto the road): not held");
+            Check(!ExitGiveWay.CanHoldArea(0.5f, BrakingDistance(14f)), "area exit: a fast vehicle that cannot stop in time is left to the game");
+            Check(ExitGiveWay.CanHoldArea(30f, BrakingDistance(14f)), "area exit: the same vehicle 30 m before the stop point: held");
+            Check(ExitGiveWay.Decide(true, ExCarPriority, false, true, true, true) == ExitGiveWay.Decision.WaitGap
+                && ExitGiveWay.Decide(true, ExCarPriority, true, true, true, false) == ExitGiveWay.Decision.WaitBox
+                && ExitGiveWay.Decide(true, ExCarPriority, true, true, true, true) == ExitGiveWay.Decision.Go, "lot exit: the same gap AND box decision as every exit");
+        }
+
         private static void ExitModeTests()
         {
             int on = Stage2Mode.For(JunctionGapRule.Stock, false, exitGiveWay: true);
@@ -153,6 +167,21 @@ namespace JunctionRules.Tests
             Check(b30.Contains("m_JR.m_ExitRule") && !b30.Contains("m_BoxRule"), "S2-30 gated on the exit setting only");
             int s31 = nav.IndexOf("// JR-STAGE2 BEGIN S2-31", StringComparison.Ordinal);
             Check(s31 > s30 && nav.IndexOf("ExitWaiting", s31, StringComparison.Ordinal) > s31, "S2-31 keeps a held vehicle on its Connection lane");
+            // 0.4.5: lot (Area lane) exits. 0.4.4 gated only a Connection current lane (S2-30) and the usual building exit is an Area lane.
+            int s32 = nav.IndexOf("// JR-STAGE2 BEGIN S2-32", StringComparison.Ordinal);
+            int tailIter = nav.LastIndexOf("laneIterator.IterateTarget(navigation.m_TargetPosition, num3);", s32 < 0 ? 0 : s32, StringComparison.Ordinal);
+            int tailEnd = s32 < 0 ? -1 : nav.IndexOf("goto IL_0a0a;", s32, StringComparison.Ordinal);
+            Check(s32 > 0 && s32 < s30 && tailIter > 0 && tailIter < s32 && tailEnd > s32 && nav.IndexOf("IL_09cd:", tailIter, StringComparison.Ordinal) > tailEnd,
+                "S2-32 in the Area-lane tail (after IterateTarget, before goto IL_0a0a), not in the Connection / road branch");
+            string b32 = s32 < 0 ? "" : nav.Substring(s32, nav.IndexOf("// JR-STAGE2 END", s32, StringComparison.Ordinal) - s32);
+            Check(b32.Contains("m_JR.m_ExitRule") && b32.Contains("CarLaneFlags.Area") && b32.Contains("ExitAreaHold(") && b32.Contains("navigationLanes[0]") && !b32.Contains("m_BoxRule"),
+                "S2-32 gated on the exit setting and the Area flag, hands the first navigation lane, never on a box");
+            int s33 = nav.IndexOf("// JR-STAGE2 BEGIN S2-33", StringComparison.Ordinal);
+            Check(s33 > s31 && nav.IndexOf("ApplySideEffects(ref currentLane", s33, StringComparison.Ordinal) > s33 && nav.IndexOf("ExitWaiting", s33, StringComparison.Ordinal) > s33
+                && nav.IndexOf("ExitWaiting", s33, StringComparison.Ordinal) < nav.IndexOf("ApplySideEffects(ref currentLane", s33, StringComparison.Ordinal),
+                "S2-33 keeps a held lot-exit vehicle on its area lane, before the lane switch");
+            Check(glue.Contains("ExitAreaHold(") && glue.Contains("ExitJoinLane(") && glue.Contains("ExitJoinWaits(") && glue.Split(new[] { "ExitJoinWaits(" }, StringSplitOptions.None).Length >= 4,
+                "Connection and Area exits share one join-lane test and one decision");
             Check(nav.Contains("SetExits(m_JRExitBuildings, m_JRExitEdges, m_LeftHandTraffic)"), "traffic side from the game's own m_LeftHandTraffic (never hardcoded)");
             Check(!nav.Contains("m_JRBuildingData"), "no 0.4.2 building lookup name reused");
             // The connection exit: the gap is checked first, the box only as the second condition (Core Decide).

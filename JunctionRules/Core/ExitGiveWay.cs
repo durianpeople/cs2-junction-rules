@@ -32,6 +32,10 @@ namespace JunctionRules.Core
     /// ("if Connection goto IL_09bf", 2022-2024) and it joins the road lane (ResetSpeed) as soon as it is within
     /// 1 m + pivot of the lane end at &lt;= 3 m/s (1873-1886): no give-way at all. Hooked in the copy's navigation
     /// (S2-30 decides and holds, S2-31 keeps a held vehicle off the road lane).</item>
+    /// <item>Lot exit (0.4.5, the usual one: industry, depots, surface car parks): the vehicle drives the lot's AREA lanes
+    /// (ConnectionLane with ConnectionLaneFlags.Area becomes CarLaneFlags.Area, not Connection: InitializeSystem 288,
+    /// CarNavigationSystem 672 / 1037) and the area branch never reaches the lane speed iterator (1596), so the road lane it
+    /// joins is never looked at. Hooked in the copy's navigation (S2-32 decides and holds, S2-33 keeps it on its area lane).</item>
     /// <item>On-duty emergency: VehicleUtils.GetPriority(Car) = 108 with CarFlags.Emergency (654-657); stock lets it
     /// ignore non-physical signals and reserves the other lanes of its group at 102. Kept: no exit hold at all.</item>
     /// </list>
@@ -137,6 +141,18 @@ namespace JunctionRules.Core
         /// </summary>
         public static bool CanHold(float waitDistance, float margin, float brakingDistance) =>
             waitDistance >= -WholePathRule.SpotEpsilon && brakingDistance <= waitDistance + margin;
+
+        /// <summary>Slack (m) of an area exit's hold: a vehicle that crept this far past its stop point is still held, one that cannot stop within the point plus this is released (stock).</summary>
+        public const float AreaHoldSlack = 1.5f;
+
+        /// <summary>
+        /// Area exit (0.4.5, S2-32): can the vehicle be held short of the join point? waitDistance = metres its front may still
+        /// travel to the stop point (one margin before the join point), brakingDistance = its stock braking distance. A
+        /// vehicle already clearly past the stop point (committed, on its way onto the road) or one that cannot stop in time is
+        /// left to the game; a stopped vehicle that crept a little past the point is still held (no release by drift).
+        /// </summary>
+        public static bool CanHoldArea(float waitDistance, float brakingDistance) =>
+            waitDistance >= -AreaHoldSlack && brakingDistance <= (waitDistance > 0f ? waitDistance : 0f) + AreaHoldSlack;
 
         public enum Decision : byte
         {
