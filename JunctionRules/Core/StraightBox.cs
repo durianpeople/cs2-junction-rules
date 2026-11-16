@@ -29,7 +29,24 @@ namespace JunctionRules.Core
     // the others, to the smallest shift that keeps its own corners as good (RefineSteps). Minimal by construction: an
     // arm whose edges already clear keeps shift 0 (any shift only adds cost).
     //
-    // Game-independent; unit-tested in StraightBoxTests.
+    // 0.4.7 (JR-T-013c, gap G5, owner rules: box on the carriageway only, straight-sided, 0.5 m marking margin, all
+    // conflict points inside): CHAMFERED CORNERS. A joining edge is a chord of the kerb's corner curve, and a chord of
+    // a fillet always runs over the pavement (by the arc's sagitta), so before 0.4.7 a corner cleared only when the
+    // two mouths slid forward until their lines met ON the kerb. Where a conflict point pins a mouth (a car path that
+    // crosses another inside a narrow side road's mouth, beyond the main road's kerb line: Crescent Street x Eastgate
+    // Lane, an 8 m Alley across a 16 m street, refused in 0.4.6 with "corner ... still crosses the kerb ... no allowed
+    // shift clears it"), the corner could never close and the whole junction got no box although a valid shape
+    // exists. Now such a corner may instead be cut by ONE straight chamfer edge that touches the kerb curve but never
+    // crosses it (a supporting line of the kerb between the two mouth ends: the line of one kerb segment, or the chord
+    // moved parallel into the box past the deepest kerb point); its ends are where it meets the two mouth lines. Valid
+    // only when each end stays within the half of its mouth side next to the corner (two chamfers of one narrow mouth
+    // never overlap), it keeps the marking margin and every conflict point stays on the box side; of the valid lines
+    // the one cutting the least carriageway off wins (TryChamfer). A chamfered
+    // corner costs PenaltyChamfer (+ the area it cuts off): the search still closes a corner by sliding whenever it can, so every
+    // junction that had a box in 0.4.6 keeps exactly the same shape (sliding costs only metres, far under the
+    // penalty); the chamfer only turns a 0.4.6 refusal into a box.
+    //
+    // Game-independent; unit-tested in StraightBoxTests and G5Tests.
 
     /// <summary>One mouth of the box: its two end points at shift 0 (Entry, then Exit, in CCW ring order) and the unit normal into the box.</summary>
     public sealed class BoxMouth
@@ -85,6 +102,8 @@ namespace JunctionRules.Core
         public List<string> Notes = new List<string>();
         /// <summary>Edges (corner index i = mouth i to mouth i+1) that no allowed shift clears of the kerb / a marking, or that would leave a conflict point outside; any entry = Failure, no box.</summary>
         public List<int> FailingCorners = new List<int>();
+        /// <summary>0.4.7 (G5): corners (i = mouth i to mouth i+1) cut by a straight chamfer instead of a kerb-to-kerb edge, with the chamfer depth (m).</summary>
+        public List<(int Corner, double Depth)> Chamfers = new List<(int, double)>();
         /// <summary>Stable short code of the rule, for logs and tests.</summary>
         public string RuleCode => Rule == BoxShapeRule.PriorityRoad ? "priority-road" : Rule == BoxShapeRule.FallbackEqual ? "fallback-equal" : "priority-moved";
         /// <summary>The rule for logs: short code plus what it means (JR-T-007b-r: no wording that reads as an error).</summary>
@@ -103,6 +122,8 @@ namespace JunctionRules.Core
         public const int MaxGrid = 120;
         public const int RefineSteps = 14;
         private const double PenaltyConflict = 1e9, PenaltyEdge = 1e6;
+        /// <summary>0.4.7 (G5): cost of a chamfered corner (plus the area it cuts off, m2): above any sum of shifts, far below an edge that does not clear.</summary>
+        public const double PenaltyChamfer = 1e4;
 
         /// <summary>A kerb chain with cumulative lengths.</summary>
         private sealed class Chain
@@ -139,6 +160,8 @@ namespace JunctionRules.Core
             public V2[] Mid, Dir;
             /// <summary>0.4.3 (JR-T-007c, review F1): shift cost = sum of squares (a slide splits between mouths) instead of the plain sum.</summary>
             public bool Squared;
+            /// <summary>0.4.7 (G5): chamfered corners allowed in this search pass.</summary>
+            public bool Chamfer;
         }
 
         /// <summary>
@@ -187,27 +210,18 @@ namespace JunctionRules.Core
                         int p = (i + n - 1) % n;
                         Trace($"{Name(mouths, i)} s={sv:0.0} cap={Cap(ctx, i):0.00} prevCorner={CornerPenalty(ctx, p, 0, sv)} nextCorner={CornerPenalty(ctx, i, sv, 0)} exit={ctx.C[i].At(ExitParam(ctx, i, sv)).XZ} entry={ctx.C[p].At(EntryParam(ctx, i, sv)).XZ}");
                     }
-            if (!equal)
+            // 0.4.7 (G5): first exactly the 0.4.6 search (no chamfers: same shapes, same cost); only when that leaves an
+            // edge that cannot clear is the search run again with chamfered corners allowed.
+            ctx.Chamfer = false;
+            shift = Shifts(ctx, equal, out cost, out BoxShapeRule rule);
+            if (cost >= PenaltyEdge && ChamferCorners)
             {
-                var movable = new bool[n];
-                for (int i = 0; i < n; i++) movable[i] = mouths[i].Yielding;
-                shift = Search(ctx, movable, out cost);
-                if (cost < PenaltyEdge) res.Rule = BoxShapeRule.PriorityRoad;
-                else
-                {
-                    var all = new bool[n];
-                    for (int i = 0; i < n; i++) all[i] = true;
-                    shift = Search(ctx, all, out cost);
-                    res.Rule = BoxShapeRule.FallbackCannotClear;
-                }
+                ctx.Chamfer = true;
+                double[] s2 = Shifts(ctx, equal, out double c2, out BoxShapeRule r2);
+                if (c2 <= cost) { shift = s2; cost = c2; rule = r2; }   // also on a tie: the failure then says why no cut fits
+                else ctx.Chamfer = false;
             }
-            else
-            {
-                var all = new bool[n];
-                for (int i = 0; i < n; i++) all[i] = true;
-                shift = Search(ctx, all, out cost);
-                res.Rule = BoxShapeRule.FallbackEqual;
-            }
+            res.Rule = rule;
             res.Shift = shift;
             // JR-T-007b-r F2: a corner that still fails after the fallback, or a conflict point pushed out, means no box.
             var fails = new List<string>();
@@ -216,7 +230,12 @@ namespace JunctionRules.Core
                 double p = CornerPenalty(ctx, i, shift[i], shift[(i + 1) % n]);
                 string corner = $"corner {Name(mouths, i)} - {Name(mouths, (i + 1) % n)}";
                 if (p >= PenaltyConflict) { res.FailingCorners.Add(i); fails.Add($"{corner}: no shift keeps every conflict point inside"); }
-                else if (p >= PenaltyEdge) { res.FailingCorners.Add(i); fails.Add($"{corner} still crosses the kerb or a marking margin: no allowed shift clears it"); }
+                else if (p >= PenaltyEdge)
+                {
+                    res.FailingCorners.Add(i);
+                    var cs = Corner(ctx, i, shift[i], shift[(i + 1) % n]);
+                    fails.Add($"{corner} still crosses the kerb or a marking margin: no allowed shift clears it" + (cs.ChamferWhy != null ? $" and no straight cut fits ({cs.ChamferWhy})" : ""));
+                }
             }
             for (int i = 0; i < n; i++) if (MouthPenalty(ctx, i, shift[i]) > 0) fails.Add($"{Name(mouths, i)}: a conflict point lies outside its mouth line");
             if (fails.Count > 0)
@@ -228,18 +247,28 @@ namespace JunctionRules.Core
 
             // Polygon: Entry_i, Exit_i, ... ; a closed corner (the two ends met or passed on the chain) gives one vertex.
             var ring = new List<V3>();
+            var corners = new CornerShape[n];
+            for (int i = 0; i < n; i++)
+            {
+                corners[i] = Corner(ctx, i, shift[i], shift[(i + 1) % n]);
+                if (corners[i].Chamfered)
+                {
+                    res.Chamfers.Add((i, corners[i].Depth));
+                    res.Notes.Add($"corner {Name(mouths, i)} - {Name(mouths, (i + 1) % n)} cut straight {corners[i].Depth:0.00} m inside the kerb curve (chamfer: the mouths cannot slide to meet on the kerb without leaving a conflict point outside)");
+                }
+            }
             for (int i = 0; i < n; i++)
             {
                 int prev = (i + n - 1) % n;
-                double ta = ExitParam(ctx, prev, shift[prev]), tb = EntryParam(ctx, i, shift[i]);
-                if (ta >= tb - 1e-6)
+                var cp = corners[prev];
+                if (cp.Closed)
                 {
-                    ring.Add(ctx.C[prev].At(0.5 * (ta + tb)));
+                    ring.Add(ctx.C[prev].At(0.5 * (cp.Ta + cp.Tb)));
                     res.Notes.Add($"corner {Name(mouths, prev)} - {Name(mouths, i)} closed: the slid mouths meet on the kerb");
                 }
-                else ring.Add(ctx.C[prev].At(tb));
-                double te = ExitParam(ctx, i, shift[i]), tn = EntryParam(ctx, (i + 1) % n, shift[(i + 1) % n]);
-                if (te < tn - 1e-6) ring.Add(ctx.C[i].At(te));
+                else ring.Add(cp.Chamfered ? cp.Qc : ctx.C[prev].At(cp.Tb));
+                var ci = corners[i];
+                if (!ci.Closed) ring.Add(ci.Chamfered ? ci.Pc : ctx.C[i].At(ci.Ta));
             }
             ring = Clean(ring);
             if (ring.Count < 3) { res.Failure = "box collapsed to fewer than 3 points (mouths met)"; return res; }
@@ -255,8 +284,39 @@ namespace JunctionRules.Core
             return res;
         }
 
+        /// <summary>
+        /// The mouth shifts by the rule (priority road: only yielding arms move; fallback: every arm). 0.4.7 (G5): with
+        /// chamfers allowed (ctx.Chamfer), "clears" = no chamfer needed (cost under PenaltyChamfer); when the yielding arms
+        /// alone need a chamfer every arm may move and a chamfer-free all-arm shape wins; when both need one, the
+        /// priority-road shape is kept.
+        /// </summary>
+        private static double[] Shifts(Ctx ctx, bool equal, out double cost, out BoxShapeRule rule)
+        {
+            int n = ctx.M.Count;
+            var all = new bool[n];
+            for (int i = 0; i < n; i++) all[i] = true;
+            if (equal)
+            {
+                rule = BoxShapeRule.FallbackEqual;
+                return Search(ctx, all, out cost);
+            }
+            var movable = new bool[n];
+            for (int i = 0; i < n; i++) movable[i] = ctx.M[i].Yielding;
+            double[] shift = Search(ctx, movable, out cost);
+            double clears = ctx.Chamfer ? PenaltyChamfer : PenaltyEdge;
+            if (cost < clears) { rule = BoxShapeRule.PriorityRoad; return shift; }
+            double[] shiftAll = Search(ctx, all, out double costAll);
+            if (ctx.Chamfer && costAll >= PenaltyChamfer && cost < PenaltyEdge) { rule = BoxShapeRule.PriorityRoad; return shift; }
+            rule = BoxShapeRule.FallbackCannotClear;
+            cost = costAll;
+            return shiftAll;
+        }
+
         /// <summary>Test / diagnostics hook (null in the game).</summary>
         public static Action<string> Trace;
+
+        /// <summary>0.4.7 (G5): chamfered corners on (the game always). Tests switch it off to reproduce the 0.4.6 refusals.</summary>
+        public static bool ChamferCorners = true;
 
         private static string Name(IList<BoxMouth> m, int i) => string.IsNullOrEmpty(m[i].Name) ? $"mouth {i + 1}" : m[i].Name;
 
@@ -411,20 +471,149 @@ namespace JunctionRules.Core
         }
 
         /// <summary>Penalty of the joining edge of corner i (mouth i at shift si, mouth i+1 at sj).</summary>
-        private static double CornerPenalty(Ctx ctx, int i, double si, double sj)
+        private static double CornerPenalty(Ctx ctx, int i, double si, double sj) => Corner(ctx, i, si, sj).Penalty;
+
+        /// <summary>0.4.7 (G5): how corner i is drawn for given shifts: closed, a kerb-to-kerb edge, or a chamfer.</summary>
+        private struct CornerShape
+        {
+            public bool Closed, Chamfered;
+            public double Ta, Tb, Depth, Penalty;
+            /// <summary>Chamfer ends: on mouth i's line (Pc) and on mouth i+1's line (Qc).</summary>
+            public V3 Pc, Qc;
+            /// <summary>Why no chamfer fits (null when one does or none was needed).</summary>
+            public string ChamferWhy;
+        }
+
+        private static CornerShape Corner(Ctx ctx, int i, double si, double sj)
         {
             int n = ctx.M.Count, j = (i + 1) % n;
             var c = ctx.C[i];
-            double ta = ExitParam(ctx, i, si), tb = EntryParam(ctx, j, sj);
-            if (ta >= tb - 1e-6) return 0;   // closed corner: no joining edge
-            V2 p = c.At(ta).XZ, q = c.At(tb).XZ;
-            double pen = 0;
-            if (!EdgeClear(ctx, c, ta, tb, p, q)) pen += PenaltyEdge;
+            var r = new CornerShape { Ta = ExitParam(ctx, i, si), Tb = EntryParam(ctx, j, sj) };
+            if (r.Ta >= r.Tb - 1e-6) { r.Closed = true; return r; }   // closed corner: no joining edge
+            V3 p3 = c.At(r.Ta), q3 = c.At(r.Tb);
+            V2 p = p3.XZ, q = q3.XZ;
             V2 e = q - p;
             double len = e.Length;
+            double conflictPen = 0;
             if (len > 1e-9)
-                foreach (var cp in ctx.Conflicts) if (V2.Cross(e, cp - p) / len < -1e-6) pen += PenaltyConflict;
-            return pen;
+                foreach (var cp in ctx.Conflicts) if (V2.Cross(e, cp - p) / len < -1e-6) conflictPen += PenaltyConflict;
+            if (EdgeClear(ctx, c, r.Ta, r.Tb, p, q)) { r.Penalty = conflictPen; return r; }
+            string why = null;
+            if (ChamferCorners && ctx.Chamfer && TryChamfer(ctx, i, si, sj, r.Ta, r.Tb, p3, q3, out V3 pc, out V3 qc, out double depth, out double area, out why))
+            {
+                r.Chamfered = true;
+                r.Pc = pc; r.Qc = qc; r.Depth = depth;
+                r.Penalty = PenaltyChamfer + area;
+                return r;
+            }
+            r.ChamferWhy = why;
+            r.Penalty = PenaltyEdge + conflictPen;
+            return r;
+        }
+
+        /// <summary>
+        /// 0.4.7 (G5): the straight chamfer of corner i (mouth i at shift si, mouth i+1 at sj; p / q = their ends on chain
+        /// i at ta / tb). Candidates are lines that touch the kerb between p and q without crossing it: the line of each
+        /// kerb segment there (a supporting line of the corner curve) and the chord p-q moved parallel into the box by the
+        /// deepest kerb point. A candidate is valid when every kerb point between p and q lies on or behind it (within
+        /// KerbTolerance), it meets mouth i's line no further from p than half of mouth i's side and mouth i+1's line no
+        /// further from q than half of that side (so the two chamfers of one mouth never overlap), it keeps the marking
+        /// margin, and every conflict point stays on the box side. Of the valid ones the one cutting the least area off
+        /// the carriageway wins. False with 'why' (the reason of the least bad candidate) when none is valid.
+        /// </summary>
+        private static bool TryChamfer(Ctx ctx, int i, double si, double sj, double ta, double tb, V3 p3, V3 q3, out V3 pc, out V3 qc, out double depth, out double area, out string why)
+        {
+            int n = ctx.M.Count, j = (i + 1) % n;
+            pc = qc = default;
+            depth = 0;
+            area = 0;
+            why = null;
+            var c = ctx.C[i];
+            V2 p = p3.XZ, q = q3.XZ, e = q - p;
+            double len = e.Length;
+            if (len < 1e-9) { why = "corner ends coincide"; return false; }
+            // the kerb between p and q (p, inner chain points, q)
+            var kerb = new List<V2> { p };
+            for (int k = 0; k < c.P.Count; k++) if (c.S[k] > ta + 1e-6 && c.S[k] < tb - 1e-6) kerb.Add(c.P[k].XZ);
+            kerb.Add(q);
+            V2 ei = ctx.C[(i + n - 1) % n].At(EntryParam(ctx, i, si)).XZ, xj = ctx.C[j].At(ExitParam(ctx, j, sj)).XZ;
+            V2 oi = ctx.Mid[i] + ctx.M[i].Inward * si, oj = ctx.Mid[j] + ctx.M[j].Inward * sj;
+            double halfI = 0.5 * V2.Distance(ei, p), halfJ = 0.5 * V2.Distance(q, xj);
+            // candidate lines (point, unit direction from the p side to the q side)
+            var cand = new List<(V2 O, V2 D)>();
+            double chordDepth = 0;
+            foreach (var v in kerb) chordDepth = Math.Max(chordDepth, V2.Cross(e, v - p) / len);
+            V2 eu = e * (1.0 / len);
+            cand.Add((p + new V2(-eu.Z, eu.X) * chordDepth, eu));
+            for (int k = 0; k + 1 < kerb.Count; k++)
+            {
+                V2 d = kerb[k + 1] - kerb[k];
+                if (d.Length < 1e-6) continue;
+                cand.Add((kerb[k], d.Normalized));
+            }
+            double bestArea = double.MaxValue;
+            string bestWhy = null;
+            int bestRank = -1;   // how far the best failing candidate got (for 'why')
+            foreach (var (o, d) in cand)
+            {
+                // kerb on or behind the line
+                double deep = 0;
+                bool crosses = false;
+                foreach (var v in kerb)
+                {
+                    double side = V2.Cross(d, v - o);
+                    if (side > KerbTolerance) { crosses = true; break; }
+                    deep = Math.Max(deep, -side);
+                }
+                if (crosses) continue;
+                if (!LineHit(oi, ctx.Dir[i], o, d, out V2 a) || !LineHit(oj, ctx.Dir[j], o, d, out V2 b)) continue;
+                double fromP = V2.Dot(p - a, ctx.Dir[i]), fromQ = V2.Dot(b - q, ctx.Dir[j]);
+                if (fromP < -1e-6 || fromQ < -1e-6 || fromP > halfI + 1e-6 || fromQ > halfJ + 1e-6)
+                {
+                    if (bestRank < 1) { bestRank = 1; bestWhy = "a cut clear of the kerb would take more than half of a mouth side"; }
+                    continue;
+                }
+                bool markOk = true;
+                foreach (var m in ctx.Markings) if (SegmentToStrip(a, b, m) < ctx.Margin - 1e-3) { markOk = false; break; }
+                if (!markOk)
+                {
+                    if (bestRank < 2) { bestRank = 2; bestWhy = "a cut clear of the kerb comes within the marking margin"; }
+                    continue;
+                }
+                int outside = 0;
+                foreach (var cp in ctx.Conflicts) if (V2.Cross(d, cp - o) < -1e-6) outside++;
+                if (outside > 0)
+                {
+                    if (bestRank < 3) { bestRank = 3; bestWhy = $"a cut clear of the kerb would leave {outside} conflict point(s) outside"; }
+                    continue;
+                }
+                // area cut off: a, p, kerb..., q, b
+                var poly = new List<V2> { a };
+                poly.AddRange(kerb);
+                poly.Add(b);
+                double cut = Math.Abs(BoxPaintGeometry.SignedArea(poly));
+                if (cut < bestArea)
+                {
+                    bestArea = cut;
+                    depth = deep;
+                    pc = V3.FromXZ(a, p3.Y);
+                    qc = V3.FromXZ(b, q3.Y);
+                }
+            }
+            if (bestArea < double.MaxValue) { area = bestArea; return true; }
+            why = bestWhy ?? "no straight cut meets both mouth lines";
+            return false;
+        }
+
+        /// <summary>Where the line o1 + t d1 meets the line o2 + u d2 (false when parallel).</summary>
+        private static bool LineHit(V2 o1, V2 d1, V2 o2, V2 d2, out V2 x)
+        {
+            double den = V2.Cross(d1, d2);
+            x = o1;
+            if (Math.Abs(den) < 1e-9) return false;
+            double t = V2.Cross(o2 - o1, d2) / den;
+            x = o1 + d1 * t;
+            return true;
         }
 
         /// <summary>

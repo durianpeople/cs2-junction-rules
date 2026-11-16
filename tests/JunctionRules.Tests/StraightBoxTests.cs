@@ -224,11 +224,26 @@ namespace JunctionRules.Tests
                 var free = CW.BuildStraight(arms, o, null, 0.5, null, false);
                 var cps = new List<V2> { new V2(0, 9), new V2(12, 0), new V2(-12, 0) };
                 var held = CW.BuildStraight(Synth(new double[] { 0, 90, 180 }, 8, 20, 6, 3, new[] { false, true, false }), o, null, 0.5, cps, false);
-                // JR-T-007b-r F2: the stem may not slide past the conflict point, so an edge still crosses the kerb: no box at all.
+                // JR-T-007b-r F2: the stem may not slide past the conflict point, so its corner edges cannot clear by sliding.
+                // 0.4.6: no box at all. 0.4.7 (G5): the corners are cut by straight chamfers instead (on the carriageway, the
+                // point inside); with chamfers off (the 0.4.6 behaviour) it is still the refusal naming the corner.
                 Check(free.Outline != null, "containment: free stem builds");
-                Check(held.Outline == null && held.Failure != null && held.Failure.Contains("corner") && held.Failure.Contains("still crosses the kerb"), "containment: an edge that cannot clear = no box, failure names the corner (" + held.Failure + ")");
-                Check(held.Straight.FailingCorners.Count > 0, "containment: failing corner listed");
-                if (free.Outline != null) Check(held.Straight.Shift[1] < free.Straight.Shift[1], $"containment: the stem slides less ({held.Straight.Shift[1]:0.00} < {free.Straight.Shift[1]:0.00} m)");
+                StraightBox.ChamferCorners = false;
+                var held046 = CW.BuildStraight(Synth(new double[] { 0, 90, 180 }, 8, 20, 6, 3, new[] { false, true, false }), o, null, 0.5, cps, false);
+                StraightBox.ChamferCorners = true;
+                Check(held046.Outline == null && held046.Failure != null && held046.Failure.Contains("corner") && held046.Failure.Contains("still crosses the kerb"), "containment (0.4.6, no chamfers): an edge that cannot clear = no box, failure names the corner (" + held046.Failure + ")");
+                Check(held046.Straight.FailingCorners.Count > 0, "containment (0.4.6): failing corner listed");
+                Check(held.Outline != null && held.Straight.Chamfers.Count > 0 && held.Straight.FailingCorners.Count == 0, "containment (0.4.7): chamfered box instead of a refusal (" + held.Failure + ")");
+                if (held.Outline != null)
+                {
+                    var hx = G.ToXZ(held.Outline);
+                    bool inside = true;
+                    foreach (var c in cps) inside &= G.Contains(hx, c, 1e-3);
+                    Check(inside, "containment (0.4.7): every conflict point inside");
+                    var reference = G.ToXZ(G.BuildOutline(CW.BuildStraight(Synth(new double[] { 0, 90, 180 }, 8, 20, 6, 3, null), o, null, 0, null, false).Kerbs, o, 0, out _));
+                    Check(WorstOutside(held.Outline, reference) <= StraightBox.KerbTolerance + 1e-6, "containment (0.4.7): chamfered box on the carriageway");
+                }
+                if (free.Outline != null && held.Outline != null) Check(held.Straight.Shift[1] < free.Straight.Shift[1], $"containment: the stem slides less ({held.Straight.Shift[1]:0.00} < {free.Straight.Shift[1]:0.00} m)");
             }
             // Margin vs a zebra on a neighbouring arm: a joining edge keeps the margin from the painted strip.
             {
