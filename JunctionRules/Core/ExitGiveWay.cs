@@ -236,7 +236,10 @@ namespace JunctionRules.Core
         public const float AreaScanMin = 25f;
 
         /// <summary>Counter episodes (0.4.6): a vehicle's consecutive exit decisions (at most <see cref="Core.SafetyStopEvents.ContinueFrames"/> apart) are one event, per kind.</summary>
-        public const int EventKinds = 16;
+        public const int EventKinds = 17;
+
+        /// <summary>0.4.8 (trace): event kind of "the last Go judgement was at a BOXED exit" (so the sidewalk-crossing line says boxed yes even when judged in an earlier update).</summary>
+        public const int DriveBoxedKind = 16;
 
         /// <summary>0.4.8 review (G7 F2): event kind of an exit's last WAIT decision (a Go older than the last Wait is no judgement).</summary>
         public const int ExitWaitKind = 14;

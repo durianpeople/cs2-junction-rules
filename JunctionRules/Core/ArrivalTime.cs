@@ -306,7 +306,7 @@ namespace JunctionRules.Core
         public static uint Keep(int key)
         {
             int kind = (key - 1) / ExitGiveWay.EventKindStride;
-            return kind == ExitGiveWay.DriveGoKind || kind == ExitGiveWay.ExitWaitKind ? ExitGiveWay.DriveGoWindow : ContinueFrames;
+            return kind == ExitGiveWay.DriveGoKind || kind == ExitGiveWay.ExitWaitKind || kind == ExitGiveWay.DriveBoxedKind ? ExitGiveWay.DriveGoWindow : ContinueFrames;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

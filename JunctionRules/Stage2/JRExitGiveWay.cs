@@ -561,7 +561,10 @@ namespace JunctionRules.Stage2
             {
                 Entity building = ExitBuilding(from);
                 int reasons = judged ? ExitTrace.ReasonDecided : 0;
-                TraceWrite(m_TraceRing, self, building, ExitTrace.Pack(ExitTrace.Event.EnterDrive, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, ExitGiveWay.Decision.Go, reasons, m_DriveBoxed), frame, OwnerOf(drive), LaneStart(drive, ref curves));
+                // 0.4.7 printed "boxed no" for every driveway line (the drive decision never set the flag); 0.4.8: this update's
+                // decision, else the recorded boxed Go of the same window.
+                bool boxedGo = m_DriveBoxed || BoxedGo(eventTable, self, frame);
+                TraceWrite(m_TraceRing, self, building, ExitTrace.Pack(ExitTrace.Event.EnterDrive, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, ExitGiveWay.Decision.Go, reasons, boxedGo), frame, OwnerOf(drive), LaneStart(drive, ref curves));
             }
         }
 
@@ -587,6 +590,16 @@ namespace JunctionRules.Stage2
         {
             if (path == ExitPaths.Path.Drive) return LaneStart(from, ref curves);
             return curves.TryGetComponent(next.m_Lane, out Curve c) ? MathUtils.Position(c.m_Bezier, next.m_CurvePosition.x).xz : default;
+        }
+
+        private static unsafe bool BoxedGo(NativeArray<long> eventTable, Entity self, uint frame)
+        {
+            if (!eventTable.IsCreated) return false;
+            TableSlots slots = default;
+            slots.m_P = (long*)NativeArrayUnsafeUtility.GetUnsafeBufferPointerWithoutChecks(eventTable);
+            slots.m_N = eventTable.Length;
+            bool found = EventLookup.Last(ref slots, ExitGiveWay.EventKey(self.Index, ExitGiveWay.DriveBoxedKind), out uint last);
+            return EventLookup.Fresh(found, last, frame, ExitGiveWay.DriveGoWindow);
         }
 
         private Entity OwnerOf(Entity lane) => m_OwnerData.TryGetComponent(lane, out Owner o) ? o.m_Owner : Entity.Null;
@@ -634,6 +647,7 @@ namespace JunctionRules.Stage2
             if (m_DriveDecision == ExitGiveWay.Decision.Go)
             {
                 ExitEvent(eventTable, self, frame, ExitGiveWay.DriveGoKind);
+                if (m_DriveBoxed) ExitEvent(eventTable, self, frame, ExitGiveWay.DriveBoxedKind);
                 return;
             }
             ExitEvent(eventTable, self, frame, ExitGiveWay.ExitWaitKind);

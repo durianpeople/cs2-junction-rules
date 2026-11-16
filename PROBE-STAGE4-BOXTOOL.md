@@ -951,7 +951,11 @@ line showed `entrance band holds: leaving driveway 128` (car-steps) unchanged fo
 3. The exit was judged only while its own hold was the tightest limit; a vehicle creeping under another limit reached
    its spot without a decision.
 4. The time a lorry needs was the time to REACH the near lane, not to CLEAR it with its whole length.
-5. "hand-overs not judged" in 0.4.7 equalled "building road" in almost every window: a counting artefact (the
+5. The 0.4.7 exit trace could not show any of this: a driveway decision is never written (drive lines say `building
+   none ... judged before the hand-over ... boxed no`; the boxed flag was only set by the other exit paths, box
+   detection itself works by road + position, see the non-zero `leaving driveway` holds), and a vehicle stuck on its
+   drive lane never reaches a hand-over (truck 380864, in the middle box since the 07:30 load, has no trace line).
+6. "hand-overs not judged" in 0.4.7 equalled "building road" in almost every window: a counting artefact (the
    hand-over update has the front past the stop point, so no decision in that very update), not unjudged exits.
 
 **Now (owner rule 17 Nov: the sidewalk is a zebra Z, directly followed by the road lanes).** A vehicle leaving by a
