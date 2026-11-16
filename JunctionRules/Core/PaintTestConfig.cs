@@ -138,6 +138,7 @@ namespace JunctionRules.Core
                 g.KerbInset = NumOr(p, "kerbInset", g.KerbInset);
                 g.MitreLimit = NumOr(p, "mitreLimit", g.MitreLimit);
                 g.StraightenTolerance = NumOr(p, "straightenTolerance", g.StraightenTolerance);
+                g.EntranceLength = NumOr(p, "entranceLength", g.EntranceLength);
                 double ml = NumOr(p, "maxLinesPerFamily", g.MaxLinesPerFamily);
                 g.MaxLinesPerFamily = (int)Math.Round(ml);
 
@@ -198,7 +199,7 @@ namespace JunctionRules.Core
             {
                 $"\"borderWidth\": {F(g.BorderWidth)}", $"\"lineWidth\": {F(g.LineWidth)}", $"\"spacing\": {F(g.Spacing)}",
                 $"\"angle\": {F(g.AngleDeg)}", $"\"kerbInset\": {F(g.KerbInset)}", $"\"mitreLimit\": {F(g.MitreLimit)}",
-                $"\"straightenTolerance\": {F(g.StraightenTolerance)}", $"\"maxLinesPerFamily\": {g.MaxLinesPerFamily}",
+                $"\"straightenTolerance\": {F(g.StraightenTolerance)}", $"\"maxLinesPerFamily\": {g.MaxLinesPerFamily}", $"\"entranceLength\": {F(g.EntranceLength)}",
                 $"\"color\": [{F(r.Color[0])}, {F(r.Color[1])}, {F(r.Color[2])}, {F(r.Color[3])}]",
                 $"\"volumeBelow\": {F(r.VolumeBelow)}", $"\"volumeAbove\": {F(r.VolumeAbove)}", $"\"expand\": {F(r.Expand)}",
                 $"\"smoothness\": {F(r.Smoothness)}", $"\"metallic\": {F(r.Metallic)}", $"\"normalOpacity\": {F(r.NormalOpacity)}",
