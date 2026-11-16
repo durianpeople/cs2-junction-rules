@@ -38,7 +38,7 @@ differences). Also: the T-junction through-side kerb fix (section 6) and the ent
 
 Build to install: `~/Code/cs2-junction-rules/.staged/0.4.3-probe/`. 0.4.2-probe (jr-t-010 line) is installed live by main (code 59e731f, sums c781df0); never write into `.staged/0.4.2-probe`. While `.staged/0.4.3-probe` holds a `STALE.md` it is a managed
 build only: main does the Burst build in `STALE.md` (game closed, at the owner's quit), then puts the five sums into the
-install block below. (0.4.1-probe stays in `.staged/0.4.1-probe` as the rollback.) Until then the block refuses (placeholder sums `0000...`).
+install block below. 0.4.3-probe was Burst-built from a14445d and installed by main on 16 Nov. (0.4.2-probe stays in `.staged/0.4.2-probe` as the rollback.) Until then the block refuses (placeholder sums `0000...`).
 
 Built for game **1.6.4f1 (1097.158a)** only (same version gate: on another version saved boxes are not painted and the
 copy does not run; the boxes stay in the save).
@@ -54,11 +54,11 @@ copy does not run; the boxes stay in the save).
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
+70b4cda8e7a58af89bf0d8e55d5e2ec7adaf4b2697c5ed7855789f6804e52b87  JunctionRules.dll
+ec29605c754404c5a3b978bbe439050a1ab9df9cf4df4522c50c52f63fcf1fd3  JunctionRules.pdb
 9e8f8a397f70bbeb121ef7224981278773595c1fe2ce7e31de01d4c4df2b65bf  JunctionRules.mjs
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
+be05596420a19970bc1029689d612feccd9d47d543d65876a44fb5930740cbd0  JunctionRules_win_x86_64.dll
+cffee44b48676b58eb837872dbac177bfeeabb632b43236a66c2e97685961511  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
