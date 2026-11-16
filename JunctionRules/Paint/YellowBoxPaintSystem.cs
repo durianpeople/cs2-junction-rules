@@ -10,6 +10,7 @@ using Game.Net;
 using Game.Prefabs;
 using Game.Rendering;
 using Game.Tools;
+using JunctionRules.Boxes;
 using JunctionRules.Core;
 using Unity.Collections;
 using Unity.Entities;
@@ -40,10 +41,15 @@ namespace JunctionRules.Paint
 
         public static string StatusText => s_Latch.Failed ? "failed, off until the game restarts: " + s_Latch.What : s_Status;
 
+        private enum BoxKind { ListJunction, SavedJunction, SavedEntrance }
+
         private sealed class Box
         {
+            public BoxKind Kind;
             public PaintTestJunction Entry;
             public Entity Node = Entity.Null;
+            public Entity Building = Entity.Null;
+            public bool Dropped;
             public V3 LastPos;
             public readonly List<Entity> Edges = new List<Entity>();
             public AreaTriangleData[] Tris = Array.Empty<AreaTriangleData>();
@@ -60,6 +66,13 @@ namespace JunctionRules.Paint
         private EntityQuery m_ChangedNodeQuery;
         private EntityQuery m_ChangedEdgeQuery;
         private EntityQuery m_AreasConfigQuery;
+        private EntityQuery m_SavedJunctionQuery;
+        private EntityQuery m_SavedEntranceQuery;
+        private EntityQuery m_ChangedBuildingQuery;
+
+        /// <summary>0.4.0: saved boxes (tool) exist in the loaded city: the system runs for them even with the paint test off.</summary>
+        private static bool s_SavedPresent;
+        private bool m_TestOn;
         private PrefabSystem m_PrefabSystem;
 
         private bool m_InCity;
@@ -87,20 +100,22 @@ namespace JunctionRules.Paint
             {
                 YellowBoxPaintSystem s = s_Instance;
                 if (s == null) return;
-                bool want = Mod.Settings != null && Mod.Settings.YellowBoxPaintTest && !s_Latch.Failed;
+                bool testOn = Mod.Settings != null && Mod.Settings.YellowBoxPaintTest;
+                bool want = (testOn || s_SavedPresent) && !s_Latch.Failed;
                 if (want && !GameVersionOk())
                 {
                     // Same version gate as the copy: the paint code reads game types whose layout may differ on another game version.
                     want = false;
-                    s_Status = "off: this game version differs from the one this build was made for (" + Mod.Gate.Verdict + "); the paint test is not started";
+                    s_Status = "off: this game version differs from the one this build was made for (" + Mod.Gate.Verdict + "); no boxes are painted (saved boxes stay in the city)";
                     if (!s_VersionNoted)
                     {
                         s_VersionNoted = true;
                         Mod.log.Warn("yellow box paint test not started: version check says " + Mod.Gate.Verdict + " (" + Mod.Gate.Message + ")");
                     }
                 }
-                if (want && !s.m_Active) s.Activate();
-                else if (!want && s.m_Active) s.Deactivate("switched off");
+                if (want && !s.m_Active) { s.m_TestOn = testOn; s.Activate(); }
+                else if (!want && s.m_Active) s.Deactivate(testOn ? "switched off" : "paint test off and no saved boxes");
+                else if (s.m_Active && s.m_TestOn != testOn) { s.m_TestOn = testOn; s.m_NeedResolve = true; }
                 if (s.m_Active && Mod.Settings != null)
                 {
                     if (Mod.Settings.PaintMode != s.m_Mode) { s.m_Mode = Mod.Settings.PaintMode; s.m_NeedRebuildAll = true; }
@@ -120,6 +135,20 @@ namespace JunctionRules.Paint
         {
             GateVerdict v = Mod.Gate.Verdict;
             return v == GateVerdict.Pass || v == GateVerdict.PassHashSkipped || v == GateVerdict.CodeMismatch;
+        }
+
+        /// <summary>0.4.0: the yellow box tool added or removed a saved box: paint it / clear it at once (starts the system when needed).</summary>
+        internal static void NotifyBoxesChanged()
+        {
+            try
+            {
+                s_SavedPresent = true;   // re-counted by the resolve that follows
+                YellowBoxPaintSystem s = s_Instance;
+                if (s == null) return;
+                if (s.m_Active) s.m_NeedResolve = true;
+                else ApplySettings();
+            }
+            catch (Exception e) { Fail("taking the tool's change", e); }
         }
 
         internal static void RequestReload() { Request(s => s.m_NeedReload = true, "reload the test list"); }
@@ -182,7 +211,24 @@ namespace JunctionRules.Paint
                 None = new[] { ComponentType.ReadOnly<Temp>() },
             });
             m_AreasConfigQuery = GetEntityQuery(ComponentType.ReadOnly<AreasConfigurationData>());
+            m_SavedJunctionQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] { ComponentType.ReadOnly<YellowBoxJunction>() },
+                None = new[] { ComponentType.ReadOnly<Deleted>(), ComponentType.ReadOnly<Temp>() },
+            });
+            m_SavedEntranceQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] { ComponentType.ReadOnly<YellowBoxEntrance>() },
+                None = new[] { ComponentType.ReadOnly<Deleted>(), ComponentType.ReadOnly<Temp>() },
+            });
+            m_ChangedBuildingQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] { ComponentType.ReadOnly<Game.Buildings.Building>() },
+                Any = new[] { ComponentType.ReadOnly<Updated>(), ComponentType.ReadOnly<Deleted>() },
+                None = new[] { ComponentType.ReadOnly<Temp>() },
+            });
             m_PrefabSystem = World.GetOrCreateSystemManaged<PrefabSystem>();
+            BoxStore.Changed += NotifyBoxesChanged;   // 0.4.0: the tool's add / remove (Boxes/BoxStore.cs)
             Enabled = false;
             s_Instance = this;
             ApplySettings();
@@ -192,6 +238,7 @@ namespace JunctionRules.Paint
         protected override void OnDestroy()
         {
             try { Deactivate(null); } catch { }
+            BoxStore.Changed -= NotifyBoxesChanged;
             if (s_Instance == this) s_Instance = null;
             base.OnDestroy();
         }
@@ -205,6 +252,11 @@ namespace JunctionRules.Paint
             m_TriangleCount = 0;
             m_Boxes.Clear();
             m_Tracked.Clear();
+            // 0.4.0: saved boxes in this city? (two empty-query checks, once per load)
+            int j = m_InCity ? m_SavedJunctionQuery.CalculateEntityCount() : 0, en = m_InCity ? m_SavedEntranceQuery.CalculateEntityCount() : 0;
+            s_SavedPresent = j + en > 0;
+            if (m_InCity) Mod.log.Info($"yellow boxes: {j} junction box(es) and {en} entrance box(es) saved in this city");
+            ApplySettings();
         }
 
         private void Activate()
@@ -217,7 +269,7 @@ namespace JunctionRules.Paint
             m_LastCostLog = UnityEngine.Time.realtimeSinceStartup;
             s_Status = "on, starting";
             Enabled = true;
-            Mod.log.Info($"yellow box paint test ON (draw-only probe; mode {m_Mode}, decal layers {m_Layers} = {(int)m_Layers}); list file {ListPath()}");
+            Mod.log.Info($"yellow box painting ON ({(m_TestOn ? "paint test list + " : "")}saved boxes; mode {m_Mode}, decal layers {m_Layers} = {(int)m_Layers}); list file {ListPath()}");
         }
 
         /// <summary>Stops everything: no update, no draw callback, GPU objects released, boxes forgotten.</summary>
@@ -232,7 +284,7 @@ namespace JunctionRules.Paint
             m_Tracked.Clear();
             m_TriangleCount = 0;
             s_Status = "off";
-            if (wasActive && why != null) Mod.log.Info("yellow box paint test OFF (" + why + "); nothing drawn, nothing left behind");
+            if (wasActive && why != null) Mod.log.Info("yellow box painting OFF (" + why + "); nothing drawn, nothing left behind");
         }
 
         private void Subscribe()
@@ -304,6 +356,7 @@ namespace JunctionRules.Paint
                     m_NeedResolve = false;
                     ResolveAll();
                     m_NeedRebuildAll = true;
+                    if (!m_TestOn && !s_SavedPresent) { Deactivate("paint test off and no saved boxes"); return; }
                 }
                 bool changed = false;
                 if (m_NeedRebuildAll)
@@ -311,6 +364,12 @@ namespace JunctionRules.Paint
                     step = "building the boxes";
                     m_NeedRebuildAll = false;
                     foreach (Box b in m_Boxes) RebuildBox(b);
+                    if (m_Boxes.RemoveAll(x => x.Dropped) > 0)
+                    {
+                        bool saved = false;
+                        foreach (Box b in m_Boxes) saved |= b.Kind != BoxKind.ListJunction;
+                        s_SavedPresent = saved;
+                    }
                     changed = true;
                 }
                 else if (m_Tracked.Count != 0)
@@ -322,6 +381,7 @@ namespace JunctionRules.Paint
                 {
                     step = "uploading the boxes";
                     Upload();
+                    if (!m_TestOn && !s_SavedPresent) { Deactivate("paint test off and no saved boxes left"); return; }
                 }
                 if (m_LogCostRequested || (m_Boxes.Count > 0 && UnityEngine.Time.realtimeSinceStartup - m_LastCostLog >= m_Config.Render.LogIntervalSeconds))
                 {
@@ -359,10 +419,12 @@ namespace JunctionRules.Paint
             if (!File.Exists(path))
             {
                 m_Config = new PaintTestConfig();
-                Mod.log.Info($"yellow box paint test: no list file at {path}: nothing to paint (add junctions with the button or write the file, then press Refresh)");
+                BoxStore.EntranceLength = m_Config.Geometry.EntranceLength;
+                if (m_TestOn) Mod.log.Info($"yellow box paint test: no list file at {path}: nothing to paint (add junctions with the button or write the file, then press Refresh)");
                 return;
             }
             m_Config = PaintTestConfig.Parse(File.ReadAllText(path));
+            BoxStore.EntranceLength = m_Config.Geometry.EntranceLength;
             Mod.log.Info($"yellow box paint test: list {path}: {m_Config.Junctions.Count} junction(s); border {m_Config.Geometry.BorderWidth} m, lines {m_Config.Geometry.LineWidth} m, spacing {(m_Config.Geometry.Spacing > 0 ? m_Config.Geometry.Spacing + " m" : "auto (TSM 2 m / 2.5 m)")}, angle {m_Config.Geometry.AngleDeg} deg, kerb inset +{m_Config.Geometry.KerbInset} m");
             foreach (string p in m_Config.Problems) Mod.log.Warn("yellow box paint test: list file: " + p);
             Mod.log.Info("yellow box paint test: diag switches (effective): " + m_Config.Diag.Describe()
@@ -442,13 +504,15 @@ namespace JunctionRules.Paint
         {
             m_Boxes.Clear();
             m_Tracked.Clear();
-            if (m_Config.Junctions.Count == 0) { s_Status = "on, test list empty"; m_Tracked.Clear(); return; }
+            ResolveSaved();
+            if (!m_TestOn) return;
+            if (m_Config.Junctions.Count == 0) { s_Status = "on, test list empty"; return; }
             ReadNodes(out NativeArray<Entity> ents, out List<V3> pos);
             try
             {
                 foreach (PaintTestJunction j in m_Config.Junctions)
                 {
-                    var b = new Box { Entry = j, Label = string.IsNullOrEmpty(j.Name) ? $"({j.X:0.0}, {j.Z:0.0})" : $"'{j.Name}'" };
+                    var b = new Box { Kind = BoxKind.ListJunction, Entry = j, Label = string.IsNullOrEmpty(j.Name) ? $"({j.X:0.0}, {j.Z:0.0})" : $"'{j.Name}'" };
                     int i = PaintTestConfig.PickNode(j, pos, m_Config.Render.SnapRadius, out int stacked);
                     if (i < 0) { Mod.log.Warn($"yellow box paint test: {b.Label}: no junction node within {m_Config.Render.SnapRadius} m; skipped"); continue; }
                     b.Node = ents[i];
@@ -461,6 +525,41 @@ namespace JunctionRules.Paint
             {
                 ents.Dispose();
             }
+        }
+
+        /// <summary>0.4.0: the saved boxes (tool): every node with YellowBoxJunction, every building with YellowBoxEntrance.</summary>
+        private void ResolveSaved()
+        {
+            NativeArray<Entity> j = m_SavedJunctionQuery.ToEntityArray(Allocator.Temp);
+            NativeArray<Entity> e = m_SavedEntranceQuery.ToEntityArray(Allocator.Temp);
+            try
+            {
+                for (int i = 0; i < j.Length; i++) m_Boxes.Add(new Box { Kind = BoxKind.SavedJunction, Node = j[i], Label = "saved junction box (node " + j[i] + ")" });
+                for (int i = 0; i < e.Length; i++) m_Boxes.Add(new Box { Kind = BoxKind.SavedEntrance, Building = e[i], Label = "saved entrance box (building " + e[i] + ")" });
+                s_SavedPresent = j.Length + e.Length > 0;
+            }
+            finally
+            {
+                j.Dispose();
+                e.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// 0.4.0: a saved box whose node / building is no longer a valid target loses its component (no orphan box left
+        /// in the save); logged. Only our own component is touched.
+        /// </summary>
+        private void DropSaved(Box b, string why)
+        {
+            b.Dropped = true;
+            b.Tris = Array.Empty<AreaTriangleData>();
+            EntityManager em = EntityManager;
+            Entity e = b.Kind == BoxKind.SavedJunction ? b.Node : b.Building;
+            if (e != Entity.Null && em.Exists(e))
+            {
+                BoxStore.Remove(em, e, b.Kind == BoxKind.SavedJunction, notify: false);   // the one writer (Boxes/BoxStore.cs)
+            }
+            Mod.log.Info($"yellow boxes: {b.Label}: box dropped ({why})");
         }
 
         /// <summary>Re-finds a box's node from its last position (after the node was deleted or replaced by an edit).</summary>
@@ -483,21 +582,45 @@ namespace JunctionRules.Paint
         /// <summary>Read-only change detection: true when a boxed node or one of its edges is Updated or Deleted this frame.</summary>
         private bool CheckEdits()
         {
-            bool nodes = !m_ChangedNodeQuery.IsEmptyIgnoreFilter, edges = !m_ChangedEdgeQuery.IsEmptyIgnoreFilter;
-            if (!nodes && !edges) return false;
+            bool nodes = !m_ChangedNodeQuery.IsEmptyIgnoreFilter, edges = !m_ChangedEdgeQuery.IsEmptyIgnoreFilter, buildings = !m_ChangedBuildingQuery.IsEmptyIgnoreFilter;
+            if (!nodes && !edges && !buildings) return false;
             var hit = new HashSet<Entity>();
             if (nodes) Collect(m_ChangedNodeQuery, hit);
             if (edges) Collect(m_ChangedEdgeQuery, hit);
+            if (buildings) Collect(m_ChangedBuildingQuery, hit);
             if (hit.Count == 0) return false;
             bool any = false;
             foreach (Box b in m_Boxes)
             {
-                bool touched = hit.Contains(b.Node);
+                bool touched = hit.Contains(b.Node) || hit.Contains(b.Building);
                 foreach (Entity e in b.Edges) touched |= hit.Contains(e);
                 if (!touched) continue;
                 any = true;
-                if (!EntityManager.Exists(b.Node) || EntityManager.HasComponent<Deleted>(b.Node)) Reresolve(b);
+                if (b.Kind == BoxKind.ListJunction)
+                {
+                    if (!EntityManager.Exists(b.Node) || EntityManager.HasComponent<Deleted>(b.Node)) Reresolve(b);
+                }
+                else
+                {
+                    // A saved box lives on its entity: a deleted node / building takes its box with it (bulldozed, or
+                    // replaced by an edit that makes a new entity; ApplyNetSystem.cs 383-393). Never re-attached elsewhere.
+                    Entity e = b.Kind == BoxKind.SavedJunction ? b.Node : b.Building;
+                    if (!EntityManager.Exists(e) || EntityManager.HasComponent<Deleted>(e))
+                    {
+                        b.Dropped = true;
+                        b.Tris = Array.Empty<AreaTriangleData>();
+                        Mod.log.Info($"yellow boxes: {b.Label}: its {(b.Kind == BoxKind.SavedJunction ? "node" : "building")} was deleted, the box went with it");
+                        continue;
+                    }
+                }
                 RebuildBox(b);
+            }
+            if (any)
+            {
+                m_Boxes.RemoveAll(x => x.Dropped);
+                bool saved = false;
+                foreach (Box b in m_Boxes) saved |= b.Kind != BoxKind.ListJunction;
+                s_SavedPresent = saved;
             }
             return any;
         }
@@ -518,8 +641,24 @@ namespace JunctionRules.Paint
             b.Edges.Clear();
             try
             {
+                if (b.Kind == BoxKind.SavedEntrance) { RebuildEntrance(b); return; }
                 if (b.Node == Entity.Null) return;
                 EntityManager em = EntityManager;
+                if (b.Kind == BoxKind.SavedJunction)
+                {
+                    m_Tracked.Add(b.Node);
+                    if (!BoxSelection.JunctionOk(BoxFacts.Junction(em, b.Node), out string why))
+                    {
+                        // an edit kept the node entity but it is no longer a junction that can take a box
+                        if (em.Exists(b.Node) && em.HasBuffer<ConnectedEdge>(b.Node))
+                        {
+                            DynamicBuffer<ConnectedEdge> ce = em.GetBuffer<ConnectedEdge>(b.Node, true);
+                            for (int i = 0; i < ce.Length; i++) m_Tracked.Add(ce[i].m_Edge);
+                        }
+                        DropSaved(b, "node no longer valid: " + why);
+                        return;
+                    }
+                }
                 if (!em.Exists(b.Node) || em.HasComponent<Deleted>(b.Node) || !em.HasComponent<Game.Net.Node>(b.Node) || !em.HasBuffer<ConnectedEdge>(b.Node))
                 {
                     Mod.log.Info($"yellow box paint test: {b.Label}: node gone; skipped");
@@ -612,6 +751,67 @@ namespace JunctionRules.Paint
             }
         }
 
+        /// <summary>
+        /// 0.4.0: entrance box (Core/EntranceBox.cs): kerb to kerb across the access road, EntranceLength along it,
+        /// centred on the building's access point, clipped to the edge's own part. Kerb lines: the edge composition's
+        /// footways (same FootwayWidths + stop-bay rule as the junction arms) plus kerbInset, measured in from the
+        /// composition's outer width.
+        /// </summary>
+        private void RebuildEntrance(Box b)
+        {
+            EntityManager em = EntityManager;
+            m_Tracked.Add(b.Building);
+            EntranceFacts f = BoxFacts.Entrance(em, b.Building, out BoxFacts.Access a);
+            if (a.Edge != Entity.Null) { b.Edges.Add(a.Edge); m_Tracked.Add(a.Edge); }
+            if (a.Edge != Entity.Null && em.Exists(a.Edge) && em.HasComponent<Edge>(a.Edge))
+            {
+                // the mouths move when a node at either end is rebuilt
+                Edge ed = em.GetComponentData<Edge>(a.Edge);
+                b.Edges.Add(ed.m_Start); b.Edges.Add(ed.m_End);
+                m_Tracked.Add(ed.m_Start); m_Tracked.Add(ed.m_End);
+            }
+            if (!BoxSelection.EntranceOk(f, out string why)) { DropSaved(b, "building access no longer valid: " + why); return; }
+            var notes = new List<string>();
+            double footL = 0, footR = 0;
+            bool known = FootwayWidths(em, a.Edge, true, out footL, out footR, out string src, notes);
+            double extra = m_Config.Geometry.KerbInset;
+            Entity compEnt = em.GetComponentData<Composition>(a.Edge).m_Edge;
+            double half = em.HasComponent<NetCompositionData>(compEnt) ? em.GetComponentData<NetCompositionData>(compEnt).m_Width * 0.5 : 0;
+            if (!(half > 0)) { Mod.log.Warn($"yellow boxes: {b.Label}: road has no composition width; not painted"); return; }
+            Bezier4x3 curve = em.GetComponentData<Curve>(a.Edge).m_Bezier;
+            // Composition left (x < 0) is the edge geometry's m_Left side; find whether that is left of the curve direction.
+            bool compLeftIsGeomLeft = true;
+            if (em.HasComponent<EdgeGeometry>(a.Edge))
+            {
+                float3 lp = em.GetComponentData<EdgeGeometry>(a.Edge).m_Start.m_Left.a;
+                float3 tan = MathUtils.Tangent(curve, 0f);
+                compLeftIsGeomLeft = V2.Cross(new V2(tan.x, tan.z), new V2(lp.x - curve.a.x, lp.z - curve.a.z)) >= 0;
+            }
+            else notes.Add("no edge geometry: footway sides assumed");
+            double gl = (compLeftIsGeomLeft ? footL : footR) + extra, gr = (compLeftIsGeomLeft ? footR : footL) + extra;
+            if (!EntranceBox.Window(a.AlongM, m_Config.Geometry.EntranceLength, a.MinM, a.MaxM, out double from, out double to))
+            {
+                Mod.log.Info($"yellow boxes: {b.Label}: less than 1 m of road between the junctions at the access; not painted");
+                return;
+            }
+            int n = Math.Max(2, (int)Math.Ceiling(to - from) + 1);
+            var centre = new List<V3>(n);
+            for (int i = 0; i < n; i++)
+            {
+                float t = BoxFacts.TAt(curve, (float)(from + (to - from) * i / (n - 1)));
+                float3 p = MathUtils.Position(curve, t);
+                centre.Add(new V3(p.x, p.y, p.z));
+            }
+            List<V3> outline = EntranceBox.Build(centre, half, gl, gr, out string fail);
+            if (outline == null) { Mod.log.Warn($"yellow boxes: {b.Label}: no box: {fail}"); return; }
+            BoxPaintResult res = BoxPaintGeometry.BuildPieces(outline, m_Config.Geometry, m_Mode);
+            if (!res.Ok) { Mod.log.Warn($"yellow boxes: {b.Label}: no box: {res.Failure}"); return; }
+            notes.AddRange(res.Warnings);
+            b.Tris = ToTriangles(res, m_Config.Render, m_Config.Diag, out b.Bounds);
+            b.LastPos = new V3(a.Point.x, a.Point.y, a.Point.z);
+            Mod.log.Info($"yellow boxes: {b.Label}: access on edge {a.Edge} at {b.LastPos} ({a.AlongM:0.0} m along, edge part {a.MinM:0.0}..{a.MaxM:0.0} m), box {to - from:0.0} m x kerb to kerb, footways {(known ? $"{footL:0.00}|{footR:0.00}{src}" : "unknown")}{(extra != 0 ? $" +{extra} m kerbInset" : "")}, triangles {b.Tris.Length}" + (notes.Count > 0 ? "; notes: " + string.Join("; ", notes) : ""));
+        }
+
         private static List<V3> Sample(Bezier4x3 c)
         {
             const int n = 16;   // kerb corner curves: 16 chords keep the offset kerb within a few cm of the curve
@@ -656,7 +856,17 @@ namespace JunctionRules.Paint
                         spans.Add(new CompositionLaneSpan(l.m_Position.x, ld.m_Width, CarriagewayOutline.IsCarriagewayLane((int)(l.m_Flags | ld.m_Flags))));
                     }
                 }
-                if (CarriagewayOutline.FootwayWidths(spans, width, out left, out right, out why)) return true;
+                if (CarriagewayOutline.FootwayWidths(spans, width, out left, out right, out why))
+                {
+                    // 0.4.0: a stop bay narrows the pavement only at the stop (CarriagewayOutline.StopBayFootway, heuristic)
+                    const CompositionFlags.Side stop = CompositionFlags.Side.PrimaryStop | CompositionFlags.Side.SecondaryStop | CompositionFlags.Side.TertiaryStop;
+                    CompositionFlags cf = em.GetComponentData<NetCompositionData>(comp.m_Edge).m_Flags;
+                    double l0 = left, r0 = right;
+                    left = CarriagewayOutline.StopBayFootway(l0, r0, (cf.m_Left & stop) != 0);
+                    right = CarriagewayOutline.StopBayFootway(r0, l0, (cf.m_Right & stop) != 0);
+                    if (left != l0 || right != r0) { source = "s"; AddOnce(notes, "stop bay on an arm: that side's footway taken as the other side's (heuristic, 's')"); }
+                    return true;
+                }
                 why = "edge composition: " + why;
             }
             Entity c = isStart ? comp.m_StartNode : comp.m_EndNode;
@@ -804,7 +1014,9 @@ namespace JunctionRules.Paint
             LogSanity(all, bounds);
             int painted = 0;
             foreach (Box b in m_Boxes) if (b.Tris.Length > 0) painted++;
-            s_Status = $"on, {painted} of {m_Config.Junctions.Count} listed junction(s) painted, {m_TriangleCount} triangles";
+            int saved = 0, listed = 0;
+            foreach (Box b in m_Boxes) { if (b.Kind == BoxKind.ListJunction) listed++; else saved++; }
+            s_Status = $"on, {painted} box(es) painted ({saved} saved, {listed} from the test list), {m_TriangleCount} triangles";
         }
 
         /// <summary>0.3.1: one line per upload with what the shader gets (winding, heights, bounds, first triangle).</summary>

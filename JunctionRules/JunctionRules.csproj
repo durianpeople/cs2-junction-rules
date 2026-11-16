@@ -5,8 +5,8 @@
     <LangVersion>10.0</LangVersion>
     <AssemblyName>JunctionRules</AssemblyName>
     <RootNamespace>JunctionRules</RootNamespace>
-    <Version>0.3.6</Version>
-    <InformationalVersion>0.3.6-probe</InformationalVersion>
+    <Version>0.4.0</Version>
+    <InformationalVersion>0.4.0-probe</InformationalVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <Nullable>disable</Nullable>
@@ -55,6 +55,8 @@
     <Reference Include="Unity.Mathematics"><HintPath>$(ManagedDLLPath)/Unity.Mathematics.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Unity.Burst"><HintPath>$(ManagedDLLPath)/Unity.Burst.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine"><HintPath>$(ManagedDLLPath)/UnityEngine.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Colossal.UI.Binding"><HintPath>$(ManagedDLLPath)/Colossal.UI.Binding.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Unity.InputSystem"><HintPath>$(ManagedDLLPath)/Unity.InputSystem.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.CoreModule"><HintPath>$(ManagedDLLPath)/UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
 
@@ -116,10 +118,16 @@
     <ItemGroup>
       <DeployFiles Include="$(TargetDir)$(TargetName)_win_x86_64.dll" Condition="'$(Burst)' == 'true'" />
       <DeployFiles Include="$(TargetDir)$(TargetName).dll" />
+      <DeployFiles Include="$(MSBuildProjectDirectory)/UI/JunctionRules.mjs" />
       <DeployFiles Include="$(TargetDir)$(TargetName).pdb" Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
     </ItemGroup>
     <Copy SourceFiles="@(DeployFiles)" DestinationFolder="$(ModDeployPath)" />
     <Message Importance="high" Text="JunctionRules deployed to $(ModDeployPath)" />
   </Target>
 
+  <!-- 0.4.0-probe: the UI module (toolbar button of the yellow box tool) lands next to the dll in every build output
+       (also with -o), so the staged folder carries it. -->
+  <ItemGroup>
+    <None Include="UI/JunctionRules.mjs" Link="JunctionRules.mjs" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

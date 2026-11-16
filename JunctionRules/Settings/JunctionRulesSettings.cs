@@ -1,8 +1,10 @@
 using System.Collections.Generic;
 using Colossal;
 using Colossal.IO.AssetDatabase;
+using Game.Input;
 using Game.Modding;
 using Game.Settings;
+using JunctionRules.Boxes;
 using JunctionRules.Core;
 using JunctionRules.Paint;
 using JunctionRules.Systems;
@@ -10,14 +12,17 @@ using JunctionRules.Systems;
 namespace JunctionRules.Settings
 {
     [FileLocation(nameof(JunctionRules))]
-    [SettingsUIGroupOrder(kDrivingGroup, kPaintGroup, kDebugGroup)]
-    [SettingsUIShowGroupName(kDrivingGroup, kPaintGroup, kDebugGroup)]
+    [SettingsUIGroupOrder(kDrivingGroup, kBoxesGroup, kPaintGroup, kDebugGroup)]
+    [SettingsUIShowGroupName(kDrivingGroup, kBoxesGroup, kPaintGroup, kDebugGroup)]
+    [SettingsUIKeyboardAction(kToggleBoxToolAction, ActionType.Button, usages: new[] { "DefaultTool", "Editor", "Tool" })]
     public class JunctionRulesSettings : ModSetting
     {
         public const string kSection = "Main";
         public const string kDrivingGroup = "Driving";
         public const string kDebugGroup = "Debug";
         public const string kPaintGroup = "PaintTest";
+        public const string kBoxesGroup = "YellowBoxes";
+        public const string kToggleBoxToolAction = "ToggleYellowBoxTool";
 
         public JunctionRulesSettings(IMod mod) : base(mod)
         {
@@ -92,6 +97,18 @@ namespace JunctionRules.Settings
         /// <summary>Read-only: what runs now and the version gate result.</summary>
         [SettingsUISection(kSection, kDrivingGroup)]
         public string Status => StatusText();
+
+        // ---- 0.4.0-probe (JR-T-007): yellow box selection tool; boxes saved in the city ----
+
+        /// <summary>Keyboard shortcut that opens / closes the yellow box tool (rebindable; default Ctrl+Y).</summary>
+        [SettingsUISection(kSection, kBoxesGroup)]
+        [SettingsUIKeyboardBinding(BindingKeyboard.Y, kToggleBoxToolAction, ctrl: true)]
+        public ProxyBinding ToggleBoxToolBinding { get; set; }
+
+        /// <summary>Opens / closes the yellow box tool (same as the toolbar button and the shortcut).</summary>
+        [SettingsUIButton]
+        [SettingsUISection(kSection, kBoxesGroup)]
+        public bool OpenBoxTool { set { BoxToolControl.Toggle(); } }
 
         // ---- stage 3 probe (0.3.0-probe): yellow box paint test, draw-only, default off ----
 
@@ -259,6 +276,13 @@ namespace JunctionRules.Settings
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.Status)), "Status" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.Status)), "What runs now, the result of the version check made at game start, and whether the copy can run (set up at the first simulation step). Reopen the options page to refresh." },
 
+                { m_Setting.GetOptionGroupLocaleID(JunctionRulesSettings.kBoxesGroup), "Yellow boxes" },
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.ToggleBoxToolBinding)), "Yellow box tool shortcut" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.ToggleBoxToolBinding)), "Keyboard shortcut that opens and closes the yellow box tool (default Ctrl+Y)." },
+                { m_Setting.GetBindingKeyLocaleID(JunctionRulesSettings.kToggleBoxToolAction), "Yellow box tool" },
+                { m_Setting.GetBindingMapLocaleID(), "Junction Rules" },
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.OpenBoxTool)), "Open / close the yellow box tool" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.OpenBoxTool)), "Same as the yellow box button at the top left of the screen and the shortcut. In the tool, point at a road junction or at the road in front of a building's access: what can take a box glows (yellow: click adds a box; orange: click removes it). Right click or Esc leaves the tool. Boxes are saved with the city and painted at once. Junctions: at-grade road junctions with 3 or more road arms (not highways, bridges, tunnels, elevated roads, roundabouts or level crossings). Entrances: a building's road access on an at-grade, non-highway road, away from junctions. Cars drive as before: the boxes are paint only in this version." },
                 { m_Setting.GetOptionGroupLocaleID(JunctionRulesSettings.kPaintGroup), "Yellow box paint test (stage 3 probe)" },
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.YellowBoxPaintTest)), "Yellow box paint test" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.YellowBoxPaintTest)),

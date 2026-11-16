@@ -209,6 +209,75 @@ namespace JunctionRules.Core
             return null;
         }
 
+        /// <summary>Most two outer curves' inner ends may lie apart (in plan) and still count as one kerb (metres).</summary>
+        public const double JoinTolerance = 0.25;
+
+        /// <summary>
+        /// 0.4.0 (JR-T-007, T through-side defect at Moonflower x Anchor): the inset of each outer curve, with the two
+        /// halves of one kerb made equal. The game splits every kerb of a node between the two arms either side of it:
+        /// each node slice's outer curve runs from its own mouth to a shared middle point, where the neighbour's curve
+        /// starts (GeometrySystem.cs 1945-1997: the slice's side segments end at the middle connection / middle segment
+        /// fitted between this slice's end and the next one's start, CalculateMiddleConnection / CalculateMiddleSegment,
+        /// 2738-2778). On the through side of a T there is no arm between the two halves, so the whole straight kerb
+        /// is those two curves end to end. Before, each half took the footway of ITS OWN edge's composition: at
+        /// Moonflower x Anchor the west Anchor edge carries a bus stop bay on that side (composition side flag
+        /// PrimaryStop; carriageway lanes -5..+6, pedestrian lane at +7, so its footway computes as 2 m) while the
+        /// junction's pavement there is the normal 3 m, so the west half of the through kerb was inset 1 m too little
+        /// (box over the pavement) with a 1 m step at the middle. Rule: curves of DIFFERENT arms whose inner ends meet
+        /// within tol take the larger of their two insets (the pavement of a kerb is never narrower than its wider
+        /// half; the larger is the conservative side, the box never reaches onto the pavement). Notes name each change.
+        /// </summary>
+        public static void ShareJoinedInsets(IList<ArmInput> arms, double tol, out double[] insetA, out double[] insetB, List<string> notes = null)
+        {
+            int n = arms.Count;
+            var ia = new double[n];
+            var ib = new double[n];
+            insetA = ia;
+            insetB = ib;
+            for (int i = 0; i < n; i++) { ia[i] = arms[i].InsetA; ib[i] = arms[i].InsetB; }
+            // curve k = arm k/2, side A (even) or B (odd); its inner end = the last point
+            var end = new V2[2 * n];
+            for (int i = 0; i < n; i++) { end[2 * i] = arms[i].OuterA[arms[i].OuterA.Count - 1].XZ; end[2 * i + 1] = arms[i].OuterB[arms[i].OuterB.Count - 1].XZ; }
+            var partner = new int[2 * n];
+            for (int k = 0; k < 2 * n; k++)
+            {
+                partner[k] = -1;
+                double best = tol;
+                for (int q = 0; q < 2 * n; q++)
+                {
+                    if (q / 2 == k / 2) continue;   // never the same arm (a dead end's two curves meet at its end cap)
+                    double d = V2.Distance(end[k], end[q]);
+                    if (d <= best) { best = d; partner[k] = q; }
+                }
+            }
+            double Get(int k) => (k & 1) == 0 ? ia[k / 2] : ib[k / 2];
+            void Set(int k, double v) { if ((k & 1) == 0) ia[k / 2] = v; else ib[k / 2] = v; }
+            for (int k = 0; k < 2 * n; k++)
+            {
+                int q = partner[k];
+                if (q < k || partner[q] != k) continue;   // each mutual pair once
+                double a = Get(k), b = Get(q);
+                if (Math.Abs(a - b) <= 1e-9) continue;
+                double m = Math.Max(a, b);
+                Set(k, m);
+                Set(q, m);
+                notes?.Add($"kerb between arm {k / 2 + 1}{((k & 1) == 0 ? "A" : "B")} and arm {q / 2 + 1}{((q & 1) == 0 ? "A" : "B")}: one kerb, inset {m:0.00} m (halves were {a:0.00}|{b:0.00})");
+            }
+        }
+
+        /// <summary>
+        /// 0.4.0 (JR-T-007): footway on a side whose edge composition carries a stop (bus / tram stop bay: composition side
+        /// flag PrimaryStop / SecondaryStop / TertiaryStop, CompositionFlags.cs). The bay pushes the pavement back only
+        /// AT the stop, so the composition's footway there (narrower) is not the kerb near the node. Heuristic, flagged
+        /// as such in the log: the side takes the larger of its computed footway and the other side's. Without a stop
+        /// the computed value is returned unchanged.
+        /// </summary>
+        public static double StopBayFootway(double computed, double otherSide, bool sideHasStop)
+        {
+            if (!sideHasStop) return computed;
+            return Math.Max(computed, otherSide);
+        }
+
         /// <summary>
         /// The whole carriageway outline: each arm's outer edges moved in by its insets (the kerb lines, following the
         /// corner curves), trimmed to the stop line / far side of the zebra, merged into one ring (BuildOutline).
@@ -225,13 +294,20 @@ namespace JunctionRules.Core
                 if (ok.Count < crossings.Count) res.Notes.Add($"{crossings.Count - ok.Count} crossing(s) with non-finite geometry ignored");
                 crossings = ok;
             }
-            var kerbs = new List<ArmSlice>(arms.Count);
             foreach (var a in arms)
             {
                 if (a.OuterA == null || a.OuterB == null || a.OuterA.Count < 2 || a.OuterB.Count < 2) { res.Failure = "an arm has an edge line with fewer than 2 points"; return res; }
                 if (!IsFinite(a.InsetA) || !IsFinite(a.InsetB) || !a.OuterA.TrueForAll(IsFinite) || !a.OuterB.TrueForAll(IsFinite)) { res.Failure = "non-finite input (NaN/Inf) in an arm's edge lines or insets"; return res; }
-                var ka = BoxPaintGeometry.OffsetToward(a.OuterA, a.InsetA, a.OuterB[0].XZ);
-                var kb = BoxPaintGeometry.OffsetToward(a.OuterB, a.InsetB, a.OuterA[0].XZ);
+            }
+            // 0.4.0 (JR-T-007): one kerb, one inset. Two neighbouring arms' facing outer curves that meet end to end are
+            // the two halves of ONE kerb (the through side of a T, or a corner); they get the same inset.
+            ShareJoinedInsets(arms, JoinTolerance, out double[] insetA, out double[] insetB, res.Notes);
+            var kerbs = new List<ArmSlice>(arms.Count);
+            for (int i = 0; i < arms.Count; i++)
+            {
+                var a = arms[i];
+                var ka = BoxPaintGeometry.OffsetToward(a.OuterA, insetA[i], a.OuterB[0].XZ);
+                var kb = BoxPaintGeometry.OffsetToward(a.OuterB, insetB[i], a.OuterA[0].XZ);
                 kerbs.Add(new ArmSlice(ka, kb));
             }
             res.StopDistance = StopDistances(kerbs, centre, crossings, res.Notes);

@@ -348,7 +348,7 @@ namespace JunctionRules.Tests
             string bridgeCode = System.Text.RegularExpressions.Regex.Replace(bridge, @"//.*", "");
             Check(!System.Text.RegularExpressions.Regex.IsMatch(bridgeCode, @"\bnew\s+(?!PathNode\()\w"), "job-side struct has no 'new' except the PathNode value type (no managed allocation)");
             string proj = File.ReadAllText(Path.Combine(src, "JunctionRules.csproj"));
-            Check(proj.Contains("<Version>0.3.6</Version>") && proj.Contains("<InformationalVersion>0.3.6-probe</InformationalVersion>"), "version 0.3.6-probe (0.3.6: people pass a car standing on their crossing; carries 0.3.5's paint box on the carriageway only, Roads layer default; carries 0.3.4's edge-noise fix and 0.3.3's Moonflower unsafe-lane fix and crossings out of the whole-junction gap)");
+            Check(proj.Contains("<Version>0.4.0</Version>") && proj.Contains("<InformationalVersion>0.4.0-probe</InformationalVersion>"), "version 0.4.0-probe (0.4.0: yellow box selection tool, boxes saved with the city, entrance boxes, T through-side kerb fix; carries 0.3.6's people pass a car standing on their crossing; 0.3.5: paint box on the carriageway only, Roads layer default; carries 0.3.4's edge-noise fix and 0.3.3's Moonflower unsafe-lane fix and crossings out of the whole-junction gap)");
         }
     }
 }

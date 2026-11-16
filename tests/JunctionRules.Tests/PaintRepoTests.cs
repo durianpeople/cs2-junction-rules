@@ -20,7 +20,8 @@ namespace JunctionRules.Tests
             Check(Directory.Exists(paintDir), "Paint folder exists");
             if (!Directory.Exists(paintDir)) return;
 
-            // Draw-only: no structural change or component write anywhere in the paint code.
+            // Draw-only: no structural change or component write anywhere in the paint code (0.4.0: except dropping an
+            // invalid saved box, which goes through Boxes/BoxStore.cs and is checked below).
             var writes = new Regex(@"\b(AddComponent|AddComponentData|SetComponentData|SetComponent|RemoveComponent|CreateEntity|DestroyEntity|Instantiate|AddBuffer|SetBuffer<|SetSharedComponent|EntityCommandBuffer|CommandBuffer|CreationDefinition|GetComponentLookup\(false|GetBufferLookup\(false|GetRefRW|ToolSystem|activeTool|Serialize)\b");
             var offenders = new List<string>();
             foreach (string f in Directory.GetFiles(paintDir, "*.cs"))
@@ -71,7 +72,18 @@ namespace JunctionRules.Tests
             Check(sys.Contains("m_Gpu.SetDiag(m_Config.Diag)") && gpu.Contains("public void SetDiag(PaintDiagParams diag)"), "a Refresh hands the new diag values to the kept GPU objects (decal layer mask, colour buffer, priority, cameras apply without a restart)");
 
             string csproj = File.ReadAllText(Path.Combine(src, "JunctionRules.csproj"));
-            Check(csproj.Contains("<Version>0.3.6</Version>") && csproj.Contains("<InformationalVersion>0.3.6-probe</InformationalVersion>"), "version 0.3.6-probe");
+            Check(csproj.Contains("<Version>0.4.0</Version>") && csproj.Contains("<InformationalVersion>0.4.0-probe</InformationalVersion>"), "version 0.4.0-probe");
+
+            // 0.4.0 (JR-T-007): saved boxes are added / removed only by Boxes/BoxStore.cs, and only our own two components;
+            // the paint code drops an invalid saved box through it (its sole write) and never names the tool.
+            string store = StripComments(File.ReadAllText(Path.Combine(src, "Boxes", "BoxStore.cs")));
+            var storeWrites = Regex.Matches(store, @"\b(AddComponentData|AddComponent|RemoveComponent|SetComponentData)\b(<\w+>)?\(\s*e\s*,\s*new (\w+)|\bRemoveComponent<(\w+)>");
+            bool ownOnly = storeWrites.Count == 4;
+            foreach (Match m in storeWrites) { string t = m.Groups[3].Success ? m.Groups[3].Value : m.Groups[4].Value; if (t != "YellowBoxJunction" && t != "YellowBoxEntrance") ownOnly = false; }
+            Check(ownOnly && !Regex.IsMatch(store, @"SetComponentData|DestroyEntity|CreateEntity|Updated"), "BoxStore writes only YellowBoxJunction / YellowBoxEntrance (add + remove), never marks the entity Updated");
+            Check(Regex.Matches(sys, @"BoxStore\.Remove\(").Count == 1 && !sys.Contains("BoxStore.Add(") && !sys.Contains("YellowBoxToolSystem"), "paint code: one BoxStore.Remove (drop an invalid saved box), no add, never names the tool");
+            foreach (string f in Directory.GetFiles(Path.Combine(src, "Boxes"), "*.cs").Where(f => !f.EndsWith("BoxStore.cs")))
+                Check(!Regex.IsMatch(StripComments(File.ReadAllText(f)), @"\b(AddComponentData|AddComponent|RemoveComponent)\b"), "Boxes/" + Path.GetFileName(f) + " writes components only through BoxStore");
             // 0.3.4 (JR-T-003d): the edge noise handed to the shader comes from the clamped config (wobble size never 0).
             Check(gpu.Contains("new Vector4((float)rp.EdgeNoiseX, (float)rp.EdgeNoiseY, 0f, 0f)") && sys.Contains("edgeNoise ["), "edge noise set from the clamped config and logged with the effective switches");
 
