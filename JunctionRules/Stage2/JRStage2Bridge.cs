@@ -51,7 +51,7 @@ namespace JunctionRules.Stage2
             {
                 if (s_BoxEdgeVersion != BoxEdgeHandoff.Version)
                 {
-                    s_BoxEdges = JRBoxEdges.FromBands(BoxEdgeHandoff.Keys, BoxEdgeHandoff.T);
+                    s_BoxEdges = JRBoxEdges.FromBands(BoxEdgeHandoff.Keys, BoxEdgeHandoff.T, BoxEdgeHandoff.Masks);
                     s_BoxEdgeVersion = BoxEdgeHandoff.Version;
                 }
                 return s_BoxEdges;

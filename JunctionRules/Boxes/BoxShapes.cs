@@ -32,6 +32,9 @@ namespace JunctionRules.Boxes
             public V3 Position;
             /// <summary>Exit box only: window along the edge (metres) and the edge's own part.</summary>
             public double From, To;
+            /// <summary>0.4.4 exit box only: the road is divided and the box covers the building's side (Carriageways) only.</summary>
+            public bool Divided;
+            public uint Carriageways = MedianSplit.AllCarriageways;
         }
 
         // ------------------------------------------------------------------ junction
@@ -201,7 +204,14 @@ namespace JunctionRules.Boxes
         /// nearer mouth corners, margin clear of mouths and markings), then EntranceBox.BuildStraight (road mouths =
         /// priority, the driveway = the yielding arm without a mouth of its own).
         /// </summary>
-        internal static Shape Entrance(EntityManager em, BoxFacts.Access a, double kerbInset, double length, double margin)
+        internal static Shape Entrance(EntityManager em, BoxFacts.Access a, double kerbInset, double length, double margin) => Entrance(em, a, kerbInset, length, margin, null);
+
+        /// <summary>
+        /// 0.4.4 (JR-T-011, owner 16 Nov 2026): 'side' = a point on the building's side of the road (the building's
+        /// position): on a divided road (Core/MedianSplit) the box runs from that side's kerb to the median only. Null =
+        /// kerb to kerb (0.4.3).
+        /// </summary>
+        internal static Shape Entrance(EntityManager em, BoxFacts.Access a, double kerbInset, double length, double margin, V2? side)
         {
             var s = new Shape();
             Entity e = a.Edge;
@@ -222,6 +232,20 @@ namespace JunctionRules.Boxes
                 compLeftIsGeomLeft = V2.Cross(new V2(tan.x, tan.z), new V2(lp.x - curve.a.x, lp.z - curve.a.z)) >= 0;
             }
             else AddOnce(s.Notes, "no edge geometry: footway sides assumed");
+            // 0.4.4: divided road = the building's side only, kerb to median (Core/MedianSplit, composition frame)
+            V2 hold = new V2(a.Point.x, a.Point.z);
+            if (side.HasValue && MedianSide(em, e, a.T, side.Value, out SideSpanResult span, out bool buildingCompLeft) && span.Divided)
+            {
+                MedianSplit.Insets(half, footL, footR, span, buildingCompLeft, out footL, out footR);
+                s.Divided = true;
+                s.Carriageways = span.CarriagewayMask;
+                // the exit point held inside the box (review F1 of 0.4.2) moves off the median onto the side's middle
+                float3 tn = MathUtils.Tangent(curve, a.T);
+                V2 leftDir = new V2(tn.x, tn.z).Normalized.Left;
+                double xm = (span.Lo + span.Hi) * 0.5;
+                hold = hold + leftDir * (compLeftIsGeomLeft ? -xm : xm);
+                s.Notes.Add($"divided road: box on the building's side only ({(buildingCompLeft ? "composition left" : "composition right")}, x {span.Lo:0.00}..{span.Hi:0.00} m, carriageways 0x{span.CarriagewayMask:X})");
+            }
             double gl = (compLeftIsGeomLeft ? footL : footR) + kerbInset, gr = (compLeftIsGeomLeft ? footR : footL) + kerbInset;
             // markings on this stretch: zebras at both end nodes, stop / give-way lines on the edge
             var markings = MarkedCrossings(em, ed.m_Start, out _);
@@ -248,7 +272,7 @@ namespace JunctionRules.Boxes
                 float3 p = MathUtils.Position(curve, t);
                 centre.Add(new V3(p.x, p.y, p.z));
             }
-            StraightBoxResult r = EntranceBox.BuildStraight(centre, half, gl, gr, markings, margin, new V2(a.Point.x, a.Point.z));   // 0.4.3: the exit stays inside (review F1)
+            StraightBoxResult r = EntranceBox.BuildStraight(centre, half, gl, gr, markings, margin, hold);   // 0.4.3: the exit stays inside (review F1)
             s.Notes.Add($"exit {a.AlongM:0.0} m along, edge part {a.MinM:0.0}..{a.MaxM:0.0} m, window {from:0.0}..{to:0.0} m (exit box length {length:0.0} m, margin {margin:0.0} m, {spans.Count} marking(s) on the road)");
             s.Notes.Add($"footways {(known ? $"{footL:0.00}|{footR:0.00}{src}" : "unknown")}{(kerbInset != 0 ? $" +{kerbInset} m kerbInset" : "")}");
             if (r.Shift != null) s.Notes.Add($"shape rule {r.RuleText}; road mouth shifts [{r.Shift[0]:0.00}, {r.Shift[1]:0.00}] m");
@@ -349,6 +373,42 @@ namespace JunctionRules.Boxes
             }
             AddOnce(notes, "footway unknown (" + why + "): box edge at the outer edge");
             return false;
+        }
+
+        /// <summary>
+        /// 0.4.4 (JR-T-011): the building side's span of the edge composition (Core/MedianSplit.SideSpan over the EDGE
+        /// composition's NetCompositionLane: m_Position.x, NetLaneData m_Width, m_Carriageway, m_Flags | NetLaneData
+        /// m_Flags). 'side' = a point on the building's side; compLeft = that side is the composition's left (x &lt; 0), the
+        /// same frame test as Entrance (EdgeGeometry m_Start.m_Left.a against the curve tangent). False = no composition.
+        /// </summary>
+        internal static bool MedianSide(EntityManager em, Entity edge, float t, V2 side, out SideSpanResult span, out bool compLeft)
+        {
+            span = new SideSpanResult { CarriagewayMask = MedianSplit.AllCarriageways };
+            compLeft = true;
+            if (!em.HasComponent<Composition>(edge) || !em.HasComponent<Curve>(edge)) return false;
+            Entity ce = em.GetComponentData<Composition>(edge).m_Edge;
+            if (ce == Entity.Null || !em.HasBuffer<NetCompositionLane>(ce)) return false;
+            Bezier4x3 curve = em.GetComponentData<Curve>(edge).m_Bezier;
+            bool compLeftIsGeomLeft = true;
+            if (em.HasComponent<EdgeGeometry>(edge))
+            {
+                float3 lp = em.GetComponentData<EdgeGeometry>(edge).m_Start.m_Left.a;
+                float3 tan0 = MathUtils.Tangent(curve, 0f);
+                compLeftIsGeomLeft = V2.Cross(new V2(tan0.x, tan0.z), new V2(lp.x - curve.a.x, lp.z - curve.a.z)) >= 0;
+            }
+            float3 p = MathUtils.Position(curve, t), tan = MathUtils.Tangent(curve, t);
+            bool posCross = V2.Cross(new V2(tan.x, tan.z), new V2(side.X - p.x, side.Z - p.z)) >= 0;
+            compLeft = posCross == compLeftIsGeomLeft;
+            DynamicBuffer<NetCompositionLane> lanes = em.GetBuffer<NetCompositionLane>(ce, true);
+            var info = new List<CompositionLaneInfo>(lanes.Length);
+            for (int k = 0; k < lanes.Length; k++)
+            {
+                NetCompositionLane l = lanes[k];
+                if (!em.HasComponent<NetLaneData>(l.m_Lane)) continue;
+                NetLaneData ld = em.GetComponentData<NetLaneData>(l.m_Lane);
+                info.Add(new CompositionLaneInfo(l.m_Position.x, ld.m_Width, l.m_Carriageway, (int)(l.m_Flags | ld.m_Flags)));
+            }
+            return MedianSplit.SideSpan(info, compLeft, out span);
         }
 
         /// <summary>The edge's left kerb end at this node (EdgeGeometry m_Start.m_Left.a at the start node, m_End.m_Left.d at the end).</summary>

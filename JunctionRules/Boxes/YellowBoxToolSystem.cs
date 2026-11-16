@@ -323,18 +323,27 @@ namespace JunctionRules.Boxes
             long accessEdge = t.Kind == Kind.Exit && t.Access.Edge != Entity.Null ? ((long)t.Access.Edge.Index << 32) | (uint)t.Access.Edge.Version : 0;
             int accessT = t.Kind == Kind.Exit ? HoverKey.QuantiseT(t.Access.T) : 0;
             var key = new HoverKey(((long)t.Entity.Index << 32) | (uint)t.Entity.Version, (int)t.Kind, BoxStore.KerbInset, BoxStore.EntranceLength, BoxStore.MarkingMargin, ExitSub(t), accessEdge, accessT);
+            key.GroupsVersion = MergedBoxes.Version;   // 0.4.4: the drawn boxes changed = the merged hover changes
             return m_Cache.Get(key, SourcesChanged(m_Cache.Value, t.Entity), () =>
             {
+                V2? side = null;
+                if (t.Kind == Kind.Exit) { BoxFacts.GetFrame(EntityManager, t.Entity, out V2 bpos, out _); side = bpos; }   // 0.4.4: building side of a median
                 BoxShapes.Shape shape = t.Kind == Kind.Junction
                     ? BoxShapes.Junction(EntityManager, t.Entity, BoxStore.KerbInset, BoxStore.MarkingMargin)
-                    : BoxShapes.Entrance(EntityManager, t.Access, BoxStore.KerbInset, BoxStore.EntranceLength, BoxStore.MarkingMargin);
+                    : BoxShapes.Entrance(EntityManager, t.Access, BoxStore.KerbInset, BoxStore.EntranceLength, BoxStore.MarkingMargin, side);
                 var sources = new List<Entity>(shape.Sources) { t.Entity };
-                return new HoverShape { Segments = BoxHover.Segments(shape.Outline), Failure = shape.Outline == null ? shape.Failure : null, Sources = sources };
+                if (shape.Outline == null) return new HoverShape { Segments = BoxHover.Segments(null), Failure = shape.Failure, Sources = sources };
+                // 0.4.4 (JR-T-011): the merged outline of the group the target belongs to (has a box) or would join (adding)
+                var self = new BoxMergeInput(BoxMergeInput.EntityKey(t.Entity.Index, t.Entity.Version), ExitSub(t), t.Kind == Kind.Exit ? BoxMergeKind.Exit : BoxMergeKind.Junction,
+                    shape.Outline, t.Kind == Kind.Exit && t.Access.Edge != Entity.Null ? SortedKeys.KeyOf(t.Access.Edge.Index, t.Access.Edge.Version) : 0, shape.Carriageways);
+                var segs = new List<(V3 A, V3 B)>();
+                foreach (List<V3> ring in MergedBoxes.HoverRings(self)) segs.AddRange(BoxHover.Segments(ring));
+                return new HoverShape { Segments = segs, Failure = null, Sources = sources };
             });
         }
 
         /// <summary>0.4.3: which exit of the building (its saved key packed in 40 bits); 0 for a junction.</summary>
-        private static long ExitSub(Target t) => t.Kind != Kind.Exit ? 0 : 1L + ((long)t.Exit.C.Key.Kind << 32 | (long)(ushort)t.Exit.C.Key.X10 << 16 | (ushort)t.Exit.C.Key.Z10);
+        private static long ExitSub(Target t) => t.Kind != Kind.Exit ? 0 : BoxMergeInput.ExitSub(t.Exit.C.Key);
 
         /// <summary>F5: a source of the cached shape (or the target) was rebuilt this frame (Updated) or is gone.</summary>
         private bool SourcesChanged(HoverShape cached, Entity target)

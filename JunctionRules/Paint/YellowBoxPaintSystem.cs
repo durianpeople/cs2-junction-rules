@@ -57,7 +57,22 @@ namespace JunctionRules.Paint
             public AreaTriangleData[] Tris = Array.Empty<AreaTriangleData>();
             public Bounds3 Bounds;
             public string Label;
+            /// <summary>0.4.4 (JR-T-011): the box outline as drawn alone (null = not painted); merged with its touching neighbours at draw time (Core/BoxMerge.cs).</summary>
+            public List<V3> Outline;
+            /// <summary>0.4.4: exit box: its road edge key and the carriageways it covers (divided road: the building's side).</summary>
+            public long EdgeKey;
+            public uint Carriageways = MedianSplit.AllCarriageways;
         }
+
+        /// <summary>0.4.4 (JR-T-011): one drawn group (one or more boxes merged): its triangles, cached by geometry signature.</summary>
+        private sealed class DrawnGroup
+        {
+            public AreaTriangleData[] Tris = Array.Empty<AreaTriangleData>();
+            public Bounds3 Bounds;
+        }
+
+        private List<DrawnGroup> m_Groups = new List<DrawnGroup>();
+        private Dictionary<string, DrawnGroup> m_GroupCache = new Dictionary<string, DrawnGroup>();
 
         private readonly List<Box> m_Boxes = new List<Box>();
         private readonly HashSet<Entity> m_Tracked = new HashSet<Entity>();
@@ -275,6 +290,9 @@ namespace JunctionRules.Paint
             // Old boxes belong to the previous city's entities: stop drawing them at once (the draw checks the count).
             m_TriangleCount = 0;
             m_Boxes.Clear();
+            m_Groups = new List<DrawnGroup>();
+            m_GroupCache.Clear();
+            MergedBoxes.Clear();
             m_Tracked.Clear();
             // 0.4.0: saved boxes in this city? (two empty-query checks, once per load)
             int j = m_InCity ? m_SavedJunctionQuery.CalculateEntityCount() : 0, en = m_InCity ? m_SavedEntranceQuery.CalculateEntityCount() : 0;
@@ -305,6 +323,9 @@ namespace JunctionRules.Paint
             Unsubscribe();
             if (m_Gpu != null) { m_Gpu.Dispose(); m_Gpu = null; }
             m_Boxes.Clear();
+            m_Groups = new List<DrawnGroup>();
+            m_GroupCache.Clear();
+            MergedBoxes.Clear();
             m_Tracked.Clear();
             m_TriangleCount = 0;
             s_Status = "off";
@@ -403,6 +424,8 @@ namespace JunctionRules.Paint
                 }
                 if (changed)
                 {
+                    step = "merging touching boxes";
+                    Regroup();
                     step = "uploading the boxes";
                     Upload();
                     if (!m_TestOn && !s_SavedPresent) { Deactivate("paint test off and no saved boxes left"); return; }
@@ -718,6 +741,7 @@ namespace JunctionRules.Paint
         {
             long t0 = Stopwatch.GetTimestamp();
             b.Tris = Array.Empty<AreaTriangleData>();
+            b.Outline = null;
             b.Edges.Clear();
             try
             {
@@ -753,18 +777,17 @@ namespace JunctionRules.Paint
                     Mod.log.Warn($"yellow box paint test: {b.Label}: node {b.Node}: no box: straight-sided outline failed ({shape.Failure})" + (notes.Count > 0 ? "; notes: " + string.Join("; ", notes) : ""));
                     return;
                 }
-                BoxPaintResult res = BoxPaintGeometry.BuildPieces(shape.Outline, m_Config.Geometry, m_Mode);
-                if (!res.Ok) { Mod.log.Warn($"yellow box paint test: {b.Label}: no box: {res.Failure}"); return; }
                 if (m_Config.Diag.TestSquare > 0)
                 {
-                    // diag.testSquare: one plain square on the node instead of the box (rules out the outline/hatch geometry).
-                    res.Pieces = new List<PaintPiece> { PaintDiagParams.Square(b.LastPos, m_Config.Diag.TestSquare) };
+                    // diag.testSquare: one plain square on the node instead of the box (rules out the outline/hatch geometry); never merged.
+                    var sq = new BoxPaintResult { Ok = true, Rect = new BoxRect { LenU = m_Config.Diag.TestSquare, LenV = m_Config.Diag.TestSquare } };
+                    sq.Pieces.Add(PaintDiagParams.Square(b.LastPos, m_Config.Diag.TestSquare));
+                    b.Tris = ToTriangles(sq, m_Config.Render, m_Config.Diag, out b.Bounds);
                     notes.Add($"diag.testSquare: drawing a {m_Config.Diag.TestSquare} m square on the node instead of the box");
                 }
-                notes.AddRange(res.Warnings);
-                b.Tris = ToTriangles(res, m_Config.Render, m_Config.Diag, out b.Bounds);
+                b.Outline = shape.Outline;
                 long ticks = Stopwatch.GetTimestamp() - t0;
-                Mod.log.Info($"yellow box paint test: {b.Label}: node {b.Node} at {b.LastPos}, {shape.Arms} arms, outline {res.Outline.Count} pts / {BoxPaintGeometry.SignedArea(res.Outline):0.0} m2, box {res.Rect.LenU:0.0} x {res.Rect.LenV:0.0} m, spacing {res.SpacingUsed} m, pieces {res.Pieces.Count}, triangles {b.Tris.Length}, built in {ticks * 1000.0 / Stopwatch.Frequency:0.000} ms" + (notes.Count > 0 ? "; notes: " + string.Join("; ", notes) : ""));
+                Mod.log.Info($"yellow box paint test: {b.Label}: node {b.Node} at {b.LastPos}, {shape.Arms} arms, outline {shape.Outline.Count} pts / {BoxPaintGeometry.SignedArea(shape.Outline):0.0} m2, solved in {ticks * 1000.0 / Stopwatch.Frequency:0.000} ms" + (notes.Count > 0 ? "; notes: " + string.Join("; ", notes) : ""));
             }
             finally
             {
@@ -811,16 +834,97 @@ namespace JunctionRules.Paint
                 m_Tracked.Add(ed.m_Start); m_Tracked.Add(ed.m_End);
             }
             if (!BoxSelection.ExitOk(f, out string why)) { DropSaved(b, "building exit no longer valid: " + why); return; }
-            BoxShapes.Shape shape = BoxShapes.Entrance(em, a, m_Config.Geometry.KerbInset, m_Config.Geometry.EntranceLength, CurrentMargin);
+            BoxFacts.GetFrame(em, b.Building, out V2 buildingPos, out _);
+            BoxShapes.Shape shape = BoxShapes.Entrance(em, a, m_Config.Geometry.KerbInset, m_Config.Geometry.EntranceLength, CurrentMargin, buildingPos);   // 0.4.4: building side of a median
             b.LastPos = shape.Position;
             if (shape.Outline == null) { Mod.log.Warn($"yellow boxes: {b.Label}: building {b.Building}: not painted: {shape.Failure}" + (shape.Notes.Count > 0 ? "; notes: " + string.Join("; ", shape.Notes) : "")); return; }
-            BoxPaintResult res = BoxPaintGeometry.BuildPieces(shape.Outline, m_Config.Geometry, m_Mode);
-            if (!res.Ok) { Mod.log.Warn($"yellow boxes: {b.Label}: no box: {res.Failure}"); return; }
             var notes = new List<string>(shape.Notes);
-            notes.AddRange(res.Warnings);
             notes.AddRange(exitNotes);
-            b.Tris = ToTriangles(res, m_Config.Render, m_Config.Diag, out b.Bounds);
-            Mod.log.Info($"yellow boxes: {b.Label}: exit source {exit.C.Source}; box on edge {a.Edge} at {b.LastPos}, {shape.To - shape.From:0.0} m x kerb to kerb, outline {res.Outline.Count} pts, triangles {b.Tris.Length}" + (notes.Count > 0 ? "; notes: " + string.Join("; ", notes) : ""));
+            b.Outline = shape.Outline;
+            b.EdgeKey = SortedKeys.KeyOf(a.Edge.Index, a.Edge.Version);
+            b.Carriageways = shape.Carriageways;
+            Mod.log.Info($"yellow boxes: {b.Label}: exit source {exit.C.Source}; box on edge {a.Edge} at {b.LastPos}, {shape.To - shape.From:0.0} m x {(shape.Divided ? "kerb to median" : "kerb to kerb")}, outline {shape.Outline.Count} pts" + (notes.Count > 0 ? "; notes: " + string.Join("; ", notes) : ""));
+        }
+
+        // ------------------------------------------------------------------ 0.4.4: merged drawing (JR-T-011)
+
+        /// <summary>
+        /// Groups the boxes' outlines (Core/BoxMerge.Merge: touching / overlapping boxes, and a junction box with an exit
+        /// box at its mouth, become one box; never across a median) and builds each group's paint once, the hatch anchored
+        /// on the group (BoxPaintGeometry.BuildPieces anchor). Runs only when a box changed (rebuild / edit / tool); a
+        /// group whose rings, mode and parameters are unchanged reuses its triangles. Publishes the groups
+        /// (Core MergedBoxes) for the tool's hover.
+        /// </summary>
+        private void Regroup()
+        {
+            long t0 = Stopwatch.GetTimestamp();
+            var inputs = new List<BoxMergeInput>();
+            var drawn = new List<DrawnGroup>();
+            foreach (Box b in m_Boxes)
+            {
+                if (b.Tris.Length > 0) { drawn.Add(new DrawnGroup { Tris = b.Tris, Bounds = b.Bounds }); continue; }   // diag test squares
+                if (b.Outline == null) continue;
+                bool exitBox = b.Kind == BoxKind.SavedEntrance;
+                Entity e = exitBox ? b.Building : b.Node;
+                long sub = exitBox ? BoxMergeInput.ExitSub(b.Key) : (b.Kind == BoxKind.ListJunction ? -1 : 0);
+                inputs.Add(new BoxMergeInput(BoxMergeInput.EntityKey(e.Index, e.Version), sub, exitBox ? BoxMergeKind.Exit : BoxMergeKind.Junction, b.Outline,
+                    exitBox ? b.EdgeKey : 0, exitBox ? b.Carriageways : MedianSplit.AllCarriageways));
+            }
+            BoxMergeParams prm = BoxMergeParams.ForMargin(CurrentMargin);
+            List<MergedBoxGroup> groups = BoxMerge.Merge(inputs, prm);
+            var cache = new Dictionary<string, DrawnGroup>();
+            int merged = 0, reused = 0;
+            foreach (MergedBoxGroup g in groups)
+            {
+                string sig = Signature(g);
+                if (!m_GroupCache.TryGetValue(sig, out DrawnGroup d))
+                {
+                    d = BuildGroup(g, inputs);
+                }
+                else reused++;
+                cache[sig] = d;
+                if (d.Tris.Length > 0) drawn.Add(d);
+                if (g.Merged)
+                {
+                    merged++;
+                    if (!m_GroupCache.ContainsKey(sig)) Mod.log.Info($"yellow boxes: {g.Members.Count} boxes drawn as one ({g.Rings.Count} ring(s), {d.Tris.Length} triangles)" + (g.Notes.Count > 0 ? "; " + string.Join("; ", g.Notes) : ""));
+                }
+                else if (g.Notes.Count > 0 && !m_GroupCache.ContainsKey(sig)) Mod.log.Warn("yellow boxes: " + string.Join("; ", g.Notes));
+            }
+            m_GroupCache = cache;
+            m_Groups = drawn;
+            MergedBoxes.Publish(inputs, groups, prm);
+            long ticks = Stopwatch.GetTimestamp() - t0;
+            m_Meter.AddRebuild(ticks);
+            if (merged > 0 || groups.Count != inputs.Count)
+                Mod.log.Info($"yellow boxes: {inputs.Count} box(es) drawn as {groups.Count} ({merged} merged group(s), {reused} reused) in {ticks * 1000.0 / Stopwatch.Frequency:0.000} ms");
+        }
+
+        private string Signature(MergedBoxGroup g)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append((int)m_Mode).Append('|');
+            foreach (List<V3> r in g.Rings)
+            {
+                foreach (V3 p in r) sb.Append(Math.Round(p.X, 3)).Append(',').Append(Math.Round(p.Y, 3)).Append(',').Append(Math.Round(p.Z, 3)).Append(';');
+                sb.Append('/');
+            }
+            return sb.ToString();
+        }
+
+        private DrawnGroup BuildGroup(MergedBoxGroup g, List<BoxMergeInput> inputs)
+        {
+            var d = new DrawnGroup();
+            var all = new BoxPaintResult { Ok = true, Rect = g.Anchor };
+            foreach (List<V3> ring in g.Rings)
+            {
+                BoxPaintResult res = BoxPaintGeometry.BuildPieces(new List<V3>(ring), m_Config.Geometry, m_Mode, g.Anchor);
+                if (!res.Ok) { Mod.log.Warn($"yellow boxes: group of {g.Members.Count} box(es): one ring not painted: {res.Failure}"); continue; }
+                all.Pieces.AddRange(res.Pieces);
+                foreach (string w in res.Warnings) Mod.log.Info("yellow boxes: " + w);
+            }
+            if (all.Pieces.Count > 0) d.Tris = ToTriangles(all, m_Config.Render, m_Config.Diag, out d.Bounds);
+            return d;
         }
 
         /// <summary>Pieces -> the game's AreaTriangleData layout (Game.Rendering.AreaTriangleData), one per triangle.</summary>
@@ -876,20 +980,20 @@ namespace JunctionRules.Paint
         {
             var all = new List<AreaTriangleData>();
             var bounds = new Bounds3(new float3(float.MaxValue), new float3(float.MinValue));
-            foreach (Box b in m_Boxes)
+            foreach (DrawnGroup g in m_Groups)
             {
-                if (b.Tris.Length == 0) continue;
-                all.AddRange(b.Tris);
-                bounds |= b.Bounds;
+                if (g.Tris.Length == 0) continue;
+                all.AddRange(g.Tris);
+                bounds |= g.Bounds;
             }
             m_TriangleCount = all.Count;
             m_Gpu.Upload(all.ToArray(), bounds, m_Config.Render);
             LogSanity(all, bounds);
             int painted = 0;
-            foreach (Box b in m_Boxes) if (b.Tris.Length > 0) painted++;
+            foreach (Box b in m_Boxes) if (b.Outline != null || b.Tris.Length > 0) painted++;
             int saved = 0, listed = 0;
             foreach (Box b in m_Boxes) { if (b.Kind == BoxKind.ListJunction) listed++; else saved++; }
-            s_Status = $"on, {painted} box(es) painted ({saved} saved, {listed} from the test list), {m_TriangleCount} triangles";
+            s_Status = $"on, {painted} box(es) painted as {m_Groups.Count} ({saved} saved, {listed} from the test list), {m_TriangleCount} triangles";
         }
 
         /// <summary>0.3.1: one line per upload with what the shader gets (winding, heights, bounds, first triangle).</summary>

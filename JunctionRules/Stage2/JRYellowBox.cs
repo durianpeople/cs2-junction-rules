@@ -5,6 +5,7 @@ using Game.Objects;
 using Game.Prefabs;
 using Game.Vehicles;
 using JunctionRules.Core;
+using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -38,6 +39,25 @@ namespace JunctionRules.Stage2
         private bool IsBoxedJunctionLane(Entity lane) =>
             m_BoxRule && m_BoxJunctions && m_BoxLookups && m_NodeLaneData.HasComponent(lane)
             && m_OwnerData.TryGetComponent(lane, out Owner owner) && m_BoxJunctionData.HasComponent(owner.m_Owner);
+
+        /// <summary>
+        /// 0.4.4 (JR-T-011): the boxed junction node the car's path enters right after 'lane' (the next path lane is a node
+        /// lane of a node with YellowBoxJunction); Entity.Null when none or no path.
+        /// </summary>
+        private Entity NextBoxedJunction(Entity lane)
+        {
+            if (!m_BoxJunctions || !m_HasPath) return Entity.Null;
+            int next = -1;
+            for (int i = 0; i < m_Path.Length; i++)
+            {
+                if (m_Path[i].m_Lane == lane) { next = i + 1; break; }
+            }
+            if (next < 0 && (lane == m_CurrentLane || lane == m_CurrentLane2)) next = 0;
+            if (next < 0 || next >= m_Path.Length) return Entity.Null;
+            Entity nl = m_Path[next].m_Lane;
+            if (m_NodeLaneData.HasComponent(nl) && m_OwnerData.TryGetComponent(nl, out Owner o) && m_BoxJunctionData.HasComponent(o.m_Owner)) return o.m_Owner;
+            return Entity.Null;
+        }
 
         private bool OnNode(Entity lane, Entity node) =>
             lane != Entity.Null && m_NodeLaneData.HasComponent(lane) && m_OwnerData.TryGetComponent(lane, out Owner o) && o.m_Owner == node;
@@ -107,13 +127,33 @@ namespace JunctionRules.Stage2
             long edgeKey = bands->Key(first);
             float delta = edgeLane.m_EdgeDelta.y - edgeLane.m_EdgeDelta.x;
             if (math.abs(delta) < 1e-4f) return float.MaxValue;
-            float braking = -1f;
-            float result = float.MaxValue;
+            // 0.4.4 (JR-T-011): only the bands of this lane's carriageway (a divided road: the exit's side of the median,
+            // CarLane.m_CarriagewayGroup low byte = NetCompositionLane.m_Carriageway, LaneSystem.cs 4153), and bands that
+            // overlap or touch on this lane are ONE band (the paint draws their boxes as one, Core/BoxMerge.cs). Bands come
+            // sorted by t on the edge and the lane maps t linearly, so neighbours in this order are neighbours on the lane.
+            int carriageway = carLanes[lane].m_CarriagewayGroup;
+            float touch = ExitBands.TouchMetres / laneLength;
+            FixedList128Bytes<float2> merged = default;
             for (int i = first; i < bands->Count && bands->Key(i) == edgeKey; i++)
             {
+                if (!MedianSplit.InMask(bands->Mask(i), carriageway)) continue;
                 // The exit point on this lane: the edge curve position mapped through the lane's own edge range.
                 float access = (bands->T(i) - edgeLane.m_EdgeDelta.x) / delta;
                 if (!BoxDriving.Band(access, laneLength, m_BoxEntranceLength, inverse, out float b0, out float b1)) continue;
+                int last = merged.Length - 1;
+                if (last >= 0 && ExitBands.Touch(merged[last].x, merged[last].y, b0, b1, touch))
+                {
+                    merged[last] = new float2(math.min(merged[last].x, b0), math.max(merged[last].y, b1));
+                    continue;
+                }
+                if (merged.Length >= merged.Capacity) break;
+                merged.Add(new float2(b0, b1));
+            }
+            float braking = -1f;
+            float result = float.MaxValue;
+            for (int m = 0; m < merged.Length; m++)
+            {
+                float b0 = merged[m].x, b1 = merged[m].y;
                 BoxDriving.EntranceRole role = BoxDriving.Role(start, end, b0, b1, out float entry);
                 if (role != BoxDriving.EntranceRole.Main && role != BoxDriving.EntranceRole.Leaving) continue;
                 bool inBand = m_FirstLane && start >= b0 - WholePathRule.SpotEpsilon;
@@ -123,7 +163,10 @@ namespace JunctionRules.Stage2
                 if (a != BoxDriving.Approach.Check) continue;
                 float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, wait, safeTimeStep), speedRange);
                 if (!(hold < currentMax) || !(hold < result)) continue;
-                bool room = HasRoomPast(lane, b1, inverse, laneLength, entry, Entity.Null, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
+                // 0.4.4: a band reaching the lane end where the path enters a boxed junction is one box with it (the paint
+                // bridges that gap): room is then needed past the junction box (its lanes count as inside the box).
+                Entity joined = (1f - b1) * laneLength <= ExitBands.JunctionJoinMetres ? NextBoxedJunction(lane) : Entity.Null;
+                bool room = HasRoomPast(lane, b1, inverse, laneLength, entry, joined, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
                     ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes);
                 if (!BoxDriving.Holds(a, room)) continue;
                 result = hold;
