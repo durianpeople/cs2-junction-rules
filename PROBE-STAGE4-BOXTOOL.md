@@ -275,6 +275,13 @@ straight road the box is a rectangle; on a bend the mouths slide in (`fallback-c
 stay on the carriageway. 0.4.1 entrance check at Moonflower (house at the access 32 m along a 7.4-48 m edge part):
 the band was 28-36 m, 12 m clear of the junction; the box seen near it was the next junction's box.
 
+**Known, not in 0.4.2: where the entrance box sits.** It is still centred on the building's road access point
+(Building.m_RoadEdge + m_CurvePosition = the lot front middle), not on the drawn driveway. Live Capper Street house
+(UK Medium Detached 14 (L5), lot 24 x 48 m): its driveway sub-net (Invisible Car Path - 1xTwoway) meets the lot front
+about 9.7 m to one side of the middle. Owner ruling 16 Nov: boxes go at each building's car EXIT; that is a separate
+job (exit finding, one box per exit, save format). The band no longer covers the pavements (0.4.1's hover was a filled
+band over the whole road width; 0.4.2 draws the kerb-to-kerb box).
+
 **No hull fallback.** If no straight-sided box can be built (invalid ring), there is no box and a warning line, never
 a convex-hull box over the pavement.
 

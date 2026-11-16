@@ -72,7 +72,8 @@ namespace JunctionRules.Tests
 
             // --- Entrance boxes through the straight-sided solver.
             {
-                // Straight road 8 m long, half width 8, 3 m footways: priority mouths stay, quad on the kerb lines z = +-5.
+                // Straight road 8 m long, half width 8, 3 m footways (= live Capper Street, Small Road edge: sidewalks 5 m incl. 2 m parking,
+                // clear 3 m; 0.4.1 drew its hover band over both pavements): priority mouths stay, quad on the kerb lines z = +-5, no pavement.
                 var c = new List<V3>();
                 for (int i = 0; i <= 8; i++) c.Add(new V3(i, 0, 0));
                 var r = EntranceBox.BuildStraight(c, 8, 3, 3, null, 0.5);
@@ -81,7 +82,7 @@ namespace JunctionRules.Tests
                 {
                     bool onKerbs = true;
                     foreach (var v in r.Outline) onKerbs &= Math.Abs(Math.Abs(v.Z) - 5) < 1e-6 && v.X > -1e-6 && v.X < 8 + 1e-6;
-                    Check(r.Outline.Count == 4 && onKerbs, $"entrance straight: 4 corners on the kerb lines ({r.Outline.Count})");
+                    Check(r.Outline.Count == 4 && onKerbs, $"entrance straight (Capper Street Small Road): 4 corners on the kerb lines, nothing on the pavements ({r.Outline.Count})");
                     Check(BoxPaintGeometry.SignedArea(r.Outline) > 0, "entrance straight: CCW ring");
                 }
             }
