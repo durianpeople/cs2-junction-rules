@@ -1,4 +1,14 @@
-# Probe kit: Junction Rules 0.4.3-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits)
+# Probe kit: Junction Rules 0.4.4-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits; merged boxes; median)
+
+**0.4.4-probe (JR-T-011 part A), what changed since 0.4.3:** boxes that overlap or touch are **drawn as one box**:
+one outer border, one hatch laid out once for the whole group, no borders inside (two exits facing across a road,
+staggered exits, exits end to end, an exit box next to a junction box). Each box is still saved on its own: remove
+one and the other is drawn alone again. The tool's hover shows the merged outline of the group. On a **divided road**
+(raised median, barrier) an exit box covers only the building's side, kerb to median, never across it; two exits
+facing across a median stay two boxes (owner, Ironplace Avenue). Driving follows the paint: overlapping bands on one
+lane are one box, a band holds only its side's lanes, and an exit box drawn joined to a junction box needs room past
+the junction box too. Section 15. No vanilla block change (`docs/vanilla_copy_check_0.4.4.txt`).
+Carries 0.4.3 (below) and everything before.
 
 **0.4.3-probe (JR-T-007c), what changed since 0.4.2:** building boxes sit at each building's **car exit** (the drawn
 driveway, car park / depot gate), not the lot-front middle; a building with several exits gets **one box per exit**;
@@ -36,9 +46,9 @@ differences). Also: the T-junction through-side kerb fix (section 6) and the ent
 0.3.6 (JR-T-008, people pass a car blocking their crossing; merged from 784ba28) and everything before it
 (PROBE-STAGE3-PAINT.md).
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.4.3-probe/`. 0.4.2-probe (jr-t-010 line) is installed live by main (code 59e731f, sums c781df0); never write into `.staged/0.4.2-probe`. While `.staged/0.4.3-probe` holds a `STALE.md` it is a managed
+Build to install: `~/Code/cs2-junction-rules/.staged/0.4.4-probe/`. 0.4.3-probe is installed live (Burst-built from a14445d, sums in 1441805); never write into `.staged/0.4.3-probe` (it is the rollback). While `.staged/0.4.4-probe` holds a `STALE.md` it is a managed
 build only: main does the Burst build in `STALE.md` (game closed, at the owner's quit), then puts the five sums into the
-install block below. 0.4.3-probe was Burst-built from a14445d and installed by main on 16 Nov. (0.4.2-probe stays in `.staged/0.4.2-probe` as the rollback.) Until then the block refuses (placeholder sums `0000...`).
+install block below. Until then the block refuses (placeholder sums `0000...`).
 
 Built for game **1.6.4f1 (1097.158a)** only (same version gate: on another version saved boxes are not painted and the
 copy does not run; the boxes stay in the save).
@@ -49,27 +59,29 @@ copy does not run; the boxes stay in the save).
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.4.3-probe || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.4.4-probe || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-70b4cda8e7a58af89bf0d8e55d5e2ec7adaf4b2697c5ed7855789f6804e52b87  JunctionRules.dll
-ec29605c754404c5a3b978bbe439050a1ab9df9cf4df4522c50c52f63fcf1fd3  JunctionRules.pdb
-9e8f8a397f70bbeb121ef7224981278773595c1fe2ce7e31de01d4c4df2b65bf  JunctionRules.mjs
-be05596420a19970bc1029689d612feccd9d47d543d65876a44fb5930740cbd0  JunctionRules_win_x86_64.dll
-cffee44b48676b58eb837872dbac177bfeeabb632b43236a66c2e97685961511  JunctionRules_win_x86_64.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.mjs
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
   fi
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules.mjs JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
-  echo "installed 0.4.3-probe"
+  echo "installed 0.4.4-probe"
 )
 ```
 
-Rollback: to 0.4.2 (the installed JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
+Rollback: to 0.4.3 (boxes drawn one by one, exit boxes across the whole divided road): the same block with
+`.staged/0.4.3-probe` and its sums (dll 70b4cda8..., pdb ec29605c..., mjs 9e8f8a39..., win dll be055964..., win pdb
+cffee44b...; full sums in commit 1441805). To 0.4.2 (the JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
 its loader, so exit boxes fall back to one entrance box per building): the same block with `.staged/0.4.2-probe` and
 its sums (full sums in commit c781df0). To 0.4.1 (boxes kept, box driving rule gone): the same block with `.staged/0.4.1-probe` and its sums
 (dll af5b1322..., pdb db04729f..., mjs 9e8f8a39..., win dll 5acf0104..., win pdb d5762071...; full sums in the 0.4.1 commit 07cc519)
@@ -505,3 +517,48 @@ through a pointer (no per-car copy): still compare the navigation timing with 0.
 slowdown; the 64-step refresh rebuilds every boxed building's exits on the main thread (BoxFacts.Exits, allocating):
 cheap for a few boxed buildings, but watch for a periodic hitch (every 64 steps) with many; a building whose drive moved more than 2 m
 since the box was placed has no band until the paint re-keys or drops it (log `without an exit now`).
+
+## 15. 0.4.4: touching boxes drawn as one; exit boxes stop at a median (JR-T-011 part A)
+
+**What changed.** The paint groups the boxes whose outlines overlap or touch (within 5 cm) and draws each group as
+ONE box: the union of the members' straight-sided outlines (still straight-sided, every side on a member's side, so
+on the carriageway and clear of markings as each member was), one border round the outside, one hatch whose grid is
+laid out once for the whole group (Core/BoxMerge.cs `BoxMerge.Merge`, hatch anchor `MergedBoxGroup.Anchor`). An exit
+box next to a junction box is joined across the marking margin gap between them (the exit window keeps that margin
+from the junction mouth) only when their facing sides are parallel (3 deg), at most margin + 0.1 m apart and share at
+least 1 m: a zebra or stop line between them always leaves a wider gap, so markings are never painted over. Groups are
+rebuilt only when a box changes and cached per group. If a union ever fails its checks the group's boxes are drawn
+one by one as in 0.4.3 (log `merge with N touching box(es) failed (...)`, report it). Storage is unchanged: every
+box is its own saved record. The tool's hover shows the merged outline of the group the target belongs to (or would
+join). Log: `yellow boxes: N box(es) drawn as M (K merged group(s), ...) in X ms` and one `N boxes drawn as one` line per new merged group; the paint status says `... box(es) painted as M`.
+
+**Median (owner, Ironplace Avenue 16 Nov).** On a road whose cross-section has a divider that blocks traffic (raised
+median, barrier: the game gives the lanes on each side a different carriageway number) an exit box spans only the
+building's side, from its kerb to the median kerb (`yellow boxes: exit ... kerb to median`); undivided roads stay
+kerb to kerb (`kerb to kerb`). Two exits facing across a median are never merged. Driving: the exit's band holds only
+the lanes on the building's side; lanes on the far side drive past as if there were no box. Live read (read-only,
+16 Nov): Ironplace Avenue is a Medium Road Divided, car lanes at +-2.5 / +-5.5 m (3 m), parking +-8 m, median -1..1 m;
+the box should be about 8 m across (kerb at 9 m to median at 1 m).
+
+**Driving follows the paint.** Bands on one lane that overlap or touch are one interval for the hold (a car is held
+once before the whole group, never let into one exit's band and then held inside the next). A band that ends within
+2.5 m of the lane end where the car's next lane belongs to a boxed junction also needs room past that junction box
+(the paint joins the two).
+
+| # | Do | Expect |
+|---|---|---|
+| M1 | The owner's screenshot spot: two exits facing each other across an undivided road (boxes drawn on top of each other in 0.4.3) | ONE yellow box: one outer border, a continuous hatch with no line or seam inside, its outline the outside of both boxes |
+| M2 | Remove one of the two exit boxes (tool, orange) | the other exit's box is drawn alone, its own 0.4.3 outline; save + reload: still only that one |
+| M3 | Add it back | the merged box again; hover over the second exit before clicking shows the merged outline in white |
+| M4 | Two staggered exits on one kerb whose boxes overlap; two exits end to end | one box each pair, straight sides, no notch at the joins |
+| M5 | An exit box next to a boxed junction (no zebra between them) | drawn as one box; with a zebra or stop line between them: two boxes, the marking left clear |
+| M6 | Ironplace Avenue (Medium Road Divided; the owner's screenshot): hover and box a building exit | the hover and the box cover only the building's side, kerb to median, about 8 m wide; nothing on the median or the far carriageway |
+| M7 | Ironplace Avenue: box an exit on the far side opposite it | two separate boxes, one each side, not merged across the median |
+| M8 | Ironplace Avenue, queue on the far carriageway | far-side cars queue through past the box (not held); near-side cars keep the box clear |
+| M9 | A queue through a merged pair of exit boxes | the queue stops before the whole merged box, not between the two |
+| M10 | Timing log on, a city with many boxes | no hitch when adding / removing a box (groups rebuilt only then); report `merge ... failed` lines |
+
+Risks to watch: the union is new code (rotated / bent boxes, three or more in a chain); the junction-exit join reads
+the bridge only where the sides are parallel, so on a skewed junction the exit may stay a separate box (note it, not
+a fail); the median rule relies on the road's divider piece blocking traffic (assumed for vanilla divided roads; a
+RoadBuilder road with a painted-only centre stays kerb to kerb, as it should).
