@@ -92,6 +92,87 @@ namespace JunctionRules.Core
         public double HalfA, HalfB;
         /// <summary>0.4.2: STOP / Give Way on this approach (CarLaneFlags.Stop / Yield on the node's car lanes from this arm).</summary>
         public bool Yielding;
+        /// <summary>
+        /// 0.4.8 (JR-T-014b, G5): the game's own corner kerb of side A / B (KerbRemap), or null (tests, roundabouts). Used
+        /// only for a corner whose two halves have different footways when the 0.4.7 "one kerb" shape is refused
+        /// (CarriagewayOutline.BuildStraight).
+        /// </summary>
+        public KerbRemap RemapA, RemapB;
+    }
+
+    /// <summary>
+    /// 0.4.8 (JR-T-014b, gap G5): one node-slice half as the game lays a lateral position across it, WITH the vertex sync
+    /// that bends a kerb from its own arm's footway at the mouth to the point it shares with the neighbouring arm.
+    /// Game code (decompile ~/Code/decomp/yb-2026-11-13/full): SecondaryObjectSystem.LerpRemap / Remap (lines 1213-1248)
+    /// places a lateral position t of a node half between the half's m_Left and m_Right curves with control points
+    /// a, b at t, c at a width-weighted blend and d at Remap(t, offsets, targets); offsets = the NODE composition's
+    /// NetCompositionData.m_SyncVertexOffsetsLeft / Right, targets = EdgeNodeGeometry.m_SyncVertexTargetsLeft / Right
+    /// (GeometrySystem.CalculateVertexSyncTarget, lines 2069-2086). Two neighbouring arms' kerb vertices get the same
+    /// end point that way, so the kerb of a corner between a 5 m and a 1 m footway runs from 5 m in at one mouth to
+    /// 1 m in at the other, meeting in between (Crescent St x Eastgate Ln, live 17 Nov: both halves end at
+    /// (-520.107, 541.145), t 0.4665 / 0.5335 of the shared slice end). The constant-fraction KerbLine cannot do that.
+    /// </summary>
+    public sealed class KerbRemap
+    {
+        /// <summary>Control points a..d (a = the mouth) of the slice's OUTER edge curve of this side and of the INNER (middle) curve.</summary>
+        public V3[] Outer, Inner;
+        /// <summary>Game sync data of this half (4 values each, game order).</summary>
+        public double[] Offsets, Targets;
+        /// <summary>
+        /// The half's width in the node composition (NetCompositionData.m_Width / 2 + m_MiddleOffset for side A, - for side
+        /// B): the game's lateral fraction is footway / this. 0 = use the half width measured at the mouth (KerbLine's
+        /// 'half'); a skewed mouth is wider than the composition (Eastgate Lane: 4.18 m measured, 4 m composition).
+        /// </summary>
+        public double Half;
+        /// <summary>True for side A (the game's m_Left half: m_Left = outer curve, t from the outer edge); false for side B (m_Right half: m_Left = the middle curve, t from the middle).</summary>
+        public bool OuterIsLeft;
+
+        public bool IsValid =>
+            Outer != null && Inner != null && Outer.Length == 4 && Inner.Length == 4 && Offsets != null && Targets != null && Offsets.Length == 4 && Targets.Length == 4
+            && Array.TrueForAll(Outer, p => !double.IsNaN(p.X) && !double.IsInfinity(p.X) && !double.IsNaN(p.Z) && !double.IsInfinity(p.Z))
+            && Array.TrueForAll(Inner, p => !double.IsNaN(p.X) && !double.IsInfinity(p.X) && !double.IsNaN(p.Z) && !double.IsInfinity(p.Z))
+            && Array.TrueForAll(Offsets, v => !double.IsNaN(v) && !double.IsInfinity(v)) && Array.TrueForAll(Targets, v => !double.IsNaN(v) && !double.IsInfinity(v));
+
+        /// <summary>The game's Remap (SecondaryObjectSystem.cs): piecewise linear from the sync offsets to the sync targets.</summary>
+        public static double Remap(double t, double[] o, double[] g)
+        {
+            double Sat(double v) => Math.Max(0, Math.Min(1, v));
+            double Lerp(double a, double b, double f) => a + (b - a) * f;
+            if (t < o[0]) return g[0] * Sat(o[0] > 0 ? t / o[0] : 0);
+            if (t < o[1]) return Lerp(g[0], g[1], Sat((t - o[0]) / (o[1] - o[0])));
+            if (t < o[2]) return Lerp(g[1], g[2], Sat((t - o[1]) / (o[2] - o[1])));
+            if (t < o[3]) return Lerp(g[2], g[3], Sat((t - o[2]) / (o[3] - o[2])));
+            return Lerp(g[3], 1, Sat(o[3] < 1 ? (t - o[3]) / (1 - o[3]) : 0));
+        }
+
+        /// <summary>
+        /// The kerb of this side with footway 'inset' (half width 'half' at the mouth): the game's LerpRemap curve
+        /// sampled at 'chords' chords (index 0 = the mouth, as the paint system's Sample). Null when the data is unusable.
+        /// </summary>
+        public List<V3> KerbLine(double inset, double half, int chords = 16)
+        {
+            double h = Half > 1e-6 ? Half : half;
+            if (!IsValid || h <= 1e-6 || chords < 1) return null;
+            double f = Math.Max(0, Math.Min(1, inset / h));
+            V3[] l = OuterIsLeft ? Outer : Inner, r = OuterIsLeft ? Inner : Outer;
+            double t = OuterIsLeft ? f : 1 - f;
+            double t2 = Remap(t, Offsets, Targets);
+            double num = V2.Distance(l[0].XZ, r[0].XZ), num2 = V2.Distance(l[3].XZ, r[3].XZ);
+            double den = Math.Max(1e-6, 0.5 * (num + num2));
+            var mid = new double[4];
+            for (int k = 0; k < 4; k++) mid[k] = 0.5 * (Offsets[k] * num + Targets[k] * num2) / den;
+            double t3 = Remap(t, Offsets, mid);
+            V3 L(V3 a, V3 b, double s) => new V3(a.X + (b.X - a.X) * s, a.Y + (b.Y - a.Y) * s, a.Z + (b.Z - a.Z) * s);
+            V3 c0 = L(l[0], r[0], t), c1 = L(l[1], r[1], t), c2 = L(l[2], r[2], t3), c3 = L(l[3], r[3], t2);
+            var pts = new List<V3>(chords + 1);
+            for (int i = 0; i <= chords; i++)
+            {
+                double s = i / (double)chords, u = 1 - s;
+                double w0 = u * u * u, w1 = 3 * u * u * s, w2 = 3 * u * s * s, w3 = s * s * s;
+                pts.Add(new V3(c0.X * w0 + c1.X * w1 + c2.X * w2 + c3.X * w3, c0.Y * w0 + c1.Y * w1 + c2.Y * w2 + c3.Y * w3, c0.Z * w0 + c1.Z * w1 + c2.Z * w2 + c3.Z * w3));
+            }
+            return pts;
+        }
     }
 
     public sealed class CarriagewayResult
@@ -105,6 +186,28 @@ namespace JunctionRules.Core
         public List<string> Notes = new List<string>();
         /// <summary>0.4.2: the straight-sided solve (shifts per arm in INPUT order, rule), when BuildStraight made it.</summary>
         public StraightBoxResult Straight;
+        /// <summary>0.4.8 (JR-T-014b, G5): corner kerb pairs drawn as the game draws them (KerbRemap) because the one-kerb shape was refused; 0 = the 0.4.7 shape.</summary>
+        public int GameCorners;
+
+        /// <summary>0.4.8 (JR-T-014b): one line naming the solved shape for logs (sides, area, rule, chamfers, game corner kerbs); null without an outline.</summary>
+        public string ShapeSummary()
+        {
+            if (Outline == null) return null;
+            string s = $"box shape: {Outline.Count}-sided straight box, {Math.Abs(BoxPaintGeometry.SignedArea(Outline)):0.0} m2";
+            if (Straight != null)
+            {
+                s += $", rule {Straight.RuleCode}";
+                if (Straight.Shift != null)
+                {
+                    var sh = new List<string>();
+                    foreach (double d in Straight.Shift) sh.Add(d.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+                    s += $", mouth shifts [{string.Join(", ", sh)}] m";
+                }
+                if (Straight.Chamfers.Count > 0) s += $", {Straight.Chamfers.Count} chamfered corner(s)";
+            }
+            if (GameCorners > 0) s += $", {GameCorners} corner kerb(s) as the game draws them";
+            return s;
+        }
     }
 
     public static class CarriagewayOutline
@@ -271,8 +374,29 @@ namespace JunctionRules.Core
         /// half; the larger is the conservative side, the box never reaches onto the pavement). Notes name each change.
         /// </summary>
         public static void ShareJoinedInsets(IList<ArmInput> arms, double tol, out double[] insetA, out double[] insetB, List<string> notes = null)
+            => ShareJoinedInsets(arms, tol, false, out insetA, out insetB, out _, out _, out _, notes);
+
+        /// <summary>Most angle (degrees) between two arms' mouth lines, facing opposite ways, for their joined kerb to count as a THROUGH side (a straight kerb) rather than a corner.</summary>
+        public const double ThroughSideMaxAngle = 30.0;
+
+        /// <summary>
+        /// 0.4.8 (JR-T-014b, gap G5): as ShareJoinedInsets, and with gameCorners a joined pair at a CORNER (the two arms'
+        /// mouths not facing opposite ways within ThroughSideMaxAngle) whose halves have different footways and both carry
+        /// the game's corner data (ArmInput.RemapA / RemapB) keeps its own insets and is flagged in remapA / remapB: its
+        /// kerbs are then drawn as the game draws them (KerbRemap.KerbLine), meeting at the game's shared point. Why: the
+        /// "larger inset" of 0.4.0 is a constant lateral FRACTION of each half along its whole curve; with a 5 m footway
+        /// on an 8 m half (Crescent Street) against a 1 m one on a 4 m half (Eastgate Lane, an Alley) the larger inset is
+        /// more than the alley's whole half (5 / 4, clamped to 1 by KerbLine), so the alley side's "kerb" became the alley's
+        /// centre line and no box could fit. gamePairs = how many pairs would be drawn the game's way.
+        /// </summary>
+        public static void ShareJoinedInsets(IList<ArmInput> arms, double tol, bool gameCorners, out double[] insetA, out double[] insetB, out bool[] remapA, out bool[] remapB, out int gamePairs, List<string> notes = null)
         {
             int n = arms.Count;
+            var ra = new bool[n];
+            var rb = new bool[n];
+            remapA = ra;
+            remapB = rb;
+            gamePairs = 0;
             var ia = new double[n];
             var ib = new double[n];
             insetA = ia;
@@ -301,11 +425,42 @@ namespace JunctionRules.Core
                 if (q < k || partner[q] != k) continue;   // each mutual pair once
                 double a = Get(k), b = Get(q);
                 if (Math.Abs(a - b) <= 1e-9) continue;
+                KerbRemap Rm(int c) => (c & 1) == 0 ? arms[c / 2].RemapA : arms[c / 2].RemapB;
+                if (Rm(k) != null && Rm(q) != null && Rm(k).IsValid && Rm(q).IsValid && IsCorner(arms[k / 2], arms[q / 2], end[k]))
+                {
+                    if (gameCorners)
+                    {
+                        gamePairs++;
+                        if ((k & 1) == 0) ra[k / 2] = true; else rb[k / 2] = true;
+                        if ((q & 1) == 0) ra[q / 2] = true; else rb[q / 2] = true;
+                        notes?.Add($"kerb between arm {k / 2 + 1}{((k & 1) == 0 ? "A" : "B")} and arm {q / 2 + 1}{((q & 1) == 0 ? "A" : "B")}: corner kerb as the game draws it, footway {a:0.00} m at one mouth to {b:0.00} m at the other");
+                        continue;
+                    }
+                    gamePairs++;
+                }
                 double m = Math.Max(a, b);
                 Set(k, m);
                 Set(q, m);
                 notes?.Add($"kerb between arm {k / 2 + 1}{((k & 1) == 0 ? "A" : "B")} and arm {q / 2 + 1}{((q & 1) == 0 ? "A" : "B")}: one kerb, inset {m:0.00} m (halves were {a:0.00}|{b:0.00})");
             }
+        }
+
+        /// <summary>
+        /// 0.4.8 (JR-T-014b): true when two arms whose kerb halves meet at 'joint' form a corner, false for a through side
+        /// (their mouth lines facing opposite ways within ThroughSideMaxAngle: the straight kerb of a T, where 0.4.0's
+        /// one-kerb-one-inset rule stays).
+        /// </summary>
+        public static bool IsCorner(ArmInput x, ArmInput y, V2 joint)
+        {
+            V2 Out(ArmInput a)
+            {
+                V2 p = a.OuterA[0].XZ, q = a.OuterB[0].XZ;
+                V2 d = (q - p).Normalized;
+                var nrm = new V2(-d.Z, d.X);
+                if (V2.Dot(nrm, (p + q) * 0.5 - joint) < 0) nrm = nrm * -1;
+                return nrm;
+            }
+            return V2.Dot(Out(x), Out(y)) > -Math.Cos(ThroughSideMaxAngle * Math.PI / 180);
         }
 
         /// <summary>
@@ -418,21 +573,58 @@ namespace JunctionRules.Core
                 if (!IsFinite(a.InsetA) || !IsFinite(a.InsetB) || !a.OuterA.TrueForAll(IsFinite) || !a.OuterB.TrueForAll(IsFinite)) { res.Failure = "non-finite input (NaN/Inf) in an arm's edge lines or insets"; return res; }
                 if ((a.InnerA != null && !a.InnerA.TrueForAll(IsFinite)) || (a.InnerB != null && !a.InnerB.TrueForAll(IsFinite))) { res.Failure = "non-finite input (NaN/Inf) in an arm's inner curves"; return res; }
             }
-            ShareJoinedInsets(arms, JoinTolerance, out double[] insetA, out double[] insetB, res.Notes);
+            // 0.4.8 (JR-T-014b, G5): first exactly the 0.4.7 shape (every box that had a shape keeps it, cm for cm). Only
+            // when that is refused, and a corner between different footways carries the game's corner data or a marking
+            // lies past an arm's kerb lines, is it built again the 0.4.8 way: those corners' kerbs as the game draws them
+            // (KerbRemap) and such an arm's mouth held clear of its marking (BoxMouth.MinShift) instead of left at the mouth.
+            CarriagewayResult first = Straight(arms, centre, ok, margin, conflictPoints, signals, false, res.Notes, out int gamePairs, out int held);
+            if (first.Outline != null || (gamePairs == 0 && held == 0)) return first;
+            CarriagewayResult game = Straight(arms, centre, ok, margin, conflictPoints, signals, true, res.Notes, out _, out _);
+            if (game.Outline != null)
+            {
+                game.GameCorners = gamePairs;
+                game.Notes.Add($"built the 0.4.8 way ({gamePairs} corner kerb(s) as the game draws them, {held} mouth(s) held clear of a marking past the kerb lines); the 0.4.7 shape was refused ({first.Failure})");
+                return game;
+            }
+            first.Notes.Add($"the 0.4.8 way ({gamePairs} corner kerb(s) as the game draws them, {held} mouth(s) held clear of a marking) tried too, also refused: {game.Failure}");
+            return first;
+        }
+
+        /// <summary>
+        /// BuildStraight for valid input. fix048: corners between different footways drawn as the game draws them
+        /// (KerbRemap), and an arm whose marking lies past its kerb lines gets its mouth held at least that far in
+        /// (BoxMouth.MinShift) instead of left at the mouth, on the marking. gamePairs / held: how many such corners /
+        /// arms there are (counted in either mode).
+        /// </summary>
+        private static CarriagewayResult Straight(IList<ArmInput> arms, V2 centre, List<CrosswalkStrip> ok, double margin, IList<V2> conflictPoints, bool signals, bool fix048, List<string> preNotes, out int gamePairs, out int held)
+        {
+            var res = new CarriagewayResult();
+            res.Notes.AddRange(preNotes);
+            bool gameCorners = fix048;
+            held = 0;
+            ShareJoinedInsets(arms, JoinTolerance, gameCorners, out double[] insetA, out double[] insetB, out bool[] remapA, out bool[] remapB, out gamePairs, res.Notes);
             var kerbs = new List<ArmSlice>(arms.Count);
             for (int i = 0; i < arms.Count; i++)
             {
                 var a = arms[i];
-                kerbs.Add(new ArmSlice(KerbLine(a.OuterA, a.InnerA, a.HalfA, insetA[i], a.OuterB[0].XZ), KerbLine(a.OuterB, a.InnerB, a.HalfB, insetB[i], a.OuterA[0].XZ)));
+                List<V3> ka = remapA[i] ? a.RemapA.KerbLine(insetA[i], a.HalfA) : null, kb = remapB[i] ? a.RemapB.KerbLine(insetB[i], a.HalfB) : null;
+                kerbs.Add(new ArmSlice(ka ?? KerbLine(a.OuterA, a.InnerA, a.HalfA, insetA[i], a.OuterB[0].XZ), kb ?? KerbLine(a.OuterB, a.InnerB, a.HalfB, insetB[i], a.OuterA[0].XZ)));
             }
             res.StopDistance = StopDistances(kerbs, centre, ok, res.Notes, margin);
+            var minShift = new double[kerbs.Count];
             for (int i = 0; i < kerbs.Count; i++)
             {
                 if (res.StopDistance[i] <= 1e-6) continue;
                 if (TrimToStopLine(kerbs[i], centre, res.StopDistance[i], out ArmSlice t)) kerbs[i] = t;
                 else
                 {
-                    res.Notes.Add($"arm {i + 1}: marking (+ margin) ends {res.StopDistance[i]:0.0} m in, past the kerb lines; box starts at the mouth");
+                    held++;
+                    if (fix048)
+                    {
+                        res.Notes.Add($"arm {i + 1}: marking (+ margin) ends {res.StopDistance[i]:0.0} m in, past the kerb lines; mouth held at least that far in");
+                        minShift[i] = res.StopDistance[i];
+                    }
+                    else res.Notes.Add($"arm {i + 1}: marking (+ margin) ends {res.StopDistance[i]:0.0} m in, past the kerb lines; box starts at the mouth");
                     res.StopDistance[i] = 0;
                 }
             }
@@ -484,6 +676,7 @@ namespace JunctionRules.Core
                     Exit = arm.exit[0],
                     Inward = inward,
                     MaxShift = Math.Max(0, V2.Dot(centre - mid, inward)),
+                    MinShift = minShift[arm.idx],
                     Yielding = arms[arm.idx].Yielding,
                     Name = $"arm {arm.idx + 1}",
                 });
