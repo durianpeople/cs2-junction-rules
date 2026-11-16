@@ -587,7 +587,13 @@ namespace JunctionRules.Core
         /// OutlineOnly: border only. Every piece lies inside the outline; heights are taken from the outline
         /// (interpolated over its triangulation).
         /// </summary>
-        public static BoxPaintResult BuildPieces(List<V3> outline, BoxPaintParams prm, BoxPaintMode mode)
+        public static BoxPaintResult BuildPieces(List<V3> outline, BoxPaintParams prm, BoxPaintMode mode) => BuildPieces(outline, prm, mode, null);
+
+        /// <summary>
+        /// 0.4.4 (JR-T-011): with 'anchor' the hatch (origin, directions, spacing) comes from that rectangle instead of the
+        /// outline's own, so every ring of a merged group (Core/BoxMerge.cs) carries one continuous pattern.
+        /// </summary>
+        public static BoxPaintResult BuildPieces(List<V3> outline, BoxPaintParams prm, BoxPaintMode mode, BoxRect? anchor)
         {
             var res = new BoxPaintResult { Outline = outline };
             if (outline == null || outline.Count < 3) { res.Failure = "no outline"; return res; }
@@ -602,7 +608,7 @@ namespace JunctionRules.Core
                 return res;
             }
             res.OutlineTriangles = tris;
-            res.Rect = MinAreaRect(xz);
+            res.Rect = anchor ?? MinAreaRect(xz);
             res.SpacingUsed = prm.EffectiveSpacing(Math.Min(res.Rect.LenU, res.Rect.LenV));
 
             if (mode == BoxPaintMode.PlainFill)

@@ -261,6 +261,7 @@ namespace JunctionRules.Core
     {
         private static long[] s_Keys = new long[0];
         private static float[] s_T = new float[0];
+        private static uint[] s_Masks = new uint[0];
 
         /// <summary>Bumped on every publish that changes the bands.</summary>
         public static int Version { get; private set; }
@@ -270,6 +271,9 @@ namespace JunctionRules.Core
 
         /// <summary>Curve position on the edge, parallel to <see cref="Keys"/>.</summary>
         public static float[] T => s_T;
+
+        /// <summary>0.4.4: carriageway mask per band (ExitBand.Carriageways), parallel to <see cref="Keys"/>.</summary>
+        public static uint[] Masks => s_Masks;
 
         /// <summary>Exits not handed over at the last publish (more than ExitBands.Capacity).</summary>
         public static int Dropped { get; private set; }
@@ -282,14 +286,16 @@ namespace JunctionRules.Core
             if (n.Length == s_Keys.Length)
             {
                 bool same = true;
-                for (int i = 0; i < n.Length && same; i++) same = n[i].EdgeKey == s_Keys[i] && n[i].T == s_T[i];
+                for (int i = 0; i < n.Length && same; i++) same = n[i].EdgeKey == s_Keys[i] && n[i].T == s_T[i] && n[i].Carriageways == s_Masks[i];
                 if (same) return;
             }
             var keys = new long[n.Length];
             var t = new float[n.Length];
-            for (int i = 0; i < n.Length; i++) { keys[i] = n[i].EdgeKey; t[i] = n[i].T; }
+            var masks = new uint[n.Length];
+            for (int i = 0; i < n.Length; i++) { keys[i] = n[i].EdgeKey; t[i] = n[i].T; masks[i] = n[i].Carriageways; }
             s_Keys = keys;
             s_T = t;
+            s_Masks = masks;
             Version++;
         }
     }

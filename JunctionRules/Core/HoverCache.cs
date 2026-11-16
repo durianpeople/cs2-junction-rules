@@ -20,17 +20,19 @@ namespace JunctionRules.Core
         public long AccessEdge;
         /// <summary>0.4.3: the exit's curve position on that edge, quantised (QuantiseT).</summary>
         public int AccessT;
+        /// <summary>0.4.4: MergedBoxes.Version the hover was merged against (the merged outline follows the drawn boxes).</summary>
+        public int GroupsVersion;
 
         public HoverKey(long entity, int kind, double kerbInset, double entranceLength, double markingMargin, long sub = 0, long accessEdge = 0, int accessT = 0)
         {
             Entity = entity; Kind = kind; KerbInset = kerbInset; EntranceLength = entranceLength; MarkingMargin = markingMargin; Sub = sub;
-            AccessEdge = accessEdge; AccessT = accessT;
+            AccessEdge = accessEdge; AccessT = accessT; GroupsVersion = 0;
         }
 
         /// <summary>Curve position to the key's grid (1/4096 of the edge: millimetres to a few cm on real roads).</summary>
         public static int QuantiseT(double t) => double.IsNaN(t) ? -1 : (int)Math.Round(Math.Max(0, Math.Min(1, t)) * 4096.0);
 
-        public bool Equals(HoverKey o) => Entity == o.Entity && Sub == o.Sub && Kind == o.Kind && AccessEdge == o.AccessEdge && AccessT == o.AccessT
+        public bool Equals(HoverKey o) => Entity == o.Entity && Sub == o.Sub && Kind == o.Kind && AccessEdge == o.AccessEdge && AccessT == o.AccessT && GroupsVersion == o.GroupsVersion
             && KerbInset.Equals(o.KerbInset) && EntranceLength.Equals(o.EntranceLength) && MarkingMargin.Equals(o.MarkingMargin);
 
         public override bool Equals(object obj) => obj is HoverKey k && Equals(k);

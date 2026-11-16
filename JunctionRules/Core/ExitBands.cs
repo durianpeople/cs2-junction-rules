@@ -13,8 +13,15 @@ namespace JunctionRules.Core
     {
         public long EdgeKey;
         public float T;
+        /// <summary>
+        /// 0.4.4 (JR-T-011): the carriageways the exit's box covers (Core/MedianSplit: bit = NetCompositionLane.m_Carriageway;
+        /// MedianSplit.AllCarriageways on an undivided road). The band holds only lanes whose CarLane.m_CarriagewayGroup
+        /// low byte is in the mask: on a divided road the lanes on the building's side of the median.
+        /// </summary>
+        public uint Carriageways;
 
-        public ExitBand(long edgeKey, float t) { EdgeKey = edgeKey; T = t; }
+        public ExitBand(long edgeKey, float t) { EdgeKey = edgeKey; T = t; Carriageways = MedianSplit.AllCarriageways; }
+        public ExitBand(long edgeKey, float t, uint carriageways) { EdgeKey = edgeKey; T = t; Carriageways = carriageways; }
     }
 
     /// <summary>
@@ -28,8 +35,26 @@ namespace JunctionRules.Core
         /// <summary>Most bands the job carries (Stage2/JRBoxEdges: FixedList512Bytes&lt;long&gt; keys + FixedList512Bytes&lt;float&gt; t).</summary>
         public const int Capacity = 63;
 
-        /// <summary>Two bands on the same edge closer than this (curve t) are one band.</summary>
+        /// <summary>Two bands on the same edge closer than this (curve t) and on the same carriageways are one band.</summary>
         public const float SameT = 1e-4f;
+
+        /// <summary>
+        /// 0.4.4 (JR-T-011): bands on one lane whose ends are at most this far apart (metres) are one band (the paint draws
+        /// overlapping / touching exit boxes as one box, Core/BoxMerge.cs; the paint snaps at 0.05 m).
+        /// </summary>
+        public const float TouchMetres = 0.1f;
+
+        /// <summary>
+        /// 0.4.4 (JR-T-011): a band that reaches this close (metres) to the end of its lane, where the car's path enters a
+        /// boxed junction, is one box with that junction box (the paint bridges the exit box's marking-margin gap to a
+        /// junction box, BoxMerge JoinGap = margin + 0.1 m, margin at most 2 m): the band's room test then asks for room
+        /// past the junction box (lanes of the boxed node count as inside the box).
+        /// </summary>
+        public const float JunctionJoinMetres = 2.5f;
+
+        /// <summary>Two bands on one lane (driving coordinates) overlap or touch within 'tol' (driving units): one band.</summary>
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+        public static bool Touch(float a0, float a1, float b0, float b1, float tol) => b0 <= a1 + tol && a0 <= b1 + tol;
 
         /// <summary>
         /// Indices into 'exits' of the exits that carry a box and drive as a band: each saved key matched as the paint
@@ -80,7 +105,7 @@ namespace JunctionRules.Core
             foreach (ExitBand b in all)
             {
                 if (float.IsNaN(b.T)) continue;
-                if (r.Count > 0 && r[r.Count - 1].EdgeKey == b.EdgeKey && Math.Abs(r[r.Count - 1].T - b.T) < SameT) continue;
+                if (r.Count > 0 && r[r.Count - 1].EdgeKey == b.EdgeKey && Math.Abs(r[r.Count - 1].T - b.T) < SameT && r[r.Count - 1].Carriageways == b.Carriageways) continue;
                 r.Add(b);
             }
             dropped = Math.Max(0, r.Count - capacity);
