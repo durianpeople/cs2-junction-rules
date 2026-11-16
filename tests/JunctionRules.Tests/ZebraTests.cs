@@ -243,7 +243,7 @@ namespace JunctionRules.Tests
             Check(Stage2Mode.RuleName(Stage2Mode.For(JunctionGapRule.WholeJunction, false, zebraClear: true, zebraMargin: 1f)).EndsWith("; cars never stop on a zebra (room margin 1.0 m)"), "rule name with the setting");
 
             // Counters.
-            Check(Stage2Counters.ZebraHeldPeople == Stage2Counters.CrossingsNoFit + 1 && Stage2Counters.ZebraMerged == Stage2Counters.Count - 1, "zebra counters after the 0.3.3 ones");
+            Check(Stage2Counters.ZebraHeldPeople == Stage2Counters.CrossingsNoFit + 1 && Stage2Counters.ZebraMerged == Stage2Counters.BoxHeldRoom - 1, "zebra counters after the 0.3.3 ones (0.4.2 box counters follow)");
             var dl = new long[Stage2Counters.Count];
             dl[Stage2Counters.ZebraHeldPeople] = 4; dl[Stage2Counters.ZebraHeldCs] = 3; dl[Stage2Counters.ZebraHeldRoom] = 2; dl[Stage2Counters.ZebraMerged] = 1;
             string on2 = Stage2Counters.Format(2, dl, 2, 2);

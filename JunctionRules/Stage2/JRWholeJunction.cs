@@ -30,7 +30,7 @@ namespace JunctionRules.Stage2
     /// (AfterProjection) and cars on the lanes feeding a conflicting lane count as virtual reservations
     /// (FeedingLaneYield). With m_Mode == 0 every entry point returns at its first test.
     /// </summary>
-    public struct JRWholeJunction
+    public partial struct JRWholeJunction
     {
         /// <summary>The stock reservation time step (CarNavigationSystem.ReserveNavigationLanes: timeStep = 4f / 15f).</summary>
         public const float ReservationTimeStep = 4f / 15f;
@@ -165,6 +165,35 @@ namespace JunctionRules.Stage2
         private float m_ZebraRoomSpeed;
         private bool m_ZebraMergedSeen;
 
+        // ---- 0.4.2 (JR-T-010): cars obey yellow boxes (Core/BoxDriving.cs; methods in Stage2/JRYellowBox.cs) ----
+        /// <summary>Setting "Cars obey yellow boxes" (Stage2Mode.BoxObey, stripped from m_Mode in Create).</summary>
+        public bool m_BoxRule;
+        private bool m_BoxTurnWait;
+        private bool m_BoxLeftHand;
+        private bool m_BoxJunctions;
+        private bool m_BoxEntrances;
+        private float m_BoxEntranceLength;
+        /// <summary>SetBoxes ran (the box lookups below are valid).</summary>
+        private bool m_BoxLookups;
+        private ComponentLookup<JunctionRules.Boxes.YellowBoxJunction> m_BoxJunctionData;
+        private ComponentLookup<JunctionRules.Boxes.YellowBoxEntrance> m_BoxEntranceData;
+        private ComponentLookup<Game.Buildings.Building> m_BuildingData;
+        private BufferLookup<Game.Buildings.ConnectedBuilding> m_ConnectedBuildings;
+        private ComponentLookup<Game.Net.EdgeLane> m_EdgeLaneData;
+        /// <summary>The lane being checked (BeginLane, Whole junction) is a lane of a boxed junction: its decision is at the stop line.</summary>
+        private bool m_BoxLane;
+        /// <summary>Its turn spot (UK right-turn exception, driving coordinates; 2 = none) and that spot's index in the stretch spots (-1 = none).</summary>
+        private float m_BoxTurnSpot;
+        private int m_BoxTurnIndex;
+        private bool m_HasBoxRoom;
+        private float m_BoxRoomSpeed;
+        private bool m_HasBoxTurnWait;
+        private float m_BoxTurnWaitSpeed;
+        private bool m_HasEntranceMain;
+        private float m_EntranceMainSpeed;
+        private bool m_HasEntranceLeaving;
+        private float m_EntranceLeavingSpeed;
+
         public bool RuleOn
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -194,10 +223,19 @@ namespace JunctionRules.Stage2
             // 0.4.1: so does the zebra rule with its room margin.
             j.m_ZebraRule = (mode & Stage2Mode.ZebraClear) != 0;
             j.m_RoomMargin = Stage2Mode.ZebraMargin(mode);
+            // 0.4.2: and the yellow box rule (the margin bits are shared).
+            j.m_BoxRule = (mode & Stage2Mode.BoxObey) != 0;
+            j.m_BoxTurnWait = (mode & Stage2Mode.BoxTurnWait) != 0;
+            j.m_BoxLeftHand = (mode & Stage2Mode.BoxLeftHand) != 0;
+            j.m_BoxJunctions = (mode & Stage2Mode.BoxJunctions) != 0;
+            j.m_BoxEntrances = (mode & Stage2Mode.BoxEntrances) != 0;
+            j.m_BoxEntranceLength = Stage2Mode.BoxEntranceLength(mode);
+            j.m_BoxTurnSpot = 2f;
+            j.m_BoxTurnIndex = -1;
             mode &= ~Stage2Mode.Stripped;
             j.m_Mode = mode;
             j.m_VehicleLength = vehicleLength;
-            if (mode != 0 || j.m_ZebraRule)
+            if (mode != 0 || j.m_ZebraRule || j.m_BoxRule)
             {
                 j.m_NodeLaneData = nodeLaneData;
                 j.m_OwnerData = ownerData;
@@ -281,6 +319,9 @@ namespace JunctionRules.Stage2
             m_LaneActive = false;
             m_Committed = false;
             m_Inside = false;
+            m_BoxLane = false;
+            m_BoxTurnSpot = 2f;
+            m_BoxTurnIndex = -1;
             if (!m_NodeLaneData.HasComponent(lane)) return;
             OverlapConflicts list = default;
             list.m_Overlaps = overlaps;
@@ -292,10 +333,23 @@ namespace JunctionRules.Stage2
                 if (HeldByRed(overlaps[i], ref signals)) list.m_Held |= 1UL << i;
             }
             float braking = VehicleUtils.GetBrakingDistance(car, currentSpeed, timeStep);
+            // 0.4.2: a lane of a boxed junction takes its decision at the stop line (Core/BoxDriving.cs).
+            bool box = RuleOn && IsBoxedJunctionLane(lane);
             if (!m_Stretch.Begin(ref list, origDistance, length, StretchGeometry.ToDriving(curveX, inverse), margin, braking,
-                    (m_Mode & Stage2Mode.AtLine) != 0))
+                    (m_Mode & Stage2Mode.AtLine) != 0 || box))
             {
                 return;
+            }
+            if (box)
+            {
+                // UK right-turn exception: a second spot inside the box before the first oncoming conflict.
+                m_BoxLane = true;
+                m_BoxTurnSpot = TurnSpot(lane, overlaps, inverse, ref carLanes);
+                if (m_BoxTurnSpot < 1f && BoxDriving.JunctionSpots(true, m_BoxTurnSpot, out WaitingSpots boxSpots) && boxSpots.Count > 1)
+                {
+                    m_Stretch.BeginWithSpots(ref list, boxSpots, origDistance, length, StretchGeometry.ToDriving(curveX, inverse), margin, braking);
+                    m_BoxTurnIndex = 1;
+                }
             }
             m_Inverse = inverse;
             m_Spot = StretchGeometry.ToDriving(m_Stretch.Spots[0], inverse);
@@ -458,8 +512,10 @@ namespace JunctionRules.Stage2
             elements.m_Inverse = inverse;
             elements.m_Signals = signals;
             elements.m_Pedestrian = pedestrianLanes;
-            bool atLine = RuleOn && (m_Mode & Stage2Mode.AtLine) != 0;
-            if (!ZebraSections.Build(ref elements, RuleOn, atLine, length, margin, m_VehicleLength, out ZebraLayout layout)) return float.MaxValue;
+            bool atLine = RuleOn && ((m_Mode & Stage2Mode.AtLine) != 0 || m_BoxLane);
+            // 0.4.2: a boxed junction lane: stop-line decision and the turner's spot in the box, where the zebra rule allows it.
+            if (!ZebraSections.Build(ref elements, RuleOn, atLine, length, margin, m_VehicleLength, m_BoxLane ? m_BoxTurnSpot : 2f, out ZebraLayout layout)) return float.MaxValue;
+            if (m_BoxLane) m_BoxTurnIndex = layout.ExtraIndex;
             m_ZebraStarts = default;
             for (int i = 0; i < overlaps.Length; i++)
             {
@@ -495,10 +551,38 @@ namespace JunctionRules.Stage2
             if (!ZebraSections.RoomCheckDue(layout, k, canStop)) return float.MaxValue;
             float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, m_Stretch.Wait(m_Stretch.Spots[k]), safeTimeStep), speedRange);
             if (!(hold < currentMax)) return float.MaxValue;
+            if (HasRoomPast(lane, layout.SectionEnd(k), inverse, length, -1f, Entity.Null, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
+                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars))
+            {
+                return float.MaxValue;
+            }
+            if (Counting) Min(ref m_HasZebraRoom, ref m_ZebraRoomSpeed, hold);
+            return hold;
+        }
+
+        /// <summary>
+        /// 0.4.1 room past (Core RoomScan), shared since 0.4.2 by the zebra rule and the yellow boxes (one mechanism): is there
+        /// room for the whole vehicle plus the margin on the car's own path beyond <paramref name="fromDriving"/> (driving
+        /// coordinates of <paramref name="lane"/>)? Vehicles ahead on the rest of this lane and on up to MaxRoomLanes of the
+        /// car's next navigation lanes are fed in path order (moving: their braking distance counts as room). 0.4.2:
+        /// <paramref name="queueFrom"/> &gt;= 0 = the vehicles on this lane between queueFrom and fromDriving are inside the
+        /// box / band ahead of the car and take exit room first (RoomScan.AddQueued); path lanes owned by
+        /// <paramref name="boxNode"/> (further lanes of the same boxed junction) likewise. The zebra rule passes -1 /
+        /// Entity.Null: exactly the 0.4.1 scan.
+        /// </summary>
+        private bool HasRoomPast(Entity lane, float fromDriving, bool inverse, float length, float queueFrom, Entity boxNode, Entity self, float safeTimeStep,
+            ref ComponentLookup<Game.Net.CarLane> carLanes, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves,
+            ref ComponentLookup<Moving> moving, ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs,
+            ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars)
+        {
             RoomScan scan = RoomScan.Begin(m_VehicleLength, m_RoomMargin);
-            float from = layout.SectionEnd(k);
-            float read = (1f - from) * length;
-            ScanLane(ref scan, lane, StretchGeometry.ToDriving(from, inverse), inverse, length, read, 0f, self, safeTimeStep, ref laneObjects, ref curves,
+            if (queueFrom >= 0f && fromDriving > queueFrom)
+            {
+                ScanLane(ref scan, lane, StretchGeometry.ToDriving(queueFrom, inverse), inverse, length, (fromDriving - queueFrom) * length, 0f, true, self, safeTimeStep,
+                    ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars);
+            }
+            float read = (1f - fromDriving) * length;
+            ScanLane(ref scan, lane, StretchGeometry.ToDriving(fromDriving, inverse), inverse, length, read, 0f, false, self, safeTimeStep, ref laneObjects, ref curves,
                 ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars);
             if (!scan.Done(read) && m_HasPath)
             {
@@ -514,14 +598,13 @@ namespace JunctionRules.Stage2
                     if (!carLanes.HasComponent(nav.m_Lane) || !curves.TryGetComponent(nav.m_Lane, out Curve navCurve)) break;
                     bool navInverse = nav.m_CurvePosition.y < nav.m_CurvePosition.x;
                     float span = math.abs(nav.m_CurvePosition.y - nav.m_CurvePosition.x) * navCurve.m_Length;
-                    ScanLane(ref scan, nav.m_Lane, nav.m_CurvePosition.x, navInverse, navCurve.m_Length, span, read, self, safeTimeStep, ref laneObjects,
+                    bool inBox = boxNode != Entity.Null && m_OwnerData.TryGetComponent(nav.m_Lane, out Owner navOwner) && navOwner.m_Owner == boxNode;
+                    ScanLane(ref scan, nav.m_Lane, nav.m_CurvePosition.x, navInverse, navCurve.m_Length, span, inBox ? 0f : read, inBox, self, safeTimeStep, ref laneObjects,
                         ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars);
-                    read += span;
+                    if (!inBox) read += span;
                 }
             }
-            if (scan.HasRoom) return float.MaxValue;
-            if (Counting) Min(ref m_HasZebraRoom, ref m_ZebraRoomSpeed, hold);
-            return hold;
+            return scan.HasRoom;
         }
 
         /// <summary>Most path lanes past the junction lane read for the room-past scan (the unknown rest counts as free).</summary>
@@ -535,7 +618,7 @@ namespace JunctionRules.Stage2
         /// when it moves forward. Oncoming objects, the car itself and its own trailers are skipped.
         /// </summary>
         private static void ScanLane(ref RoomScan scan, Entity lane, float from, bool inverse, float laneLength, float span, float baseDistance,
-            Entity self, float safeTimeStep, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves, ref ComponentLookup<Moving> moving,
+            bool queued, Entity self, float safeTimeStep, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves, ref ComponentLookup<Moving> moving,
             ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<ObjectGeometryData> geometries,
             ref ComponentLookup<CarData> prefabCars)
         {
@@ -552,6 +635,12 @@ namespace JunctionRules.Stage2
                 if (!prefabRefs.TryGetComponent(e, out PrefabRef pr) || !geometries.TryGetComponent(pr.m_Prefab, out ObjectGeometryData g)) continue;
                 float d = (inverse ? from - cp.x : cp.x - from) * laneLength;
                 if (d + g.m_Bounds.max.z < 0f || d + g.m_Bounds.min.z > span) continue;
+                // 0.4.2: inside the box / band ahead of the car: takes exit room first (RoomScan.AddQueued).
+                if (queued)
+                {
+                    scan.AddQueued(MathUtils.Size(g.m_Bounds.z));
+                    continue;
+                }
                 float credit = 0f;
                 if (hasCurve && moving.TryGetComponent(e, out Moving m) && prefabCars.TryGetComponent(pr.m_Prefab, out CarData cd))
                 {
@@ -960,6 +1049,12 @@ namespace JunctionRules.Stage2
                 {
                     Min(ref m_HasZebraCs, ref m_ZebraCsSpeed, speed);
                 }
+                // 0.4.2: a turner standing at its turn spot inside the box (UK right-turn exception).
+                if (m_BoxTurnIndex >= 0 && m_OvPhase == PointPhase.Deciding && m_Stretch.Next == m_BoxTurnIndex
+                    && m_Stretch.Spots.StretchOf(m_OvStart) == m_BoxTurnIndex)
+                {
+                    Min(ref m_HasBoxTurnWait, ref m_BoxTurnWaitSpeed, speed);
+                }
                 if (m_OvPhase == PointPhase.Safety) Min(ref m_HasSafety, ref m_SafetySpeed, speed);
                 else if (m_Stretch.Spots.Count > 0 && m_OvStart > m_Stretch.Spots[0] + WholePathRule.SpotEpsilon) Min(ref m_HasLater, ref m_LaterSpeed, speed);
             }
@@ -1036,6 +1131,10 @@ namespace JunctionRules.Stage2
             if (Stage2Counters.IsStandingOn(m_HasZebraCs, m_ZebraCsSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.ZebraHeldCs, 1);
             if (Stage2Counters.IsStandingOn(m_HasZebraRoom, m_ZebraRoomSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.ZebraHeldRoom, 1);
             if (m_ZebraMergedSeen && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.ZebraMerged, 1);
+            if (Stage2Counters.IsStandingOn(m_HasBoxRoom, m_BoxRoomSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxHeldRoom, 1);
+            if (Stage2Counters.IsStandingOn(m_HasBoxTurnWait, m_BoxTurnWaitSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxTurnWaits, 1);
+            if (Stage2Counters.IsStandingOn(m_HasEntranceMain, m_EntranceMainSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.EntranceHeldMain, 1);
+            if (Stage2Counters.IsStandingOn(m_HasEntranceLeaving, m_EntranceLeavingSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.EntranceHeldLeaving, 1);
             if (Stage2Counters.IsBinding(m_HasSafety, m_SafetySpeed, finalMaxSpeed))
             {
                 Add(counters, Stage2Counters.SafetyStops, 1);

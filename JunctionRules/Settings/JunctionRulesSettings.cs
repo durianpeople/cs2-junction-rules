@@ -104,8 +104,8 @@ namespace JunctionRules.Settings
         [SettingsUISection(kSection, kDrivingGroup)]
         public bool ZebraNonBlocking { get; set; }
 
-        /// <summary>The margin slider is greyed out while the switch is off.</summary>
-        public bool ZebraMarginDisabled() => !ZebraNonBlocking;
+        /// <summary>The margin slider is greyed out while both rules that use it are off (0.4.2: shared with the yellow boxes).</summary>
+        public bool ZebraMarginDisabled() => !ZebraNonBlocking && !BoxObey;
 
         /// <summary>
         /// 0.4.1: extra room (m) past a zebra on top of the car's whole length before it may enter (RoomScan; default 1 m,
@@ -131,6 +131,22 @@ namespace JunctionRules.Settings
         [SettingsUIButton]
         [SettingsUISection(kSection, kBoxesGroup)]
         public bool OpenBoxTool { set { BoxToolControl.Toggle(); } }
+
+        /// <summary>
+        /// 0.4.2 (JR-T-010, owner rule 16 Nov 2026, UK yellow box): a car does not enter a box the owner placed (junction or
+        /// entrance) unless there is room for its whole length past it; default on; off = 0.4.1 driving (Core/BoxDriving.cs).
+        /// Acts while the copy drives; next simulation step.
+        /// </summary>
+        [SettingsUISection(kSection, kBoxesGroup)]
+        public bool BoxObey { get; set; }
+
+        /// <summary>The right-turn exception is greyed out while the box rule is off.</summary>
+        public bool BoxTurnWaitDisabled() => !BoxObey;
+
+        /// <summary>0.4.2: UK exception: a car turning across oncoming traffic may enter and wait in the box (default on).</summary>
+        [SettingsUIDisableByCondition(typeof(JunctionRulesSettings), nameof(BoxTurnWaitDisabled))]
+        [SettingsUISection(kSection, kBoxesGroup)]
+        public bool BoxTurnWait { get; set; }
 
         // ---- stage 3 probe (0.3.0-probe): yellow box paint test, draw-only, default off ----
 
@@ -217,6 +233,8 @@ namespace JunctionRules.Settings
             PeoplePassSeconds = PeoplePass.DefaultSeconds;
             ZebraNonBlocking = true;
             ZebraRoomMargin = RoomScan.DefaultMargin;
+            BoxObey = true;
+            BoxTurnWait = true;
             YellowBoxPaintTest = false;
             PaintMode = BoxPaintMode.Hatch;
             PaintLayers = PaintSettingsMigration.Default;
@@ -300,9 +318,9 @@ namespace JunctionRules.Settings
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.ZebraNonBlocking)), "Cars never stop on a zebra" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.ZebraNonBlocking)),
                     "On (default): a car drives onto a zebra only when it can also leave it. The zebra must be clear of people, there must be room for the whole vehicle (trailers included) past it in the queue ahead, and with the Whole junction rule every crossing point with other lanes after the zebra up to the next zebra (or the end of the junction) must be clear too; it waits before the zebra until then. Where the whole vehicle cannot wait between two zebras (or between a zebra and the crossing points before it), it waits before the earlier one until everything up to the later one is clear. Applies to every zebra, also mid-block ones, with either junction gap rule (the Stock rule gets the room check only). Off: the 0.4.0 behaviour. Only while Car driving is the Junction Rules copy. Changes take effect at the next simulation step." },
-                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.ZebraRoomMargin)), "Cars never stop on a zebra: room margin (m)" },
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.ZebraRoomMargin)), "Room margin past a zebra or yellow box (m)" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.ZebraRoomMargin)),
-                    "Extra space, on top of the vehicle's own length, that must be free past a zebra before a car drives onto it. A moving queue counts the distance the car ahead needs to stop (the game's own measure), so a queue that keeps moving lets cars in. Default 1 m. Larger: fewer tails left on a zebra, more waiting. Changes take effect at the next simulation step." },
+                    "Extra space, on top of the vehicle's own length, that must be free past a zebra (setting Cars never stop on a zebra) or past a yellow box (setting Cars obey yellow boxes) before a car drives onto it. A moving queue counts the distance the car ahead needs to stop (the game's own measure), so a queue that keeps moving lets cars in. Default 1 m. Larger: fewer tails left on a zebra, more waiting. Changes take effect at the next simulation step." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.Status)), "Status" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.Status)), "What runs now, the result of the version check made at game start, and whether the copy can run (set up at the first simulation step). Reopen the options page to refresh." },
@@ -313,7 +331,13 @@ namespace JunctionRules.Settings
                 { m_Setting.GetBindingKeyLocaleID(JunctionRulesSettings.kToggleBoxToolAction), "Yellow box tool" },
                 { m_Setting.GetBindingMapLocaleID(), "Junction Rules" },
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.OpenBoxTool)), "Open / close the yellow box tool" },
-                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.OpenBoxTool)), "Same as the yellow box button at the top left of the screen and the shortcut. In the tool, point at a road junction or at the road in front of a building's access: what can take a box glows (yellow: click adds a box; orange: click removes it). Right click or Esc leaves the tool. Boxes are saved with the city and painted at once. Junctions: at-grade road junctions with 3 or more road arms (not highways, bridges, tunnels, elevated roads, roundabouts or level crossings). Entrances: a building's road access on an at-grade, non-highway road, away from junctions. Cars drive as before: the boxes are paint only in this version." },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.OpenBoxTool)), "Same as the yellow box button at the top left of the screen and the shortcut. In the tool, point at a road junction or at the road in front of a building's access: what can take a box glows (yellow: click adds a box; orange: click removes it). Right click or Esc leaves the tool. Boxes are saved with the city and painted at once. Junctions: at-grade road junctions with 3 or more road arms (not highways, bridges, tunnels, elevated roads, roundabouts or level crossings). Entrances: a building's road access on an at-grade, non-highway road, away from junctions. How cars drive at the boxes: see Cars obey yellow boxes below." },
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.BoxObey)), "Cars obey yellow boxes" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.BoxObey)),
+                    "On (default): at a junction or building entrance you gave a yellow box, a car does not drive into the box unless there is room for its whole length (trailers included) plus the room margin on its exit beyond the box. A queue that keeps moving counts as room (the same measure as Cars never stop on a zebra); a queue that stands does not. Cars already in the box drive on. With the Whole junction gap rule, cars also take their give-way decision at the box's stop line instead of inside the box. At an entrance box, cars on the main road do not stop inside the band in front of the access, and cars leaving the driveway wait until there is room past the band on their lane; cars turning into the driveway are not held. Only the boxes you placed count. Off: cars drive as in 0.4.1 (the boxes are paint only). Changes take effect at the next simulation step." },
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.BoxTurnWait)), "Yellow boxes: turning across oncoming traffic may wait in the box" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.BoxTurnWait)),
+                    "On (default, as UK law): a car turning across oncoming traffic (right in a left-hand traffic city, left in a right-hand traffic city) may drive into the box and wait there for a gap when its exit has room and only oncoming traffic stops it (with the Whole junction gap rule it waits just before the oncoming lanes; never on a zebra). Off: it waits at the stop line like everyone else. With the Stock gap rule the game's own give-ways decide where cars wait, so this switch changes nothing there." },
                 { m_Setting.GetOptionGroupLocaleID(JunctionRulesSettings.kPaintGroup), "Yellow box paint test (stage 3 probe)" },
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.YellowBoxPaintTest)), "Yellow box paint test" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.YellowBoxPaintTest)),

@@ -29,6 +29,8 @@ namespace JunctionRules.Systems
         private readonly CopyAcquisition m_Acquisition = new CopyAcquisition();
         private readonly DrivingSwitch m_Switch = new DrivingSwitch();
         private readonly GapRuleSwitch m_GapRule = new GapRuleSwitch();
+        private Unity.Entities.EntityQuery m_JunctionBoxes;
+        private Unity.Entities.EntityQuery m_EntranceBoxes;
         private bool m_ProbesOn;
         private bool m_ProbesApplied;
 
@@ -44,6 +46,9 @@ namespace JunctionRules.Systems
             base.OnCreate();
             m_GameNavigation = World.GetOrCreateSystemManaged<CarNavigationSystem>();
             m_GameActions = World.GetOrCreateSystemManaged<CarNavigationSystem.Actions>();
+            // 0.4.2: the saved yellow boxes (0.4.0 components), only to tell the copy which kinds exist.
+            m_JunctionBoxes = GetEntityQuery(Unity.Entities.ComponentType.ReadOnly<JunctionRules.Boxes.YellowBoxJunction>());
+            m_EntranceBoxes = GetEntityQuery(Unity.Entities.ComponentType.ReadOnly<JunctionRules.Boxes.YellowBoxEntrance>());
             // Nothing of the copy here: it may not be registered yet (see the class summary). Until the first update,
             // the game's pair keeps its default (on) and the copy and the probes stay off (CopyPair.Register's finally).
         }
@@ -108,7 +113,13 @@ namespace JunctionRules.Systems
                 Mod.Settings == null || Mod.Settings.TurnAcrossGivesWay, LeftHandTraffic(),
                 Mod.Settings == null || Mod.Settings.NoPushThroughPeople,
                 Mod.Settings == null || Mod.Settings.ZebraNonBlocking,
-                Mod.Settings != null ? Mod.Settings.ZebraRoomMargin : RoomScan.DefaultMargin);
+                Mod.Settings != null ? Mod.Settings.ZebraRoomMargin : RoomScan.DefaultMargin,
+                // 0.4.2 (JR-T-010): cars obey yellow boxes; which box kinds exist (the job skips a kind with none).
+                Mod.Settings == null || Mod.Settings.BoxObey,
+                Mod.Settings == null || Mod.Settings.BoxTurnWait,
+                !m_JunctionBoxes.IsEmptyIgnoreFilter,
+                !m_EntranceBoxes.IsEmptyIgnoreFilter,
+                (float)JunctionRules.Boxes.BoxStore.EntranceLength);
             Stage2Handoff.Publish(stage2Mode);
             if (ruleNote != null) Mod.log.Info(ruleNote);
             if (!m_ProbesApplied || probes != m_ProbesOn)

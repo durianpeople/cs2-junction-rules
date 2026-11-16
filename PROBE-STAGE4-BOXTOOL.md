@@ -1,4 +1,10 @@
-# Probe kit: Junction Rules 0.4.1-probe (stage 4, yellow box selection tool; cars never stop on a zebra)
+# Probe kit: Junction Rules 0.4.2-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes)
+
+**0.4.2-probe (JR-T-010), what changed since 0.4.1:** new driving rule **Cars obey yellow boxes** (default on;
+section 11): at the boxes placed with the tool, a vehicle does not enter a box without room for its whole length past
+it (UK right-turn exception, default on). Driving changes only while Car driving is the Junction Rules copy; with the
+setting off cars drive exactly as in 0.4.1. `docs/vanilla_copy_check_0.4.2.txt`: 0 unexplained differences, two new
+marked blocks (S2-28, S2-28b) and extended S2-20 / S2-23 / S2-26 (DEVIATIONS.md). Carries 0.4.1 (below) and everything before.
 
 **0.4.1-probe (JR-T-009), what changed since 0.4.0:** new driving rule **Cars never stop on a zebra** (default on;
 section 10). Driving changes only while Car driving is the Junction Rules copy; with the setting off cars drive exactly
@@ -12,9 +18,9 @@ differences). Also: the T-junction through-side kerb fix (section 6) and the ent
 0.3.6 (JR-T-008, people pass a car blocking their crossing; merged from 784ba28) and everything before it
 (PROBE-STAGE3-PAINT.md).
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.4.1-probe/`. While that folder holds a `STALE.md` it is a managed
+Build to install: `~/Code/cs2-junction-rules/.staged/0.4.2-probe/`. While that folder holds a `STALE.md` it is a managed
 build only: main does the Burst build in `STALE.md` (game closed, at the owner's quit), then puts the five sums into the
-install block below. Until then the block refuses (placeholder sums `0000...`).
+install block below. (0.4.1-probe stays in `.staged/0.4.1-probe` as the rollback.) Until then the block refuses (placeholder sums `0000...`).
 
 Built for game **1.6.4f1 (1097.158a)** only (same version gate: on another version saved boxes are not painted and the
 copy does not run; the boxes stay in the save).
@@ -25,7 +31,7 @@ copy does not run; the boxes stay in the save).
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.4.1-probe || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.4.2-probe || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
@@ -41,11 +47,12 @@ SUMS
   fi
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules.mjs JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
-  echo "installed 0.4.1-probe"
+  echo "installed 0.4.2-probe"
 )
 ```
 
-Rollback: to 0.4.0 (boxes kept, zebra rule gone): the same block with `.staged/0.4.0-probe` and its sums (switching the
+Rollback: to 0.4.1 (boxes kept, box driving rule gone): the same block with `.staged/0.4.1-probe` and its sums
+(or switch **Cars obey yellow boxes** off in Options). To 0.4.0 (boxes kept, zebra rule gone): the same block with `.staged/0.4.0-probe` and its sums (switching the
 setting off in Options does the same without reinstalling). Further back: the block from `.staged/0.3.5-probe`
 (PROBE-STAGE3-PAINT.md), then delete `Mods/JunctionRules/JunctionRules.mjs`.
 A save with boxes still loads after a rollback or with the mod removed (section 7).
@@ -145,16 +152,17 @@ Test it on a copy (never on the owner's only save):
 
 ## 8. Driving
 
-No yellow-box driving rule exists in 0.4.0 (stage 2 leaves exit queues stock; no code in Vanilla/ or Stage2/ reads the
-box components). Plan for a separate brief: in the copy's CheckSpace (Vanilla/JRCarLaneSpeedIterator.cs 670), apply the
-"don't enter unless the exit is clear" test only at boxed nodes / in front of boxed entrances when a "boxes only"
-setting is on (component lookup in the job), keep level crossings as stock; Burst build and a live probe. Effort:
-small to medium code, one Burst build, one probe session.
+0.4.0 painted boxes only. From 0.4.2 cars obey them (section 11): the setting **Cars obey yellow boxes** reads the
+saved box components (only boxed nodes and boxed entrances; every other junction stays as before). The hook is not
+CheckSpace (the stock "space after junction" test, Vanilla/JRCarLaneSpeedIterator.cs 670) but the top of
+CheckCurrentLane (blocks S2-28 / S2-28b), which sees every lane of the car's path; it shares the zebra rule's room
+scan (section 10). Level crossings stay stock.
 
 ## 9. Report back
 
 B1-B12 results, a screenshot of B4 and B6, the save-without-mod result (section 7, step 4 log lines), and any `FAILED` line.
 0.4.1: Z1-Z10 results (section 10) and two consecutive timing-log lines with the zebra counters.
+0.4.2: Y1-Y10 results (section 11), a screenshot of Y1 and Y3, and two consecutive timing-log lines with the box counters.
 
 ## 10. 0.4.1: cars never stop on a zebra (JR-T-009)
 
@@ -206,3 +214,62 @@ lane whose zebra sections were merged.
 Watch for (report, no safeguard by brief): a car standing before a zebra for a long time because the exit never
 clears (gridlock now forms before the zebra instead of on it); a person stepping onto a later zebra of a merged
 section after the car went (the car then stops before that zebra; it may stand on the earlier one: same as 0.4.0).
+
+## 11. 0.4.2: cars obey yellow boxes (JR-T-010)
+
+Owner rule (16 Nov 2026, UK yellow box): at a boxed junction or a boxed building entrance a vehicle does not enter the
+box unless it can clear it: there is room for its **whole length** (trailers included) plus the room margin on its
+exit beyond the box. Room is the zebra rule's measure (section 10, one mechanism): a moving queue counts the braking
+distance of the vehicle ahead, a standing one does not; vehicles already in the box ahead of it on its own path take
+exit room first. Vehicles already in the box carry on; a vehicle that can no longer stop at the line carries on.
+Only boxes placed with the tool count.
+
+- **UK right-turn exception** (setting, default on): a vehicle turning across oncoming traffic (right in left-hand
+  traffic) may enter and wait in the box when its exit has room and only oncoming traffic stops it. With **Junction
+  gap rule = Whole junction** the box moves the decision to the stop line (nobody waits in the box), except that the
+  turner gets a second waiting spot inside the box just before its first crossing with an oncoming straight lane (the
+  same pair "turning across oncoming gives way" uses). Crossing points before that spot are decided at the line, the
+  oncoming ones at the turn spot. With the Stock gap rule the box is the room test at the line only (the game's own
+  gap judgement inside the junction, as before). The turn spot is never on a zebra and only where the whole vehicle
+  fits clear of the zebras behind it (zebra rule wins); otherwise the turner decides at the line.
+- **Entrance box**: a band of the painted length centred on the access. Main-road vehicles do not enter the band
+  without room past it; a vehicle leaving the driveway does not join the road inside the band without room past the
+  band on its target lane; a vehicle turning into the driveway is exempt.
+- **With zebras**: both rules apply; the lower speed wins (a car held by either waits). People on a zebra still stop
+  everyone; people pass after 2 s; no starvation safeguard.
+
+Settings (Options > Junction Rules, yellow box group): **Cars obey yellow boxes** (default on; off = 0.4.1) and
+**Yellow boxes: turning across oncoming traffic may wait in the box** (default on, UK; greyed while off). The room margin slider is shared
+with the zebra rule: **Room margin past a zebra or yellow box (m)**.
+
+Where to watch: **Lindbergh St x Anchor St, node 874943** (Bevy Valley, box placed 16 Nov). In 0.4.0 a bus turning
+from Anchor into Lindbergh eastbound stood stuck inside the box while the Lindbergh eastbound exit was a solid queue,
+and the crossing traffic was blocked.
+
+Checks (copy on; timing log on; gap rule as named):
+
+| # | Where | Expect |
+|---|-------|--------|
+| Y1 | Lindbergh x Anchor, Lindbergh eastbound exit queue standing | Buses and cars from Anchor hold at the stop line, none stands inside the box; crossing traffic keeps flowing |
+| Y2 | Same, queue starts moving | Vehicles enter again without waiting for a full gap (no crawl) |
+| Y3 | Same, a bus | Holds until its whole 12 m (+ margin) fits past the box; a car behind it may not overtake its decision (same lane) |
+| Y4 | Lindbergh x Anchor, right turn (left-hand traffic) with oncoming traffic, exit clear | Turner enters and waits inside the box before the oncoming lane (counter "right-turn waits" rises) |
+| Y5 | Same, exit full | Turner holds at the line, does not enter |
+| Y6 | Setting **Yellow boxes: turning across oncoming traffic may wait in the box** off | Turner holds at the line until the oncoming gap and room |
+| Y7 | Unboxed junction nearby | Unchanged from 0.4.1 |
+| Y8 | Boxed entrance, main road queue standing past it | Main-road cars stop before the band, the driveway stays open |
+| Y9 | Same, vehicle leaving the driveway into a standing queue | Waits in the driveway until the target lane has room past the band |
+| Y10 | **Cars obey yellow boxes** off, then on (no restart) | Off: 0.4.1 behaviour (vehicles may stop in the box); log says "obey yellow boxes switched in this window" |
+
+Timing log (copy's line): `; obey yellow boxes on|off|switched in this window` and, while on, `; box entries held N,
+right-turn waits N; entrance band holds: main road N, leaving driveway N` (car-steps standing held at a box line, a
+turner waiting at its turn spot inside a box, cars held before an entrance band, cars held in a driveway). The switch
+line also names the boxes the rule sees (`yellow boxes present: junctions yes|no, entrances yes|no`).
+
+Deadlock notes (report, no safeguard by brief):
+- Gridlock moves to the box entry: if the exit never clears, vehicles stand at the line indefinitely (by design).
+- Opposing right-turners both waiting in the box can block each other's view of the oncoming gap (as in 0.4.1).
+- A turner waiting in the box waits as long as oncoming traffic never gaps (UK practice; no timeout).
+- A boxed entrance in front of a queue that never clears keeps the driveway vehicle waiting (it never joins).
+- Vehicles from another arm already in the box are not counted against the exit (only the own path ahead).
+- An unknown rest of the path (destination, parking, end of the read lanes) counts as free, as in section 10.

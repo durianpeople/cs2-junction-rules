@@ -53,17 +53,52 @@ namespace JunctionRules.Core
         /// <summary>0.4.1: bits 8-15 = the room margin past a zebra in decimetres (0-25.5 m; the setting allows 0-10 m).</summary>
         public const int ZebraMarginShift = 8;
         public const int ZebraMarginMask = 0xFF << ZebraMarginShift;
+        /// <summary>
+        /// 0.4.2 (JR-T-010): setting "Cars obey yellow boxes" (Core/BoxDriving.cs), independent of the gap rule; stripped
+        /// from the job's stage 2 mode like <see cref="ZebraClear"/>. The room margin (bits 8-15) is shared with the zebra
+        /// rule and carried when either setting is on.
+        /// </summary>
+        public const int BoxObey = 1 << 16;
+        /// <summary>0.4.2, with <see cref="BoxObey"/> only: a car turning across oncoming traffic may enter and wait in the box (UK right-turn exception).</summary>
+        public const int BoxTurnWait = 1 << 17;
+        /// <summary>0.4.2, with <see cref="BoxObey"/> only: the city drives on the left (which turn crosses oncoming traffic).</summary>
+        public const int BoxLeftHand = 1 << 18;
+        /// <summary>0.4.2, with <see cref="BoxObey"/> only: at least one junction box exists (else the job skips the junction test).</summary>
+        public const int BoxJunctions = 1 << 19;
+        /// <summary>0.4.2, with <see cref="BoxObey"/> only: at least one entrance box exists (else the job skips the entrance test).</summary>
+        public const int BoxEntrances = 1 << 20;
+        /// <summary>0.4.2: bits 21-29 = the entrance band length in decimetres (the painted length, BoxStore.EntranceLength; 0-51.1 m).</summary>
+        public const int BoxEntranceShift = 21;
+        public const int BoxEntranceMask = 0x1FF << BoxEntranceShift;
         /// <summary>Every bit the job side strips from the stage 2 mode (settings that are not part of the 0.2.x rule).</summary>
-        public const int Stripped = NoPushPeople | ZebraClear | ZebraMarginMask;
+        public const int Stripped = NoPushPeople | ZebraClear | ZebraMarginMask | BoxObey | BoxTurnWait | BoxLeftHand | BoxJunctions | BoxEntrances | BoxEntranceMask;
 
-        /// <summary>0.4.1: the zebra bits for the setting (margin rounded to 0.1 m, clamped to 0-25.5 m).</summary>
-        public static int ZebraBits(bool on, float marginMetres)
+        /// <summary>0.4.2: the room margin bits alone (shared by the zebra and the yellow box rules).</summary>
+        public static int MarginBits(float marginMetres)
         {
-            if (!on) return 0;
             int dm = (int)System.Math.Round((marginMetres > 0f ? marginMetres : 0f) * 10f);
             if (dm > 255) dm = 255;
-            return ZebraClear | (dm << ZebraMarginShift);
+            return dm << ZebraMarginShift;
         }
+
+        /// <summary>
+        /// 0.4.2: the yellow box bits for the settings (0 when "Cars obey yellow boxes" is off). anyJunction / anyEntrance =
+        /// boxes of that kind exist in the city; entranceLength = the band length in metres.
+        /// </summary>
+        public static int BoxBits(bool obey, bool turnWait, bool leftHandTraffic, bool anyJunction, bool anyEntrance, float entranceLength)
+        {
+            if (!obey) return 0;
+            int dm = (int)System.Math.Round((entranceLength > 0f ? entranceLength : 0f) * 10f);
+            if (dm > 0x1FF) dm = 0x1FF;
+            return BoxObey | (turnWait ? BoxTurnWait : 0) | (leftHandTraffic ? BoxLeftHand : 0) | (anyJunction ? BoxJunctions : 0)
+                | (anyEntrance ? BoxEntrances : 0) | (dm << BoxEntranceShift);
+        }
+
+        /// <summary>0.4.2: the entrance band length (m) carried in a mode.</summary>
+        public static float BoxEntranceLength(int mode) => ((mode & BoxEntranceMask) >> BoxEntranceShift) * 0.1f;
+
+        /// <summary>0.4.1: the zebra bits for the setting (margin rounded to 0.1 m, clamped to 0-25.5 m).</summary>
+        public static int ZebraBits(bool on, float marginMetres) => on ? ZebraClear | MarginBits(marginMetres) : 0;
 
         /// <summary>0.4.1: the room margin (m) carried in a mode.</summary>
         public static float ZebraMargin(int mode) => ((mode & ZebraMarginMask) >> ZebraMarginShift) * 0.1f;
@@ -74,17 +109,23 @@ namespace JunctionRules.Core
         /// </summary>
         public static int For(JunctionGapRule rule, bool counting, JunctionWaitingSpot spot = JunctionWaitingSpot.BeforeFirstCrossing,
             bool turnGivesWay = false, bool leftHandTraffic = false, bool noPushPeople = false, bool zebraClear = false,
-            float zebraMargin = RoomScan.DefaultMargin) =>
+            float zebraMargin = RoomScan.DefaultMargin, int boxBits = 0) =>
             (rule == JunctionGapRule.WholeJunction
                 ? Rule | (spot == JunctionWaitingSpot.StopLine ? AtLine : 0) | (turnGivesWay ? TurnGivesWay | (leftHandTraffic ? LeftHandTraffic : 0) : 0)
-                : 0) | (counting ? Count : 0) | (noPushPeople ? NoPushPeople : 0) | ZebraBits(zebraClear, zebraMargin);
+                : 0) | (counting ? Count : 0) | (noPushPeople ? NoPushPeople : 0) | ZebraBits(zebraClear, zebraMargin)
+            // 0.4.2: the yellow box bits (BoxBits); the shared room margin also when only the box rule is on.
+            | ((boxBits & BoxObey) != 0 ? boxBits | MarginBits(zebraMargin) : 0);
 
         public static string RuleName(int mode) =>
             ((mode & Rule) == 0 ? "stock"
             : ((mode & AtLine) != 0 ? "whole junction (wait at the stop line)" : "whole junction")
               + ((mode & TurnGivesWay) != 0 ? ", turning across oncoming gives way (" + ((mode & LeftHandTraffic) != 0 ? "left" : "right") + "-hand traffic)" : ""))
             + ((mode & NoPushPeople) != 0 ? "; cars never push through people on crossings" : "")
-            + ((mode & ZebraClear) != 0 ? "; cars never stop on a zebra (room margin " + ZebraMargin(mode).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " m)" : "");
+            + ((mode & ZebraClear) != 0 ? "; cars never stop on a zebra (room margin " + ZebraMargin(mode).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " m)" : "")
+            + ((mode & BoxObey) != 0 ? "; cars obey yellow boxes (room margin " + ZebraMargin(mode).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)
+                + " m, entrance band " + BoxEntranceLength(mode).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " m; "
+                + ((mode & BoxTurnWait) != 0 ? "turning across oncoming may wait in the box, " + ((mode & BoxLeftHand) != 0 ? "left" : "right") + "-hand traffic" : "no waiting in the box")
+                + ")" : "");
     }
 
     /// <summary>

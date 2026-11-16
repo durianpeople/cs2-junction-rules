@@ -28,19 +28,30 @@ namespace JunctionRules.Core
         /// <summary>Returns a log line when the requested mode changed (or on the first call), else null.</summary>
         public string Step(JunctionGapRule rule, bool counting, out int mode, JunctionWaitingSpot spot = JunctionWaitingSpot.BeforeFirstCrossing,
             bool turnGivesWay = false, bool leftHandTraffic = false, bool noPushPeople = false, bool zebraClear = false,
-            float zebraMargin = RoomScan.DefaultMargin)
+            float zebraMargin = RoomScan.DefaultMargin, bool boxObey = false, bool boxTurnWait = true, bool anyJunctionBox = false,
+            bool anyEntranceBox = false, float entranceLength = 8f)
         {
-            mode = Stage2Mode.For(rule, counting, spot, turnGivesWay, leftHandTraffic, noPushPeople, zebraClear, zebraMargin);
+            // 0.4.2 (JR-T-010): the yellow box bits (traffic side from the same leftHandTraffic the turn rule reads).
+            int boxBits = Stage2Mode.BoxBits(boxObey, boxTurnWait, leftHandTraffic, anyJunctionBox, anyEntranceBox, entranceLength);
+            mode = Stage2Mode.For(rule, counting, spot, turnGivesWay, leftHandTraffic, noPushPeople, zebraClear, zebraMargin, boxBits);
             if (m_Has && mode == m_Mode) return null;
             bool first = !m_Has;
-            bool ruleChanged = !first && ((mode ^ m_Mode) & (Stage2Mode.Rule | Stage2Mode.AtLine | Stage2Mode.TurnGivesWay | Stage2Mode.LeftHandTraffic | Stage2Mode.NoPushPeople | Stage2Mode.ZebraClear | Stage2Mode.ZebraMarginMask)) != 0;
+            bool ruleChanged = !first && ((mode ^ m_Mode) & (Stage2Mode.Rule | Stage2Mode.AtLine | Stage2Mode.TurnGivesWay | Stage2Mode.LeftHandTraffic | Stage2Mode.NoPushPeople | Stage2Mode.ZebraClear | Stage2Mode.ZebraMarginMask
+                | Stage2Mode.BoxObey | Stage2Mode.BoxTurnWait | Stage2Mode.BoxLeftHand | Stage2Mode.BoxEntranceMask)) != 0;
+            bool boxesChanged = !first && ((mode ^ m_Mode) & (Stage2Mode.BoxJunctions | Stage2Mode.BoxEntrances)) != 0;
             m_Has = true;
             int old = m_Mode;
             m_Mode = mode;
-            if (first) return $"junction gap rule starts as {Stage2Mode.RuleName(mode)} (acts only while the Junction Rules copy drives), counters {((mode & Stage2Mode.Count) != 0 ? "on" : "off")}";
-            if (ruleChanged) return $"junction gap rule switched to {Stage2Mode.RuleName(mode)} (applies at the next step in which the Junction Rules copy drives)";
+            if (first) return $"junction gap rule starts as {Stage2Mode.RuleName(mode)} (acts only while the Junction Rules copy drives), counters {((mode & Stage2Mode.Count) != 0 ? "on" : "off")}{BoxesPresent(mode)}";
+            if (ruleChanged) return $"junction gap rule switched to {Stage2Mode.RuleName(mode)} (applies at the next step in which the Junction Rules copy drives){BoxesPresent(mode)}";
+            if (boxesChanged && ((mode ^ old) & Stage2Mode.Count) == 0) return "yellow boxes in the city changed" + BoxesPresent(mode);
             return (mode & Stage2Mode.Count) != 0 && (old & Stage2Mode.Count) == 0 ? "junction gap counters on" : "junction gap counters off";
         }
+
+        /// <summary>0.4.2: which box kinds the driving rule sees (only with "Cars obey yellow boxes" on).</summary>
+        private static string BoxesPresent(int mode) =>
+            (mode & Stage2Mode.BoxObey) == 0 ? ""
+            : "; yellow boxes present: junctions " + ((mode & Stage2Mode.BoxJunctions) != 0 ? "yes" : "no") + ", entrances " + ((mode & Stage2Mode.BoxEntrances) != 0 ? "yes" : "no");
     }
 
     /// <summary>Indices and the log text of the debug counters (counted in car navigation updates, "car-steps").</summary>
@@ -106,7 +117,15 @@ namespace JunctionRules.Core
         public const int ZebraHeldRoom = FeedingScans + 15;
         /// <summary>0.4.1: car-steps in which a zebra lane had a zebra merged into the section before it (the vehicle does not fit before it).</summary>
         public const int ZebraMerged = FeedingScans + 16;
-        public const int Count = FeedingScans + 17;
+        /// <summary>0.4.2 (JR-T-010): car-steps in which a car stood before a boxed junction because there was no room for it past the box (setting "Cars obey yellow boxes").</summary>
+        public const int BoxHeldRoom = FeedingScans + 17;
+        /// <summary>0.4.2: car-steps in which a car turning across oncoming traffic stood inside a box at its turn spot (the UK right-turn exception; Whole junction).</summary>
+        public const int BoxTurnWaits = FeedingScans + 18;
+        /// <summary>0.4.2: car-steps in which a main-road car stood before an entrance band because there was no room for it past the band.</summary>
+        public const int EntranceHeldMain = FeedingScans + 19;
+        /// <summary>0.4.2: car-steps in which a car leaving a driveway stood at the road because there was no room for it past the band on its target lane.</summary>
+        public const int EntranceHeldLeaving = FeedingScans + 20;
+        public const int Count = FeedingScans + 21;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -164,7 +183,7 @@ namespace JunctionRules.Core
         /// pushMask (0.3.2), same encoding for the setting "Cars never push through people on crossings" (bit 0 = a step ran
         /// with it off, bit 1 = on); 0 = not reported.
         /// </summary>
-        public static string Format(int ruleMask, long[] deltas, int pushMask = 0, int zebraMask = 0)
+        public static string Format(int ruleMask, long[] deltas, int pushMask = 0, int zebraMask = 0, int boxMask = 0)
         {
             string rule = ruleMask == 1 ? "stock" : ruleMask == 2 ? "whole junction" : ruleMask == 3 ? "mixed (switched in this window)" : "none";
             string push = pushMask == 1 ? "off" : pushMask == 2 ? "on" : pushMask == 3 ? "switched in this window" : null;
@@ -172,6 +191,9 @@ namespace JunctionRules.Core
             // 0.4.1 (JR-T-009): setting "Cars never stop on a zebra", same encoding.
             string zebra = zebraMask == 1 ? "off" : zebraMask == 2 ? "on" : zebraMask == 3 ? "switched in this window" : null;
             if (zebra != null) pushPart += "; never stop on a zebra " + zebra;
+            // 0.4.2 (JR-T-010): setting "Cars obey yellow boxes", same encoding.
+            string box = boxMask == 1 ? "off" : boxMask == 2 ? "on" : boxMask == 3 ? "switched in this window" : null;
+            if (box != null) pushPart += "; obey yellow boxes " + box;
             if (deltas == null || deltas.Length < Count) return "; junction gap rule " + rule + pushPart;
             var ci = CultureInfo.InvariantCulture;
             long n = deltas[PointSamples];
@@ -207,6 +229,12 @@ namespace JunctionRules.Core
                          ", Cs after " + deltas[ZebraHeldCs].ToString(ci) +
                          ", no room past " + deltas[ZebraHeldRoom].ToString(ci) +
                          " (zebra sections merged, vehicle does not fit between: " + deltas[ZebraMerged].ToString(ci) + ")"
+                       : "") +
+                   (boxMask >= 2
+                       ? "; box entries held " + deltas[BoxHeldRoom].ToString(ci) +
+                         ", right-turn waits " + deltas[BoxTurnWaits].ToString(ci) +
+                         "; entrance band holds: main road " + deltas[EntranceHeldMain].ToString(ci) +
+                         ", leaving driveway " + deltas[EntranceHeldLeaving].ToString(ci)
                        : "") +
                    "; " + points;
         }

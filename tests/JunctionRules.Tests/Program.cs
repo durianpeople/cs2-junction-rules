@@ -75,6 +75,11 @@ namespace JunctionRules.Tests
             ("ZebraRoomTests", ZebraRoomTests),
             ("ZebraSettingTests", ZebraSettingTests),
             ("ZebraRepoTests", ZebraRepoTests),
+            ("BoxJunctionTests", BoxJunctionTests),
+            ("BoxTurnTests", BoxTurnTests),
+            ("BoxEntranceTests", BoxEntranceTests),
+            ("BoxSettingTests", BoxSettingTests),
+            ("BoxRepoTests", BoxRepoTests),
         };
 
         private static int Main(string[] args)

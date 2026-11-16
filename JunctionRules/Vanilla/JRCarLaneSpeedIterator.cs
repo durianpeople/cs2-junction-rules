@@ -6,7 +6,7 @@
 // tools/vanilla_rules.json (and DEVIATIONS.md) and run `python3 tools/vanilla_copy.py generate`.
 // Changes applied: R-01, R-02, R-03, D-01 (see DEVIATIONS.md). Logic is otherwise the game's, unchanged.
 // Exception: hand-written code only inside '// JR-STAGE2 BEGIN <id>' ... '// JR-STAGE2 END' blocks
-// (S2-01, S2-02, S2-03, S2-04, S2-05, S2-06, S2-07, S2-08, S2-08b, S2-09, S2-10, S2-11, S2-11b, S2-12, S2-13, S2-25, S2-27; see DEVIATIONS.md). `check` proves everything outside them is the above.
+// (S2-01, S2-02, S2-03, S2-04, S2-05, S2-06, S2-07, S2-08, S2-08b, S2-09, S2-10, S2-11, S2-11b, S2-12, S2-13, S2-25, S2-27, S2-28, S2-28b; see DEVIATIONS.md). `check` proves everything outside them is the above.
 // ==== end of header; the code below is the game's, changed only as listed in DEVIATIONS.md ====
 
 using System;
@@ -1130,6 +1130,18 @@ public struct JRCarLaneSpeedIterator
 
 	private void CheckCurrentLane(float distance, float laneOffset, float2 minOffset, bool inverse, bool inverseLaneOffset)
 	{
+		// JR-STAGE2 BEGIN S2-28: 0.4.2 cars obey yellow boxes: no entering a boxed junction or an entrance band without room past it for the whole vehicle
+		if (m_JR.m_BoxRule)
+		{
+			float jrBoxHold = m_JR.BoxHold(m_Lane, m_Curve.m_Length, m_CurveOffset, distance, math.select(0.9f, 0.4f, m_IsBicycle), inverse, m_PrefabCar, m_CurrentSpeed, m_TimeStep, m_SafeTimeStep, m_SpeedRange, m_MaxSpeed, m_Entity, ref m_CarLaneData, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabObjectGeometryData, ref m_PrefabCarData);
+			if (jrBoxHold < m_MaxSpeed)
+			{
+				m_MaxSpeed = jrBoxHold;
+				m_Blocker = Entity.Null;
+				m_BlockerType = BlockerType.Continuing;
+			}
+		}
+		// JR-STAGE2 END
 		if (!m_LaneObjectData.TryGetBuffer(m_Lane, out var bufferData) || bufferData.Length == 0)
 		{
 			return;
@@ -1158,6 +1170,18 @@ public struct JRCarLaneSpeedIterator
 
 	private void CheckCurrentLane(float distance, float laneOffset, float2 minOffset, bool inverse, bool inverseLaneOffset, ref float canUseLane)
 	{
+		// JR-STAGE2 BEGIN S2-28b: 0.4.2 cars obey yellow boxes: no entering a boxed junction or an entrance band without room past it for the whole vehicle
+		if (m_JR.m_BoxRule)
+		{
+			float jrBoxHold = m_JR.BoxHold(m_Lane, m_Curve.m_Length, m_CurveOffset, distance, math.select(0.9f, 0.4f, m_IsBicycle), inverse, m_PrefabCar, m_CurrentSpeed, m_TimeStep, m_SafeTimeStep, m_SpeedRange, m_MaxSpeed, m_Entity, ref m_CarLaneData, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabObjectGeometryData, ref m_PrefabCarData);
+			if (jrBoxHold < m_MaxSpeed)
+			{
+				m_MaxSpeed = jrBoxHold;
+				m_Blocker = Entity.Null;
+				m_BlockerType = BlockerType.Continuing;
+			}
+		}
+		// JR-STAGE2 END
 		if (!m_LaneObjectData.TryGetBuffer(m_Lane, out var bufferData) || bufferData.Length == 0)
 		{
 			return;

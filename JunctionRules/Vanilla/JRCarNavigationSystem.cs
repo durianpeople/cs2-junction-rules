@@ -396,6 +396,21 @@ public class JRCarNavigationSystem : GameSystemBase
 
 		[ReadOnly]
 		public BufferLookup<LayoutElement> m_JRLayoutData;
+
+		[ReadOnly]
+		public ComponentLookup<JunctionRules.Boxes.YellowBoxJunction> m_JRBoxJunctionData;
+
+		[ReadOnly]
+		public ComponentLookup<JunctionRules.Boxes.YellowBoxEntrance> m_JRBoxEntranceData;
+
+		[ReadOnly]
+		public ComponentLookup<Game.Buildings.Building> m_JRBuildingData;
+
+		[ReadOnly]
+		public BufferLookup<Game.Buildings.ConnectedBuilding> m_JRConnectedBuildings;
+
+		[ReadOnly]
+		public ComponentLookup<Game.Net.EdgeLane> m_JREdgeLaneData;
 		// JR-STAGE2 END
 
 		public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
@@ -1587,8 +1602,12 @@ public class JRCarNavigationSystem : GameSystemBase
 			}
 			carLaneSpeedIterator.m_JR = JunctionRules.Stage2.JRWholeJunction.Create(m_JRMode, m_NodeLaneData, m_OwnerData, m_LaneData, m_Lanes, m_JRConnectedEdges, m_JRCounters, jrVehicleLength);
 			// JR-STAGE2 END
-			// JR-STAGE2 BEGIN S2-26: 0.4.1 cars never stop on a zebra: the navigation lanes for the room-past scan; whole vehicle length (trailers incl.) also with the stock gap rule
-			if (carLaneSpeedIterator.m_JR.m_ZebraRule)
+			// JR-STAGE2 BEGIN S2-26: 0.4.1 cars never stop on a zebra / 0.4.2 cars obey yellow boxes: the navigation lanes for the room-past scan; whole vehicle length (trailers incl.) also with the stock gap rule; 0.4.2 the box lookups
+			if (carLaneSpeedIterator.m_JR.m_BoxRule)
+			{
+				carLaneSpeedIterator.m_JR.SetBoxes(m_JRBoxJunctionData, m_JRBoxEntranceData, m_JRBuildingData, m_JRConnectedBuildings, m_JREdgeLaneData);
+			}
+			if (carLaneSpeedIterator.m_JR.m_ZebraRule || carLaneSpeedIterator.m_JR.m_BoxRule)
 			{
 				carLaneSpeedIterator.m_JR.SetPath(navigationLanes);
 				if ((m_JRMode & JunctionRules.Core.Stage2Mode.Rule) == 0 && m_JRLayoutData.TryGetBuffer(entity, out DynamicBuffer<LayoutElement> jrZebraLayout))
@@ -3126,6 +3145,11 @@ public class JRCarNavigationSystem : GameSystemBase
 		jobData.m_JRTractorData = GetComponentLookup<CarTractorData>(isReadOnly: true);
 		jobData.m_JRTrailerData = GetComponentLookup<CarTrailerData>(isReadOnly: true);
 		jobData.m_JRLayoutData = GetBufferLookup<LayoutElement>(isReadOnly: true);
+		jobData.m_JRBoxJunctionData = GetComponentLookup<JunctionRules.Boxes.YellowBoxJunction>(isReadOnly: true);
+		jobData.m_JRBoxEntranceData = GetComponentLookup<JunctionRules.Boxes.YellowBoxEntrance>(isReadOnly: true);
+		jobData.m_JRBuildingData = GetComponentLookup<Game.Buildings.Building>(isReadOnly: true);
+		jobData.m_JRConnectedBuildings = GetBufferLookup<Game.Buildings.ConnectedBuilding>(isReadOnly: true);
+		jobData.m_JREdgeLaneData = GetComponentLookup<Game.Net.EdgeLane>(isReadOnly: true);
 		// JR-STAGE2 END
 		JobHandle jobHandle = JobChunkExtensions.ScheduleParallel(jobData, m_VehicleQuery, JobUtils.CombineDependencies(base.Dependency, dependencies, dependencies2, dependencies3, dependencies4));
 		m_NetSearchSystem.AddNetSearchTreeReader(jobHandle);

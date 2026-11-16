@@ -35,6 +35,13 @@ oncoming straight, and the straight car no longer waits for the turner's reserva
 Analysis, per-case behaviour and owner rulings: `docs/STAGE2-ANALYSIS.md`;
 code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 
+0.4.2-probe (JR-T-010; PROBE-STAGE4-BOXTOOL.md section 11): new setting **Cars obey yellow boxes** (default on;
+off = 0.4.1). At the boxes placed with the tool (junctions and building entrances), a vehicle does not enter the box
+unless there is room for its whole length (trailers included) past it, the zebra rule's room measure (a moving queue
+counts). UK right-turn exception (setting, default on): a vehicle turning across oncoming traffic may enter and wait
+in the box when its exit has room. Entrance band: main-road vehicles keep it clear, vehicles leaving the driveway need
+room past it. Carries 0.4.1.
+
 0.4.1-probe (JR-T-009; PROBE-STAGE4-BOXTOOL.md section 10): new setting **Cars never stop on a zebra** (default
 on; off = 0.4.0). Zebras split a car's path through a node (junctions and mid-block crossings) into sections; a car
 drives onto a zebra only when the zebra is clear of people, (Whole junction) every crossing point with other lanes
@@ -91,6 +98,9 @@ PROBE-STAGE3-PAINT.md section 10.
   (extra free space past a zebra on top of the vehicle's length). Acts while Car driving is the copy, with either gap
   rule (Stock: zebras and room only); applies at the next simulation step. Timing log: zebra entries held (people,
   Cs after, no room past) and merged sections.
+- **Cars obey yellow boxes** (0.4.2): on (default) or off (= 0.4.1); **Yellow boxes: turning across oncoming traffic may wait in the box**
+  on (default, UK) or off. Only boxes placed with the yellow box tool; shares the room margin slider (now "Room
+  margin past a zebra or yellow box"). Timing log: box entries held, right-turn waits, entrance band holds.
 - **Yellow box paint test** (stage 3 probe): off (default) or on; **what to draw** (Box / Plain fill / Outline only);
   **paint onto** (Roads (default) / Roads + Other / Everything but vehicles); buttons Refresh test list, Add junction at
   camera centre, Log paint cost now; Paint test status. See PROBE-STAGE3-PAINT.md.

@@ -155,7 +155,7 @@
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
-        "reason": "Job fields: stage 2 mode, the debug counter array; 0.2.3: the safety-stop event table (debug) and a read-only ConnectedEdge buffer lookup (feeding lanes). 0.2.2's trailer lookups removed (no mid spots). 0.3.3 (JR-T-006): read-only CarTractorData / CarTrailerData / LayoutElement lookups again (whole vehicle length for the crossing fit)."
+        "reason": "Job fields: stage 2 mode, the debug counter array; 0.2.3: the safety-stop event table (debug) and a read-only ConnectedEdge buffer lookup (feeding lanes). 0.2.2's trailer lookups removed (no mid spots). 0.3.3 (JR-T-006): read-only CarTractorData / CarTrailerData / LayoutElement lookups again (whole vehicle length for the crossing fit). 0.4.2 (JR-T-010): read-only YellowBoxJunction / YellowBoxEntrance / Building / ConnectedBuilding / EdgeLane lookups (yellow boxes)."
       },
       "S2-21": {
         "files": {
@@ -173,7 +173,7 @@
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
-        "reason": "OnUpdate: takes this step's mode from the main-thread handoff; 0.2.3: the safety-event table and the ConnectedEdge lookup (0.2.2 trailer lookups removed). 0.3.3: the three read-only lookups for the vehicle length."
+        "reason": "OnUpdate: takes this step's mode from the main-thread handoff; 0.2.3: the safety-event table and the ConnectedEdge lookup (0.2.2 trailer lookups removed). 0.3.3: the three read-only lookups for the vehicle length. 0.4.2: the five read-only yellow box lookups."
       },
       "S2-24": {
         "files": {
@@ -191,13 +191,25 @@
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
-        "reason": "0.4.1 (JR-T-009): UpdateNavigationTarget, after S2-21, only with the zebra setting: hands the car's navigation lanes to its iterator for the room-past scan; whole vehicle length (trailers incl.) also with the stock gap rule."
+        "reason": "0.4.1 (JR-T-009): UpdateNavigationTarget, after S2-21, only with the zebra setting: hands the car's navigation lanes to its iterator for the room-past scan; whole vehicle length (trailers incl.) also with the stock gap rule. 0.4.2 (JR-T-010): also with 'Cars obey yellow boxes' (shared room-past scan), and then hands the read-only box lookups to the iterator (SetBoxes)."
       },
       "S2-27": {
         "files": {
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
         "reason": "0.4.1 (JR-T-009): after S2-08b, counters only: a zebra entry held for people."
+      },
+      "S2-28": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "0.4.2 (JR-T-010): top of CheckCurrentLane (5 arguments), only with the setting 'Cars obey yellow boxes': before entering a boxed junction (the node lane start = the stop line) or an entrance band, the car is held (GetMaxBrakingSpeed to the entry, blocker Entity.Null, type Continuing) while there is no room for the whole vehicle past the box / band (the 0.4.1 room-past scan, Core RoomScan); cars already inside or unable to stop carry on (Core/BoxDriving.cs)."
+      },
+      "S2-28b": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "0.4.2: the same as S2-28 at the top of the CheckCurrentLane overload with canUseLane (the lane being changed into)."
       }
     }
   }
