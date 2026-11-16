@@ -205,6 +205,9 @@ namespace JunctionRules.Stage2
         private float m_EntranceMainSpeed;
         private bool m_HasEntranceLeaving;
         private float m_EntranceLeavingSpeed;
+        /// <summary>JR-T-014c (G9): this car-step a vehicle turning into a building was held before the box (no room on its way in).</summary>
+        private bool m_HasEntranceEntering;
+        private float m_EntranceEnteringSpeed;
 
         // ---- 0.4.4 (JR-T-012): vehicles leaving buildings give way (Core/ExitGiveWay.cs; methods in Stage2/JRExitGiveWay.cs) ----
         /// <summary>Setting "Vehicles leaving buildings give way" (Stage2Mode.ExitGiveWay, stripped from m_Mode in Create).</summary>
@@ -693,6 +696,32 @@ namespace JunctionRules.Stage2
                         ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted);
                     if (!inBox) read += span;
                 }
+            }
+            if (unsorted && Counting) m_ZebraUnsortedSeen = true;
+            return scan.HasRoom;
+        }
+
+        /// <summary>
+        /// JR-T-014c (G9): RoomScan over the car's path lanes from index 'from' (its way into the building), as the path part of
+        /// HasRoomPast: vehicles on each lane ahead of where the path enters it, in path order, up to MaxRoomLanes lanes; a
+        /// lane that is not a car lane (parking space, spawn location) ends the read (the rest counts as free).
+        /// </summary>
+        private bool HasRoomInto(int from, Entity self, float safeTimeStep, ref ComponentLookup<Game.Net.CarLane> carLanes, ref BufferLookup<LaneObject> laneObjects,
+            ref ComponentLookup<Curve> curves, ref ComponentLookup<Moving> moving, ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs,
+            ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars)
+        {
+            RoomScan scan = RoomScan.Begin(m_VehicleLength, m_RoomMargin);
+            bool unsorted = false;
+            float read = 0f;
+            for (int i = from, cap = 0; i >= 0 && i < m_Path.Length && cap < MaxRoomLanes && !scan.Done(read); i++, cap++)
+            {
+                CarNavigationLane nav = m_Path[i];
+                if (!carLanes.HasComponent(nav.m_Lane) || !curves.TryGetComponent(nav.m_Lane, out Curve navCurve)) break;
+                bool navInverse = nav.m_CurvePosition.y < nav.m_CurvePosition.x;
+                float span = math.abs(nav.m_CurvePosition.y - nav.m_CurvePosition.x) * navCurve.m_Length;
+                ScanLane(ref scan, nav.m_Lane, nav.m_CurvePosition.x, navInverse, navCurve.m_Length, span, read, false, self, safeTimeStep, ref laneObjects,
+                    ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted);
+                read += span;
             }
             if (unsorted && Counting) m_ZebraUnsortedSeen = true;
             return scan.HasRoom;
@@ -1321,6 +1350,7 @@ namespace JunctionRules.Stage2
             if (Stage2Counters.IsStandingOn(m_HasBoxTurnRoom, m_BoxTurnRoomSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxTurnRoomWaits, 1);
             if (Stage2Counters.IsStandingOn(m_HasEntranceMain, m_EntranceMainSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.EntranceHeldMain, 1);
             if (Stage2Counters.IsStandingOn(m_HasEntranceLeaving, m_EntranceLeavingSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.EntranceHeldLeaving, 1);
+            if (Stage2Counters.IsStandingOn(m_HasEntranceEntering, m_EntranceEnteringSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.EntranceHeldEntering, 1);   // JR-T-014c (G9)
             // 0.4.4: vehicles leaving buildings give way. 0.4.6: counted once per vehicle episode (consecutive updates of one vehicle
             // are one event, per kind; 0.4.4 / 0.4.5 added one per car-step, so a single waiting truck made dozens).
             if (Stage2Counters.IsStandingOn(m_HasExitHold, m_ExitHoldSpeed, finalMaxSpeed, currentSpeed) && ExitEvent(eventTable, entity, frame, 1))

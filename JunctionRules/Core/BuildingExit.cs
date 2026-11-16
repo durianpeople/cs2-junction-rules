@@ -42,6 +42,11 @@ namespace JunctionRules.Core
         Junction = 3,
         /// <summary>No exit found in the game data: Building.m_RoadEdge + m_CurvePosition (the 0.4.0 entrance point).</summary>
         Fallback = 4,
+        /// <summary>
+        /// JR-T-014c (G9): an entry-only access (a sub-net node whose car lanes only flow into the building). In memory only
+        /// (derived at resolve time for boxed buildings, Core/BuildingAccess.cs): NEVER written to the save (BoxStore refuses it).
+        /// </summary>
+        Entrance = 5,
     }
 
     /// <summary>

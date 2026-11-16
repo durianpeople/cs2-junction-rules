@@ -142,6 +142,32 @@ namespace JunctionRules.Boxes
             /// <summary>Curve position on Road (driveway / spawn / fallback).</summary>
             public float T;
             public bool IsJunction => C.Kind == ExitKind.Junction;
+            /// <summary>JR-T-014c (G9 / G10): which way cars use it (exit Out, entrance In, two-way drive / spawn location Both).</summary>
+            public AccessWay Way;
+            /// <summary>JR-T-014c (G10): the access on the building side (sub-net node, spawn location; fallback: lot-front point) for the hover arrow.</summary>
+            public float3 Inner;
+            public bool HasInner;
+            public bool IsEntrance => C.Kind == ExitKind.Entrance;
+            public bool IsFallback => C.Kind == ExitKind.Fallback;
+        }
+
+        /// <summary>
+        /// JR-T-014c (G9 / G10): every car access of a building, read-only: exits (as 0.4.3, but never a Fallback: G10) and
+        /// entrances (entry-only sub-net nodes: driveway kind Entrance on a public road's middle, or Junction kind where the
+        /// building's own road meets a public road end; never saved, Core/BuildingAccess.cs). 'fallback' = the lot-front
+        /// point (Building.m_RoadEdge + m_CurvePosition), kept apart: never a box target, used for a saved Fallback marker
+        /// key (hover / removal) and for the tool's marker key. HasFallback false when the building has no road edge.
+        /// </summary>
+        internal static void Accesses(EntityManager em, Entity building, List<string> notes, out List<Exit> exits, out List<Exit> entrances, out Exit fallback, out bool hasFallback)
+        {
+            exits = Scan(em, building, notes, out entrances, out fallback, out hasFallback);
+        }
+
+        /// <summary>JR-T-014c (G9): the building's entrances (Accesses).</summary>
+        internal static List<Exit> Entrances(EntityManager em, Entity building, List<string> notes)
+        {
+            Scan(em, building, notes, out List<Exit> entrances, out _, out _);
+            return entrances;
         }
 
         /// <summary>
@@ -151,9 +177,15 @@ namespace JunctionRules.Boxes
         /// Fallback (Building.m_RoadEdge + m_CurvePosition) only when nothing else is found. 'notes' gets one line per
         /// rejected candidate (entry-only drives, spawn locations on the building's own lanes) for the log.
         /// </summary>
-        internal static List<Exit> Exits(EntityManager em, Entity building, List<string> notes)
+        internal static List<Exit> Exits(EntityManager em, Entity building, List<string> notes) => Scan(em, building, notes, out _, out _, out _);
+
+        private static List<Exit> Scan(EntityManager em, Entity building, List<string> notes, out List<Exit> entrances, out Exit fallback, out bool hasFallback)
         {
             var found = new List<Exit>();
+            var foundIn = new List<Exit>();
+            entrances = foundIn;
+            fallback = default;
+            hasFallback = false;
             if (!Alive(em, building) || !em.HasComponent<Building>(building)) return found;
             GetFrame(em, building, out V2 bpos, out V2 fwd);
             var sources = new List<Entity> { building };
@@ -185,7 +217,7 @@ namespace JunctionRules.Boxes
                     DynamicBuffer<ConnectedEdge> ce = em.GetBuffer<ConnectedEdge>(n, true);
                     var publicEnds = new List<Entity>();
                     var publicMiddles = new List<Entity>();
-                    bool carOut = false, carAny = false, ownRoad = false;
+                    bool carOut = false, carIn = false, carAny = false, ownRoad = false;
                     for (int i = 0; i < ce.Length; i++)
                     {
                         Entity r = ce[i].m_Edge;
@@ -195,7 +227,7 @@ namespace JunctionRules.Boxes
                         if (ownEdges.Contains(r) || (em.HasComponent<Owner>(r) && OwnerBuilding(em, r) == building))
                         {
                             if (!atEnd) continue;
-                            CarFlow(em, r, np, ref carOut, ref carAny);
+                            CarFlow(em, r, np, ref carOut, ref carIn, ref carAny);
                             ownRoad |= em.HasComponent<Road>(r);
                             continue;
                         }
@@ -205,12 +237,38 @@ namespace JunctionRules.Boxes
                     if (publicEnds.Count == 0 && publicMiddles.Count == 0) continue;
                     V2 local = ExitRules.ToLocal(new V2(np.x, np.z), bpos, fwd);
                     if (!carAny) { Note(notes, $"sub-net node {n} meets a public road but carries no car lane of the building (path)"); continue; }
-                    if (!carOut) { Note(notes, $"sub-net node {n} is an entry only (no car lane of the building flows toward the road)"); continue; }
+                    AccessWay way = AccessRules.Way(carOut, carIn);
+                    if (!carOut)
+                    {
+                        // JR-T-014c (G9): an entry-only node is a car ENTRANCE (0.4.3-0.4.7 skipped it: "is an entry only")
+                        if (publicEnds.Count > 0)
+                        {
+                            Note(notes, $"sub-net node {n} is an entry-only access road junction (no derived box: box the junction node with the tool)");
+                            foundIn.Add(new Exit
+                            {
+                                Node = n, Way = AccessWay.In, Inner = np, HasInner = true,
+                                C = new ExitCandidate
+                                {
+                                    Kind = ExitKind.Junction, Key = new ExitKey(ExitKind.Junction, local.X, local.Z), RoadId = n.Index, World = new V2(np.x, np.z),
+                                    Source = $"entrance junction node {n}: building {(ownRoad ? "access road" : "car path")} meets {publicEnds.Count} public road end(s), car lanes flow in only",
+                                },
+                            });
+                            continue;
+                        }
+                        foreach (Entity r in publicMiddles)
+                        {
+                            if (!ConnectedNodeT(em, r, n, out float t)) continue;
+                            Exit x = OnRoad(em, r, t, ExitKind.Entrance, local, $"ENTRANCE: sub-net node {n} joined to road {r} at t {t:0.000} (road ConnectedNode; building edge car lanes flow in only)");
+                            x.Node = n; x.Way = AccessWay.In; x.Inner = np; x.HasInner = true;
+                            foundIn.Add(x);
+                        }
+                        continue;
+                    }
                     if (publicEnds.Count > 0)
                     {
                         found.Add(new Exit
                         {
-                            Node = n,
+                            Node = n, Way = way, Inner = np, HasInner = true,
                             C = new ExitCandidate
                             {
                                 Kind = ExitKind.Junction, Key = new ExitKey(ExitKind.Junction, local.X, local.Z), RoadId = n.Index, World = new V2(np.x, np.z),
@@ -222,8 +280,8 @@ namespace JunctionRules.Boxes
                     foreach (Entity r in publicMiddles)
                     {
                         if (!ConnectedNodeT(em, r, n, out float t)) continue;
-                        Exit x = OnRoad(em, r, t, ExitKind.Driveway, local, $"sub-net node {n} joined to road {r} at t {t:0.000} (road ConnectedNode; building edge car lanes flow out)");
-                        x.Node = n;
+                        Exit x = OnRoad(em, r, t, ExitKind.Driveway, local, $"sub-net node {n} joined to road {r} at t {t:0.000} (road ConnectedNode; building edge car lanes flow {(carIn ? "both ways" : "out")})");
+                        x.Node = n; x.Way = way; x.Inner = np; x.HasInner = true;
                         found.Add(x);
                     }
                 }
@@ -252,11 +310,12 @@ namespace JunctionRules.Boxes
                     MathUtils.Distance(em.GetComponentData<Curve>(r).m_Bezier.xz, lp.xz, out float t);
                     float3 op = em.GetComponentData<Game.Objects.Transform>(o).m_Position;
                     V2 local = ExitRules.ToLocal(new V2(op.x, op.z), bpos, fwd);
-                    found.Add(OnRoad(em, r, t, ExitKind.SpawnLocation, local, $"spawn location {o} -> lane {lane} of road {r} at t {t:0.000} (SpawnLocation.m_ConnectedLane1)"));
+                    Exit sx = OnRoad(em, r, t, ExitKind.SpawnLocation, local, $"spawn location {o} -> lane {lane} of road {r} at t {t:0.000} (SpawnLocation.m_ConnectedLane1)");
+                    sx.Way = AccessWay.Both; sx.Inner = op; sx.HasInner = true;   // a spawn location / gate is used both ways
+                    found.Add(sx);
                 }
             }
-            // 4: fallback
-            if (found.Count == 0)
+            // 4: fallback. JR-T-014c (G10): never a box target (only real accesses get boxes); read always, kept apart
             {
                 Building b = em.GetComponentData<Building>(building);
                 if (Alive(em, b.m_RoadEdge) && em.HasComponent<Curve>(b.m_RoadEdge) && em.HasComponent<Edge>(b.m_RoadEdge))
@@ -267,10 +326,23 @@ namespace JunctionRules.Boxes
                         Entity pf = em.GetComponentData<PrefabRef>(building).m_Prefab;
                         if (em.HasComponent<BuildingData>(pf)) depth = em.GetComponentData<BuildingData>(pf).m_LotSize.y;
                     }
-                    found.Add(OnRoad(em, b.m_RoadEdge, b.m_CurvePosition, ExitKind.Fallback, new V2(0, depth * 4.0),
-                        $"FALLBACK: no car exit in the game data; Building.m_RoadEdge {b.m_RoadEdge} at t {b.m_CurvePosition:0.000} (lot front middle)"));
+                    fallback = OnRoad(em, b.m_RoadEdge, b.m_CurvePosition, ExitKind.Fallback, new V2(0, depth * 4.0),
+                        $"FALLBACK: lot front middle, Building.m_RoadEdge {b.m_RoadEdge} at t {b.m_CurvePosition:0.000} (not a real car access: never boxed, G10)");
+                    fallback.Way = AccessWay.Both;
+                    V2 front = ExitRules.ToWorld(new V2(0, depth * 4.0), bpos, fwd);
+                    float y = em.HasComponent<Game.Objects.Transform>(building) ? em.GetComponentData<Game.Objects.Transform>(building).m_Position.y : 0f;
+                    fallback.Inner = new float3((float)front.X, y, (float)front.Z);
+                    fallback.HasInner = true;
+                    hasFallback = true;
                 }
             }
+            entrances = Keep(foundIn);
+            return Keep(found);
+        }
+
+        /// <summary>Fixed order + same-place merge (ExitRules.Normalise), mapped back to the read rows.</summary>
+        private static List<Exit> Keep(List<Exit> found)
+        {
             var cands = new List<ExitCandidate>(found.Count);
             foreach (Exit x in found) cands.Add(x.C);
             List<ExitCandidate> keep = ExitRules.Normalise(cands);
@@ -291,11 +363,17 @@ namespace JunctionRules.Boxes
         {
             if (!Alive(em, building) || !em.HasComponent<YellowBoxEntrance>(building) || !em.HasComponent<Building>(building)) return 0;
             YellowBoxEntrance c = em.GetComponentData<YellowBoxEntrance>(building);
-            List<Exit> exits = Exits(em, building, null);
+            List<Exit> exits = Scan(em, building, null, out List<Exit> entrances, out _, out _);
             var cands = new List<ExitCandidate>(exits.Count);
             foreach (Exit x in exits) cands.Add(x.C);
             var keys = new List<ExitKey>(c.m_Exits.Length);
-            for (int i = 0; i < c.m_Exits.Length; i++) keys.Add(c.m_Exits[i]);
+            for (int i = 0; i < c.m_Exits.Length; i++)
+            {
+                // JR-T-014c (G10): a Fallback key is a marker unless it re-keys to a real exit (ExitRules.Match); a marker is
+                // not a band and not 'unmatched' (the paint keeps it untouched)
+                if (c.m_Exits[i].ExitKind == ExitKind.Fallback && ExitRules.Match(c.m_Exits[i], cands) < 0) continue;
+                keys.Add(c.m_Exits[i]);
+            }
             V2 old = default;
             if (c.Legacy)
             {
@@ -306,9 +384,19 @@ namespace JunctionRules.Boxes
             }
             List<int> boxed = ExitBands.Boxed(keys, c.Legacy, old, cands, out int unmatched);
             GetFrame(em, building, out V2 bpos, out _);
-            foreach (int i in boxed)
+            var bandExits = new List<Exit>();
+            var boxedCands = new List<ExitCandidate>();
+            foreach (int i in boxed) { bandExits.Add(exits[i]); boxedCands.Add(exits[i].C); }
+            // JR-T-014c (G9): a boxed building's entrances drive as bands too (derived, as the paint draws them)
+            var inCands = new List<ExitCandidate>(entrances.Count);
+            foreach (Exit x in entrances) inCands.Add(x.C);
+            foreach (int i in AccessRules.EntranceBoxes(inCands, boxedCands))
             {
-                Exit x = exits[i];
+                if (!BoxSelection.ExitOk(ExitFacts(em, building, entrances[i], out _), out _)) continue;
+                bandExits.Add(entrances[i]);
+            }
+            foreach (Exit x in bandExits)
+            {
                 if (!Alive(em, x.Road)) continue;
                 // 0.4.4 (JR-T-011): on a divided road the band holds the building side's lanes only (Core/MedianSplit)
                 uint mask = BoxShapes.MedianSide(em, x.Road, x.T, bpos, out SideSpanResult span, out _) && span.Divided ? span.CarriagewayMask : MedianSplit.AllCarriageways;
@@ -343,8 +431,11 @@ namespace JunctionRules.Boxes
             return false;
         }
 
-        /// <summary>Car lanes of a building edge at this node: any at all, and any flowing TOWARD the node (out of the building).</summary>
-        private static void CarFlow(EntityManager em, Entity edge, float3 nodePos, ref bool toward, ref bool any)
+        /// <summary>
+        /// Car lanes of a building edge at this node: any at all, any flowing TOWARD the node (out of the building) and
+        /// (JR-T-014c) any flowing AWAY from it (into the building).
+        /// </summary>
+        private static void CarFlow(EntityManager em, Entity edge, float3 nodePos, ref bool toward, ref bool away, ref bool any)
         {
             if (!em.HasBuffer<Game.Net.SubLane>(edge)) return;
             DynamicBuffer<Game.Net.SubLane> subs = em.GetBuffer<Game.Net.SubLane>(edge, true);
@@ -355,6 +446,7 @@ namespace JunctionRules.Boxes
                 any = true;
                 Bezier4x3 bz = em.GetComponentData<Curve>(l).m_Bezier;
                 if (math.distance(bz.d.xz, nodePos.xz) < math.distance(bz.a.xz, nodePos.xz)) toward = true;
+                else away = true;
             }
         }
 

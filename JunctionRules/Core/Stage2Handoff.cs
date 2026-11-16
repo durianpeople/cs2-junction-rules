@@ -200,7 +200,9 @@ namespace JunctionRules.Core
         public const int ExitDriveUnjudged = FeedingScans + 47;
         /// <summary>0.4.8 (G7): vehicles standing 5 s+ on a driveway's leaving lane (past the sidewalk, on / across the road; episodes). Expected ~0.</summary>
         public const int ExitStuckOnRoad = FeedingScans + 48;
-        public const int Count = FeedingScans + 49;
+        /// <summary>JR-T-014c (G9): car-steps in which a vehicle turning INTO a building stood before the box (entrance / two-way drive) because there was no room for its whole length past the box on its way in.</summary>
+        public const int EntranceHeldEntering = FeedingScans + 49;
+        public const int Count = FeedingScans + 50;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -315,7 +317,8 @@ namespace JunctionRules.Core
                        ? "; box entries held " + deltas[BoxHeldRoom].ToString(ci) +
                          ", right-turn waits " + deltas[BoxTurnWaits].ToString(ci) +
                          "; entrance band holds: main road " + deltas[EntranceHeldMain].ToString(ci) +
-                         ", leaving driveway " + deltas[EntranceHeldLeaving].ToString(ci)
+                         ", leaving driveway " + deltas[EntranceHeldLeaving].ToString(ci) +
+                         "; entrance box entries held (entrance full) " + deltas[EntranceHeldEntering].ToString(ci)
                        : "") +
                    (exitMask >= 2
                        ? "; building exits: waits " + deltas[ExitHeld].ToString(ci) +

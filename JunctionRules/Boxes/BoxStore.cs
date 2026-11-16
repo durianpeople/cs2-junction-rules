@@ -102,6 +102,7 @@ namespace JunctionRules.Boxes
         internal static bool AddExit(EntityManager em, Entity building, ExitKey key, bool notify = true)
         {
             if (building == Entity.Null || !em.Exists(building)) return false;
+            if (key.ExitKind == ExitKind.Entrance) return false;   // JR-T-014c (G9): entrance boxes are derived, never saved
             if (!em.HasComponent<YellowBoxEntrance>(building))
             {
                 var c = new YellowBoxEntrance();

@@ -25,7 +25,8 @@ namespace JunctionRules.Core
     /// Entrance box (a band across the carriageway in front of a building's access, the painted length centred on the
     /// access point): a main-road car does not enter the band unless there is room for it past the band; a car leaving
     /// the driveway does not join the road (its join point inside the band) unless there is room past the band on its
-    /// target lane; a car turning into the driveway (its path on the road lane ends inside the band) is exempt.
+    /// target lane; a car turning into the driveway (its path on the road lane ends inside the band) was exempt until 0.4.7;
+    /// JR-T-014c (G9): it does not enter the band unless its way into the building has room for its whole length.
     ///
     /// Pure arithmetic on plain values (Burst-compatible, no allocation). Job side: Stage2/JRYellowBox.cs.
     /// </summary>
@@ -118,13 +119,40 @@ namespace JunctionRules.Core
         {
             /// <summary>The band is not on the car's path on this lane.</summary>
             None = 0,
-            /// <summary>The path ends inside the band (turning into the driveway): exempt.</summary>
+            /// <summary>
+            /// The path ends inside the band (turning into the driveway). 0.4.2-0.4.7: exempt. JR-T-014c (G9): held before
+            /// the band unless its way in has room for the whole vehicle (<see cref="EnteringApplies"/>).
+            /// </summary>
             Entering = 1,
             /// <summary>Driving along the road through the band: entry = the band start.</summary>
             Main = 2,
             /// <summary>Joining the road inside the band (leaving the driveway): entry = the join point.</summary>
             Leaving = 3,
         }
+
+        /// <summary>
+        /// JR-T-014c (G9, owner 17 Nov 2026): an Entering car is judged only when its path really leaves the road inside the
+        /// band (the next path lane exists and is not a lane of the same road edge). A lane change inside the band also ends
+        /// the path on this lane early: that car stays on the road and is not an entry.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool EnteringApplies(bool hasNextLane, bool nextOnSameRoad) => hasNextLane && !nextOnSameRoad;
+
+        /// <summary>
+        /// JR-T-014c (G9): where an entering car must stop when its way in is full: the band start, or where its range on
+        /// this lane begins when that is already inside the band (it came onto this lane inside the band).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float EnteringEntry(float start, float b0) => start > b0 ? start : b0;
+
+        /// <summary>
+        /// JR-T-014c (G9): an entering car is held at the band entry when it can stop there and its way in (the path lanes
+        /// after the road lane: the drive's connection lane, the drive, the building lane) has no room for its whole length
+        /// plus the margin (RoomScan, the same measure as boxes and zebras: a moving queue gives its braking distance, a
+        /// standing one does not; a path that ends inside the building before the room is read counts as free).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool EnteringHolds(Approach a, bool roomInside) => Holds(a, roomInside);
 
         /// <summary>
         /// The role from the car's range on the lane [start, end] (driving coordinates) and the band [b0, b1]; entry = the

@@ -20,6 +20,9 @@ namespace JunctionRules.Tests
         // Test groups in run order. Args filter by case-insensitive substring of the name; --list prints names.
         private static readonly (string Name, Action Run)[] s_Groups =
         {
+            ("G9EntranceDrivingTests", G9EntranceDrivingTests),
+            ("G9EntranceBoxTests", G9EntranceBoxTests),
+            ("G10FallbackArrowTests", G10FallbackArrowTests),
             ("VersionGateTests", VersionGateTests),
             ("VersionGateCheckTests", VersionGateCheckTests),
             ("DrivingSwitchTests", DrivingSwitchTests),
