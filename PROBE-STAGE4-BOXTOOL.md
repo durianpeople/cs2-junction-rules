@@ -8,7 +8,9 @@ the box at a boxed exit); G5 Crescent St x Eastgate Lane boxable (corner kerbs d
 boxed buildings get boxes at their **entrances** too and cars turning in wait on the road unless they fit into the
 building; G10 hover arrow from the box to the building access, no boxes at lot-front fallbacks; G11 people give way at
 **unmarked** crossings (section 18.5). **Diagnostics are ON by default** in this probe (timing log, compact exit trace,
-entrance box log): nothing to switch on. Driving changes only while Car driving is the Junction Rules copy.
+entrance box log, unmarked-crossing log): nothing to switch on. Driving changes only while Car driving is the Junction Rules copy.
+`docs/vanilla_copy_check_0.4.8.txt`: 0 unexplained differences, 37 marked blocks / 289 lines (new S2-50 / S2-50b for G11;
+S2-22, S2-26, S2-29, S2-32, S2-34, S2-35 extended; DEVIATIONS.md). Carries 0.4.7 and everything before.
 
 
 **0.4.7-probe (JR-T-013m: #17 + gaps G1-G6), what changed since 0.4.6:** (1) #17 (JR-T-011, built on 0.4.3 as an
@@ -931,7 +933,7 @@ load of 0.4.8 switches **Log navigation timing** and **Exit trace (log)** on onc
 diagnostics switched on once ...`); you may switch them off again. The exit trace is now **compact**: every NOTABLE
 event, 6 sampled normal events and one summary line a minute. Expected log size: ~100-140 KB per 10 minutes of play
 (timing lines ~2 KB each every 1024 frames ≈ 90 KB, compact exit trace ≤ ~25 KB, entrance box log ≤ 35 KB cap,
-unmarked-crossing log see 18.5), more while you use the box tool (hover / refusal lines as before).
+unmarked-crossing log ~15 KB typical, see 18.5), more while you use the box tool (hover / refusal lines as before).
 
 ### 18.1 G7: vehicles leaving buildings decide BEFORE THE SIDEWALK
 
@@ -1018,3 +1020,35 @@ Hovering a building box with Ctrl+Y draws an arrow (white add / orange remove) f
 building's access: head at the box = exit, at the building = entrance, both = two-way. Boxes go only at REAL car
 accesses; the lot-front fallback is never a target. The confusing 17 Nov hover (box with no visible driveway on road
 312580) was a real two-way access ("Invisible Road Path - 2xTwoway") of the police station or clinic, not a fallback.
+
+Known limits (G9 review): clicking an orange entrance box removes ALL of that building's boxes (exit boxes too; the log
+says so); a second car turning into the same entrance behind one waiting at its in-box spot may stop in the band
+behind it (watch the entrance log); buildings whose access is a spawn location get a box but cars heading in are not
+held (their path ends on the road lane); a saved lot-front box that no longer draws gives one WARN per building and
+session (`its saved lot-front box is no longer drawn ...`).
+
+### 18.5 G11: people give way at unmarked crossings
+
+New setting **People give way at unmarked crossings** (default on; off = 0.4.7). Where a crossing has no zebra and no
+signal (the game's crosswalk lane with `Unsafe`: no right of way for people), a person waits at the kerb until the
+approaching cars leave a safe gap (braking distance + speed x the person's crossing time + 1 s; standing cars never
+block; cars that will stop at a red light do not count), and cars no longer stop for people waiting at or walking up
+to such a crossing. Safety floor: a car still stops for a person already on the carriageway (counted). Zebras (people
+have priority, cars never push through, people pass after 2 s), signal crossings and the driveway sidewalk (18.1, a
+zebra) are unchanged. No second Burst copy: the person side is its own system after the game's human navigation.
+
+Log (always on): timing line `; unmarked crossings: car-steps not held for people N, people held at the kerb N,
+stopped for a person already crossing unmarked N` (the last should be rare); once a minute a `G11 unmarked crossings`
+summary, up to 5 sample lines and up to 20 notable lines (`braked for person ... already on the carriageway`, `held at
+the kerb over 60 s`); about 60-70 lines per 10 minutes, at most 260. Settings line `settings (G11): people give way at
+unmarked crossings on`.
+
+| # | Do | Expect |
+|---|---|---|
+| G11-1 | A junction with unmarked crossings and steady traffic | people wait at the kerb for a gap; cars do not stop for them |
+| G11-2 | A zebra nearby | unchanged: cars stop for people on / at the zebra |
+| G11-3 | Very busy road with an unmarked crossing | people may wait long (no give-up, owner rule): `held at the kerb over 60 s` lines |
+| G11-4 | Any `braked for person ... already on the carriageway` line | rare; many = the kerb judgement lets people out too early: send the log |
+
+Unproven: the 0.5 m kerb tolerance; a feeding car with an unknown route counts (people wait longer); a car that
+cannot stop for a person already crossing still collides as in stock.

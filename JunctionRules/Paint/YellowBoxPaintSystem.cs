@@ -914,6 +914,9 @@ namespace JunctionRules.Paint
         /// yielding arm's mouth centre). The exit that is gone (drive removed, building replaced by another prefab) drops
         /// this key only, logged.
         /// </summary>
+        /// <summary>0.4.8 review (G9 F2): buildings already warned about an undrawn saved lot-front box (once per session).</summary>
+        private readonly HashSet<Entity> m_FallbackWarned = new HashSet<Entity>();
+
         private void RebuildEntrance(Box b)
         {
             EntityManager em = EntityManager;
@@ -923,6 +926,13 @@ namespace JunctionRules.Paint
             BoxFacts.Exit exit;
             if (b.Derived)
             {
+                // 0.4.8 review (G9 F1): the building lost its saved box component (its saved key was dropped): no phantom entrance box.
+                if (!BoxStore.Has(em, b.Building, false))
+                {
+                    b.Dropped = true;
+                    Mod.log.Info($"yellow boxes: {b.Label}: the building has no saved box any more, entrance box not drawn");
+                    return;
+                }
                 // JR-T-014c (G9): the entrance this derived box stands for (same kind within ExitRules.KeyMatch)
                 if (!BoxFacts.FindExit(entrances, b.Key, out exit) || !exit.IsEntrance)
                 {
@@ -935,6 +945,10 @@ namespace JunctionRules.Paint
             {
                 // JR-T-014c (G10): a saved Fallback key is never drawn; kept untouched in the save (no write)
                 SavedFallbackFate fate = AccessRules.Fallback(false, exits.Count, entrances.Count);
+                // 0.4.8 review (G9 F2): once per building and session a WARN, so a box the owner saw before and no longer sees is explained.
+                if (m_FallbackWarned.Add(b.Building))
+                    Mod.log.Warn($"yellow boxes: building {b.Building}: its saved lot-front box is no longer drawn (0.4.8: boxes only at real car accesses)"
+                        + (fate == SavedFallbackFate.Marker ? $"; its {entrances.Count} entrance box(es) are drawn instead" : "; it has no real car access: remove the box with the tool"));
                 Mod.log.Info($"yellow boxes: {b.Label}: lot-front fallback not drawn (boxes only at real car accesses); key kept as the building's box marker: "
                     + (fate == SavedFallbackFate.Marker ? $"{exits.Count} real exit(s) not boxed by it, {entrances.Count} entrance(s) boxed through it"
                        : "the building has no real car exit or entrance: nothing drawn or obeyed (remove it with the tool on the building)")
