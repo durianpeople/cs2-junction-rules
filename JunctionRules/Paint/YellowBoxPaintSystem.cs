@@ -57,6 +57,8 @@ namespace JunctionRules.Paint
             public AreaTriangleData[] Tris = Array.Empty<AreaTriangleData>();
             public Bounds3 Bounds;
             public string Label;
+            /// <summary>0.4.4: the painted straight-sided outline (world space), null when nothing is painted.</summary>
+            public List<V3> Outline;
         }
 
         private readonly List<Box> m_Boxes = new List<Box>();
@@ -276,6 +278,7 @@ namespace JunctionRules.Paint
             m_TriangleCount = 0;
             m_Boxes.Clear();
             m_Tracked.Clear();
+            PublishParking();
             // 0.4.0: saved boxes in this city? (two empty-query checks, once per load)
             int j = m_InCity ? m_SavedJunctionQuery.CalculateEntityCount() : 0, en = m_InCity ? m_SavedEntranceQuery.CalculateEntityCount() : 0;
             s_SavedPresent = j + en > 0;
@@ -307,6 +310,7 @@ namespace JunctionRules.Paint
             m_Boxes.Clear();
             m_Tracked.Clear();
             m_TriangleCount = 0;
+            PublishParking();
             s_Status = "off";
             if (wasActive && why != null) Mod.log.Info("yellow box painting OFF (" + why + "); nothing drawn, nothing left behind");
         }
@@ -405,6 +409,7 @@ namespace JunctionRules.Paint
                 {
                     step = "uploading the boxes";
                     Upload();
+                    PublishParking();
                     if (!m_TestOn && !s_SavedPresent) { Deactivate("paint test off and no saved boxes left"); return; }
                 }
                 if (m_LogCostRequested || (m_Boxes.Count > 0 && UnityEngine.Time.realtimeSinceStartup - m_LastCostLog >= m_Config.Render.LogIntervalSeconds))
@@ -631,6 +636,7 @@ namespace JunctionRules.Paint
         {
             b.Dropped = true;
             b.Tris = Array.Empty<AreaTriangleData>();
+            b.Outline = null;
             EntityManager em = EntityManager;
             Entity e = b.Kind == BoxKind.SavedJunction ? b.Node : b.Building;
             if (e != Entity.Null && em.Exists(e))
@@ -718,6 +724,7 @@ namespace JunctionRules.Paint
         {
             long t0 = Stopwatch.GetTimestamp();
             b.Tris = Array.Empty<AreaTriangleData>();
+            b.Outline = null;
             b.Edges.Clear();
             try
             {
@@ -763,6 +770,7 @@ namespace JunctionRules.Paint
                 }
                 notes.AddRange(res.Warnings);
                 b.Tris = ToTriangles(res, m_Config.Render, m_Config.Diag, out b.Bounds);
+                if (m_Config.Diag.TestSquare <= 0) b.Outline = res.Outline;
                 long ticks = Stopwatch.GetTimestamp() - t0;
                 Mod.log.Info($"yellow box paint test: {b.Label}: node {b.Node} at {b.LastPos}, {shape.Arms} arms, outline {res.Outline.Count} pts / {BoxPaintGeometry.SignedArea(res.Outline):0.0} m2, box {res.Rect.LenU:0.0} x {res.Rect.LenV:0.0} m, spacing {res.SpacingUsed} m, pieces {res.Pieces.Count}, triangles {b.Tris.Length}, built in {ticks * 1000.0 / Stopwatch.Frequency:0.000} ms" + (notes.Count > 0 ? "; notes: " + string.Join("; ", notes) : ""));
             }
@@ -820,6 +828,7 @@ namespace JunctionRules.Paint
             notes.AddRange(res.Warnings);
             notes.AddRange(exitNotes);
             b.Tris = ToTriangles(res, m_Config.Render, m_Config.Diag, out b.Bounds);
+            b.Outline = res.Outline;
             Mod.log.Info($"yellow boxes: {b.Label}: exit source {exit.C.Source}; box on edge {a.Edge} at {b.LastPos}, {shape.To - shape.From:0.0} m x kerb to kerb, outline {res.Outline.Count} pts, triangles {b.Tris.Length}" + (notes.Count > 0 ? "; notes: " + string.Join("; ", notes) : ""));
         }
 
@@ -871,6 +880,43 @@ namespace JunctionRules.Paint
 
         private static float3 F3(V3 p) => new float3((float)p.X, (float)p.Y, (float)p.Z);
         private static float2 F2(V3 p) => new float2((float)p.X, (float)p.Z);
+
+        // ------------------------------------------------------------------ 0.4.7: no parking in the boxes (G6)
+
+        /// <summary>
+        /// The no-parking input (Parking/BoxParkingSystem.cs): one group per painted saved box (its outline and the road node /
+        /// edges it was built from). Paint-test list boxes are left out (they are not boxes in the city). Merged boxes may
+        /// publish one group per merged group instead; the parking system merges the ranges of a lane either way.
+        /// </summary>
+        internal static List<JunctionRules.Parking.BoxParkingSystem.Group> ParkingGroups(IEnumerable<(List<V3> Outline, Entity Node, IEnumerable<Entity> Edges)> boxes)
+        {
+            var groups = new List<JunctionRules.Parking.BoxParkingSystem.Group>();
+            foreach (var b in boxes)
+            {
+                if (b.Outline == null || b.Outline.Count < 3) continue;
+                var g = new JunctionRules.Parking.BoxParkingSystem.Group();
+                g.Rings.Add(b.Outline);
+                if (b.Node != Entity.Null) g.Sources.Add(b.Node);
+                foreach (Entity e in b.Edges) if (e != Entity.Null) g.Sources.Add(e);
+                groups.Add(g);
+            }
+            return groups;
+        }
+
+        /// <summary>Hands the current saved boxes to the parking system (empty when painting stops). Never throws.</summary>
+        private void PublishParking()
+        {
+            try
+            {
+                var input = new List<(List<V3>, Entity, IEnumerable<Entity>)>();
+                foreach (Box b in m_Boxes) if (b.Kind != BoxKind.ListJunction && b.Tris.Length > 0) input.Add((b.Outline, b.Node, b.Edges));
+                JunctionRules.Parking.BoxParkingSystem.Publish(ParkingGroups(input));
+            }
+            catch (Exception e)
+            {
+                try { Mod.log.Error(e, "yellow boxes: handing the boxes to the no-parking system failed"); } catch { }
+            }
+        }
 
         private void Upload()
         {

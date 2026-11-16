@@ -100,6 +100,8 @@ namespace JunctionRules.Tests
             ("ExitPriorityTests", ExitPriorityTests),
             ("ExitModeTests", ExitModeTests),
             ("ExitRepoTests", ExitRepoTests),
+            ("ParkingMaskTests", ParkingMaskTests),
+            ("ParkingRepoTests", ParkingRepoTests),
         };
 
         private static int Main(string[] args)
@@ -515,6 +517,9 @@ namespace JunctionRules.Tests
             foreach (string f in Directory.GetFiles(Path.Combine(root, "JunctionRules"), "*.cs", SearchOption.AllDirectories))
             {
                 if (f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) || f.Contains(Path.DirectorySeparatorChar + "Vanilla" + Path.DirectorySeparatorChar)) continue;
+                // 0.4.7 (JR-T-013d, DEVIATIONS.md G6): one method excerpt outside Vanilla/, its bodies proven equal to the
+                // decompile by ParkingRepoTests; it carries its own header, not the generated Vanilla/ one.
+                if (f.EndsWith(Path.Combine("Parking", "ParkingFreeSpaceCopy.cs"))) continue;
                 if (File.ReadAllText(f).Contains("COPIED GAME CODE")) stray = true;
             }
             Check(!stray, "no copied game code outside Vanilla/");

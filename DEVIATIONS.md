@@ -289,3 +289,32 @@ bullets below); the copy's source is in any case proved equal to the decompile b
 0.4.5-probe (JR-T-012 fix; owner screenshot, 0.4.4 live: a vehicle leaving an industrial building onto a boxed Alderwood exit pulled out; timing log `spawn/gate 0` always) adds S2-32 and S2-33 (navigation only). Cause: S2-30 ran only for a `Connection` current lane, but the usual building exit is a lot: `InitializeSystem.cs` 288, `CarNavigationSystem.cs` 672 / 1037 turn a `ConnectionLane` with `ConnectionLaneFlags.Area` into `CarLaneFlags.Area` (not `Connection`), and the stock branch for an `Area` current lane (1795-1803, `MoveAreaTarget`, then the lane switch at 1873+ without the Connection join test) never reaches the iterator (`if ((LaneFlags & Area) == 0)` 1596 in the stock listing), so neither the road lane it joins nor any gap was ever looked at, and S2-30 (after `IL_09cd`) was never executed. S2-32 / S2-33 apply the same decision to an area lane's last stretch. Counted under `spawn/gate` of the timing log (also lot exits).
 
 0.4.6-probe (JR-T-012 fix 2; owner, 0.4.5 live: a tractor-trailer and a dark truck leaving an industrial lot onto boxed Alderwood exits pulled out across / into traffic, timing log `spawn/gate 0`, `emergency passthroughs` 64 in one window). Causes: (1) S2-32 judged a lot-exit vehicle only when its braking speed to the stop point was already below its current limit (`hold < currentMax`), but the stock area branch hands the vehicle over to the road lane when its area-path target is within max(look-ahead, braking distance at 11.1 m/s + 1 m + pivot) (`CarNavigationSystem` num8, 1767-1772; `MoveAreaTarget` 2529), up to ~20 m before the join point, and S2-33 only held a vehicle that S2-32 had already judged busy in that same update, so a vehicle was handed over unjudged; (2) the distance to the join point was reduced by half the WHOLE train (`m_VehicleLength` with trailers), so a tractor-trailer looked past the stop point (`CanHoldArea` false = left to the game) ~8 m too early; (3) `ExitJoinLane` demanded `LeavesBuilding` of an area lane's owner chain and an edge-owned join lane (a lot beside a junction joins a node lane); (4) the area branch skips the later `AddCounts` (`goto IL_0a0a`), so S2-32's own counters were never added (`spawn/gate 0` and the missing `waits`), and every exit counter was added per car-step, not per vehicle. `emergency passthroughs` was NOT a misclassification: priority 108 exists only with `CarFlags.Emergency` (`VehicleUtils.GetPriority(Car)` 654-657; set only by the ambulance / fire / police / transport AIs), and every car-step of an on-duty emergency vehicle at a driveway or lot added 1. Fix: scan from `ExitGiveWay.AreaScanMetres` before the join point, front-based distance, area lane needs no building owner, node lanes allowed, counters from S2-32, per-episode counters through the shared event table (kinds, `ExitGiveWay.EventKey`), S2-34 probe counters.
+
+## G6: no parking in yellow boxes (0.4.7, JR-T-013d)
+
+Not a change to the driving copy (Vanilla/ and `tools/vanilla_copy.py check` are untouched). Two things are listed here
+because they rely on game code:
+
+- **Copied excerpt outside Vanilla/: `JunctionRules/Parking/ParkingFreeSpaceCopy.cs`.** Source: `Game.Pathfind.ParkingLaneDataSystem.UpdateLaneDataJob`,
+  Game.dll 1.6.4f1, `GetBlockedRange` (decompile 310-334) and `CalculateFreeSpace` (547-731). The method bodies are unchanged;
+  `ParkingRepoTests` proves them equal to the decompile after whitespace is collapsed. Deviations: the bodies sit in an
+  own struct, the methods are `internal` instead of `private`, and `laneObjects` / `laneOverlaps` are `NativeArray`
+  instead of `DynamicBuffer` (same `Length` / indexer). The caller sorts the lane objects first, as the job does (226),
+  and passes the lane's overlaps without the mod's own entries. It is used only right before a save, to put the game's
+  own `ParkingLane.m_FreeSpace` back on the lanes the mod blocks. `VanillaHeaderTests` allows this one file by name.
+- **Own entries in the game's `LaneOverlap` buffer of parking lanes.** One entry per blocked curve range, marked by
+  `m_Other == the lane itself`, no flags, Other range = This range. The game never makes a lane overlap itself.
+  Stock readers that skip such ranges: `VehicleUtils.FindFreeParkingSpace` 1477-1600 (called by `ValidateParkingSpace` 1344 and
+  `SetParkingCurvePos` 321 with `ignoreDriveways: false` for personal cars, maintenance vehicles and taxis),
+  `ParkingLaneDataSystem.CalculateFreeSpace` (the pathfinder's free space) and `FixParkingLocationSystem` (only for
+  Updated / Deleted lanes, 1778-1795, so parked cars are never moved by the mod). `LaneOverlap` is `IEmptySerializable`
+  (`Game.Net/LaneOverlap.cs` 9): its entries are never saved. `LaneOverlapSystem` (Modification4B, `SystemOrder.cs` 178) rebuilds the
+  buffer of an Updated lane without them; `BoxParkingSystem` (ModificationEnd, ahead of `ParkingLaneDataSystem`,
+  `SystemOrder.cs` 251) puts them back the same frame. On a game patch: re-run `ParkingRepoTests` against the new
+  decompile and re-check that `FindFreeParkingSpace` / `CalculateFreeSpace` still skip overlap ranges.
+- **Saved value touched: `ParkingLane.m_FreeSpace` only (`ParkingLane` is `ISerializable`, `Game.Net/ParkingLane.cs` 7, 25).**
+  `BoxParkingSaveGuardSystem` runs in `SystemUpdatePhase.Serialize` ahead of `SerializerSystem` (`SystemOrder.cs` 735).
+  It writes the stock value, computed by the excerpt above, so the save holds what the game would have saved without the
+  mod. After the save the lanes get `PathfindUpdated` and the game recomputes the value with the box ranges. If the
+  value cannot be computed for a lane, the guard writes max(current, one car length): the save may show the lane as
+  freer than stock, never fuller. `ParkingLane.m_Flags` (`ParkingDisabled`, 0x2000) is never written.

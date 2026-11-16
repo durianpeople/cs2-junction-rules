@@ -178,6 +178,15 @@ namespace JunctionRules.Settings
         [SettingsUISection(kSection, kBoxesGroup)]
         public bool BoxTurnWait { get; set; }
 
+        /// <summary>
+        /// 0.4.7 (JR-T-013d, gap G6, owner rule 17 Nov 2026): no car parks inside a yellow box, whether or not the road has
+        /// kerbside parking there. Every parking slot whose space overlaps a box (junction or exit box) is blocked the way
+        /// the game blocks slots at driveways (Parking/BoxParkingSystem.cs); cars already parked there leave normally.
+        /// Runtime only: nothing extra is saved with the city. Default on; off = 0.4.6 (cars may park in boxes).
+        /// </summary>
+        [SettingsUISection(kSection, kBoxesGroup)]
+        public bool NoParkingInBoxes { get; set; }
+
         // ---- stage 3 probe (0.3.0-probe): yellow box paint test, draw-only, default off ----
 
         private bool m_YellowBoxPaintTest;
@@ -270,6 +279,7 @@ namespace JunctionRules.Settings
             YellowBoxPaintTest = false;
             PaintMode = BoxPaintMode.Hatch;
             PaintLayers = PaintSettingsMigration.Default;
+            NoParkingInBoxes = true;
             DebugTiming = false;
             SkipCodeHashCheck = false;
         }
@@ -376,6 +386,9 @@ namespace JunctionRules.Settings
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.BoxTurnWait)), "Yellow boxes: turning across oncoming traffic may wait in the box" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.BoxTurnWait)),
                     "On (default, as UK law): a car turning across oncoming traffic (right in a left-hand traffic city, left in a right-hand traffic city) may drive into the box and wait there for a gap when its exit has room and only oncoming traffic stops it (with the Whole junction gap rule it waits just before the oncoming lanes; never on a zebra). Off: it waits at the stop line like everyone else. With the Stock gap rule the game's own give-ways decide where cars wait, so this switch changes nothing there." },
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.NoParkingInBoxes)), "No parking in yellow boxes" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.NoParkingInBoxes)),
+                    "On (default): no car parks inside a yellow box you placed (junction or building exit box), even where the road has kerbside parking. Every parking space that overlaps a box is closed the way the game closes spaces in front of a driveway: new cars do not choose it and a car arriving there looks for another space. Cars already parked in the box drive off normally when they leave. Removing a box, or turning this off, opens the spaces again. Nothing extra is saved with the city: a save loaded without the mod has all its parking. Off: cars may park in boxes as before." },
                 { m_Setting.GetOptionGroupLocaleID(JunctionRulesSettings.kPaintGroup), "Yellow box paint test (stage 3 probe)" },
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.YellowBoxPaintTest)), "Yellow box paint test" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.YellowBoxPaintTest)),

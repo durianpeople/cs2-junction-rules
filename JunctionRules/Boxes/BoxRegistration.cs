@@ -16,6 +16,19 @@ namespace JunctionRules.Boxes
         {
             updateSystem.UpdateAt<YellowBoxToolSystem>(SystemUpdatePhase.ToolUpdate);
             updateSystem.UpdateAt<YellowBoxUISystem>(SystemUpdatePhase.UIUpdate);
+            // 0.4.7 (JR-T-013d, G6): no parking in the boxes. Its own try/catch: a failure here leaves the tool working.
+            try
+            {
+                // ModificationEnd, ahead of the game's ParkingLaneDataSystem (after LaneOverlapSystem, Modification4B, and
+                // FixParkingLocationSystem, Modification5): see Parking/BoxParkingSystem.cs.
+                updateSystem.UpdateBefore<JunctionRules.Parking.BoxParkingSystem, Game.Pathfind.ParkingLaneDataSystem>(SystemUpdatePhase.ModificationEnd);
+                // every save: ahead of the game's serializer, like jr-t-011's marking save guard
+                updateSystem.UpdateBefore<JunctionRules.Parking.BoxParkingSaveGuardSystem>(SystemUpdatePhase.Serialize);
+            }
+            catch (Exception e)
+            {
+                try { Mod.log.Error(e, "yellow boxes: no-parking systems not registered; parking in boxes stays as the game has it"); } catch { }
+            }
         }
     }
 
