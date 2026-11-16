@@ -61,17 +61,17 @@ does option E look right and cost little? (Probe steps S6-S11 of the research do
 Build to install: `~/Code/cs2-junction-rules/.staged/0.3.6-probe/`. If that folder holds a `STALE.md`, it has only a
 managed build (made while the game was running): main does the Burst rebuild in `STALE.md` (game closed) when the owner
 quits, then puts the new sha256s in the table and the install block below. Until then the install block refuses (the
-sums below are placeholders on purpose: `0000...`). 0.3.6-probe is staged as a managed build only (STALE.md). 0.3.5-probe was Burst-built from commit bb28fef and installed by main on 15 Nov (dll `3af93435...`, Burst dll `a3949df1...`; the rollback, in `.staged/0.3.5-probe`). 0.3.4-probe was Burst-built from commit 559ae78 and installed by main on 15 Nov (dll `405b5772...`, Burst dll `d3f10173...`; the rollback, in `.staged/0.3.4-probe`); 0.3.3 was never
+sums below are placeholders on purpose: `0000...`). 0.3.6-probe was Burst-built from commit 784ba28 and installed by main on 15 Nov. 0.3.5-probe was Burst-built from commit bb28fef and installed by main on 15 Nov (dll `3af93435...`, Burst dll `a3949df1...`; the rollback, in `.staged/0.3.5-probe`). 0.3.4-probe was Burst-built from commit 559ae78 and installed by main on 15 Nov (dll `405b5772...`, Burst dll `d3f10173...`; the rollback, in `.staged/0.3.4-probe`); 0.3.3 was never
 Burst-built or installed, 0.3.4 carries it.
 0.3.2-probe was Burst-built from commit 319fac8 and installed by main on 15 Nov (dll `4043fcc9...`, Burst dll `5eb55ab6...`).
 (0.3.0-probe was Burst-built from commit 82ec0ce and installed by main on 15 Nov.)
 
 | File | sha256 |
 |---|---|
-| `JunctionRules.dll` | `0000000000000000000000000000000000000000000000000000000000000000` |
-| `JunctionRules.pdb` | `0000000000000000000000000000000000000000000000000000000000000000` |
-| `JunctionRules_win_x86_64.dll` (Burst code) | `0000000000000000000000000000000000000000000000000000000000000000` |
-| `JunctionRules_win_x86_64.pdb` | `0000000000000000000000000000000000000000000000000000000000000000` |
+| `JunctionRules.dll` | `f4aad4bc74c80bf7cd32dd100e1ee576ea19aa1f63762693fd2822173ddda967` |
+| `JunctionRules.pdb` | `ec98366ae727bcf12cd0c9f09dc97cfdbc30dea5e2f1587828d10d57b34f0a48` |
+| `JunctionRules_win_x86_64.dll` (Burst code) | `ae3b2b06dbb9a9043aa39d6335443cb44166745ee6e2bb8d3560237bebea2a1b` |
+| `JunctionRules_win_x86_64.pdb` | `332454f7a88ac09823c165e5b04cbb859ee6763251a72785d010a862dd105e61` |
 
 Built for game **1.6.4f1 (1097.158a)** only (same version gate as before: on another game version the paint test does not start, and the status says so).
 
@@ -86,10 +86,10 @@ Built for game **1.6.4f1 (1097.158a)** only (same version gate as before: on ano
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
+f4aad4bc74c80bf7cd32dd100e1ee576ea19aa1f63762693fd2822173ddda967  JunctionRules.dll
+ec98366ae727bcf12cd0c9f09dc97cfdbc30dea5e2f1587828d10d57b34f0a48  JunctionRules.pdb
+ae3b2b06dbb9a9043aa39d6335443cb44166745ee6e2bb8d3560237bebea2a1b  JunctionRules_win_x86_64.dll
+332454f7a88ac09823c165e5b04cbb859ee6763251a72785d010a862dd105e61  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }

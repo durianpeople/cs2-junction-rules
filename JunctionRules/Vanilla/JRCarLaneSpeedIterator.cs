@@ -6,7 +6,7 @@
 // tools/vanilla_rules.json (and DEVIATIONS.md) and run `python3 tools/vanilla_copy.py generate`.
 // Changes applied: R-01, R-02, R-03, D-01 (see DEVIATIONS.md). Logic is otherwise the game's, unchanged.
 // Exception: hand-written code only inside '// JR-STAGE2 BEGIN <id>' ... '// JR-STAGE2 END' blocks
-// (S2-01, S2-02, S2-03, S2-04, S2-05, S2-06, S2-07, S2-08, S2-08b, S2-09, S2-10, S2-11, S2-11b, S2-12, S2-13; see DEVIATIONS.md). `check` proves everything outside them is the above.
+// (S2-01, S2-02, S2-03, S2-04, S2-05, S2-06, S2-07, S2-08, S2-08b, S2-09, S2-10, S2-11, S2-11b, S2-12, S2-13, S2-25, S2-27; see DEVIATIONS.md). `check` proves everything outside them is the above.
 // ==== end of header; the code below is the game's, changed only as listed in DEVIATIONS.md ====
 
 using System;
@@ -1222,6 +1222,18 @@ public struct JRCarLaneSpeedIterator
 			m_JR.BeginLane(lane, bufferData, ref m_LaneSignalData, ref m_CarLaneData, ref m_LaneConditionData, curveOffset.x, length, origDistance, num, inverse, m_PrefabCar, m_CurrentSpeed, m_TimeStep, speedLimit);
 		}
 		// JR-STAGE2 END
+		// JR-STAGE2 BEGIN S2-25: 0.4.1 cars never stop on a zebra: the lane's spots become the zebra sections; hold before the next zebra section while there is no room past it
+		if (m_JR.m_ZebraRule)
+		{
+			float jrZebraHold = m_JR.BeginZebras(lane, bufferData, ref m_PedestrianLaneData, ref m_LaneSignalData, ref m_CarLaneData, ref m_LaneConditionData, curveOffset.x, length, origDistance, num, inverse, m_PrefabCar, m_CurrentSpeed, m_TimeStep, speedLimit, m_SafeTimeStep, m_SpeedRange, m_MaxSpeed, m_Entity, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabObjectGeometryData, ref m_PrefabCarData, ref m_LaneOverlapData);
+			if (jrZebraHold < m_MaxSpeed)
+			{
+				m_MaxSpeed = jrZebraHold;
+				m_Blocker = Entity.Null;
+				m_BlockerType = BlockerType.Continuing;
+			}
+		}
+		// JR-STAGE2 END
 		for (int i = 0; i < bufferData.Length; i++)
 		{
 			LaneOverlap laneOverlap = bufferData[i];
@@ -1272,7 +1284,7 @@ public struct JRCarLaneSpeedIterator
 			BlockerType blockerType = (((laneOverlap.m_Flags & overlapFlags2) != 0) ? BlockerType.Continuing : BlockerType.Crossing);
 			// JR-STAGE2 BEGIN S2-05: is this overlap part of the whole-path decision (0.3.3: a crossing the car fits before is judged at the crossing)
 			float jrStart = math.select(@float.x, @float.y, inverse);
-			bool jrInScope = m_JR.m_Mode != 0 && m_JR.InScope(jrStart, (laneOverlap.m_Flags & overlapFlags) == 0, m_PedestrianLaneData.HasComponent(m_Lane));
+			bool jrInScope = (m_JR.m_Mode != 0 || m_JR.m_ZebraActive) && m_JR.InScope(jrStart, (laneOverlap.m_Flags & overlapFlags) == 0, m_PedestrianLaneData.HasComponent(m_Lane));
 			// JR-STAGE2 END
 			if ((laneOverlap.m_Flags & overlapFlags) == 0)
 			{
@@ -1414,6 +1426,9 @@ public struct JRCarLaneSpeedIterator
 					// JR-STAGE2 BEGIN S2-08b: 0.3.2: full stop instead of the game's creep (5 s push timer, standing person); restore the game's distance
 					if (m_JR.m_NoPushPeople) m_JR.NoPushPedestrian(ref m_MaxSpeed, ref m_Blocker, ref m_BlockerType, jrPedMax, jrPedBlocker, jrPedType, laneObject.m_LaneObject, num5, m_PushBlockers, ref m_MovingData, m_PrefabCar, m_SafeTimeStep, m_SpeedRange);
 					num5 = jrPedNum5;
+					// JR-STAGE2 END
+					// JR-STAGE2 BEGIN S2-27: 0.4.1 counters only: a zebra entry held for people
+					if (jrInScope) m_JR.AfterPedestrian(jrPedMax, m_MaxSpeed);
 					// JR-STAGE2 END
 					continue;
 				}

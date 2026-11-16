@@ -74,6 +74,12 @@ namespace JunctionRules.Tests
             ("PaintRepoTests", PaintRepoTests),
             ("PeoplePassTests", PeoplePassTests),
             ("PeoplePassRepoTests", PeoplePassRepoTests),
+            ("ZebraSectionTests", ZebraSectionTests),
+            ("ZebraRoomTests", ZebraRoomTests),
+            ("ZebraEarlyTests", ZebraEarlyTests),
+            ("ZebraFurtherTests", ZebraFurtherTests),
+            ("ZebraSettingTests", ZebraSettingTests),
+            ("ZebraRepoTests", ZebraRepoTests),
         };
 
         private static int Main(string[] args)

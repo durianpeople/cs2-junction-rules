@@ -45,22 +45,46 @@ namespace JunctionRules.Core
         /// the 0.2.x code stays as it was; only the 0.3.2 lines in blocks S2-08 / S2-08b / S2-11 / S2-11b read it.
         /// </summary>
         public const int NoPushPeople = 32;
+        /// <summary>
+        /// 0.4.1 (JR-T-009), independent of the rule: cars never stop on a zebra (Core/ZebraSections.cs). Stripped from the
+        /// job's stage 2 mode like <see cref="NoPushPeople"/>, together with the room margin in <see cref="ZebraMarginMask"/>.
+        /// </summary>
+        public const int ZebraClear = 64;
+        /// <summary>0.4.1: bits 8-15 = the room margin past a zebra in decimetres (0-25.5 m; the setting allows 0-10 m).</summary>
+        public const int ZebraMarginShift = 8;
+        public const int ZebraMarginMask = 0xFF << ZebraMarginShift;
+        /// <summary>Every bit the job side strips from the stage 2 mode (settings that are not part of the 0.2.x rule).</summary>
+        public const int Stripped = NoPushPeople | ZebraClear | ZebraMarginMask;
+
+        /// <summary>0.4.1: the zebra bits for the setting (margin rounded to 0.1 m, clamped to 0-25.5 m).</summary>
+        public static int ZebraBits(bool on, float marginMetres)
+        {
+            if (!on) return 0;
+            int dm = (int)System.Math.Round((marginMetres > 0f ? marginMetres : 0f) * 10f);
+            if (dm > 255) dm = 255;
+            return ZebraClear | (dm << ZebraMarginShift);
+        }
+
+        /// <summary>0.4.1: the room margin (m) carried in a mode.</summary>
+        public static float ZebraMargin(int mode) => ((mode & ZebraMarginMask) >> ZebraMarginShift) * 0.1f;
 
         /// <summary>
         /// The mode bits. The 0.2.4 turn bits are set only with the rule on, so the rule-off mode (and with it every
         /// "m_Mode == 0" early exit of the job) is unchanged. 0.3.2: <see cref="NoPushPeople"/> with either rule.
         /// </summary>
         public static int For(JunctionGapRule rule, bool counting, JunctionWaitingSpot spot = JunctionWaitingSpot.BeforeFirstCrossing,
-            bool turnGivesWay = false, bool leftHandTraffic = false, bool noPushPeople = false) =>
+            bool turnGivesWay = false, bool leftHandTraffic = false, bool noPushPeople = false, bool zebraClear = false,
+            float zebraMargin = RoomScan.DefaultMargin) =>
             (rule == JunctionGapRule.WholeJunction
                 ? Rule | (spot == JunctionWaitingSpot.StopLine ? AtLine : 0) | (turnGivesWay ? TurnGivesWay | (leftHandTraffic ? LeftHandTraffic : 0) : 0)
-                : 0) | (counting ? Count : 0) | (noPushPeople ? NoPushPeople : 0);
+                : 0) | (counting ? Count : 0) | (noPushPeople ? NoPushPeople : 0) | ZebraBits(zebraClear, zebraMargin);
 
         public static string RuleName(int mode) =>
             ((mode & Rule) == 0 ? "stock"
             : ((mode & AtLine) != 0 ? "whole junction (wait at the stop line)" : "whole junction")
               + ((mode & TurnGivesWay) != 0 ? ", turning across oncoming gives way (" + ((mode & LeftHandTraffic) != 0 ? "left" : "right") + "-hand traffic)" : ""))
-            + ((mode & NoPushPeople) != 0 ? "; cars never push through people on crossings" : "");
+            + ((mode & NoPushPeople) != 0 ? "; cars never push through people on crossings" : "")
+            + ((mode & ZebraClear) != 0 ? "; cars never stop on a zebra (room margin " + ZebraMargin(mode).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " m)" : "");
     }
 
     /// <summary>

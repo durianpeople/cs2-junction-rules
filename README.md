@@ -35,6 +35,14 @@ oncoming straight, and the straight car no longer waits for the turner's reserva
 Analysis, per-case behaviour and owner rulings: `docs/STAGE2-ANALYSIS.md`;
 code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 
+0.4.1-probe (JR-T-009; PROBE-STAGE4-BOXTOOL.md section 10): new setting **Cars never stop on a zebra** (default
+on; off = 0.4.0). Zebras split a car's path through a node (junctions and mid-block crossings) into sections; a car
+drives onto a zebra only when the zebra is clear of people, (Whole junction) every crossing point with other lanes
+after it up to the next zebra is clear, and there is room for the whole vehicle past it in the queue ahead (the
+game's own measure: a moving car ahead counts its braking distance; **room margin (m)** setting, default 1 m). Where
+the whole vehicle cannot wait between two zebras (Z C Z), or between Cs and a zebra (a bus), they are one decision
+before the first. Carries 0.4.0 and 0.3.6.
+
 Stage 4 probe (0.4.0-probe, JR-T-007; PROBE-STAGE4-BOXTOOL.md): the **yellow box tool** (toolbar button top left,
 Ctrl+Y, rebindable; Options > Yellow boxes). Click an at-grade road junction (3+ road arms; not highways, bridges,
 tunnels, elevated roads, roundabouts, level crossings, assets' own nodes) or a building's road access to add / remove a
@@ -79,6 +87,10 @@ PROBE-STAGE3-PAINT.md section 10.
 - **Whole junction: waiting spot**: `Before the first crossing` (default, owner ruling) or `At the stop line`.
 - **Whole junction: turning across oncoming traffic gives way** (0.2.4): on (default) or off (= 0.2.3). Acts only
   with the Whole junction rule; applies at the next simulation step; traffic side from the game's own city setting.
+- **Cars never stop on a zebra** (0.4.1): on (default) or off (= 0.4.0); **room margin (m)** 0-10 m, default 1 m
+  (extra free space past a zebra on top of the vehicle's length). Acts while Car driving is the copy, with either gap
+  rule (Stock: zebras and room only); applies at the next simulation step. Timing log: zebra entries held (people,
+  Cs after, no room past) and merged sections.
 - **Yellow box paint test** (stage 3 probe): off (default) or on; **what to draw** (Box / Plain fill / Outline only);
   **paint onto** (Roads (default) / Roads + Other / Everything but vehicles); buttons Refresh test list, Add junction at
   camera centre, Log paint cost now; Paint test status. See PROBE-STAGE3-PAINT.md.

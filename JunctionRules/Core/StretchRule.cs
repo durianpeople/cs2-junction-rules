@@ -165,6 +165,31 @@ namespace JunctionRules.Core
             FindSpots(ref list, ref Spots);
             if (Spots.Count == 0) return false;
             if (atLine) Spots[0] = 0f;
+            Locate(ref list);
+            return true;
+        }
+
+        /// <summary>
+        /// 0.4.1 (JR-T-009): as <see cref="Begin"/> with the spots given (Core/ZebraSections.cs: section starts, zebras
+        /// included, nearest first, the variant already applied). list = the lane's vehicle points (first uncrossed point).
+        /// </summary>
+        public void BeginWithSpots<T>(ref T list, WaitingSpots spots, float origDistance, float length, float curveX, float margin, float braking)
+            where T : struct, IConflictList
+        {
+            Spots = spots;
+            OrigDistance = origDistance;
+            Length = length;
+            CurveX = curveX;
+            Margin = margin;
+            Braking = braking;
+            Next = 0;
+            FirstUncrossed = 2f;
+            Locate(ref list);
+        }
+
+        /// <summary>Where the car is: the next spot ahead and, inside a stretch, its first uncrossed vehicle point.</summary>
+        private void Locate<T>(ref T list) where T : struct, IConflictList
+        {
             while (Next < Spots.Count && FrontPast(Spots[Next])) Next++;
             if (Next > 0)
             {
@@ -176,7 +201,6 @@ namespace JunctionRules.Core
                     if (s >= lo && s < hi && s < FirstUncrossed && !FrontPast(s)) FirstUncrossed = s;
                 }
             }
-            return true;
         }
 
         /// <summary>

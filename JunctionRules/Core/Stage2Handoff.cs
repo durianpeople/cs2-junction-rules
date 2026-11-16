@@ -27,12 +27,13 @@ namespace JunctionRules.Core
 
         /// <summary>Returns a log line when the requested mode changed (or on the first call), else null.</summary>
         public string Step(JunctionGapRule rule, bool counting, out int mode, JunctionWaitingSpot spot = JunctionWaitingSpot.BeforeFirstCrossing,
-            bool turnGivesWay = false, bool leftHandTraffic = false, bool noPushPeople = false)
+            bool turnGivesWay = false, bool leftHandTraffic = false, bool noPushPeople = false, bool zebraClear = false,
+            float zebraMargin = RoomScan.DefaultMargin)
         {
-            mode = Stage2Mode.For(rule, counting, spot, turnGivesWay, leftHandTraffic, noPushPeople);
+            mode = Stage2Mode.For(rule, counting, spot, turnGivesWay, leftHandTraffic, noPushPeople, zebraClear, zebraMargin);
             if (m_Has && mode == m_Mode) return null;
             bool first = !m_Has;
-            bool ruleChanged = !first && ((mode ^ m_Mode) & (Stage2Mode.Rule | Stage2Mode.AtLine | Stage2Mode.TurnGivesWay | Stage2Mode.LeftHandTraffic | Stage2Mode.NoPushPeople)) != 0;
+            bool ruleChanged = !first && ((mode ^ m_Mode) & (Stage2Mode.Rule | Stage2Mode.AtLine | Stage2Mode.TurnGivesWay | Stage2Mode.LeftHandTraffic | Stage2Mode.NoPushPeople | Stage2Mode.ZebraClear | Stage2Mode.ZebraMarginMask)) != 0;
             m_Has = true;
             int old = m_Mode;
             m_Mode = mode;
@@ -97,7 +98,21 @@ namespace JunctionRules.Core
         public const int CrossingsAtCrossing = FeedingScans + 11;
         /// <summary>0.3.3 (JR-T-006): car-steps where a crossing after W stayed in the decision at W (the vehicle does not fit before it).</summary>
         public const int CrossingsNoFit = FeedingScans + 12;
-        public const int Count = FeedingScans + 13;
+        /// <summary>0.4.1 (JR-T-009): car-steps in which a car stood before a zebra held by people on it (setting "Cars never stop on a zebra").</summary>
+        public const int ZebraHeldPeople = FeedingScans + 13;
+        /// <summary>0.4.1: car-steps in which a car stood before a zebra because a vehicle point after it in its section was not clear (Whole junction).</summary>
+        public const int ZebraHeldCs = FeedingScans + 14;
+        /// <summary>0.4.1: car-steps in which a car stood before a zebra because there was no room for it past the section.</summary>
+        public const int ZebraHeldRoom = FeedingScans + 15;
+        /// <summary>0.4.1: car-steps in which a zebra lane had a zebra merged into the section before it (the vehicle does not fit before it).</summary>
+        public const int ZebraMerged = FeedingScans + 16;
+        /// <summary>0.4.1 (JR-T-009-r): car-steps in which a zebra section was checked early at the previous spot (people + room), the car cannot stop before the zebra after that spot.</summary>
+        public const int ZebraEarly = FeedingScans + 17;
+        /// <summary>0.4.1 (JR-T-009-r): car-steps in which the room scan met a further zebra (another node, e.g. mid-block) inside its window: room needed past it too, people on it = no room.</summary>
+        public const int ZebraFurther = FeedingScans + 18;
+        /// <summary>0.4.1 (JR-T-009-r, probe): car-steps in which the room scan read a lane whose LaneObject buffer was not in curve-position order (expected 0).</summary>
+        public const int ZebraScanUnsorted = FeedingScans + 19;
+        public const int Count = FeedingScans + 20;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -155,11 +170,14 @@ namespace JunctionRules.Core
         /// pushMask (0.3.2), same encoding for the setting "Cars never push through people on crossings" (bit 0 = a step ran
         /// with it off, bit 1 = on); 0 = not reported.
         /// </summary>
-        public static string Format(int ruleMask, long[] deltas, int pushMask = 0)
+        public static string Format(int ruleMask, long[] deltas, int pushMask = 0, int zebraMask = 0)
         {
             string rule = ruleMask == 1 ? "stock" : ruleMask == 2 ? "whole junction" : ruleMask == 3 ? "mixed (switched in this window)" : "none";
             string push = pushMask == 1 ? "off" : pushMask == 2 ? "on" : pushMask == 3 ? "switched in this window" : null;
             string pushPart = push == null ? "" : "; never push through people on crossings " + push;
+            // 0.4.1 (JR-T-009): setting "Cars never stop on a zebra", same encoding.
+            string zebra = zebraMask == 1 ? "off" : zebraMask == 2 ? "on" : zebraMask == 3 ? "switched in this window" : null;
+            if (zebra != null) pushPart += "; never stop on a zebra " + zebra;
             if (deltas == null || deltas.Length < Count) return "; junction gap rule " + rule + pushPart;
             var ci = CultureInfo.InvariantCulture;
             long n = deltas[PointSamples];
@@ -190,6 +208,15 @@ namespace JunctionRules.Core
                    ", cyclist " + deltas[CrossingRefusedCyclist].ToString(ci) + ")" +
                    "; crossings after W judged at the crossing " + deltas[CrossingsAtCrossing].ToString(ci) +
                    ", kept at W (vehicle does not fit) " + deltas[CrossingsNoFit].ToString(ci) +
+                   (zebraMask >= 2
+                       ? "; zebra entries held: people " + deltas[ZebraHeldPeople].ToString(ci) +
+                         ", Cs after " + deltas[ZebraHeldCs].ToString(ci) +
+                         ", no room past " + deltas[ZebraHeldRoom].ToString(ci) +
+                         " (zebra sections merged, vehicle does not fit between: " + deltas[ZebraMerged].ToString(ci) +
+                         "; room/people checked early at previous spot (cannot stop before zebra): " + deltas[ZebraEarly].ToString(ci) + ")" +
+                         "; room scan: further zebra in reach " + deltas[ZebraFurther].ToString(ci) +
+                         ", lane objects out of curve order " + deltas[ZebraScanUnsorted].ToString(ci)
+                       : "") +
                    "; " + points;
         }
     }

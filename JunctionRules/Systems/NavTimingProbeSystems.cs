@@ -215,6 +215,7 @@ namespace JunctionRules.Systems
         // Stage 2: which rule the copy's steps in this window ran with, and the counter deltas over the window.
         private int m_RuleMask;
         private int m_PushMask;
+        private int m_ZebraMask;
         private bool m_CountedWhole;
         private readonly long[] m_Totals = new long[Stage2Counters.Count];
         private readonly long[] m_Start = new long[Stage2Counters.Count];
@@ -224,6 +225,7 @@ namespace JunctionRules.Systems
         {
             m_RuleMask = 0;
             m_PushMask = 0;
+            m_ZebraMask = 0;
             m_CountedWhole = true;
             m_HasStart = JRStage2Bridge.Read(m_Start);
         }
@@ -233,6 +235,7 @@ namespace JunctionRules.Systems
             int mode = JRStage2Bridge.AppliedMode;
             m_RuleMask |= (mode & Stage2Mode.Rule) != 0 ? 2 : 1;
             m_PushMask |= (mode & Stage2Mode.NoPushPeople) != 0 ? 2 : 1;
+            m_ZebraMask |= (mode & Stage2Mode.ZebraClear) != 0 ? 2 : 1;
             if ((mode & Stage2Mode.Count) == 0) m_CountedWhole = false;
         }
 
@@ -244,7 +247,7 @@ namespace JunctionRules.Systems
                 deltas = new long[Stage2Counters.Count];
                 for (int i = 0; i < deltas.Length; i++) deltas[i] = m_Totals[i] - m_Start[i];
             }
-            string suffix = Stage2Counters.Format(m_RuleMask, deltas, m_PushMask);
+            string suffix = Stage2Counters.Format(m_RuleMask, deltas, m_PushMask, m_ZebraMask);
             OpenWindow();
             return suffix;
         }

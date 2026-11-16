@@ -94,6 +94,28 @@ namespace JunctionRules.Settings
         [SettingsUISection(kSection, kDrivingGroup)]
         public float PeoplePassSeconds { get; set; }
 
+        /// <summary>
+        /// 0.4.1 (JR-T-009, owner rule 16 Nov 2026): a car never stops on a zebra. It enters a zebra only when the zebra is
+        /// clear of people, (Whole junction) every vehicle conflict point after it up to the next zebra or the end of the
+        /// junction is clear, and there is room for the whole vehicle past it. Every zebra, also mid-block ones; with
+        /// either gap rule (the stock rule gets the room check only). Default on; off = 0.4.0 behaviour
+        /// (Core/ZebraSections.cs). Acts while the copy drives; next simulation step.
+        /// </summary>
+        [SettingsUISection(kSection, kDrivingGroup)]
+        public bool ZebraNonBlocking { get; set; }
+
+        /// <summary>The margin slider is greyed out while the switch is off.</summary>
+        public bool ZebraMarginDisabled() => !ZebraNonBlocking;
+
+        /// <summary>
+        /// 0.4.1: extra room (m) past a zebra on top of the car's whole length before it may enter (RoomScan; default 1 m,
+        /// the game's own spacing per queued car).
+        /// </summary>
+        [SettingsUIDisableByCondition(typeof(JunctionRulesSettings), nameof(ZebraMarginDisabled))]
+        [SettingsUISlider(min = RoomScan.MinMargin, max = RoomScan.MaxMargin, step = RoomScan.StepMargin, unit = "floatSingleFraction")]
+        [SettingsUISection(kSection, kDrivingGroup)]
+        public float ZebraRoomMargin { get; set; }
+
         /// <summary>Read-only: what runs now and the version gate result.</summary>
         [SettingsUISection(kSection, kDrivingGroup)]
         public string Status => StatusText();
@@ -213,6 +235,8 @@ namespace JunctionRules.Settings
             PeoplePassOn = true;
             PeoplePassSeconds = PeoplePass.DefaultSeconds;
             YellowBoxMarkingMargin = MarkingMargin.Default;
+            ZebraNonBlocking = true;
+            ZebraRoomMargin = RoomScan.DefaultMargin;
             YellowBoxPaintTest = false;
             PaintMode = BoxPaintMode.Hatch;
             PaintLayers = PaintSettingsMigration.Default;
@@ -292,6 +316,13 @@ namespace JunctionRules.Settings
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.PeoplePassSeconds)), "People pass a car that blocks a crossing after (s)" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.PeoplePassSeconds)),
                     "A person walking a crossing (a zebra, a crossing at a junction, a footway across a driveway) who is held by a car or other vehicle standing on it walks on through the vehicle after this many seconds; a cyclist riding the crossing likewise rides on through it at walking pace. Default 2 seconds. Used only while People pass a car that blocks them is on; 0 also switches the pass off. Cars still never push through people (setting above). Works with either Car driving setting. Changes take effect at the next simulation step." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.ZebraNonBlocking)), "Cars never stop on a zebra" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.ZebraNonBlocking)),
+                    "On (default): a car drives onto a zebra only when it can also leave it. The zebra must be clear of people, there must be room for the whole vehicle (trailers included) past it in the queue ahead, and with the Whole junction rule every crossing point with other lanes after the zebra up to the next zebra (or the end of the junction) must be clear too; it waits before the zebra until then. Where the whole vehicle cannot wait between two zebras (or between a zebra and the crossing points before it), it waits before the earlier one until everything up to the later one is clear. Applies to every zebra, also mid-block ones, with either junction gap rule (the Stock rule gets the room check only). Off: the 0.4.0 behaviour. Only while Car driving is the Junction Rules copy. Changes take effect at the next simulation step." },
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.ZebraRoomMargin)), "Cars never stop on a zebra: room margin (m)" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.ZebraRoomMargin)),
+                    "Extra space, on top of the vehicle's own length, that must be free past a zebra before a car drives onto it. A moving queue counts the distance the car ahead needs to stop (the game's own measure), so a queue that keeps moving lets cars in. Default 1 m. Larger: fewer tails left on a zebra, more waiting. Changes take effect at the next simulation step." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.Status)), "Status" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.Status)), "What runs now, the result of the version check made at game start, and whether the copy can run (set up at the first simulation step). Reopen the options page to refresh." },
