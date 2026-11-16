@@ -52,6 +52,23 @@ game's own measure: a moving car ahead counts its braking distance; **room margi
 the whole vehicle cannot wait between two zebras (Z C Z), or between Cs and a zebra (a bus), they are one decision
 before the first. Carries 0.4.0 and 0.3.6.
 
+0.4.7-probe (JR-T-011 #17 + JR-T-013 gaps G1-G6; PROBE-STAGE4-BOXTOOL.md sections 16 and 17): yellow boxes that
+**overlap or touch are drawn as one box** (one border, one hatch; each box still saved on its own) and the hover shows
+the merged outline; an exit box on a **divided road** covers only the building's side, kerb to median; driving follows
+the merged paint (section 16.1). New setting **Hide road markings under yellow boxes** (default **off** until the
+owner's save gate K1 passes; section 16.2). Gaps (section 17): G1 vehicles leaving by a spawn point, building or
+kerbside parking, or a building's own road now give way (and obey exit boxes), new debug setting "Exit trace (log)";
+G2 the marking hide re-renders at once, save strip retried / emptied / logged, cleared on unload; G3 a right-turner
+waiting in a box crosses only when its exit has room (timing line "right-turn waits for exit room"); G4 Debug "Watch
+the junction at camera centre (log)" logs every standing car at one junction (who, waits for whom, which rule); G5 a
+box corner that cannot close by sliding is cut by one straight chamfer (on the carriageway, conflict points inside),
+refusal log lines give position, arm names and widths; G6 **No parking in yellow boxes** (default on): kerbside
+slots under junction and exit boxes are closed at runtime, parked cars leave normally, nothing extra is saved.
+Carries 0.4.6.
+
+0.4.5-probe / 0.4.6-probe (JR-T-012 fixes; PROBE-STAGE4-BOXTOOL.md section 15): building lot exits are gated (0.4.5)
+and judged before the game hands the vehicle to the road (0.4.6); exit counters per vehicle.
+
 0.4.4-probe (JR-T-012; PROBE-STAGE4-BOXTOOL.md section 15): **vehicles leaving buildings give way** (setting, default
 on): every vehicle leaving any building (drive, car park or depot gate) waits until the lanes it crosses or merges into
 are clear (Whole junction gap judgement); at a boxed exit it must also have room past the box. On-duty emergency
@@ -117,6 +134,16 @@ PROBE-STAGE3-PAINT.md section 10.
 - **Vehicles leaving buildings give way** (0.4.4, lot exits 0.4.5, judged earlier 0.4.6): on (default) or off (= 0.4.3). "Cars coming out of ANY building
   must give way, and when that building exit is a yellow box, must ALSO obey the yellow box rules." Timing log:
   building exits: waits (turning across, spawn/gate), go decisions, emergency passthroughs, cap hits, hand-overs to the road (lot, gate, other); since 0.4.6 counted per vehicle, not per car-step.
+- **Exit trace (log)** (0.4.7, debug, default off): one line when a vehicle starts waiting at a building / parking
+  exit and one when it joins the road (decision, path kind, boxed), at most 20 lines a second. Needs Vehicles leaving
+  buildings give way. 0.4.7 timing log adds hand-overs by path (spawn point, building parking, kerbside parking,
+  building road, drive), hand-overs not judged, cap hits by kind, and "right-turn waits for exit room" (G3).
+- **Watch the junction at camera centre (log)** / **Stop watching the junction** (0.4.7, debug buttons): logs every
+  standing car at one junction (blocker, rule), rate-limited; no driving effect; nothing saved.
+- **Hide road markings under yellow boxes** (0.4.7, Yellow boxes, default off): render-only cut of the road's own
+  markings inside every painted box; taken off before every save.
+- **No parking in yellow boxes** (0.4.7, Yellow boxes, default on): kerbside parking slots under boxes closed at
+  runtime; the game's own free space is put back before every save.
 - **Cars never stop on a zebra** (0.4.1): on (default) or off (= 0.4.0); **room margin (m)** 0-10 m, default 1 m
   (extra free space past a zebra on top of the vehicle's length). Acts while Car driving is the copy, with either gap
   rule (Stock: zebras and room only); applies at the next simulation step. Timing log: zebra entries held (people,

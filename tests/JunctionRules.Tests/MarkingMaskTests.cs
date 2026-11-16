@@ -186,7 +186,7 @@ namespace JunctionRules.Tests
             Check(sys.Contains("m_Hider.Forget();"), "a new city forgets the old entities");
 
             string set = StripComments(File.ReadAllText(Path.Combine(root, "JunctionRules", "Settings", "JunctionRulesSettings.cs")));
-            // JR-T-013e (G2): default OFF until the owner's live gates K1 / K2 pass (probe/G2.md)
+            // JR-T-013e (G2): default OFF until the owner's live gates K1 / K2 pass (PROBE-STAGE4-BOXTOOL.md sections 16.2 and 17 G2)
             Check(set.Contains("private bool m_HideMarkingsUnderBoxes = false;") && set.Contains("HideMarkingsUnderBoxes = false;") && set.Contains("\"Hide road markings under yellow boxes\""), "setting 'Hide road markings under yellow boxes' exists, default OFF (G2), labelled");
         }
     }
