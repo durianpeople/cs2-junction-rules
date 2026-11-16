@@ -62,11 +62,11 @@ copy does not run; the boxes stay in the save).
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.mjs
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
+f13e036d555b6236b4e8113f82061a2616a470f9095e90ed9620e4534151960c  JunctionRules.dll
+30f37117390b1a1bc4623ae7b9b7ae7ad4cfee5e0bc4939b45c1e9109af79e7a  JunctionRules.pdb
+9e8f8a397f70bbeb121ef7224981278773595c1fe2ce7e31de01d4c4df2b65bf  JunctionRules.mjs
+aff4ffbd6b9c7bdb9f090633fa8b969a82e0e4596a1d4ac331f0a385bc515e7d  JunctionRules_win_x86_64.dll
+2c02ae3ffcad4ba0cc925ad9abc0e9dd7ae91d37d72e0bfad513e665fe40ab20  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
