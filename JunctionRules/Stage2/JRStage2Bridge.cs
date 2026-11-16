@@ -212,7 +212,7 @@ namespace JunctionRules.Stage2
             s_EntranceNow = System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
             if (fresh) s_EntranceReader.Drain(head, s_ReadEntrance, s_EmitEntrance);
             s_EntranceBook.AddLost(s_EntranceReader.TakeLost());
-            s_EntranceBook.Tick(s_EntranceNow, s_EntranceFrame);
+            s_EntranceBook.Tick(s_EntranceNow, SimulationFrame());   // final review F4: the current frame (stale episodes age out)
         }
 
         private static JRBoxEdges s_BoxEdges;

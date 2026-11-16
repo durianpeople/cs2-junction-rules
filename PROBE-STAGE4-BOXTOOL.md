@@ -930,8 +930,8 @@ again`: send that log.
 
 Driving changes act only while Car driving is the Junction Rules copy. **Diagnostics are on by default**: the first
 load of 0.4.8 switches **Log navigation timing** and **Exit trace (log)** on once (log line `settings: 0.4.8 probe
-diagnostics switched on once ...`); you may switch them off again. The exit trace is now **compact**: every NOTABLE
-event, 6 sampled normal events and one summary line a minute. Expected log size: ~100-140 KB per 10 minutes of play
+diagnostics switched on once ...`); you may switch them off again. The exit trace is now **compact**: up to 20 NOTABLE
+events, 6 sampled normal events and one summary line a minute (log sizes below are for 1x speed). Expected log size: ~100-140 KB per 10 minutes of play
 (timing lines ~2 KB each every 1024 frames ≈ 90 KB, compact exit trace ≤ ~25 KB, entrance box log ≤ 35 KB cap,
 unmarked-crossing log ~15 KB typical, see 18.5), more while you use the box tool (hover / refusal lines as before).
 
@@ -982,7 +982,7 @@ it) L` (expected small); `hand-overs not judged` should now be 0 or close.
 `exit trace: NOTABLE held 25 s+ at the exit ... decision wait (no room on the lane it joins)` (or `wait (gap)`,
 `wait (box: no room past)`), `exit trace: NOTABLE joins road ...` (a hand-over with no judgement), a few sampled
 `waits` / `crosses the sidewalk ... go (full judgement before the sidewalk)` lines, and once a minute
-`exit trace (compact) last 60 s: N exit events, notable K (all logged), normal sample 6 of M`.
+`exit trace (compact) last 60 s: N exit events, notable K (L logged, cap 20 a minute), normal sample 6 of M`.
 
 | # | Do | Expect |
 |---|---|---|
@@ -1042,7 +1042,7 @@ session (`its saved lot-front box is no longer drawn ...`).
 
 ### 18.5 G11: people give way at unmarked crossings
 
-New setting **People give way at unmarked crossings** (default on; off = 0.4.7). Where a crossing has no zebra and no
+New setting **People give way at unmarked crossings** (default on; off = 0.4.7; acts only while Car driving is the Junction Rules copy, both sides). Where a crossing has no zebra and no
 signal (the game's crosswalk lane with `Unsafe`: no right of way for people), a person waits at the kerb until the
 approaching cars leave a safe gap (braking distance + speed x the person's crossing time + 1 s; standing cars never
 block; cars that will stop at a red light do not count), and cars no longer stop for people waiting at or walking up

@@ -81,7 +81,8 @@ namespace JunctionRules.Systems
         [Preserve]
         protected override void OnUpdate()
         {
-            bool on = Mod.Settings == null || Mod.Settings.PeopleGiveWayUnmarked;
+            // Final review F2: only while the Junction Rules copy drives the cars (the car side lives in the copy): never half the rule.
+            bool on = (Mod.Settings == null || Mod.Settings.PeopleGiveWayUnmarked) && CarDrivingSwitchSystem.Running == CarDrivingMode.JunctionRulesCopy;
             uint frame = m_SimulationSystem.frameIndex;
             UnmarkedTrace.SetFrame(frame);
             DrainLog(frame, on);
@@ -450,7 +451,7 @@ namespace JunctionRules.Systems
 
             private void EndWait(Entity person)
             {
-                if (!m_Waits.IsEmpty) m_Waits.Remove(person);
+                m_Waits.Remove(person);   // final review F6: Remove alone (IsEmpty may walk the free lists)
             }
         }
 

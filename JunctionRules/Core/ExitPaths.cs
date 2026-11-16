@@ -297,6 +297,9 @@ namespace JunctionRules.Core
     public sealed class TraceSampler
     {
         public const int SampleMax = 6;
+        /// <summary>Final review F3: notable lines per window (the rest are counted in the summary).</summary>
+        public const int NotableMax = 20;
+        public long NotableSuppressed { get; private set; }
         public const double WindowSeconds = 60.0;
         private double m_WindowStart = double.NegativeInfinity;
         public long Records { get; private set; }
@@ -308,7 +311,12 @@ namespace JunctionRules.Core
         {
             if (seconds - m_WindowStart >= WindowSeconds && Records == 0) m_WindowStart = seconds;
             Records++;
-            if (notable) { Notable++; return true; }
+            if (notable)
+            {
+                Notable++;
+                if (Notable > NotableMax) { NotableSuppressed++; return false; }
+                return true;
+            }
             if (Sampled >= SampleMax) return false;
             Sampled++;
             return true;
@@ -319,9 +327,9 @@ namespace JunctionRules.Core
         {
             if (Records == 0 || seconds - m_WindowStart < WindowSeconds) return null;
             string line = "exit trace (compact) last " + ((int)(seconds - m_WindowStart)).ToString(CultureInfo.InvariantCulture) + " s: " + Records.ToString(CultureInfo.InvariantCulture)
-                + " exit events, notable " + Notable.ToString(CultureInfo.InvariantCulture) + " (all logged), normal sample " + Sampled.ToString(CultureInfo.InvariantCulture)
+                + " exit events, notable " + Notable.ToString(CultureInfo.InvariantCulture) + " (" + (Notable - NotableSuppressed).ToString(CultureInfo.InvariantCulture) + " logged, cap " + NotableMax.ToString(CultureInfo.InvariantCulture) + " a minute), normal sample " + Sampled.ToString(CultureInfo.InvariantCulture)
                 + " of " + (Records - Notable).ToString(CultureInfo.InvariantCulture);
-            Records = Notable = Sampled = 0;
+            Records = Notable = Sampled = NotableSuppressed = 0;
             m_WindowStart = seconds;
             return line;
         }

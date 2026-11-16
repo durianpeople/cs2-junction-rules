@@ -620,7 +620,10 @@ namespace JunctionRules.Stage2
             // 0.4.8 diagnostics (on by default): a vehicle standing on a driveway's leaving lane = past the sidewalk, on / across
             // the road (the G7 failure itself); and a long wait at an exit spot. Both once per episode (event table).
             bool standing = speed < Stage2Counters.StandingSpeed;
-            if (standing && laneSeconds >= ExitTrace.StuckSeconds && !m_ExitEmergency && carLanes.TryGetComponent(currentLane, out Game.Net.CarLane onLane)
+            // Final review F1: not a vehicle the exit rule is holding on purpose (it stands before the sidewalk), nor one S2-29
+            // could still stop before its spot this update (m_DriveJudged): only a vehicle already committed past the pavement.
+            if (standing && laneSeconds >= ExitTrace.StuckSeconds && !m_ExitEmergency && !m_HasDriveHold && !m_ExitWaiting && !m_DriveJudged
+                && carLanes.TryGetComponent(currentLane, out Game.Net.CarLane onLane)
                 && ExitGiveWay.IsDrivewayExitLane((uint)onLane.m_Flags) && ExitEvent(eventTable, self, frame, ExitGiveWay.StuckKind))
             {
                 if (Counting && counters.IsCreated) Add(counters, Stage2Counters.ExitStuckOnRoad, 1);

@@ -183,7 +183,12 @@ namespace JunctionRules.Tests
             Check(logged == TraceSampler.SampleMax + 4, "200 events in 20 s: the 4 notable ones and 6 normal samples logged");
             Check(sampler.TakeSummary(40.0) == null, "no summary before the minute is over");
             string sum = sampler.TakeSummary(70.5);
-            Check(sum != null && sum.Contains("200 exit events, notable 4 (all logged), normal sample 6 of 196"), "one summary line a minute");
+            Check(sum != null && sum.Contains("200 exit events, notable 4 (4 logged, cap 20 a minute), normal sample 6 of 196"), "one summary line a minute");
+            var flood = new TraceSampler();
+            int floodLogged = 0;
+            for (int i = 0; i < 100; i++) if (flood.Allow(true, 5.0 + i * 0.1)) floodLogged++;
+            string floodSum = flood.TakeSummary(70.0);
+            Check(floodLogged == TraceSampler.NotableMax && floodSum.Contains("notable 100 (20 logged, cap 20 a minute)"), "final review F3: notable lines capped at 20 a minute, the rest counted");
             Check(sampler.TakeSummary(200.0) == null, "no summary for an empty minute");
             Check(sampler.Allow(false, 300.0), "a new window samples again");
 

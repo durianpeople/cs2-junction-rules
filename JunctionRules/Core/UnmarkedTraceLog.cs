@@ -87,6 +87,7 @@ namespace JunctionRules.Core
         private uint m_IntervalStart;
         private readonly long[] m_CountersAtStart = new long[UnmarkedTraceLayout.CounterCount];
         private int m_Notable, m_NotableSuppressed, m_Samples, m_SamplesSuppressed;
+        private readonly long[] m_Words = new long[6];   // final review F5: no allocation per drain
         private long m_Overruns;
 
         /// <summary>Lines produced by the last call (reused list).</summary>
@@ -113,11 +114,13 @@ namespace JunctionRules.Core
                 m_Overruns += cursor - m_Read - UnmarkedTraceLayout.RingSlots;
                 m_Read = cursor - UnmarkedTraceLayout.RingSlots;
             }
-            var p = new long[6];
+            long[] p = m_Words;
             for (; m_Read < cursor; m_Read++)
             {
                 int b = UnmarkedTraceLayout.SlotBase(m_Read);
-                if (buffer.Read(b) != m_Read + 1) { m_Overruns++; continue; }
+                long stamp = buffer.Read(b);
+                if (stamp < m_Read + 1) break;                          // final review F5: still being written: next drain
+                if (stamp != m_Read + 1) { m_Overruns++; continue; }   // overwritten by a newer record
                 int kind = (int)buffer.Read(b + 1);
                 for (int k = 0; k < 6; k++) p[k] = buffer.Read(b + 2 + k);
                 if (buffer.Read(b) != m_Read + 1) { m_Overruns++; continue; }

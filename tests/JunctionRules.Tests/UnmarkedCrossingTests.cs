@@ -126,10 +126,14 @@ namespace JunctionRules.Tests
             Put(buf.A, UnmarkedTraceLayout.KindLongWait, 400, 9, 10, 3700, 42, UnmarkedTraceLayout.PackXZ(-5f, 7f));
             Check(d.Drain(ref buf, 400, true).Count == 0, "notable over the cap: suppressed");
 
-            // Torn record (stamp not matching) is skipped as an overrun.
+            // Final review F5: a record still being written (stamp 0) is left for the next drain, then read (never lost).
             Put(buf.A, UnmarkedTraceLayout.KindHoldStart, 500);
-            buf.A[UnmarkedTraceLayout.SlotBase(buf.A[UnmarkedTraceLayout.Cursor] - 1)] = 0;
-            Check(d.Drain(ref buf, 500, true).Count == 0, "torn record skipped");
+            int tornSlot = UnmarkedTraceLayout.SlotBase(buf.A[UnmarkedTraceLayout.Cursor] - 1);
+            long tornStamp = buf.A[tornSlot];
+            buf.A[tornSlot] = 0;
+            Check(d.Drain(ref buf, 500, true).Count == 0, "record being written: left for the next drain");
+            buf.A[tornSlot] = tornStamp;
+            Check(d.Drain(ref buf, 501, true).Count == 0, "then read (a sample over the cap: suppressed, not lost)");
 
             // Summary at the interval with counter deltas.
             buf.A[UnmarkedTraceLayout.PeopleHeld] = 4;
@@ -140,7 +144,7 @@ namespace JunctionRules.Tests
             string sum = lines[0];
             Check(sum.Contains("last 60 s") && sum.Contains("people held at the kerb 4") && sum.Contains("car-steps not held for people 12")
                 && sum.Contains("stopped for a person already crossing unmarked 25") && sum.Contains("notable 20 (suppressed 6)")
-                && sum.Contains("samples 5 (suppressed 4)") && sum.Contains("ring overruns 1") && sum.Contains("crossings on"), "summary text: " + sum);
+                && sum.Contains("samples 5 (suppressed 5)") && sum.Contains("ring overruns 0") && sum.Contains("crossings on"), "summary text: " + sum);
             buf.A[UnmarkedTraceLayout.PeopleHeld] = 5;
             lines = d.Drain(ref buf, 100 + 2 * UnmarkedTraceLayout.IntervalFrames, false);
             Check(lines.Count == 1 && lines[0].Contains("people held at the kerb 1") && lines[0].Contains("notable 0 (suppressed 0)") && lines[0].Contains("crossings off"),
