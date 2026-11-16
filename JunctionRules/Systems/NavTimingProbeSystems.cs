@@ -217,6 +217,7 @@ namespace JunctionRules.Systems
         private int m_PushMask;
         private int m_ZebraMask;
         private int m_BoxMask;
+        private int m_ExitMask;
         private bool m_CountedWhole;
         private readonly long[] m_Totals = new long[Stage2Counters.Count];
         private readonly long[] m_Start = new long[Stage2Counters.Count];
@@ -228,6 +229,7 @@ namespace JunctionRules.Systems
             m_PushMask = 0;
             m_ZebraMask = 0;
             m_BoxMask = 0;
+            m_ExitMask = 0;
             m_CountedWhole = true;
             m_HasStart = JRStage2Bridge.Read(m_Start);
         }
@@ -239,6 +241,7 @@ namespace JunctionRules.Systems
             m_PushMask |= (mode & Stage2Mode.NoPushPeople) != 0 ? 2 : 1;
             m_ZebraMask |= (mode & Stage2Mode.ZebraClear) != 0 ? 2 : 1;
             m_BoxMask |= (mode & Stage2Mode.BoxObey) != 0 ? 2 : 1;
+            m_ExitMask |= (mode & Stage2Mode.ExitGiveWay) != 0 ? 2 : 1;
             if ((mode & Stage2Mode.Count) == 0) m_CountedWhole = false;
         }
 
@@ -250,7 +253,7 @@ namespace JunctionRules.Systems
                 deltas = new long[Stage2Counters.Count];
                 for (int i = 0; i < deltas.Length; i++) deltas[i] = m_Totals[i] - m_Start[i];
             }
-            string suffix = Stage2Counters.Format(m_RuleMask, deltas, m_PushMask, m_ZebraMask, m_BoxMask);
+            string suffix = Stage2Counters.Format(m_RuleMask, deltas, m_PushMask, m_ZebraMask, m_BoxMask, m_ExitMask);
             OpenWindow();
             return suffix;
         }

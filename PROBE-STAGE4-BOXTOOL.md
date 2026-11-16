@@ -1,4 +1,12 @@
-# Probe kit: Junction Rules 0.4.3-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits)
+# Probe kit: Junction Rules 0.4.4-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits; vehicles leaving buildings give way)
+
+**0.4.4-probe (JR-T-012), what changed since 0.4.3:** new driving rule **Vehicles leaving buildings give way**
+(default on; section 15). Owner rule: "Cars coming out of ANY building must give way, and when that building exit is a
+yellow box, must ALSO obey the yellow box rules." Driving changes only while Car driving is the Junction Rules copy;
+with the setting off cars drive exactly as in 0.4.3. `docs/vanilla_copy_check_0.4.4.txt`: 0 unexplained differences,
+three new marked blocks (S2-29, S2-30, S2-31) and extended S2-20 / S2-23 / S2-26 (DEVIATIONS.md). Carries 0.4.3 and
+everything before.
+
 
 **0.4.3-probe (JR-T-007c), what changed since 0.4.2:** building boxes sit at each building's **car exit** (the drawn
 driveway, car park / depot gate), not the lot-front middle; a building with several exits gets **one box per exit**;
@@ -36,7 +44,7 @@ differences). Also: the T-junction through-side kerb fix (section 6) and the ent
 0.3.6 (JR-T-008, people pass a car blocking their crossing; merged from 784ba28) and everything before it
 (PROBE-STAGE3-PAINT.md).
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.4.3-probe/`. 0.4.2-probe (jr-t-010 line) is installed live by main (code 59e731f, sums c781df0); never write into `.staged/0.4.2-probe`. While `.staged/0.4.3-probe` holds a `STALE.md` it is a managed
+Build to install: `~/Code/cs2-junction-rules/.staged/0.4.4-probe/` (JR-T-012 managed build NOT staged there yet: on 16 Nov that folder held the JR-T-011 0.4.4 managed build; main decides the merge and stages). 0.4.3-probe (installed) is the rollback. Earlier: 0.4.2-probe (jr-t-010 line) is installed live by main (code 59e731f, sums c781df0); never write into `.staged/0.4.2-probe`. While `.staged/0.4.3-probe` holds a `STALE.md` it is a managed
 build only: main does the Burst build in `STALE.md` (game closed, at the owner's quit), then puts the five sums into the
 install block below. 0.4.3-probe was Burst-built from a14445d and installed by main on 16 Nov. (0.4.2-probe stays in `.staged/0.4.2-probe` as the rollback.) Until then the block refuses (placeholder sums `0000...`).
 
@@ -49,27 +57,27 @@ copy does not run; the boxes stay in the save).
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.4.3-probe || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.4.4-probe || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-70b4cda8e7a58af89bf0d8e55d5e2ec7adaf4b2697c5ed7855789f6804e52b87  JunctionRules.dll
-ec29605c754404c5a3b978bbe439050a1ab9df9cf4df4522c50c52f63fcf1fd3  JunctionRules.pdb
-9e8f8a397f70bbeb121ef7224981278773595c1fe2ce7e31de01d4c4df2b65bf  JunctionRules.mjs
-be05596420a19970bc1029689d612feccd9d47d543d65876a44fb5930740cbd0  JunctionRules_win_x86_64.dll
-cffee44b48676b58eb837872dbac177bfeeabb632b43236a66c2e97685961511  JunctionRules_win_x86_64.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.mjs
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
   fi
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules.mjs JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
-  echo "installed 0.4.3-probe"
+  echo "installed 0.4.4-probe"
 )
 ```
 
-Rollback: to 0.4.2 (the installed JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
+Rollback: to 0.4.3 (installed 16 Nov, Burst from a14445d): the same block with `.staged/0.4.3-probe` and its sums (commit 1441805). To 0.4.2 (the JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
 its loader, so exit boxes fall back to one entrance box per building): the same block with `.staged/0.4.2-probe` and
 its sums (full sums in commit c781df0). To 0.4.1 (boxes kept, box driving rule gone): the same block with `.staged/0.4.1-probe` and its sums
 (dll af5b1322..., pdb db04729f..., mjs 9e8f8a39..., win dll 5acf0104..., win pdb d5762071...; full sums in the 0.4.1 commit 07cc519)
@@ -505,3 +513,47 @@ through a pointer (no per-car copy): still compare the navigation timing with 0.
 slowdown; the 64-step refresh rebuilds every boxed building's exits on the main thread (BoxFacts.Exits, allocating):
 cheap for a few boxed buildings, but watch for a periodic hitch (every 64 steps) with many; a building whose drive moved more than 2 m
 since the box was placed has no band until the paint re-keys or drops it (log `without an exit now`).
+
+## 15. 0.4.4: vehicles leaving buildings give way (JR-T-012)
+
+Owner rule (binding wording, 16 Nov 2026): **"Cars coming out of ANY building must give way, and when that building
+exit is a yellow box, must ALSO obey the yellow box rules."** Setting **Vehicles leaving buildings give way** (Car
+driving group, default ON; OFF = exactly 0.4.3).
+
+**Why vehicles pulled out (owner screenshot, truck out of a boxed exit across Alderwood).** Decompile 2026-11-13:
+a drive's leaving lanes are node lanes owned by the road with `Unsafe | SideConnection | Yield`
+(`Game.Net/LaneSystem.cs` 3646+, flags 3864-3876). Stock `CheckOverlappingLanes` gives way there only to reservations
+(road vehicles never reserve the lane they are on) and to vehicles already on the crossed lane whose 2 s look-ahead
+reaches the drive; a vehicle in the junction or on the road before it is not seen, and a slow truck needs much more
+than 2 s. At a spawn / car park gate (`Connection` lane) the game never looks at the road at all
+(`CarNavigationSystem` 2022-2024) and drops the vehicle onto the road lane at <= 3 m/s (1873-1886). JR 0.4.3 did not
+change either (its band rule only asks for room past the box).
+
+**What changes.** Every vehicle leaving any building waits at the exit until every road lane it crosses or merges into
+is clear, judged as the Whole junction rule judges: an approaching vehicle on that lane, in the junction before it or
+on the road before that junction counts when its braking distance + speed x (2 s + the leaving vehicle's own arrival
+time) reaches the exit; a vehicle stopped before the exit does not; red skips it, amber skips it when it can stop. At
+every exit, boxed or not. At a boxed exit the 0.4.3 room-past-the-band rule applies too: both must hold. Road vehicles
+are never held for a leaving one (apart from the box bands). On-duty emergency vehicles (lights on) leave as in the
+game. Works for left- and right-hand traffic (the crossed lanes come from the game's lane overlaps / road geometry;
+the "turning across" counter label uses the city's own traffic-side flag).
+
+| # | Do | Expect |
+|---|---|---|
+| E1 | Alderwood busy exit (the screenshot's), timing log on | trucks / cars wait at the drive while a vehicle comes from either side; go in a real gap; timing log `building exits: waits N (turning across N, spawn/gate N), go decisions N` |
+| E2 | Same exit, a queue standing across it (unboxed) | the leaving vehicle waits (it cannot cross a standing vehicle); when the queue stopped short of the drive it may cross the near lane |
+| E3 | A boxed exit with a full road | as 0.4.3: road queue stops short of the band; the leaving vehicle needs BOTH a gap and room past the band |
+| E4 | A car park / depot gate on a busy road | vehicles appear on the road only in gaps (they wait unseen inside the building: `spawn/gate` count rises) |
+| E5 | Ambulance / fire engine on a call leaving its station | leaves at once (`emergency passthroughs` > 0) |
+| E6 | Setting OFF | driving as 0.4.3; the log line says `vehicles leaving buildings give way off` |
+| E7 | Navigation timing (timing log) | compare with 0.4.3; only the vehicle at its exit scans (a few lanes, at most 24 lanes / 96 vehicles); `cap hits` should stay near 0 |
+
+**Deadlock notes (no starvation safeguard, owner).** An exit onto a road that never clears waits for ever: a drive
+onto a permanently queued road where the queue stands ON the drive, or onto a road with a steady stream at speed.
+Signs: `waits` keeps rising at one place while `go decisions` stays flat; a building whose deliveries / commuters never
+leave; behind a held driveway vehicle the building's internal queue grows (only the front vehicle scans). A vehicle
+held at a spawn gate is invisible (unspawned inside the building); the game's "stuck" handling may still despawn it
+after a long wait (not checked). Known limits: exits through an area (car park surface lot onto the road) are not
+gated; trams are not counted as approaching traffic; on a two-way lane only vehicles driving with its curve count;
+road vehicles about to turn INTO the building still count as approaching (cautious); when the work cap is hit the
+vehicles not read do not count (errs to go). Report any exit that stays blocked with the timing line and a screenshot.

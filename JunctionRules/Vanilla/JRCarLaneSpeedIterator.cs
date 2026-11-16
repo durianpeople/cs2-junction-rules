@@ -6,7 +6,7 @@
 // tools/vanilla_rules.json (and DEVIATIONS.md) and run `python3 tools/vanilla_copy.py generate`.
 // Changes applied: R-01, R-02, R-03, D-01 (see DEVIATIONS.md). Logic is otherwise the game's, unchanged.
 // Exception: hand-written code only inside '// JR-STAGE2 BEGIN <id>' ... '// JR-STAGE2 END' blocks
-// (S2-01, S2-02, S2-03, S2-04, S2-05, S2-06, S2-07, S2-08, S2-08b, S2-09, S2-10, S2-11, S2-11b, S2-12, S2-13, S2-25, S2-27, S2-28, S2-28b; see DEVIATIONS.md). `check` proves everything outside them is the above.
+// (S2-01, S2-02, S2-03, S2-04, S2-05, S2-06, S2-07, S2-08, S2-08b, S2-09, S2-10, S2-11, S2-11b, S2-12, S2-13, S2-25, S2-27, S2-28, S2-28b, S2-29; see DEVIATIONS.md). `check` proves everything outside them is the above.
 // ==== end of header; the code below is the game's, changed only as listed in DEVIATIONS.md ====
 
 using System;
@@ -1255,6 +1255,18 @@ public struct JRCarLaneSpeedIterator
 				m_MaxSpeed = jrZebraHold;
 				m_Blocker = Entity.Null;
 				m_BlockerType = BlockerType.Continuing;
+			}
+		}
+		// JR-STAGE2 END
+		// JR-STAGE2 BEGIN S2-29: 0.4.4 vehicles leaving buildings give way: a drive's leaving lane (SideConnection + Yield) waits before its first road lane until every crossed / merged lane is clear
+		if (m_JR.m_ExitRule)
+		{
+			float jrExitHold = m_JR.ExitDrivewayHold(lane, bufferData, curveOffset.x, length, origDistance, num, inverse, m_Priority, m_PrefabCar, m_CurrentSpeed, m_TimeStep, m_SafeTimeStep, m_SpeedRange, m_MaxSpeed, speedLimit, m_Entity, ref m_CarLaneData, ref m_LaneConditionData, ref m_LaneSignalData, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_CarData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabCarData, ref m_PrefabObjectGeometryData);
+			if (jrExitHold < m_MaxSpeed)
+			{
+				m_MaxSpeed = jrExitHold;
+				m_Blocker = Entity.Null;
+				m_BlockerType = BlockerType.Crossing;
 			}
 		}
 		// JR-STAGE2 END

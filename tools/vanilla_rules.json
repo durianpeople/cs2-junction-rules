@@ -155,7 +155,7 @@
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
-        "reason": "Job fields: stage 2 mode, the debug counter array; 0.2.3: the safety-stop event table (debug) and a read-only ConnectedEdge buffer lookup (feeding lanes). 0.2.2's trailer lookups removed (no mid spots). 0.3.3 (JR-T-006): read-only CarTractorData / CarTrailerData / LayoutElement lookups again (whole vehicle length for the crossing fit). 0.4.2 (JR-T-010): read-only YellowBoxJunction / YellowBoxEntrance / Building / ConnectedBuilding / EdgeLane lookups (yellow boxes); JR-T-010-r: the by-value boxed road edge set (JRBoxEdges)."
+        "reason": "Job fields: stage 2 mode, the debug counter array; 0.2.3: the safety-stop event table (debug) and a read-only ConnectedEdge buffer lookup (feeding lanes). 0.2.2's trailer lookups removed (no mid spots). 0.3.3 (JR-T-006): read-only CarTractorData / CarTrailerData / LayoutElement lookups again (whole vehicle length for the crossing fit). 0.4.2 (JR-T-010): read-only YellowBoxJunction / YellowBoxEntrance / Building / ConnectedBuilding / EdgeLane lookups (yellow boxes); JR-T-010-r: the by-value boxed road edge set (JRBoxEdges). 0.4.4 (JR-T-012): read-only Building and Edge lookups (vehicles leaving buildings give way)."
       },
       "S2-21": {
         "files": {
@@ -173,7 +173,7 @@
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
-        "reason": "OnUpdate: takes this step's mode from the main-thread handoff; 0.2.3: the safety-event table and the ConnectedEdge lookup (0.2.2 trailer lookups removed). 0.3.3: the three read-only lookups for the vehicle length. 0.4.2: the five read-only yellow box lookups; JR-T-010-r: the boxed road edge set from JRStage2Bridge.BoxEdges."
+        "reason": "OnUpdate: takes this step's mode from the main-thread handoff; 0.2.3: the safety-event table and the ConnectedEdge lookup (0.2.2 trailer lookups removed). 0.3.3: the three read-only lookups for the vehicle length. 0.4.2: the five read-only yellow box lookups; JR-T-010-r: the boxed road edge set from JRStage2Bridge.BoxEdges. 0.4.4: the Building and Edge lookups."
       },
       "S2-24": {
         "files": {
@@ -191,7 +191,7 @@
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
-        "reason": "0.4.1 (JR-T-009): UpdateNavigationTarget, after S2-21, only with the zebra setting: hands the car's navigation lanes to its iterator for the room-past scan; whole vehicle length (trailers incl.) also with the stock gap rule. 0.4.2 (JR-T-010): also with 'Cars obey yellow boxes' (shared room-past scan), and then hands the read-only box lookups to the iterator (SetBoxes), JR-T-010-r: with the boxed road edge set."
+        "reason": "0.4.1 (JR-T-009): UpdateNavigationTarget, after S2-21, only with the zebra setting: hands the car's navigation lanes to its iterator for the room-past scan; whole vehicle length (trailers incl.) also with the stock gap rule. 0.4.2 (JR-T-010): also with 'Cars obey yellow boxes' (shared room-past scan), and then hands the read-only box lookups to the iterator (SetBoxes), JR-T-010-r: with the boxed road edge set. 0.4.4 (JR-T-012): with the exit setting, SetExits (Building / Edge lookups and the job's m_LeftHandTraffic)."
       },
       "S2-27": {
         "files": {
@@ -210,6 +210,24 @@
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
         "reason": "0.4.2: the same as S2-28 at the top of the CheckCurrentLane overload with canUseLane (the lane being changed into)."
+      },
+      "S2-29": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "0.4.4 (JR-T-012): CheckOverlappingLanes, after S2-25, only with the setting 'Vehicles leaving buildings give way': a drive's leaving lane (SideConnection + Yield, laid by LaneSystem.CreateEdgeConnectionLane) is held before its first road lane overlap (GetMaxBrakingSpeed, blocker Entity.Null, type Crossing) while a road vehicle on a crossed / merged lane, or on the lanes feeding it (2 levels), would reach the conflict within its stock look-ahead plus the leaving vehicle's own arrival time (Core/ExitGiveWay.cs, the Whole junction gap judgement); on-duty emergency vehicles never."
+      },
+      "S2-30": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
+        },
+        "reason": "0.4.4 (JR-T-012): UpdateNavigationTarget at IL_09cd, before navigation.m_MaxSpeed is taken, only with the exit setting: a vehicle on a building's Connection lane (spawn location / car park gate) whose next lane is a public road lane gets speed 0 while the road lane at its join point or a road lane it crosses is not clear, or (yellow box rule) a boxed exit band has no room past it (stock never iterates the road lane from a Connection lane)."
+      },
+      "S2-31": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
+        },
+        "reason": "0.4.4 (JR-T-012): in the target loop, where a vehicle on a Connection lane would join its next (road) lane: a vehicle held by S2-30 this update stays on its Connection lane (break)."
       }
     }
   }

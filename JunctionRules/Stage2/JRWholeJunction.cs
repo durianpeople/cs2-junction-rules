@@ -203,6 +203,27 @@ namespace JunctionRules.Stage2
         private bool m_HasEntranceLeaving;
         private float m_EntranceLeavingSpeed;
 
+        // ---- 0.4.4 (JR-T-012): vehicles leaving buildings give way (Core/ExitGiveWay.cs; methods in Stage2/JRExitGiveWay.cs) ----
+        /// <summary>Setting "Vehicles leaving buildings give way" (Stage2Mode.ExitGiveWay, stripped from m_Mode in Create).</summary>
+        public bool m_ExitRule;
+        /// <summary>SetExits ran (the exit lookups below are valid).</summary>
+        private bool m_ExitLookups;
+        /// <summary>The game's traffic side (navigation job m_LeftHandTraffic); labels crossing holds only.</summary>
+        private bool m_ExitLeftHand;
+        private ComponentLookup<Game.Buildings.Building> m_ExitBuildingData;
+        private ComponentLookup<Game.Net.Edge> m_ExitEdgeData;
+        /// <summary>S2-30 -> S2-31: held on its building Connection lane this update.</summary>
+        private bool m_ExitWaiting;
+        private bool m_HasExitHold;
+        private float m_ExitHoldSpeed;
+        private bool m_HasExitBox;
+        private float m_ExitBoxSpeed;
+        private bool m_ExitAcross;
+        private bool m_ExitSpawn;
+        private bool m_ExitGo;
+        private bool m_ExitEmergency;
+        private bool m_ExitCapHit;
+
         public bool RuleOn
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -241,10 +262,12 @@ namespace JunctionRules.Stage2
             j.m_BoxEntranceLength = Stage2Mode.BoxEntranceLength(mode);
             j.m_BoxTurnSpot = 2f;
             j.m_BoxTurnIndex = -1;
+            // 0.4.4: and the exit give-way rule.
+            j.m_ExitRule = (mode & Stage2Mode.ExitGiveWay) != 0;
             mode &= ~Stage2Mode.Stripped;
             j.m_Mode = mode;
             j.m_VehicleLength = vehicleLength;
-            if (mode != 0 || j.m_ZebraRule || j.m_BoxRule)
+            if (mode != 0 || j.m_ZebraRule || j.m_BoxRule || j.m_ExitRule)
             {
                 j.m_NodeLaneData = nodeLaneData;
                 j.m_OwnerData = ownerData;
@@ -1253,6 +1276,17 @@ namespace JunctionRules.Stage2
             if (Stage2Counters.IsStandingOn(m_HasBoxTurnWait, m_BoxTurnWaitSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxTurnWaits, 1);
             if (Stage2Counters.IsStandingOn(m_HasEntranceMain, m_EntranceMainSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.EntranceHeldMain, 1);
             if (Stage2Counters.IsStandingOn(m_HasEntranceLeaving, m_EntranceLeavingSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.EntranceHeldLeaving, 1);
+            // 0.4.4: vehicles leaving buildings give way.
+            if (Stage2Counters.IsStandingOn(m_HasExitHold, m_ExitHoldSpeed, finalMaxSpeed, currentSpeed))
+            {
+                Add(counters, Stage2Counters.ExitHeld, 1);
+                if (m_ExitAcross) Add(counters, Stage2Counters.ExitHeldAcross, 1);
+                if (m_ExitSpawn) Add(counters, Stage2Counters.ExitHeldSpawn, 1);
+            }
+            if (Stage2Counters.IsStandingOn(m_HasExitBox, m_ExitBoxSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.ExitSpawnBoxHeld, 1);
+            if (m_ExitGo) Add(counters, Stage2Counters.ExitGo, 1);
+            if (m_ExitEmergency) Add(counters, Stage2Counters.ExitEmergencyPass, 1);
+            if (m_ExitCapHit) Add(counters, Stage2Counters.ExitCapHits, 1);
             if (Stage2Counters.IsBinding(m_HasSafety, m_SafetySpeed, finalMaxSpeed))
             {
                 Add(counters, Stage2Counters.SafetyStops, 1);

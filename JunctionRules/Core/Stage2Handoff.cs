@@ -30,15 +30,15 @@ namespace JunctionRules.Core
         public string Step(JunctionGapRule rule, bool counting, out int mode, JunctionWaitingSpot spot = JunctionWaitingSpot.BeforeFirstCrossing,
             bool turnGivesWay = false, bool leftHandTraffic = false, bool noPushPeople = false, bool zebraClear = false,
             float zebraMargin = RoomScan.DefaultMargin, bool boxObey = false, bool boxTurnWait = true, bool anyJunctionBox = false,
-            bool anyEntranceBox = false, float entranceLength = 8f)
+            bool anyEntranceBox = false, float entranceLength = 8f, bool exitGiveWay = false)
         {
             // 0.4.2 (JR-T-010): the yellow box bits (traffic side from the same leftHandTraffic the turn rule reads).
             int boxBits = Stage2Mode.BoxBits(boxObey, boxTurnWait, leftHandTraffic, anyJunctionBox, anyEntranceBox, entranceLength);
-            mode = Stage2Mode.For(rule, counting, spot, turnGivesWay, leftHandTraffic, noPushPeople, zebraClear, zebraMargin, boxBits);
+            mode = Stage2Mode.For(rule, counting, spot, turnGivesWay, leftHandTraffic, noPushPeople, zebraClear, zebraMargin, boxBits, exitGiveWay);
             if (m_Has && mode == m_Mode) return null;
             bool first = !m_Has;
             bool ruleChanged = !first && ((mode ^ m_Mode) & (Stage2Mode.Rule | Stage2Mode.AtLine | Stage2Mode.TurnGivesWay | Stage2Mode.LeftHandTraffic | Stage2Mode.NoPushPeople | Stage2Mode.ZebraClear | Stage2Mode.ZebraMarginMask
-                | Stage2Mode.BoxObey | Stage2Mode.BoxTurnWait | Stage2Mode.BoxLeftHand | Stage2Mode.BoxEntranceMask)) != 0;
+                | Stage2Mode.BoxObey | Stage2Mode.BoxTurnWait | Stage2Mode.BoxLeftHand | Stage2Mode.BoxEntranceMask | Stage2Mode.ExitGiveWay)) != 0;
             bool boxesChanged = !first && ((mode ^ m_Mode) & (Stage2Mode.BoxJunctions | Stage2Mode.BoxEntrances)) != 0;
             m_Has = true;
             int old = m_Mode;
@@ -132,7 +132,21 @@ namespace JunctionRules.Core
         public const int EntranceHeldMain = FeedingScans + 22;
         /// <summary>0.4.2: car-steps in which a car leaving a driveway stood at the road because there was no room for it past the band on its target lane.</summary>
         public const int EntranceHeldLeaving = FeedingScans + 23;
-        public const int Count = FeedingScans + 24;
+        /// <summary>0.4.4 (JR-T-012): car-steps in which a vehicle leaving a building stood at its exit waiting for a gap (setting "Vehicles leaving buildings give way").</summary>
+        public const int ExitHeld = FeedingScans + 24;
+        /// <summary>0.4.4: ... of those, a driveway turn across the near traffic (left-hand traffic: right turn; right-hand: left turn; the game's flag).</summary>
+        public const int ExitHeldAcross = FeedingScans + 25;
+        /// <summary>0.4.4: ... of those, at a spawn location / car park gate (the vehicle waits inside the building, unseen).</summary>
+        public const int ExitHeldSpawn = FeedingScans + 26;
+        /// <summary>0.4.4: car-steps in which a vehicle at its exit found every crossed / merged lane clear (go decisions).</summary>
+        public const int ExitGo = FeedingScans + 27;
+        /// <summary>0.4.4: car-steps in which an on-duty emergency vehicle left a building without the give-way (stock).</summary>
+        public const int ExitEmergencyPass = FeedingScans + 28;
+        /// <summary>0.4.4: car-steps in which a vehicle at a boxed spawn exit had its gap but no room past the band (0.4.3 box rule).</summary>
+        public const int ExitSpawnBoxHeld = FeedingScans + 29;
+        /// <summary>0.4.4: exit scans stopped by the work cap (vehicles not read do not count).</summary>
+        public const int ExitCapHits = FeedingScans + 30;
+        public const int Count = FeedingScans + 31;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -190,7 +204,7 @@ namespace JunctionRules.Core
         /// pushMask (0.3.2), same encoding for the setting "Cars never push through people on crossings" (bit 0 = a step ran
         /// with it off, bit 1 = on); 0 = not reported.
         /// </summary>
-        public static string Format(int ruleMask, long[] deltas, int pushMask = 0, int zebraMask = 0, int boxMask = 0)
+        public static string Format(int ruleMask, long[] deltas, int pushMask = 0, int zebraMask = 0, int boxMask = 0, int exitMask = 0)
         {
             string rule = ruleMask == 1 ? "stock" : ruleMask == 2 ? "whole junction" : ruleMask == 3 ? "mixed (switched in this window)" : "none";
             string push = pushMask == 1 ? "off" : pushMask == 2 ? "on" : pushMask == 3 ? "switched in this window" : null;
@@ -201,6 +215,9 @@ namespace JunctionRules.Core
             // 0.4.2 (JR-T-010): setting "Cars obey yellow boxes", same encoding.
             string box = boxMask == 1 ? "off" : boxMask == 2 ? "on" : boxMask == 3 ? "switched in this window" : null;
             if (box != null) pushPart += "; obey yellow boxes " + box;
+            // 0.4.4 (JR-T-012): setting "Vehicles leaving buildings give way", same encoding.
+            string exit = exitMask == 1 ? "off" : exitMask == 2 ? "on" : exitMask == 3 ? "switched in this window" : null;
+            if (exit != null) pushPart += "; vehicles leaving buildings give way " + exit;
             if (deltas == null || deltas.Length < Count) return "; junction gap rule " + rule + pushPart;
             var ci = CultureInfo.InvariantCulture;
             long n = deltas[PointSamples];
@@ -245,6 +262,15 @@ namespace JunctionRules.Core
                          ", right-turn waits " + deltas[BoxTurnWaits].ToString(ci) +
                          "; entrance band holds: main road " + deltas[EntranceHeldMain].ToString(ci) +
                          ", leaving driveway " + deltas[EntranceHeldLeaving].ToString(ci)
+                       : "") +
+                   (exitMask >= 2
+                       ? "; building exits: waits " + deltas[ExitHeld].ToString(ci) +
+                         " (turning across " + deltas[ExitHeldAcross].ToString(ci) +
+                         ", spawn/gate " + deltas[ExitHeldSpawn].ToString(ci) + ")" +
+                         ", go decisions " + deltas[ExitGo].ToString(ci) +
+                         ", emergency passthroughs " + deltas[ExitEmergencyPass].ToString(ci) +
+                         ", boxed spawn exit no room " + deltas[ExitSpawnBoxHeld].ToString(ci) +
+                         ", cap hits " + deltas[ExitCapHits].ToString(ci)
                        : "") +
                    "; " + points;
         }
