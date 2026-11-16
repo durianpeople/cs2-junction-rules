@@ -5,7 +5,9 @@ using Game.Objects;
 using Game.Prefabs;
 using Game.Vehicles;
 using JunctionRules.Core;
+using System.Threading;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Mathematics;
 
@@ -47,6 +49,16 @@ namespace JunctionRules.Stage2
             public int m_Lanes;
             public int m_Vehicles;
             public bool m_CapHit;
+            /// <summary>0.4.7: which cap stopped the scan (lane cap: errs to go; vehicle cap: busy, Core ExitPaths.CapBusy).</summary>
+            public bool m_LaneCap;
+            public bool m_VehicleCap;
+        }
+
+        /// <summary>0.4.7: the cap kinds of one scan, for the counters and the trace.</summary>
+        private void NoteBudget(ExitBudget budget)
+        {
+            if (budget.m_LaneCap) m_ExitLaneCap = true;
+            if (budget.m_VehicleCap) m_ExitVehicleCap = true;
         }
 
         /// <summary>The lookups one exit scan reads (the caller's read-only stock lookups, passed by ref).</summary>
@@ -137,6 +149,7 @@ namespace JunctionRules.Stage2
                 busy = ConflictBusy(o.m_Other, otherCurve, oS, oE, delta, ref reads, ref budget);
             }
             if (Counting && budget.m_CapHit) m_ExitCapHit = true;
+            NoteBudget(budget);
             if (!busy)
             {
                 if (Counting) m_ExitGo = true;
@@ -177,6 +190,7 @@ namespace JunctionRules.Stage2
             if (!m_ExitRule || !m_ExitLookups) return float.MaxValue;
             if (!ExitJoinLane(connection, priority, next, true, ref carLanes, ref curves, out Entity road, out Curve roadCurve, out Owner roadOwner)) return float.MaxValue;
             if (!curves.TryGetComponent(connection, out Curve connCurve)) return float.MaxValue;
+            NoteFrom(connection, (uint)Game.Vehicles.CarLaneFlags.Connection, roadOwner.m_Owner);
             // 0.4.4: the vehicle appears on the join lane with its body behind the join point and no arrival time of its own.
             bool wait = ExitJoinWaits(self, priority, next.m_CurvePosition.x, road, roadCurve, roadOwner, connCurve.m_Bezier.a, 0f, safeTimeStep,
                 ref carLanes, ref signals, ref laneObjects, ref curves, ref moving, ref cars, ref controllers, ref prefabRefs, ref prefabCars, ref geometries,
@@ -220,6 +234,57 @@ namespace JunctionRules.Stage2
             m_ExitWaiting = false;
             if (!m_ExitRule || !m_ExitLookups) return float.MaxValue;
             if (!ExitJoinLane(areaLane, priority, next, false, ref carLanes, ref curves, out Entity road, out Curve roadCurve, out Owner roadOwner)) return float.MaxValue;
+            NoteFrom(areaLane, (uint)Game.Vehicles.CarLaneFlags.Area, roadOwner.m_Owner);
+            return ExitApproachHold(self, priority, next, road, roadCurve, roadOwner, position, frontOffset, car, currentSpeed, timeStep, safeTimeStep, speedRange,
+                ref carLanes, ref signals, ref laneObjects, ref curves, ref moving, ref cars, ref controllers, ref prefabRefs, ref prefabCars, ref geometries,
+                ref overlapData, ref pedestrianLanes);
+        }
+
+        /// <summary>
+        /// 0.4.7 (S2-36, navigation job, plain lane branch): a vehicle on a car lane of a building's own road (sub-net; not a
+        /// drive's SideConnection lane, those are S2-29) whose next navigation lane is a public road lane, in practice a lane
+        /// of the junction where the building's road meets the public road (Game.Net/LaneSystem.cs 5161 / 7033: no Yield or
+        /// SideConnection flag there; "a building exit is a yielding arm"). The same approach hold as a lot exit.
+        /// Cheap for every other vehicle: the next lane's flags, then the owner chain of its current lane (road lanes stop at
+        /// the edge, which has no owner).
+        /// </summary>
+        public float ExitLaneHold(Entity self, int priority, Entity lane, CarNavigationLane next, float3 position, float frontOffset, CarData car, float currentSpeed, float timeStep,
+            float safeTimeStep, Bounds1 speedRange,
+            ref ComponentLookup<Game.Net.CarLane> carLanes, ref ComponentLookup<LaneSignal> signals, ref BufferLookup<LaneObject> laneObjects,
+            ref ComponentLookup<Curve> curves, ref ComponentLookup<Moving> moving, ref ComponentLookup<Car> cars, ref ComponentLookup<Controller> controllers,
+            ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<CarData> prefabCars, ref ComponentLookup<ObjectGeometryData> geometries,
+            ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
+        {
+            m_ExitWaiting = false;
+            if (!m_ExitRule || !m_ExitLookups) return float.MaxValue;
+            if ((next.m_Flags & NotRoadLane) != 0 || !LeavesBuilding(lane)) return float.MaxValue;
+            if (!carLanes.TryGetComponent(lane, out Game.Net.CarLane own) || (own.m_Flags & Game.Net.CarLaneFlags.SideConnection) != 0) return float.MaxValue;
+            if (!ExitJoinLane(lane, priority, next, true, ref carLanes, ref curves, out Entity road, out Curve roadCurve, out Owner roadOwner)) return float.MaxValue;
+            // A signalled arm follows its own signal (the conflicting flows are held by theirs): no exit hold there.
+            if (carLanes.TryGetComponent(road, out Game.Net.CarLane joined) && (joined.m_Flags & (Game.Net.CarLaneFlags.TrafficLights | Game.Net.CarLaneFlags.LevelCrossing)) != 0)
+            {
+                m_ExitDecided = true;   // decided by the signal (not an unjudged hand-over)
+                m_ExitDecision = ExitGiveWay.Decision.Go;
+                return float.MaxValue;
+            }
+            NoteFrom(lane, 0u, roadOwner.m_Owner);
+            return ExitApproachHold(self, priority, next, road, roadCurve, roadOwner, position, frontOffset, car, currentSpeed, timeStep, safeTimeStep, speedRange,
+                ref carLanes, ref signals, ref laneObjects, ref curves, ref moving, ref cars, ref controllers, ref prefabRefs, ref prefabCars, ref geometries,
+                ref overlapData, ref pedestrianLanes);
+        }
+
+        /// <summary>
+        /// The approach hold shared by a lot exit (S2-32) and a building road (S2-36): judged from Core
+        /// ExitGiveWay.AreaScanMetres before the join point on every update, distance from the vehicle's front, brakes to stop
+        /// one margin short of the join point and sets <see cref="ExitWaiting"/> (S2-33 keeps it off the road lane).
+        /// </summary>
+        private float ExitApproachHold(Entity self, int priority, CarNavigationLane next, Entity road, Curve roadCurve, Owner roadOwner, float3 position, float frontOffset,
+            CarData car, float currentSpeed, float timeStep, float safeTimeStep, Bounds1 speedRange,
+            ref ComponentLookup<Game.Net.CarLane> carLanes, ref ComponentLookup<LaneSignal> signals, ref BufferLookup<LaneObject> laneObjects,
+            ref ComponentLookup<Curve> curves, ref ComponentLookup<Moving> moving, ref ComponentLookup<Car> cars, ref ComponentLookup<Controller> controllers,
+            ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<CarData> prefabCars, ref ComponentLookup<ObjectGeometryData> geometries,
+            ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
+        {
             float t = next.m_CurvePosition.x;
             float3 join = MathUtils.Position(roadCurve.m_Bezier, t);
             float front = frontOffset > 0f ? frontOffset : 0f;
@@ -255,24 +320,136 @@ namespace JunctionRules.Stage2
             return hold;
         }
 
+        /// <summary>
+        /// 0.4.7 (S2-35, navigation job, the TransformTarget / ParkingSpace branch): the vehicle's current navigation lane
+        /// is a building's spawn location OBJECT (TransformTarget: the 0.4.6 'other', see Core/ExitPaths.cs) or a parking
+        /// space (a building's parking lane or garage, or a kerbside parking lane of the road), and its next navigation lane
+        /// is a public road lane. The stock branch never iterates the road lane and the hand-over loop puts it on the road
+        /// lane as soon as it reaches the spawn point / leaves the space. Same gap and box decision as every exit; the
+        /// vehicle stands at its spawn point (unspawned: CheckUnspawned keeps it hidden on a TransformTarget lane) or in its
+        /// parking space while busy, and <see cref="ExitWaiting"/> keeps it off the road lane (S2-33). target = the stock
+        /// navigation target (the spawn location's position); a parking space holds where the vehicle stands.
+        /// Kerbside parking: owner rule "a building exit is a yielding arm" and the real-life "give way when moving off".
+        /// </summary>
+        public float ExitTargetHold(Entity self, int priority, Entity from, Game.Vehicles.CarLaneFlags fromFlags, CarNavigationLane next, float3 position, float3 target,
+            CarData car, float safeTimeStep, Bounds1 speedRange,
+            ref ComponentLookup<Game.Net.CarLane> carLanes, ref ComponentLookup<LaneSignal> signals, ref BufferLookup<LaneObject> laneObjects,
+            ref ComponentLookup<Curve> curves, ref ComponentLookup<Moving> moving, ref ComponentLookup<Car> cars, ref ComponentLookup<Controller> controllers,
+            ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<CarData> prefabCars, ref ComponentLookup<ObjectGeometryData> geometries,
+            ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
+        {
+            m_ExitWaiting = false;
+            if (!m_ExitRule || !m_ExitLookups) return float.MaxValue;
+            bool parking = (fromFlags & Game.Vehicles.CarLaneFlags.ParkingSpace) != 0;
+            // A spawn point must belong to a building (other transform targets stay stock); a parking space needs no owner (kerbside parking gives way too).
+            if (!ExitJoinLane(from, priority, next, !parking, ref carLanes, ref curves, out Entity road, out Curve roadCurve, out Owner roadOwner)) return float.MaxValue;
+            NoteFrom(from, (uint)fromFlags, roadOwner.m_Owner);
+            float3 side = parking ? position : target;
+            bool busy = ExitJoinWaits(self, priority, next.m_CurvePosition.x, road, roadCurve, roadOwner, side, 0f, safeTimeStep,
+                ref carLanes, ref signals, ref laneObjects, ref curves, ref moving, ref cars, ref controllers, ref prefabRefs, ref prefabCars, ref geometries,
+                ref overlapData, ref pedestrianLanes, out ExitGiveWay.Decision d);
+            if (!busy)
+            {
+                if (Counting) m_ExitGo = true;
+                return float.MaxValue;
+            }
+            m_ExitWaiting = true;
+            float wait = parking ? 0f : math.distance(position.xz, target.xz);
+            float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, wait, safeTimeStep), speedRange);
+            if (Counting)
+            {
+                if (d == ExitGiveWay.Decision.WaitGap) { Min(ref m_HasExitHold, ref m_ExitHoldSpeed, hold); m_ExitSpawn = true; }
+                else Min(ref m_HasExitBox, ref m_ExitBoxSpeed, hold);
+            }
+            return hold;
+        }
+
+        /// <summary>Navigation lane flags of a lane that is not a road lane (the joined lane must have none).</summary>
+        private const Game.Vehicles.CarLaneFlags NotRoadLane = Game.Vehicles.CarLaneFlags.Connection | Game.Vehicles.CarLaneFlags.Area | Game.Vehicles.CarLaneFlags.TransformTarget | Game.Vehicles.CarLaneFlags.ParkingSpace;
+
+        /// <summary>0.4.7: what the decision is for (trace).</summary>
+        private void NoteFrom(Entity from, uint flags, Entity roadOwner)
+        {
+            m_ExitFrom = from;
+            m_ExitFromFlags = flags;
+            m_ExitRoadOwner = roadOwner;
+        }
+
         /// <summary>The speed (m/s) the stock navigation takes as the area lane's target speed (CarNavigationSystem num3 = 11.111): its hand-over distance uses the braking distance from it.</summary>
         public const float AreaLaneSpeed = 11.111112f;
 
         /// <summary>
-        /// S2-34 (0.4.6, probe, counting only): a vehicle hands over from its current lane to its next navigation lane and the next
-        /// lane is a public road lane. Counts which kind of lane it came from: a lot's area lane, a building Connection lane, or
-        /// another building-owned lane (expected none: a driveway reaches the road through its SideConnection lane). Road to road
-        /// hand-overs (the normal case) are not counted. Every hand-over from a building to the road shows here whether or not
-        /// the exit rule judged it, so a way out of a building the hooks do not cover is visible in the timing line.
+        /// S2-34 (0.4.6 probe; 0.4.7 classification, Core/ExitPaths.cs): a vehicle hands over from its current lane to its next
+        /// navigation lane and the next lane is a public road lane. Counts the path it came from (lot, gate, spawn point,
+        /// building parking, kerbside parking, building road, drive, other) and a judged path handed over with no decision in
+        /// this update ("not judged", expected 0); with the exit trace on, one trace line per hand-over. Road to road
+        /// hand-overs are not counted. Counting or tracing only (debug).
         /// </summary>
-        public void ExitJoinProbe(NativeArray<long> counters, Entity from, Game.Vehicles.CarLaneFlags fromFlags, CarNavigationLane next,
+        public void ExitHandOver(NativeArray<long> counters, Entity self, uint frame, Entity from, Game.Vehicles.CarLaneFlags fromFlags, CarNavigationLane next,
             ref ComponentLookup<Game.Net.CarLane> carLanes, ref ComponentLookup<Curve> curves)
         {
-            if (!Counting || !m_ExitRule || !m_ExitLookups || !counters.IsCreated) return;
-            if (!ExitJoinLane(from, 0, next, false, ref carLanes, ref curves, out _, out _, out _)) return;
-            if ((fromFlags & Game.Vehicles.CarLaneFlags.Area) != 0) Add(counters, Stage2Counters.ExitJoinArea, 1);
-            else if ((fromFlags & Game.Vehicles.CarLaneFlags.Connection) != 0) { if (LeavesBuilding(from)) Add(counters, Stage2Counters.ExitJoinConnection, 1); }
-            else if (LeavesBuilding(from)) Add(counters, Stage2Counters.ExitJoinOther, 1);
+            if (!m_ExitRule || !m_ExitLookups) return;
+            bool count = Counting && counters.IsCreated;
+            if (!count && !m_TraceOn) return;
+            if (!ExitJoinLane(from, 0, next, false, ref carLanes, ref curves, out _, out _, out Owner roadOwner)) return;
+            bool isCar = carLanes.TryGetComponent(from, out Game.Net.CarLane fromLane);
+            bool side = isCar && (fromLane.m_Flags & Game.Net.CarLaneFlags.SideConnection) != 0;
+            Entity building = ExitBuilding(from);
+            ExitPaths.Path path = ExitPaths.Classify((uint)fromFlags, building != Entity.Null, isCar, side);
+            if (path == ExitPaths.Path.None) return;
+            bool unjudged = ExitPaths.JudgedAtHandOver(path) && !m_ExitDecided && !m_ExitEmergency;
+            if (count)
+            {
+                Add(counters, ExitPaths.Counter(path), 1);
+                if (unjudged) Add(counters, Stage2Counters.ExitJoinUnjudged, 1);
+            }
+            if (m_TraceOn)
+            {
+                ExitPaths.LaneKind kind = ExitPaths.Kind((uint)fromFlags, isCar, side);
+                TraceWrite(m_TraceRing, self, building, ExitTrace.Pack(ExitTrace.Event.HandOver, path, kind, m_ExitDecision, TraceReasons(), m_ExitBoxed), frame, roadOwner.m_Owner);
+            }
+        }
+
+        /// <summary>
+        /// 0.4.7: the exit trace's "starts waiting" line, once per wait episode of the vehicle (Core SafetyStopEvents on the
+        /// shared event table, kind ExitGiveWay.TraceWaitKind). Called by the navigation blocks after a hold.
+        /// </summary>
+        public void TraceWait(NativeArray<long> eventTable, Entity self, uint frame)
+        {
+            if (!m_TraceOn || !m_ExitWaiting || !m_ExitDecided) return;
+            if (!ExitEvent(eventTable, self, frame, ExitGiveWay.TraceWaitKind)) return;
+            Entity building = ExitBuilding(m_ExitFrom);
+            bool isCar = m_ExitFrom != Entity.Null && m_LaneData.HasComponent(m_ExitFrom) && (m_ExitFromFlags & (uint)NotRoadLane) == 0;
+            ExitPaths.Path path = ExitPaths.Classify(m_ExitFromFlags, building != Entity.Null, isCar, false);
+            ExitPaths.LaneKind kind = ExitPaths.Kind(m_ExitFromFlags, isCar, false);
+            TraceWrite(m_TraceRing, self, building, ExitTrace.Pack(ExitTrace.Event.Wait, path, kind, m_ExitDecision, TraceReasons(), m_ExitBoxed), frame, m_ExitRoadOwner);
+        }
+
+        /// <summary>0.4.7 (S2-26): the exit trace is on; ring = Stage2/JRStage2Bridge.cs TraceRing.</summary>
+        public void SetTrace(NativeArray<long> ring)
+        {
+            if (!ring.IsCreated || ring.Length < ExitTrace.RingLength) return;
+            m_TraceRing = ring;
+            m_TraceOn = true;
+        }
+
+        private int TraceReasons() =>
+            (m_ExitDecided ? ExitTrace.ReasonDecided : 0) | (m_ExitLaneCap ? ExitTrace.ReasonLaneCap : 0) | (m_ExitVehicleCap ? ExitTrace.ReasonVehicleCap : 0)
+            | (m_ExitEmergency ? ExitTrace.ReasonEmergency : 0) | (m_ExitNodeJoin ? ExitTrace.ReasonNodeJoin : 0);
+
+        /// <summary>One trace record (Core ExitTrace layout): the stamp is cleared first and written last, so the main-thread reader never takes a half-written record.</summary>
+        private static unsafe void TraceWrite(NativeArray<long> ring, Entity self, Entity building, long facts, uint frame, Entity roadOwner)
+        {
+            if (!ring.IsCreated || ring.Length < ExitTrace.RingLength) return;
+            long* p = (long*)NativeArrayUnsafeUtility.GetUnsafeBufferPointerWithoutChecks(ring);
+            long seq = Interlocked.Increment(ref p[0]);
+            int b = ExitTrace.SlotBase(seq);
+            Interlocked.Exchange(ref p[b], 0L);
+            p[b + 1] = ExitTrace.PackEntity(self.Index, self.Version);
+            p[b + 2] = building == Entity.Null ? 0L : ExitTrace.PackEntity(building.Index, building.Version);
+            p[b + 3] = facts;
+            p[b + 4] = (long)frame | ((long)roadOwner.Index << 32);
+            Interlocked.Exchange(ref p[b], seq);
         }
 
         /// <summary>Metres short of the join point an area exit holds its vehicle's front (the stop margin of a waiting vehicle).</summary>
@@ -289,8 +466,7 @@ namespace JunctionRules.Stage2
             road = next.m_Lane;
             roadCurve = default;
             roadOwner = default;
-            const Game.Vehicles.CarLaneFlags notRoad = Game.Vehicles.CarLaneFlags.Connection | Game.Vehicles.CarLaneFlags.Area | Game.Vehicles.CarLaneFlags.TransformTarget | Game.Vehicles.CarLaneFlags.ParkingSpace;
-            if ((next.m_Flags & notRoad) != 0) return false;
+            if ((next.m_Flags & NotRoadLane) != 0) return false;
             // A public road lane: a car lane of a road edge that no building / other object owns.
             if (!carLanes.TryGetComponent(road, out Game.Net.CarLane roadLane) || (roadLane.m_Flags & Game.Net.CarLaneFlags.SideConnection) != 0) return false;
             // 0.4.6: an edge's lane or a junction node's lane (a lot beside a junction joins a node lane); the owner is ownerless (public network).
@@ -300,7 +476,7 @@ namespace JunctionRules.Stage2
             if (requireBuilding && !LeavesBuilding(from)) return false;
             if (ExitGiveWay.IsEmergency(priority))
             {
-                if (Counting) m_ExitEmergency = true;
+                m_ExitEmergency = true;   // 0.4.7: always (the trace and the "not judged" counter read it)
                 return false;
             }
             if (next.m_CurvePosition.y < next.m_CurvePosition.x) return false;   // against the lane's curve (two-way lane): stock
@@ -337,7 +513,33 @@ namespace JunctionRules.Stage2
             float ownLength = m_VehicleLength > 0f ? m_VehicleLength : 4f;
             // The road lane it joins: it appears there with its body behind the join point (it drives on from there).
             bool busy = ConflictBusy(road, roadCurve, joinM - ownLength, joinM + 1f, delta, ref reads, ref budget);
-            if (!busy)
+            Entity joinOwner = roadOwner.m_Owner;
+            bool nodeJoin = !m_ExitEdgeData.HasComponent(joinOwner);
+            m_ExitNodeJoin = nodeJoin;
+            if (!busy && nodeJoin)
+            {
+                // 0.4.7: a junction lane (a lot / building road meeting the public road at a node). The lateral rule below is
+                // for the parallel lanes of one edge; inside a junction the conflicts are the joined lane's own LaneOverlaps
+                // with other car lanes still ahead of the join point (the game's crossing / merging points, as S2-29), not
+                // lanes that start with it (MergeStart: the same arm).
+                if (overlapData.TryGetBuffer(road, out DynamicBuffer<LaneOverlap> overlaps))
+                {
+                    int judged = 0;
+                    for (int i = 0; i < overlaps.Length && !busy && !budget.m_CapHit; i++)
+                    {
+                        LaneOverlap o = overlaps[i];
+                        if (((int)o.m_Flags & (WholePathRule.Water | WholePathRule.MergeStart)) != 0) continue;
+                        if (!carLanes.TryGetComponent(o.m_Other, out Game.Net.CarLane ol) || (ol.m_Flags & Game.Net.CarLaneFlags.SideConnection) != 0) continue;
+                        float thisEnd = math.max((int)o.m_ThisStart, (int)o.m_ThisEnd) * WholePathRule.ByteToOffset;
+                        if (thisEnd <= t) continue;   // behind the join point
+                        if (!curves.TryGetComponent(o.m_Other, out Curve oc)) continue;
+                        if (++judged > ExitGiveWay.MaxConflictLanes) break;
+                        float a = o.m_OtherStart * WholePathRule.ByteToOffset, b = o.m_OtherEnd * WholePathRule.ByteToOffset;
+                        busy = ConflictBusy(o.m_Other, oc, math.min(a, b) * oc.m_Length, math.max(a, b) * oc.m_Length, delta, ref reads, ref budget);
+                    }
+                }
+            }
+            else if (!busy)
             {
                 // The lanes of the same road between the building and the join lane (crossed), by geometry: lateral offset
                 // of each lane's point nearest the join point, signed towards the building side.
@@ -364,20 +566,37 @@ namespace JunctionRules.Stage2
                 }
             }
             if (Counting && budget.m_CapHit) m_ExitCapHit = true;
+            NoteBudget(budget);
             // At a boxed exit also the 0.4.3 band rule: room past the band on the join lane (stock never iterates the road
             // lane from a Connection / area lane, so the 0.4.3 S2-28 test cannot see this vehicle).
             bool boxed = false, room = true;
             if (!busy && m_BoxRule) room = !ExitBandBlocks(road, roadCurve.m_Length, t, self, safeTimeStep, out boxed, ref carLanes, ref laneObjects, ref curves,
                 ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes);
             d = ExitGiveWay.Decide(true, priority, !busy, m_BoxRule, boxed, room);
+            m_ExitDecided = true;
+            m_ExitDecision = d;
+            m_ExitBoxed = boxed;
             return d != ExitGiveWay.Decision.Go;
         }
 
         /// <summary>Half the length of road lane a crossing at a connection exit takes (m): about a car's width plus a margin.</summary>
         public const float ExitCrossHalfWidth = 2f;
 
-        /// <summary>S2-30 -> S2-31 (same vehicle, same update): the vehicle is held on its Connection lane and must not join the road lane.</summary>
+        /// <summary>S2-30 / S2-32 / S2-35 / S2-36 -> S2-31 / S2-33 (same vehicle, same update): the vehicle is held at its exit and must not join the road lane.</summary>
         public bool ExitWaiting => m_ExitWaiting;
+
+        /// <summary>0.4.7: the building a lane / spawn object belongs to (owner chain, as <see cref="LeavesBuilding"/>), else Entity.Null.</summary>
+        private Entity ExitBuilding(Entity lane)
+        {
+            Entity e = lane;
+            for (int i = 0; i < 4; i++)
+            {
+                if (!m_OwnerData.TryGetComponent(e, out Owner owner) || owner.m_Owner == Entity.Null) return Entity.Null;
+                e = owner.m_Owner;
+                if (m_ExitBuildingData.HasComponent(e)) return e;
+            }
+            return Entity.Null;
+        }
 
         /// <summary>The lane belongs to a building (owner chain, a few levels: building, its sub-object / extension).</summary>
         private bool LeavesBuilding(Entity lane)
@@ -433,7 +652,7 @@ namespace JunctionRules.Stage2
         /// </summary>
         private bool ConflictBusy(Entity lane, Curve curve, float cStart, float cEnd, float delta, ref ExitReads reads, ref ExitBudget budget)
         {
-            if (++budget.m_Lanes > ExitGiveWay.MaxScanLanes) { budget.m_CapHit = true; return false; }
+            if (++budget.m_Lanes > ExitGiveWay.MaxScanLanes) { budget.m_CapHit = budget.m_LaneCap = true; return false; }
             if (VehiclesBlock(lane, curve, cStart, cEnd, delta, false, default, ref reads, ref budget)) return true;
             if (budget.m_CapHit || !m_LaneData.TryGetComponent(lane, out Lane laneData)) return false;
             // Depth 1: the lanes ending where this lane starts.
@@ -445,7 +664,7 @@ namespace JunctionRules.Stage2
                 if (!reads.m_Curves.TryGetComponent(a, out Curve ca)) continue;
                 float aStart = ca.m_Length + cStart;   // the conflict start in metres along a
                 if (aStart - ca.m_Length > ExitGiveWay.MaxScanMetres) continue;
-                if (++budget.m_Lanes > ExitGiveWay.MaxScanLanes) { budget.m_CapHit = true; return false; }
+                if (++budget.m_Lanes > ExitGiveWay.MaxScanLanes) { budget.m_CapHit = budget.m_LaneCap = true; return false; }
                 if (VehiclesBlock(a, ca, aStart, float.MaxValue, delta, false, default, ref reads, ref budget)) return true;
                 if (budget.m_CapHit) return false;
                 if (ExitGiveWay.MaxFeedDepth < 2 || aStart > ExitGiveWay.MaxScanMetres || !m_LaneData.TryGetComponent(a, out Lane aData)) continue;
@@ -464,7 +683,7 @@ namespace JunctionRules.Stage2
                 {
                     Entity bLane = f2.Get(j);
                     if (!reads.m_Curves.TryGetComponent(bLane, out Curve cb)) continue;
-                    if (++budget.m_Lanes > ExitGiveWay.MaxScanLanes) { budget.m_CapHit = true; return false; }
+                    if (++budget.m_Lanes > ExitGiveWay.MaxScanLanes) { budget.m_CapHit = budget.m_LaneCap = true; return false; }
                     bool applies = false;
                     if (aSignalled && FeedingSignal.CanSkip((int)aSignal.m_Signal))
                     {
@@ -578,16 +797,21 @@ namespace JunctionRules.Stage2
                 float x = o.m_CurvePosition.x;
                 if (o.m_CurvePosition.y < x) continue;   // driving this lane against its curve (two-way lane): not towards the conflict
                 if (!reads.m_PrefabRefs.TryGetComponent(e, out PrefabRef pr) || !reads.m_PrefabCars.TryGetComponent(pr.m_Prefab, out CarData data)) continue;
-                if (++budget.m_Vehicles > ExitGiveWay.MaxVehiclesPerScan) { budget.m_CapHit = true; return false; }
                 float front = x * curve.m_Length, rear = front;
                 if (reads.m_Geometries.TryGetComponent(pr.m_Prefab, out ObjectGeometryData g))
                 {
                     front += g.m_Bounds.max.z;
                     rear += g.m_Bounds.min.z;
                 }
-                if (rear >= cEnd) continue;   // past the conflict
                 float gap = cStart - front;
-                if (gap > ExitGiveWay.MaxScanMetres) continue;
+                // 0.4.7: only a vehicle before the conflict end and within reach counts against the budget (0.4.4-0.4.6 counted
+                // every vehicle on the lane, also those past the conflict or far away); a hit is dense traffic: busy (Core ExitPaths.CapBusy).
+                if (!ExitPaths.CountsAgainstBudget(rear, cEnd, gap)) continue;
+                if (++budget.m_Vehicles > ExitGiveWay.MaxVehiclesPerScan)
+                {
+                    budget.m_CapHit = budget.m_VehicleCap = true;
+                    return ExitPaths.CapBusy(false, true);
+                }
                 float speed = 0f;
                 if (reads.m_Moving.TryGetComponent(e, out Moving m))
                 {

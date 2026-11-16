@@ -181,7 +181,7 @@ namespace JunctionRules.Tests
             string b32 = s32 < 0 ? "" : nav.Substring(s32, nav.IndexOf("// JR-STAGE2 END", s32, StringComparison.Ordinal) - s32);
             Check(b32.Contains("AddCounts(") && b32.Contains("prefabObjectGeometryData.m_Bounds.max.z"), "S2-32 feeds the counters (the area branch skips the later AddCounts) and passes the front offset");
             int s34 = nav.IndexOf("// JR-STAGE2 BEGIN S2-34", StringComparison.Ordinal);
-            Check(s34 > nav.IndexOf("// JR-STAGE2 BEGIN S2-33", StringComparison.Ordinal) && nav.IndexOf("ExitJoinProbe(", s34, StringComparison.Ordinal) > s34
+            Check(s34 > nav.IndexOf("// JR-STAGE2 BEGIN S2-33", StringComparison.Ordinal) && nav.IndexOf("ExitHandOver(", s34, StringComparison.Ordinal) > s34
                 && nav.IndexOf("ApplySideEffects(ref currentLane", s34, StringComparison.Ordinal) > s34, "S2-34 hand-over probe after S2-33, before the lane switch");
         }
 
@@ -211,7 +211,8 @@ namespace JunctionRules.Tests
                 "timing line: exit waits, go decisions, emergency passthroughs");
             Check(!Stage2Counters.Format(1, d, 0, 0, 0, 1).Contains("building exits:") && Stage2Counters.Format(1, d, 0, 0, 0, 1).Contains("give way off"), "setting off: no exit counters, says off");
             Check(!Stage2Counters.Format(1, d).Contains("leaving buildings"), "0.4.3 callers (no exit mask): unchanged text");
-            Check(Stage2Counters.ExitCapHits == Stage2Counters.Count - 4 && Stage2Counters.ExitJoinArea == Stage2Counters.ExitCapHits + 1 && Stage2Counters.ExitJoinOther == Stage2Counters.Count - 1 && Stage2Counters.ExitHeld == Stage2Counters.EntranceHeldLeaving + 1, "exit counters appended after the 0.4.3 ones");
+            Check(Stage2Counters.ExitCapHits == Stage2Counters.Count - 12 && Stage2Counters.ExitJoinArea == Stage2Counters.ExitCapHits + 1 && Stage2Counters.ExitJoinOther == Stage2Counters.Count - 9 && Stage2Counters.ExitHeld == Stage2Counters.EntranceHeldLeaving + 1, "exit counters appended after the 0.4.3 ones");
+            Check(Stage2Counters.ExitJoinSpawnPoint == Stage2Counters.ExitJoinOther + 1 && Stage2Counters.ExitCapVehicles == Stage2Counters.Count - 1, "0.4.7 G1 counters appended at the end"); 
         }
 
         private static void ExitRepoTests()

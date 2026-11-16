@@ -107,6 +107,10 @@ namespace JunctionRules.Tests
             ("ExitPriorityTests", ExitPriorityTests),
             ("ExitModeTests", ExitModeTests),
             ("ExitRepoTests", ExitRepoTests),
+            ("ExitPathTests", ExitPathTests),
+            ("ExitCapTests", ExitCapTests),
+            ("ExitTraceTests", ExitTraceTests),
+            ("ExitG1RepoTests", ExitG1RepoTests),
         };
 
         private static int Main(string[] args)

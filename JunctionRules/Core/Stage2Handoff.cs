@@ -20,6 +20,19 @@ namespace JunctionRules.Core
         public static void Publish(int mode) => Volatile.Write(ref s_Requested, mode);
     }
 
+    /// <summary>
+    /// 0.4.7 (G1): setting "Exit trace (log)", published by Systems/CarDrivingSwitchSystem.cs each step and taken by
+    /// Stage2/JRStage2Bridge.cs in the copy's OnUpdate (S2-23), the same path as <see cref="Stage2Handoff"/>.
+    /// </summary>
+    public static class ExitTraceHandoff
+    {
+        private static int s_On;
+
+        public static bool Requested => Volatile.Read(ref s_On) != 0;
+
+        public static void Publish(bool on) => Volatile.Write(ref s_On, on ? 1 : 0);
+    }
+
     /// <summary>Logs a change of the requested rule once (the switch system calls it each step).</summary>
     public sealed class GapRuleSwitch
     {
@@ -144,7 +157,7 @@ namespace JunctionRules.Core
         public const int ExitEmergencyPass = FeedingScans + 28;
         /// <summary>0.4.4: car-steps in which a vehicle at a boxed spawn exit had its gap but no room past the band (0.4.3 box rule).</summary>
         public const int ExitSpawnBoxHeld = FeedingScans + 29;
-        /// <summary>0.4.4: exit scans stopped by the work cap (vehicles not read do not count).</summary>
+        /// <summary>0.4.4: exit scans stopped by the work cap (0.4.7: lane or vehicle cap; split in ExitCapLanes / ExitCapVehicles).</summary>
         public const int ExitCapHits = FeedingScans + 30;
         /// <summary>0.4.6 (probe): lane hand-overs of a vehicle from a lot's AREA lane to a public road lane (one per hand-over; each is judged by the exit rule just before it).</summary>
         public const int ExitJoinArea = FeedingScans + 31;
@@ -152,7 +165,23 @@ namespace JunctionRules.Core
         public const int ExitJoinConnection = FeedingScans + 32;
         /// <summary>0.4.6 (probe): ... from any other building-owned lane to a public road lane (expected 0: a driveway goes through its SideConnection lane; a nonzero count is an ungated way out of a building).</summary>
         public const int ExitJoinOther = FeedingScans + 33;
-        public const int Count = FeedingScans + 34;
+        /// <summary>0.4.7 (G1): hand-overs from a building's spawn location object (TransformTarget; the 0.4.6 'other', judged by S2-35 since 0.4.7).</summary>
+        public const int ExitJoinSpawnPoint = FeedingScans + 34;
+        /// <summary>0.4.7: ... from a building-owned parking lane (ParkingSpace; S2-35).</summary>
+        public const int ExitJoinParking = FeedingScans + 35;
+        /// <summary>0.4.7: ... from a kerbside parking lane of the road (ParkingSpace, not building-owned; S2-35, "give way when moving off").</summary>
+        public const int ExitJoinKerbParking = FeedingScans + 36;
+        /// <summary>0.4.7: ... from a car lane of a building's own road into a public junction lane (S2-36).</summary>
+        public const int ExitJoinBuildingLane = FeedingScans + 37;
+        /// <summary>0.4.7: ... from a driveway's SideConnection lane (judged by S2-29 before the hand-over; counted only).</summary>
+        public const int ExitJoinDrive = FeedingScans + 38;
+        /// <summary>0.4.7: hand-overs of a path the rule judges (lot, gate, spawn point, parking, building road) with no exit decision in that update (expected 0; on-duty emergency vehicles not included).</summary>
+        public const int ExitJoinUnjudged = FeedingScans + 39;
+        /// <summary>0.4.7: exit decisions that hit the lane cap (far feeding lanes not read; errs to go).</summary>
+        public const int ExitCapLanes = FeedingScans + 40;
+        /// <summary>0.4.7: exit decisions that hit the vehicle cap (dense traffic; counts as busy: wait).</summary>
+        public const int ExitCapVehicles = FeedingScans + 41;
+        public const int Count = FeedingScans + 42;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -279,7 +308,15 @@ namespace JunctionRules.Core
                          ", cap hits " + deltas[ExitCapHits].ToString(ci) +
                          ", hand-overs to the road from: lot " + deltas[ExitJoinArea].ToString(ci) +
                          ", gate " + deltas[ExitJoinConnection].ToString(ci) +
-                         ", other " + deltas[ExitJoinOther].ToString(ci)
+                         ", other " + deltas[ExitJoinOther].ToString(ci) +
+                         ", spawn point " + deltas[ExitJoinSpawnPoint].ToString(ci) +
+                         ", building parking " + deltas[ExitJoinParking].ToString(ci) +
+                         ", kerbside parking " + deltas[ExitJoinKerbParking].ToString(ci) +
+                         ", building road " + deltas[ExitJoinBuildingLane].ToString(ci) +
+                         ", drive " + deltas[ExitJoinDrive].ToString(ci) +
+                         "; hand-overs not judged " + deltas[ExitJoinUnjudged].ToString(ci) +
+                         "; cap hits by kind: lanes " + deltas[ExitCapLanes].ToString(ci) +
+                         " (go), vehicles " + deltas[ExitCapVehicles].ToString(ci) + " (wait)"
                        : "") +
                    "; " + points;
         }

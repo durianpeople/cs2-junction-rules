@@ -179,6 +179,8 @@ namespace JunctionRules.Systems
                 // 0.4.4 (JR-T-012): vehicles leaving buildings give way.
                 Mod.Settings == null || Mod.Settings.ExitGiveWay);
             Stage2Handoff.Publish(stage2Mode);
+            // 0.4.7 (G1): the per-vehicle exit trace (logged by the copy side, rate-limited).
+            ExitTraceHandoff.Publish(Mod.Settings != null && Mod.Settings.ExitTrace);
             UpdateBoxEdges((stage2Mode & Stage2Mode.BoxEntrances) != 0);
             if (ruleNote != null) Mod.log.Info(ruleNote);
             if (!m_ProbesApplied || probes != m_ProbesOn)
