@@ -1619,6 +1619,10 @@ public class JRCarNavigationSystem : GameSystemBase
 			if (carLaneSpeedIterator.m_JR.m_ExitRule)
 			{
 				carLaneSpeedIterator.m_JR.SetExits(m_JRExitBuildings, m_JRExitEdges, m_LeftHandTraffic);
+				if ((m_JRMode & JunctionRules.Core.Stage2Mode.Rule) == 0 && !carLaneSpeedIterator.m_JR.m_ZebraRule && !carLaneSpeedIterator.m_JR.m_BoxRule && m_JRLayoutData.TryGetBuffer(entity, out DynamicBuffer<LayoutElement> jrExitLayout))
+				{
+					carLaneSpeedIterator.m_JR.m_VehicleLength = JunctionRules.Stage2.JRVehicleLength.WithTrailers(prefabObjectGeometryData, jrExitLayout, ref m_PrefabRefData, ref m_PrefabObjectGeometryData, ref m_JRTractorData, ref m_JRTrailerData);
+				}
 			}
 			// JR-STAGE2 END
 			JRCarLaneSpeedIterator laneIterator = carLaneSpeedIterator;

@@ -49,7 +49,7 @@ namespace JunctionRules.Stage2
         }
 
         /// <summary>The lookups one exit scan reads (the caller's read-only stock lookups, passed by ref).</summary>
-        private ref struct ExitReads
+        private struct ExitReads
         {
             public Entity m_Self;
             public ComponentLookup<Game.Net.CarLane> m_CarLanes;

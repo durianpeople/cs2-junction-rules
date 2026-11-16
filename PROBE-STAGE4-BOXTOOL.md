@@ -44,7 +44,7 @@ differences). Also: the T-junction through-side kerb fix (section 6) and the ent
 0.3.6 (JR-T-008, people pass a car blocking their crossing; merged from 784ba28) and everything before it
 (PROBE-STAGE3-PAINT.md).
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.4.4-probe/` (JR-T-012 managed build NOT staged there yet: on 16 Nov that folder held the JR-T-011 0.4.4 managed build; main decides the merge and stages). 0.4.3-probe (installed) is the rollback. Earlier: 0.4.2-probe (jr-t-010 line) is installed live by main (code 59e731f, sums c781df0); never write into `.staged/0.4.2-probe`. While `.staged/0.4.3-probe` holds a `STALE.md` it is a managed
+Build to install: `~/Code/cs2-junction-rules/.staged/0.4.4-probe-jr012/` (JR-T-012 only; `.staged/0.4.4-probe` holds the paused JR-T-011 managed build: never install that one for this probe). 0.4.3-probe (installed) is the rollback. Earlier: 0.4.2-probe (jr-t-010 line) is installed live by main (code 59e731f, sums c781df0); never write into `.staged/0.4.2-probe`. While `.staged/0.4.3-probe` holds a `STALE.md` it is a managed
 build only: main does the Burst build in `STALE.md` (game closed, at the owner's quit), then puts the five sums into the
 install block below. 0.4.3-probe was Burst-built from a14445d and installed by main on 16 Nov. (0.4.2-probe stays in `.staged/0.4.2-probe` as the rollback.) Until then the block refuses (placeholder sums `0000...`).
 
@@ -57,7 +57,7 @@ copy does not run; the boxes stay in the save).
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.4.4-probe || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.4.4-probe-jr012 || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
