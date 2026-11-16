@@ -143,16 +143,12 @@ namespace JunctionRules.Paint
         private bool UpdateShapeParams()
         {
             double setting = Mod.Settings != null ? Mod.Settings.YellowBoxMarkingMargin : MarkingMargin.Default;
-            double m = MarkingMargin.Effective(setting, m_Config != null ? m_Config.Geometry.MarkingMargin : double.NaN, out string src);
-            if (m_Config != null)
-            {
-                BoxStore.EntranceLength = m_Config.Geometry.EntranceLength;
-                BoxStore.KerbInset = m_Config.Geometry.KerbInset;
-            }
-            BoxStore.MarkingMargin = m;
+            BoxShapeParams p = BoxShapeParams.From(m_Config, setting);
+            BoxStore.PublishParams(p);
+            double m = p.MarkingMargin;
             if (Math.Abs(m - m_Margin) < 1e-9) return false;
             m_Margin = m;
-            Mod.log.Info($"yellow boxes: marking margin {m:0.0} m ({src}); boxes rebuilt");
+            Mod.log.Info($"yellow boxes: marking margin {m:0.0} m ({p.MarginSource}); boxes rebuilt");
             return true;
         }
 
@@ -431,13 +427,8 @@ namespace JunctionRules.Paint
 
         // ------------------------------------------------------------------ list file
 
-        internal static string ListPath()
-        {
-            string root;
-            try { root = Colossal.PSI.Environment.EnvPath.kUserDataPath; }
-            catch { root = Application.persistentDataPath; }
-            return Path.Combine(Path.Combine(Path.Combine(root, "ModsData"), "JunctionRules"), PaintTestConfig.FileName);
-        }
+        /// <summary>The paint list file (JR-T-007b-r: path kept in Boxes/BoxStore.cs, which also reads it for the tool).</summary>
+        internal static string ListPath() => BoxStore.ListPath();
 
         private void LoadList()
         {
@@ -696,7 +687,7 @@ namespace JunctionRules.Paint
                 if (shape.Outline == null)
                 {
                     // 0.4.2: no hull fallback any more (a hull is not the straight-sided box and can cover pavement)
-                    Mod.log.Warn($"yellow box paint test: {b.Label}: no box: straight-sided outline failed ({shape.Failure})" + (notes.Count > 0 ? "; notes: " + string.Join("; ", notes) : ""));
+                    Mod.log.Warn($"yellow box paint test: {b.Label}: node {b.Node}: no box: straight-sided outline failed ({shape.Failure})" + (notes.Count > 0 ? "; notes: " + string.Join("; ", notes) : ""));
                     return;
                 }
                 BoxPaintResult res = BoxPaintGeometry.BuildPieces(shape.Outline, m_Config.Geometry, m_Mode);
@@ -738,7 +729,7 @@ namespace JunctionRules.Paint
             if (!BoxSelection.EntranceOk(f, out string why)) { DropSaved(b, "building access no longer valid: " + why); return; }
             BoxShapes.Shape shape = BoxShapes.Entrance(em, a, m_Config.Geometry.KerbInset, m_Config.Geometry.EntranceLength, CurrentMargin);
             b.LastPos = shape.Position;
-            if (shape.Outline == null) { Mod.log.Info($"yellow boxes: {b.Label}: not painted: {shape.Failure}" + (shape.Notes.Count > 0 ? "; notes: " + string.Join("; ", shape.Notes) : "")); return; }
+            if (shape.Outline == null) { Mod.log.Warn($"yellow boxes: {b.Label}: building {b.Building}: not painted: {shape.Failure}" + (shape.Notes.Count > 0 ? "; notes: " + string.Join("; ", shape.Notes) : "")); return; }
             BoxPaintResult res = BoxPaintGeometry.BuildPieces(shape.Outline, m_Config.Geometry, m_Mode);
             if (!res.Ok) { Mod.log.Warn($"yellow boxes: {b.Label}: no box: {res.Failure}"); return; }
             var notes = new List<string>(shape.Notes);

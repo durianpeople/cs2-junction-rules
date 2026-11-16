@@ -104,6 +104,10 @@ namespace JunctionRules
                 updateSystem.UpdateBefore<CarDrivingSwitchSystem, CarNavigationSystem>(phase);
             }
 
+            // JR-T-007b-r F6: the box shape parameters (paint list + Options) are in place before any tool hover.
+            try { JunctionRules.Boxes.BoxStore.LoadParams("mod load"); }
+            catch (Exception e) { log.Warn("yellow boxes: shape parameters not loaded: " + e.GetType().Name + ": " + e.Message); }
+
             // Stage 3 probe (0.3.0-probe): yellow box paint test, draw-only, default off. Registered last and on its own:
             // if it fails, the copy, stage 2 and the timing probes above are already in place and unaffected.
             try

@@ -97,8 +97,8 @@ namespace JunctionRules.Boxes
             if (arms.Count < 2) { s.Failure = $"{arms.Count} arm(s)"; return s; }
             var markings = MarkedCrossings(em, node, out int unmarked);
             int zebras = markings.Count, stopLines = 0;
-            foreach (Entity e in armEdges) stopLines += StopLines(em, e, markings);
-            ReadLanes(em, node, arms, out bool signals, out List<LanePath> paths);
+            foreach (Entity e in armEdges) stopLines += StopLines(em, e, markings, em.GetComponentData<Edge>(e).m_Start == node);
+            ReadLanes(em, node, arms, out bool signals, out List<LanePath> paths, out ArmLaneCounts[] counts);
             var conflicts = StraightBox.ConflictPoints(paths);
             var centre = new V2(np.x, np.z);
             CarriagewayResult cw = CarriagewayOutline.BuildStraight(arms, centre, markings, margin, conflicts, signals);
@@ -107,7 +107,7 @@ namespace JunctionRules.Boxes
             if (cw.StopDistance != null) foreach (double d in cw.StopDistance) stops.Add(d.ToString("0.0"));
             s.Notes.Add($"{zebras} zebra(s), {stopLines} stop / give-way line(s), {unmarked} unmarked crossing(s); margin {margin:0.0} m; box starts per arm at +[{string.Join(", ", stops)}] m from the mouth");
             var yields = new List<string>();
-            foreach (var a in arms) yields.Add(a.Yielding ? "yield" : "priority");
+            for (int k = 0; k < arms.Count; k++) yields.Add((arms[k].Yielding ? "yield" : "priority") + " (" + counts[k].Describe() + ")");
             s.Notes.Add($"arms {string.Join(", ", yields)}{(signals ? ", signals" : "")}; {conflicts.Count} conflict point(s)");
             if (cw.Straight != null && cw.Straight.Shift != null)
             {
@@ -124,15 +124,29 @@ namespace JunctionRules.Boxes
 
         /// <summary>
         /// Per arm: STOP / Give Way (CarLaneFlags.Stop 0x800 / Yield 0x400, set on the node's car lanes by
-        /// LaneSystem.cs 7108-7118 from the arm's priority, incl. the Traffic mod's signs) on any car lane that starts
-        /// at that arm's mouth; signals (CarLaneFlags.TrafficLights, LaneSystem.cs 7122-7125) make all arms equal. Also
+        /// LaneSystem.cs 7108-7118 from the arm's priority, incl. the Traffic mod's signs) counted over the car lanes
+        /// that start at that arm's mouth, with the through ones (CarLaneFlags.Forward, LaneSystem.cs 7054) apart;
+        /// the arm yields per Core/ArmYield.cs (JR-T-007b-r F4: its through lanes yield, or with no through movement
+        /// most of its lanes; a lone Give Way turn lane on a main-road arm no longer makes it yielding); signals (CarLaneFlags.TrafficLights, LaneSystem.cs 7122-7125) make all arms equal. Also
         /// the car paths for the conflict points: the node's car lanes, minus master lanes (Game.Net.MasterLane: the
         /// merged multi-lane stand-in) and unsafe lanes (CarLaneFlags.Unsafe: u-turns / forbidden-looking moves).
         /// </summary>
-        private static void ReadLanes(EntityManager em, Entity node, List<ArmInput> arms, out bool signals, out List<LanePath> paths)
+        private static void ReadLanes(EntityManager em, Entity node, List<ArmInput> arms, out bool signals, out List<LanePath> paths, out ArmLaneCounts[] counts)
         {
             signals = false;
             paths = new List<LanePath>();
+            counts = new ArmLaneCounts[arms.Count];
+            for (int k = 0; k < counts.Length; k++) counts[k] = new ArmLaneCounts();
+            try { ReadLaneList(em, node, arms, ref signals, paths, counts); }
+            finally
+            {
+                bool[] y = ArmYield.Classify(counts);
+                for (int k = 0; k < arms.Count; k++) arms[k].Yielding = y[k];
+            }
+        }
+
+        private static void ReadLaneList(EntityManager em, Entity node, List<ArmInput> arms, ref bool signals, List<LanePath> paths, ArmLaneCounts[] counts)
+        {
             if (!em.HasBuffer<Game.Net.SubLane>(node)) return;
             DynamicBuffer<Game.Net.SubLane> subs = em.GetBuffer<Game.Net.SubLane>(node, true);
             for (int i = 0; i < subs.Length; i++)
@@ -143,8 +157,8 @@ namespace JunctionRules.Boxes
                 CarLaneFlags f = em.GetComponentData<Game.Net.CarLane>(l).m_Flags;
                 if ((f & CarLaneFlags.TrafficLights) != 0) signals = true;
                 Bezier4x3 bz = em.GetComponentData<Curve>(l).m_Bezier;
-                if ((f & (CarLaneFlags.Stop | CarLaneFlags.Yield)) != 0)
                 {
+                    // every car lane counts for its arm (the arm whose mouth it starts at)
                     int best = -1;
                     double bestD = double.MaxValue;
                     var a = new V2(bz.a.x, bz.a.z);
@@ -153,15 +167,19 @@ namespace JunctionRules.Boxes
                         double d = BoxPaintGeometry.DistanceToSegment(a, arms[k].OuterA[0].XZ, arms[k].OuterB[0].XZ);
                         if (d < bestD) { bestD = d; best = k; }
                     }
-                    if (best >= 0 && bestD < CarriagewayOutline.CrossingAssignMax) arms[best].Yielding = true;
+                    if (best >= 0 && bestD < CarriagewayOutline.CrossingAssignMax)
+                        counts[best].Add((f & (CarLaneFlags.Stop | CarLaneFlags.Yield)) != 0, (f & CarLaneFlags.Forward) != 0);
                 }
                 if ((f & CarLaneFlags.Unsafe) != 0 || !em.HasComponent<Lane>(l)) continue;
                 Lane lane = em.GetComponentData<Lane>(l);
                 var pts = new List<V2>(17);
                 for (int k = 0; k <= 16; k++) { float3 p = MathUtils.Position(bz, k / 16f); pts.Add(new V2(p.x, p.z)); }
-                paths.Add(new LanePath(pts, lane.m_StartNode.GetHashCode(), lane.m_EndNode.GetHashCode()));
+                paths.Add(new LanePath(pts, Key(lane.m_StartNode), Key(lane.m_EndNode)));
             }
         }
+
+        /// <summary>JR-T-007b-r F9: the PathNode's full 64-bit key (Core LanePath.Key), not its 32-bit hash.</summary>
+        private static long Key(Game.Pathfind.PathNode n) => LanePath.Key(n.GetOwnerIndex(), n.GetLaneIndex(), n.GetCurvePos(), n.IsSecondary());
 
         // ------------------------------------------------------------------ entrance
 
@@ -375,8 +393,10 @@ namespace JunctionRules.Boxes
         /// curve there; side markings run along it). Painted width (thickness along the road) = the larger of the lane
         /// prefab's NetLaneData.m_Width and its mesh size NetLaneGeometryData.m_Size.x (mesh bounds across the lane,
         /// NetInitializeSystem.cs 1817-1839): the larger is the conservative value.
+        /// JR-T-007b-r F10: nearStart true / false keeps only the lines on this node's half of the edge (curve
+        /// parameter below / above 0.5 at the line's middle); null keeps all (entrance boxes: the whole stretch).
         /// </summary>
-        internal static int StopLines(EntityManager em, Entity edge, List<CrosswalkStrip> into)
+        internal static int StopLines(EntityManager em, Entity edge, List<CrosswalkStrip> into, bool? nearStart = null)
         {
             if (!em.HasBuffer<Game.Net.SubLane>(edge) || !em.HasComponent<Curve>(edge)) return 0;
             Bezier4x3 ec = em.GetComponentData<Curve>(edge).m_Bezier;
@@ -395,6 +415,7 @@ namespace JunctionRules.Boxes
                 V2 dir = (d - a).Normalized;
                 if (dir.Length < 0.5) continue;
                 MathUtils.Distance(ec.xz, ((bz.a + bz.d) * 0.5f).xz, out float t);
+                if (nearStart.HasValue && (nearStart.Value ? t > 0.5f : t < 0.5f)) continue;
                 float3 tan = MathUtils.Tangent(ec, t);
                 V2 road = new V2(tan.x, tan.z).Normalized;
                 if (Math.Abs(V2.Dot(dir, road)) >= 0.5) continue;
