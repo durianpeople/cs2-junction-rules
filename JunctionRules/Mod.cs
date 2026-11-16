@@ -6,6 +6,7 @@ using Game.Modding;
 using Game.SceneFlow;
 using Game.Simulation;
 using JunctionRules.Core;
+using JunctionRules.Boxes;
 using JunctionRules.Paint;
 using JunctionRules.Settings;
 using JunctionRules.Systems;
@@ -33,6 +34,7 @@ namespace JunctionRules
             log.Info($"{nameof(OnLoad)} version {typeof(Mod).Assembly.GetName().Version}, copy made from game {MadeFrom.GameVersion}");
 
             Settings = new JunctionRulesSettings(this);
+            Settings.RegisterKeyBindings();
             Settings.RegisterInOptionsUI();
             GameManager.instance.localizationManager.AddSource("en-US", new LocaleEN(Settings));
             AssetDatabase.global.LoadSettings(nameof(JunctionRules), Settings, new JunctionRulesSettings(this));
@@ -96,6 +98,17 @@ namespace JunctionRules
             {
                 log.Error(e, "registering the yellow box paint test failed; painting is unavailable, the rest of Junction Rules is not affected");
                 PaintRegistration.DisableLeftover(updateSystem.World);
+            }
+
+            // 0.4.0-probe (JR-T-007): yellow box selection tool + its toggle (toolbar button, shortcut, Options button).
+            // Idle until the owner opens it. On its own try/catch: a failure leaves everything above in place.
+            try
+            {
+                Boxes.BoxRegistration.Register(updateSystem);
+            }
+            catch (Exception e)
+            {
+                log.Error(e, "registering the yellow box tool failed; the tool is unavailable, the rest of Junction Rules is not affected");
             }
         }
 

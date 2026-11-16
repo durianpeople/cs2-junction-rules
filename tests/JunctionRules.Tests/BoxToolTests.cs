@@ -157,19 +157,18 @@ namespace JunctionRules.Tests
         private static void BoxRecordTests()
         {
             var rec = new BoxRecord(BoxRecordFlags.PaintOnly);
-            byte[] bytes = rec.Encode();
+            byte[] bytes = ArrayBytes.Encode(rec);
             Check(bytes.Length == 3 && bytes[0] == BoxRecord.CurrentVersion && bytes[1] == BoxRecord.V1PayloadLength, "record: version 1 layout [version, length, flags]");
-            int p = 0;
-            Check(BoxRecord.Decode(() => bytes[p++], out BoxRecord back, out byte v) && back.Equals(rec) && v == 1 && p == bytes.Length, "record: round trip, every byte consumed");
-            var none = new BoxRecord(BoxRecordFlags.None).Encode();
-            Check(none.Length > 0, "record: never zero bytes (the game rejects an empty write of a non-empty serializable)");
+            var src = new ArrayBytes { Data = bytes };
+            Check(BoxRecord.Decode(ref src, out BoxRecord back, out byte v) && back.Equals(rec) && v == 1 && src.Pos == bytes.Length, "record: round trip, every byte consumed");
+            Check(ArrayBytes.Encode(new BoxRecord(BoxRecordFlags.None)).Length > 0, "record: never zero bytes (the game rejects an empty write of a non-empty serializable)");
             // a newer writer with a longer payload: this reader keeps what it knows and consumes exactly the record
-            byte[] newer = { 2, 4, 1, 9, 9, 9, 0xAB };
-            p = 0;
-            Check(BoxRecord.Decode(() => newer[p++], out back, out v) && v == 2 && back.Flags == BoxRecordFlags.PaintOnly && p == 6, "record: newer version with extra payload is read and its extra bytes skipped");
-            byte[] zero = { 0, 0 };
-            p = 0;
-            Check(!BoxRecord.Decode(() => zero[p++], out _, out _) && p == 2, "record: version 0 refused but consumed");
+            src = new ArrayBytes { Data = new byte[] { 2, 4, 1, 9, 9, 9, 0xAB } };
+            Check(BoxRecord.Decode(ref src, out back, out v) && v == 2 && back.Flags == BoxRecordFlags.PaintOnly && src.Pos == 6, "record: newer version with extra payload is read and its extra bytes skipped");
+            src = new ArrayBytes { Data = new byte[] { 0, 0 } };
+            Check(!BoxRecord.Decode(ref src, out _, out _) && src.Pos == 2, "record: version 0 refused but consumed");
+            src = new ArrayBytes { Data = new byte[] { 1, 0 } };
+            Check(BoxRecord.Decode(ref src, out back, out _) && back.Flags == BoxRecordFlags.None && src.Pos == 2, "record: empty payload reads as defaults");
 
             // save with three boxed entities, then another component's block
             var stream = new List<byte>();

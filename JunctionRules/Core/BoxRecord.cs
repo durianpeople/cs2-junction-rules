@@ -23,42 +23,68 @@ namespace JunctionRules.Core
         PaintOnly = 1,
     }
 
+    /// <summary>Byte source for <see cref="BoxRecord.Decode"/>: the component wraps the game's IReader (its position is shared state, so a struct copy reads on).</summary>
+    public interface IByteSource { byte Next(); }
+
+    /// <summary>Byte sink for <see cref="BoxRecord.Encode"/>: the component wraps the game's IWriter.</summary>
+    public interface IByteSink { void Put(byte b); }
+
     public struct BoxRecord : IEquatable<BoxRecord>
     {
         public const byte CurrentVersion = 1;
-        public const int V1PayloadLength = 1;
+        public const byte V1PayloadLength = 1;
 
         public BoxRecordFlags Flags;
 
         public BoxRecord(BoxRecordFlags flags) { Flags = flags; }
 
-        /// <summary>The bytes for one entity (version, length, payload).</summary>
-        public byte[] Encode()
+        /// <summary>Writes one entity's record (version, length, payload). No allocation (runs inside the game's serializer job).</summary>
+        public void Encode<TSink>(ref TSink sink) where TSink : struct, IByteSink
         {
-            return new byte[] { CurrentVersion, V1PayloadLength, (byte)Flags };
+            sink.Put(CurrentVersion);
+            sink.Put(V1PayloadLength);
+            sink.Put((byte)Flags);
         }
 
         /// <summary>
-        /// Reads one entity's record through 'readByte' (the game's IReader.Read(out byte)). Consumes exactly
-        /// 2 + length bytes whatever the version. Unknown newer versions keep the fields this build knows (version 1
-        /// fields stay at the same offsets in every later version). Returns false (record = default) only for version 0,
-        /// which no build writes.
+        /// Reads one entity's record. Consumes exactly 2 + length bytes whatever the version. Unknown newer versions keep
+        /// the fields this build knows (version 1 fields stay at the same offsets in every later version). Returns false
+        /// (record = default) only for version 0, which no build writes. No allocation.
         /// </summary>
-        public static bool Decode(Func<byte> readByte, out BoxRecord record, out byte version)
+        public static bool Decode<TSource>(ref TSource source, out BoxRecord record, out byte version) where TSource : struct, IByteSource
         {
             record = default;
-            version = readByte();
-            int length = readByte();
-            var payload = new byte[length];
-            for (int i = 0; i < length; i++) payload[i] = readByte();
-            if (version == 0) return false;
-            if (length >= 1) record.Flags = (BoxRecordFlags)payload[0];
+            version = source.Next();
+            int length = source.Next();
+            for (int i = 0; i < length; i++)
+            {
+                byte b = source.Next();
+                if (i == 0) record.Flags = (BoxRecordFlags)b;
+            }
+            if (version == 0) { record = default; return false; }
             return true;
         }
 
         public bool Equals(BoxRecord other) => Flags == other.Flags;
         public override bool Equals(object obj) => obj is BoxRecord r && Equals(r);
         public override int GetHashCode() => (int)Flags;
+    }
+
+    /// <summary>Array-backed source / sink (tests and the block model).</summary>
+    public struct ArrayBytes : IByteSource, IByteSink
+    {
+        public byte[] Data;
+        public int Pos;
+        public List<byte> Out;
+        public byte Next() => Data[Pos++];
+        public void Put(byte b) => Out.Add(b);
+
+        public static byte[] Encode(BoxRecord r)
+        {
+            var s = new ArrayBytes { Out = new List<byte>() };
+            r.Encode(ref s);
+            return s.Out.ToArray();
+        }
     }
 
     /// <summary>
@@ -73,7 +99,7 @@ namespace JunctionRules.Core
         public static void WriteBlock(List<byte> stream, IList<BoxRecord> records)
         {
             var body = new List<byte>();
-            foreach (var r in records) body.AddRange(r.Encode());
+            foreach (var r in records) body.AddRange(ArrayBytes.Encode(r));
             stream.AddRange(BitConverter.GetBytes(body.Count));
             stream.AddRange(body);
         }
@@ -89,13 +115,13 @@ namespace JunctionRules.Core
         public static int ReadBlock(byte[] stream, int pos, int count, List<BoxRecord> into)
         {
             int size = BitConverter.ToInt32(stream, pos);
-            int p = pos + 4, start = p;
+            var src = new ArrayBytes { Data = stream, Pos = pos + 4 };
             for (int i = 0; i < count; i++)
             {
-                BoxRecord.Decode(() => stream[p++], out BoxRecord r, out _);
+                BoxRecord.Decode(ref src, out BoxRecord r, out _);
                 into.Add(r);
             }
-            return p - start == size ? p : -1;
+            return src.Pos - (pos + 4) == size ? src.Pos : -1;
         }
     }
 }
