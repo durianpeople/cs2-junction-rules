@@ -223,6 +223,22 @@ namespace JunctionRules.Stage2
         private bool m_ExitGo;
         private bool m_ExitEmergency;
         private bool m_ExitCapHit;
+        // ---- 0.4.7 (JR-T-013a, G1): every way out judged; decision facts for the hand-over counters and the exit trace ----
+        /// <summary>An exit decision (gap / box) was taken for this vehicle in this update (any hook but S2-29).</summary>
+        private bool m_ExitDecided;
+        private ExitGiveWay.Decision m_ExitDecision;
+        private bool m_ExitBoxed;
+        private bool m_ExitLaneCap;
+        private bool m_ExitVehicleCap;
+        /// <summary>The joined road lane belongs to a junction node (conflicts from its LaneOverlaps).</summary>
+        private bool m_ExitNodeJoin;
+        /// <summary>The lane / object the decision was for, its navigation flags and the joined road lane's owner (trace).</summary>
+        private Entity m_ExitFrom;
+        private uint m_ExitFromFlags;
+        private Entity m_ExitRoadOwner;
+        /// <summary>Setting "Exit trace (log)": the ring (Stage2/JRStage2Bridge.cs TraceRing) handed in by S2-26 SetTrace.</summary>
+        private bool m_TraceOn;
+        private NativeArray<long> m_TraceRing;
 
         public bool RuleOn
         {
@@ -1288,6 +1304,9 @@ namespace JunctionRules.Stage2
             if (m_ExitGo && ExitEvent(eventTable, entity, frame, 3)) Add(counters, Stage2Counters.ExitGo, 1);
             if (m_ExitEmergency && ExitEvent(eventTable, entity, frame, 4)) Add(counters, Stage2Counters.ExitEmergencyPass, 1);
             if (m_ExitCapHit) Add(counters, Stage2Counters.ExitCapHits, 1);
+            // 0.4.7: the cap hits by kind (lane cap: go; vehicle cap: wait).
+            if (m_ExitLaneCap) Add(counters, Stage2Counters.ExitCapLanes, 1);
+            if (m_ExitVehicleCap) Add(counters, Stage2Counters.ExitCapVehicles, 1);
             if (Stage2Counters.IsBinding(m_HasSafety, m_SafetySpeed, finalMaxSpeed))
             {
                 Add(counters, Stage2Counters.SafetyStops, 1);

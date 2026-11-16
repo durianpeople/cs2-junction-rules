@@ -52,11 +52,14 @@ namespace JunctionRules.Core
         /// <summary>Most conflicting road lanes judged per exit (a driveway across a 2+2 road has 4).</summary>
         public const int MaxConflictLanes = 8;
 
-        /// <summary>Most lanes read upstream of one exit (conflict lanes, the junction lanes feeding them, the lanes feeding those).</summary>
-        public const int MaxScanLanes = 24;
+        /// <summary>Most lanes read upstream of one exit (conflict lanes, the junction lanes feeding them, the lanes feeding those).
+        /// 0.4.7: 48 (was 24: an exit near a junction, two levels of feeders, ran out; a lane cap hit still errs to go,
+        /// Core ExitPaths.CapBusy).</summary>
+        public const int MaxScanLanes = 48;
 
-        /// <summary>Most vehicles read per exit decision. When hit, vehicles not read do not count (as FeedingScan: erring
-        /// "busy" could hold the exit for ever); cap hits are counted.</summary>
+        /// <summary>Most vehicles read per exit decision. 0.4.7: only vehicles before the conflict and within
+        /// <see cref="MaxScanMetres"/> count (ExitPaths.CountsAgainstBudget), and a hit is dense traffic: busy (wait;
+        /// ExitPaths.CapBusy). 0.4.4-0.4.6 counted every vehicle on a read lane and erred to go.</summary>
         public const int MaxVehiclesPerScan = 96;
 
         /// <summary>Lanes upstream of a conflict lane read at most: 1 = the junction lanes feeding it, 2 = also the road
@@ -177,7 +180,10 @@ namespace JunctionRules.Core
         public const float AreaScanMin = 25f;
 
         /// <summary>Counter episodes (0.4.6): a vehicle's consecutive exit decisions (at most <see cref="Core.SafetyStopEvents.ContinueFrames"/> apart) are one event, per kind.</summary>
-        public const int EventKinds = 6;
+        public const int EventKinds = 7;
+
+        /// <summary>0.4.7: event kind of the exit trace's "starts waiting" line (one per wait episode).</summary>
+        public const int TraceWaitKind = 6;
 
         /// <summary>Key of an exit-counter event: the entity index shifted into a per-kind range of the shared event table (kind 0 stays the plain index = the safety stops).</summary>
         public static int EventKey(int entityIndex, int kind) => entityIndex + kind * EventKindStride;
