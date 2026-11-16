@@ -1,5 +1,6 @@
 using JunctionRules.Core;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 
 namespace JunctionRules.Stage2
@@ -20,6 +21,18 @@ namespace JunctionRules.Stage2
         public FixedList512Bytes<float> m_T;
         /// <summary>0.4.4: carriageway mask per band (Core ExitBand.Carriageways).</summary>
         public FixedList512Bytes<uint> m_Mask;
+
+        /// <summary>
+        /// JR-T-014c (G9): the always-on entrance box log ring (Core/EntranceLog.cs layout, owned by Stage2/JRStage2Bridge.cs,
+        /// persistent, never disposed while the copy runs); carried here so the job gets it without a new Vanilla block.
+        /// Written only with Interlocked / plain stores of whole records (JRYellowBox.EntranceWrite).
+        /// </summary>
+        [NativeDisableParallelForRestriction]
+        [NativeDisableContainerSafetyRestriction]
+        public NativeArray<long> m_EntranceLog;
+
+        /// <summary>JR-T-014c (G9): the simulation frame of this step (SimulationSystem.frameIndex, set by the bridge) for the log records.</summary>
+        public uint m_Frame;
 
         public int Count => m_Keys.Length;
         public long Key(int i) => m_Keys[i];

@@ -122,6 +122,90 @@ namespace JunctionRules.Tests
             Check(whole.Contains("private bool HasRoomInto(") && whole.Contains("Stage2Counters.EntranceHeldEntering"), "room into the building: same RoomScan / ScanLane as HasRoomPast; counted");
         }
 
+        private static void G9EntranceLogTests()
+        {
+            // record packing
+            long f = EntranceLog.Pack(EntranceLog.Event.InBox, true, 3.27f, 0.5f);
+            EntranceLog.Unpack(f, out EntranceLog.Event e, out bool room, out float sp, out float t);
+            Check(e == EntranceLog.Event.InBox && room && Math.Abs(sp - 3.3f) < 0.01f && Math.Abs(t - 0.5f) < 0.001f, "entrance log record packs event, room, speed, band start");
+            // reader: ring protocol, overrun counted
+            var ring = new long[EntranceLog.RingLength];
+            long head = 0;
+            void Put(long v, long r, long facts, long frame)
+            {
+                long seq = ++head; ring[0] = seq; int b = EntranceLog.SlotBase(seq);
+                ring[b + 1] = v; ring[b + 2] = r; ring[b + 3] = facts; ring[b + 4] = frame; ring[b] = seq;
+            }
+            var reader = new EntranceLogReader();
+            for (int i = 0; i < EntranceLog.Slots + 10; i++) Put(i, 1, 0, i);
+            int got = reader.Drain(head, i => ring[i], (a, b, c, d) => { });
+            Check(got == EntranceLog.Slots && reader.TakeLost() == 10, "reader takes the last ring's worth, counts the overrun");
+
+            var lines = new List<string>();
+            var book = new EntranceLogBook(lines.Add);
+            const long road = 312580;
+            long Pk(EntranceLog.Event ev, bool rm, float speed) => EntranceLog.Pack(ev, rm, speed, 0.4f);
+            double now = 0;
+            book.Tick(now, 0);
+            // vehicle 1: held 40 s on the road (record every 4 frames), then let in
+            for (uint fr = 0; fr <= 2400; fr += 4) book.Record(1, road, Pk(EntranceLog.Event.Held, false, 0f), fr, now);
+            Check(lines.Count(l => l.Contains("vehicle 1:0 held before the box 30 s")) == 1, "notable once: held before the box over 30 s");
+            Check(lines.Count(l => l.StartsWith("entrance box sample: vehicle 1:0 held")) == 1, "one sample line for the hold episode, not one per step");
+            // vehicle 2: could not stop, went in without room and stands 3 s
+            for (uint fr = 100; fr <= 280; fr += 4) book.Record(2, road, Pk(EntranceLog.Event.InBox, false, fr < 120 ? 4f : 0f), fr, now);
+            Check(lines.Count(l => l.Contains("vehicle 2:0 entered the box without room and stands in it")) == 1, "notable: entered without room and stood in the box");
+            // vehicle 3: UK turner, room, waits 10 s in the box: normal, no notable
+            int before = lines.Count;
+            for (uint fr = 0; fr <= 600; fr += 4) book.Record(3, road, Pk(EntranceLog.Event.InBox, true, 0f), fr, now);
+            Check(lines.Count == before, "turner waiting in the box with room (10 s): no line");
+            // vehicle 4: let in, moving: one sample at most
+            for (uint fr = 0; fr <= 40; fr += 4) book.Record(4, road, Pk(EntranceLog.Event.Go, true, 8f), fr, now);
+            Check(lines.Count(l => l.Contains("vehicle 4:0 let in")) == 1, "let-in decision sampled once per vehicle");
+            book.Tick(now + 61, 2400);
+            string sum = lines.LastOrDefault() ?? "";
+            Check(sum.StartsWith("entrance boxes (last 61 s): 4 vehicle(s) turning in") && sum.Contains("1 held before the box (way in full)") && sum.Contains("1 went in without room")
+                  && sum.Contains("1 stood in the box without room") && sum.Contains("1 held over 30 s"), "summary line per interval: " + sum);
+            int afterSum = lines.Count;
+            book.Tick(now + 130, 9000);
+            Check(lines.Count == afterSum && book.Tracked == 0, "quiet interval: no summary line; old episodes forgotten");
+
+            // caps + expected volume: 10 minutes of a busy town (200 entering vehicles a minute, a third held over 30 s,
+            // a tenth stood in the box without room)
+            var vol = new List<string>();
+            var busy = new EntranceLogBook(vol.Add);
+            busy.Tick(0, 0);
+            uint frame = 0;
+            long id = 1000;
+            for (int minute = 0; minute < 10; minute++)
+            {
+                for (int k = 0; k < 200; k++, id++)
+                {
+                    uint s0 = frame + (uint)k * 10;
+                    if (k % 3 == 0) for (uint fr = 0; fr <= 2000; fr += 16) busy.Record(id, road, Pk(EntranceLog.Event.Held, false, 0f), s0 + fr, minute * 60.0);
+                    else if (k % 10 == 1) for (uint fr = 0; fr <= 200; fr += 16) busy.Record(id, road, Pk(EntranceLog.Event.InBox, false, fr < 20 ? 3f : 0f), s0 + fr, minute * 60.0);
+                    else for (uint fr = 0; fr <= 64; fr += 16) busy.Record(id, road, Pk(EntranceLog.Event.Go, true, 6f), s0 + fr, minute * 60.0);
+                }
+                frame += 3600;
+                busy.Tick(minute * 60.0 + 60.0, frame);
+            }
+            int cap = 10 * (EntranceLogBook.MaxNotable + EntranceLogBook.MaxSamples + 1);
+            int notableN = vol.Count(l => l.StartsWith("entrance box: ")), sampleN = vol.Count(l => l.StartsWith("entrance box sample"));
+            if (Environment.GetEnvironmentVariable("JR_SHOW_VOLUME") == "1") Console.WriteLine("VOL " + vol.Count + " notable " + notableN + " samples " + sampleN);
+            Check(vol.Count <= cap && vol.Count(l => l.StartsWith("entrance boxes (last")) == 10, $"busy 10 minutes: {vol.Count} lines (cap {cap}), one summary a minute");
+            Check(vol.Last().Contains("over the cap"), "summary reports lines over the cap");
+
+            // repo: always on, job side only the fixed ring
+            string root = Path.Combine(RepoRoot(), "JunctionRules");
+            string yb = StripComments(File.ReadAllText(Path.Combine(root, "Stage2", "JRYellowBox.cs")));
+            int w0 = yb.IndexOf("private unsafe void EntranceWrite(", StringComparison.Ordinal);
+            string write = yb.Substring(w0, yb.IndexOf("}", yb.IndexOf("Interlocked.Exchange(ref p[b], seq);", w0, StringComparison.Ordinal), StringComparison.Ordinal) - w0);
+            Check(!write.Contains("new ") && !write.Contains("Counting") && write.Contains("EntranceLog.SlotBase(seq)"), "job side: fixed-size ring write, no allocation, not gated by a setting");
+            Check(yb.Contains("EntranceWrite(self, road, EntranceLog.Pack(EntranceLog.Event.InBox") && yb.Contains("EntranceWrite(self, road, EntranceLog.Pack(holds ?"), "job writes held / let in / in the box records");
+            string bridge = StripComments(File.ReadAllText(Path.Combine(root, "Stage2", "JRStage2Bridge.cs")));
+            Check(bridge.Contains("DrainEntrance();") && !System.Text.RegularExpressions.Regex.IsMatch(bridge, @"if\s*\([^)]*(Trace|Timing|Setting)[^)]*\)\s*DrainEntrance"), "bridge drains the entrance log every step, no setting");
+            Check(bridge.Contains("s_BoxEdges.m_EntranceLog = EntranceRing();"), "ring handed to the job inside the band set (no new Vanilla block)");
+        }
+
         private static void G10FallbackArrowTests()
         {
             // fallback is never a target (G10)

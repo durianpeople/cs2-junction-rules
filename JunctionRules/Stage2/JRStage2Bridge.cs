@@ -48,6 +48,7 @@ namespace JunctionRules.Stage2
             }
             TraceOn = trace;
             DrainTrace();
+            DrainEntrance();
             Steps++;
             UpdateWatch();
             return AppliedMode;
@@ -153,6 +154,67 @@ namespace JunctionRules.Stage2
 
         public static NativeArray<long> Counters => s_Counters;
 
+        // ---- JR-T-014c (G9): always-on entrance box log (Core/EntranceLog.cs); no setting ----
+        private static NativeArray<long> s_EntranceRing;
+        private static EntranceLogReader s_EntranceReader = new EntranceLogReader();
+        private static readonly EntranceLogBook s_EntranceBook = new EntranceLogBook(line => Mod.log.Info(line));
+        private static readonly System.Func<int, long> s_ReadEntrance = ReadEntrance;
+        private static readonly System.Action<long, long, long, long> s_EmitEntrance = EmitEntrance;
+        private static double s_EntranceNow;
+        private static uint s_EntranceFrame;
+        private static bool s_EntranceLogged;
+
+        private static Game.Simulation.SimulationSystem s_Simulation;
+
+        /// <summary>The game's simulation frame (main thread); 0 before the simulation system exists.</summary>
+        private static uint SimulationFrame()
+        {
+            if (s_Simulation == null) s_Simulation = Unity.Entities.World.DefaultGameObjectInjectionWorld?.GetExistingSystemManaged<Game.Simulation.SimulationSystem>();
+            return s_Simulation != null ? s_Simulation.frameIndex : 0u;
+        }
+
+        private static NativeArray<long> EntranceRing()
+        {
+            if (!s_EntranceRing.IsCreated)
+            {
+                s_EntranceRing = new NativeArray<long>(EntranceLog.RingLength, Allocator.Persistent, NativeArrayOptions.ClearMemory);
+                s_EntranceReader = new EntranceLogReader();   // a new ring starts at sequence 1
+            }
+            return s_EntranceRing;
+        }
+
+        private static unsafe long ReadEntrance(int i) =>
+            System.Threading.Interlocked.Read(ref ((long*)NativeArrayUnsafeUtility.GetUnsafeBufferPointerWithoutChecks(s_EntranceRing))[i]);
+
+        private static void EmitEntrance(long vehicle, long road, long facts, long frame)
+        {
+            s_EntranceFrame = (uint)frame;
+            s_EntranceBook.Record(vehicle, road, facts, (uint)frame, s_EntranceNow);
+        }
+
+        /// <summary>
+        /// Main thread, each copy step: reads the finished entrance records (at most EntranceLog.Slots, never waits for the
+        /// job) into the episode book; the book writes at most MaxNotable + MaxSamples + 1 lines per interval. Nothing new
+        /// (the usual case): one read of the head and return.
+        /// </summary>
+        private static void DrainEntrance()
+        {
+            EntranceRing();
+            if (!s_EntranceLogged)
+            {
+                s_EntranceLogged = true;
+                Mod.log.Info("entrance box log (always on): notable vehicles turning into boxed buildings (stood in the box without room, held or stood over 30 s), at most "
+                    + EntranceLogBook.MaxNotable + " notable + " + EntranceLogBook.MaxSamples + " sample lines and one summary per " + EntranceLogBook.IntervalSeconds + " s");
+            }
+            long head = ReadEntrance(0);
+            bool fresh = head >= s_EntranceReader.Next;
+            if (!fresh && s_EntranceBook.Tracked == 0) return;
+            s_EntranceNow = System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
+            if (fresh) s_EntranceReader.Drain(head, s_ReadEntrance, s_EmitEntrance);
+            s_EntranceBook.AddLost(s_EntranceReader.TakeLost());
+            s_EntranceBook.Tick(s_EntranceNow, s_EntranceFrame);
+        }
+
         private static JRBoxEdges s_BoxEdges;
         private static int s_BoxEdgeVersion = -1;
 
@@ -169,6 +231,8 @@ namespace JunctionRules.Stage2
                     s_BoxEdges = JRBoxEdges.FromBands(BoxEdgeHandoff.Keys, BoxEdgeHandoff.T, BoxEdgeHandoff.Masks);
                     s_BoxEdgeVersion = BoxEdgeHandoff.Version;
                 }
+                s_BoxEdges.m_EntranceLog = EntranceRing();   // JR-T-014c (G9): always on
+                s_BoxEdges.m_Frame = SimulationFrame();
                 return s_BoxEdges;
             }
         }
@@ -197,6 +261,9 @@ namespace JunctionRules.Stage2
             s_SafetyEvents = default;
             if (s_TraceRing.IsCreated) s_TraceRing.Dispose();
             s_TraceRing = default;
+            if (s_EntranceRing.IsCreated) s_EntranceRing.Dispose();   // JR-T-014c (G9)
+            s_EntranceRing = default;
+            s_Simulation = null;
             if (s_Watch.IsCreated) s_Watch.Dispose();
             s_Watch = default;
             s_WatchVersion = -1;

@@ -217,13 +217,41 @@ namespace JunctionRules.Stage2
             float wait = wait0 + laneLength * (entry - start);
             if (braking < 0f) braking = VehicleUtils.GetBrakingDistance(car, currentSpeed, timeStep);
             BoxDriving.Approach a = BoxDriving.Classify(inBand, wait, margin, braking);
-            if (a != BoxDriving.Approach.Check) return float.MaxValue;
+            if (a != BoxDriving.Approach.Check)
+            {
+                // Always-on entrance log (owner rule 0.4.8): in the box (or too close to stop): carries on; the room read
+                // here is for the log only (did it go in without room, does it stand in the box).
+                bool roomNow = HasRoomInto(next, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars);
+                EntranceWrite(self, road, EntranceLog.Pack(EntranceLog.Event.InBox, roomNow, currentSpeed, b0));
+                return float.MaxValue;
+            }
             float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, wait, safeTimeStep), speedRange);
             if (!(hold < currentMax)) return float.MaxValue;
             bool room = HasRoomInto(next, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars);
-            if (!BoxDriving.EnteringHolds(a, room)) return float.MaxValue;
+            bool holds = BoxDriving.EnteringHolds(a, room);
+            EntranceWrite(self, road, EntranceLog.Pack(holds ? EntranceLog.Event.Held : EntranceLog.Event.Go, room, currentSpeed, b0));
+            if (!holds) return float.MaxValue;
             if (Counting) Min(ref m_HasEntranceEntering, ref m_EntranceEnteringSpeed, hold);
             return hold;
+        }
+
+        /// <summary>
+        /// JR-T-014c (G9): one always-on entrance log record (Core/EntranceLog.cs layout) into the fixed ring the job's band
+        /// set carries (JRBoxEdges.m_EntranceLog): an atomic sequence number, four plain stores, the stamp last. Nothing else.
+        /// </summary>
+        private unsafe void EntranceWrite(Entity self, Entity road, long facts)
+        {
+            JRBoxEdges* bands = m_BoxEdges;
+            if (bands == null || !bands->m_EntranceLog.IsCreated || bands->m_EntranceLog.Length < EntranceLog.RingLength) return;
+            long* p = (long*)NativeArrayUnsafeUtility.GetUnsafeBufferPointerWithoutChecks(bands->m_EntranceLog);
+            long seq = System.Threading.Interlocked.Increment(ref p[0]);
+            int b = EntranceLog.SlotBase(seq);
+            System.Threading.Interlocked.Exchange(ref p[b], 0L);
+            p[b + 1] = EntranceLog.PackEntity(self.Index, self.Version);
+            p[b + 2] = EntranceLog.PackEntity(road.Index, road.Version);
+            p[b + 3] = facts;
+            p[b + 4] = bands->m_Frame;
+            System.Threading.Interlocked.Exchange(ref p[b], seq);
         }
 
         /// <summary>JR-T-014c: index in the car's navigation lanes of the lane after 'lane' (-1 = no path / not on it).</summary>
