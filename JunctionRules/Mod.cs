@@ -49,7 +49,7 @@ namespace JunctionRules
             Gate = EvaluateGate(Settings.SkipCodeHashCheck);
             if (Gate.CopyAllowed) log.Info("version check: " + Gate.Verdict + ": " + Gate.Message);
             else log.Warn("version check: " + Gate.Verdict + ": " + Gate.Message);
-            log.Info($"settings: car driving {Settings.CarDriving}, junction gap rule {Settings.GapRule}, waiting spot {Settings.WaitingSpot}, turning across oncoming gives way {(Settings.TurnAcrossGivesWay ? "on" : "off")}, cars never push through people on crossings {(Settings.NoPushThroughPeople ? "on" : "off")}, timing log {(Settings.DebugTiming ? "on" : "off")}, yellow box paint test {(Settings.YellowBoxPaintTest ? "on" : "off")} (paint onto {Settings.PaintLayers}), skip code hash check {(Settings.SkipCodeHashCheck ? "on" : "off")}");
+            log.Info($"settings: car driving {Settings.CarDriving}, junction gap rule {Settings.GapRule}, waiting spot {Settings.WaitingSpot}, turning across oncoming gives way {(Settings.TurnAcrossGivesWay ? "on" : "off")}, cars never push through people on crossings {(Settings.NoPushThroughPeople ? "on" : "off")}, people pass a car that blocks a crossing after {(PeoplePass.On(Settings.PeoplePassEffectiveSeconds()) ? Settings.PeoplePassEffectiveSeconds().ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " s" : "off")}, timing log {(Settings.DebugTiming ? "on" : "off")}, yellow box paint test {(Settings.YellowBoxPaintTest ? "on" : "off")} (paint onto {Settings.PaintLayers}), skip code hash check {(Settings.SkipCodeHashCheck ? "on" : "off")}");
 
             // The copy pair and the probes are registered only when the gate allows the copy. Their types are named only
             // inside CopyPair (NoInlining), so on another game version, where loading them could throw TypeLoadException,
@@ -74,6 +74,20 @@ namespace JunctionRules
             else
             {
                 log.Info("Junction Rules copy and timing probes not registered (version check did not allow the copy)");
+            }
+            // 0.3.6 (JR-T-008): people and cyclists pass a vehicle standing on their crossing. Own system after the
+            // game's HumanNavigationSystem; no game code copied. Registered only when the version gate allowed the copy
+            // (it relies on the 1.6.4f1 meaning of the blocker and the crossing clamp); a failure leaves the rest running.
+            if (Gate.CopyAllowed)
+            {
+                try
+                {
+                    updateSystem.UpdateAfter<PeoplePassSystem, HumanNavigationSystem>(SystemUpdatePhase.GameSimulation);
+                }
+                catch (Exception e)
+                {
+                    log.Error(e, "registering the people-pass system failed; people wait for standing cars as in the game");
+                }
             }
             // The switch runs ahead of the game's car navigation in every step, with or without the copy. Registered
             // last, after CopyRegistered is final: UpdateBefore creates the switch (runs its OnCreate) right here. The

@@ -210,6 +210,8 @@ fit) B`. Tests `MoonflowerTests`, `CrossingPointTests`, `ClearPointTests`, `Tech
 | S2-23 | nav | 1 | 7 | `OnUpdate`, before `ScheduleParallel` | Main thread: takes this step's mode from `Stage2Handoff` (published by `CarDrivingSwitchSystem` earlier in the same step) into the job struct by value; 0.2.3: sets the event table and `GetBufferLookup<ConnectedEdge>(isReadOnly: true)`; 0.3.3: the three read-only lookups for the vehicle length. |
 | S2-24 | nav | 1 | 8 | new `OnDestroy` (none in vanilla) | Completes the job and frees the counter array. |
 
+0.3.6-probe (JR-T-008) changes nothing in the copy: the people / cyclist pass is its own system (`Systems/PeoplePassSystem.cs`, no copied game code; it only sets `HumanCurrentLane.m_CurvePosition.x` and the game's own `CarLaneFlags.IgnoreBlocker` on bicycles). `docs/vanilla_copy_check_0.3.6.txt` equals 0.3.5's.
+
 Total: 21 blocks, 89 lines inside (as `vanilla_copy.py check` reports; 0.3.2: 21 blocks, 72 lines; 0.2.4 to 0.3.1: 21 blocks, 66 lines; 0.2.3: 20 blocks, 65 lines; 0.2.2: 19 blocks, 60 lines; 0.2.1: 19 blocks, 43 lines; S2-24 counts its trailing blank line).
 
 Effect on `tools/IlHash --copy` (expected): 48 of 80 identical (was 54), 21 shape only (was 19), 11 content

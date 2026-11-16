@@ -65,6 +65,8 @@ namespace JunctionRules.Tests
             ("PaintMigrationTests", PaintMigrationTests),
             ("PaintConfigTests", PaintConfigTests),
             ("PaintRepoTests", PaintRepoTests),
+            ("PeoplePassTests", PeoplePassTests),
+            ("PeoplePassRepoTests", PeoplePassRepoTests),
         };
 
         private static int Main(string[] args)
