@@ -117,15 +117,21 @@ namespace JunctionRules.Core
         public const int ZebraHeldRoom = FeedingScans + 15;
         /// <summary>0.4.1: car-steps in which a zebra lane had a zebra merged into the section before it (the vehicle does not fit before it).</summary>
         public const int ZebraMerged = FeedingScans + 16;
+        /// <summary>0.4.1 (JR-T-009-r): car-steps in which a zebra section was checked early at the previous spot (people + room), the car cannot stop before the zebra after that spot.</summary>
+        public const int ZebraEarly = FeedingScans + 17;
+        /// <summary>0.4.1 (JR-T-009-r): car-steps in which the room scan met a further zebra (another node, e.g. mid-block) inside its window: room needed past it too, people on it = no room.</summary>
+        public const int ZebraFurther = FeedingScans + 18;
+        /// <summary>0.4.1 (JR-T-009-r, probe): car-steps in which the room scan read a lane whose LaneObject buffer was not in curve-position order (expected 0).</summary>
+        public const int ZebraScanUnsorted = FeedingScans + 19;
         /// <summary>0.4.2 (JR-T-010): car-steps in which a car stood before a boxed junction because there was no room for it past the box (setting "Cars obey yellow boxes").</summary>
-        public const int BoxHeldRoom = FeedingScans + 17;
+        public const int BoxHeldRoom = FeedingScans + 20;
         /// <summary>0.4.2: car-steps in which a car turning across oncoming traffic stood inside a box at its turn spot (the UK right-turn exception; Whole junction).</summary>
-        public const int BoxTurnWaits = FeedingScans + 18;
+        public const int BoxTurnWaits = FeedingScans + 21;
         /// <summary>0.4.2: car-steps in which a main-road car stood before an entrance band because there was no room for it past the band.</summary>
-        public const int EntranceHeldMain = FeedingScans + 19;
+        public const int EntranceHeldMain = FeedingScans + 22;
         /// <summary>0.4.2: car-steps in which a car leaving a driveway stood at the road because there was no room for it past the band on its target lane.</summary>
-        public const int EntranceHeldLeaving = FeedingScans + 20;
-        public const int Count = FeedingScans + 21;
+        public const int EntranceHeldLeaving = FeedingScans + 23;
+        public const int Count = FeedingScans + 24;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -228,7 +234,10 @@ namespace JunctionRules.Core
                        ? "; zebra entries held: people " + deltas[ZebraHeldPeople].ToString(ci) +
                          ", Cs after " + deltas[ZebraHeldCs].ToString(ci) +
                          ", no room past " + deltas[ZebraHeldRoom].ToString(ci) +
-                         " (zebra sections merged, vehicle does not fit between: " + deltas[ZebraMerged].ToString(ci) + ")"
+                         " (zebra sections merged, vehicle does not fit between: " + deltas[ZebraMerged].ToString(ci) +
+                         "; room/people checked early at previous spot (cannot stop before zebra): " + deltas[ZebraEarly].ToString(ci) + ")" +
+                         "; room scan: further zebra in reach " + deltas[ZebraFurther].ToString(ci) +
+                         ", lane objects out of curve order " + deltas[ZebraScanUnsorted].ToString(ci)
                        : "") +
                    (boxMask >= 2
                        ? "; box entries held " + deltas[BoxHeldRoom].ToString(ci) +

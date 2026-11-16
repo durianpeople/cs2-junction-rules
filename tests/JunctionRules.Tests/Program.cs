@@ -73,6 +73,8 @@ namespace JunctionRules.Tests
             ("PeoplePassRepoTests", PeoplePassRepoTests),
             ("ZebraSectionTests", ZebraSectionTests),
             ("ZebraRoomTests", ZebraRoomTests),
+            ("ZebraEarlyTests", ZebraEarlyTests),
+            ("ZebraFurtherTests", ZebraFurtherTests),
             ("ZebraSettingTests", ZebraSettingTests),
             ("ZebraRepoTests", ZebraRepoTests),
             ("BoxJunctionTests", BoxJunctionTests),

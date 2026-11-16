@@ -164,6 +164,12 @@ namespace JunctionRules.Stage2
         private bool m_HasZebraRoom;
         private float m_ZebraRoomSpeed;
         private bool m_ZebraMergedSeen;
+        /// <summary>0.4.1 (JR-T-009-r): this car-step a zebra section was decided early at the previous spot (cannot stop before it).</summary>
+        private bool m_ZebraEarlySeen;
+        /// <summary>0.4.1 (JR-T-009-r): this car-step the room scan met a further zebra (another node) inside its window.</summary>
+        private bool m_ZebraFurtherSeen;
+        /// <summary>0.4.1 (JR-T-009-r, probe): this car-step the room scan read a LaneObject buffer not in curve order.</summary>
+        private bool m_ZebraUnsortedSeen;
 
         // ---- 0.4.2 (JR-T-010): cars obey yellow boxes (Core/BoxDriving.cs; methods in Stage2/JRYellowBox.cs) ----
         /// <summary>Setting "Cars obey yellow boxes" (Stage2Mode.BoxObey, stripped from m_Mode in Create).</summary>
@@ -497,7 +503,8 @@ namespace JunctionRules.Stage2
             float curveX, float length, float origDistance, float margin, bool inverse, CarData car, float currentSpeed, float timeStep,
             float speedLimit, float safeTimeStep, Bounds1 speedRange, float currentMax, Entity self, ref BufferLookup<LaneObject> laneObjects,
             ref ComponentLookup<Curve> curves, ref ComponentLookup<Moving> moving, ref ComponentLookup<Controller> controllers,
-            ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars)
+            ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars,
+            ref BufferLookup<LaneOverlap> overlapData)
         {
             m_ZebraActive = false;
             if (m_Mode == 0)
@@ -533,6 +540,13 @@ namespace JunctionRules.Stage2
             }
             float braking = VehicleUtils.GetBrakingDistance(car, currentSpeed, timeStep);
             m_Stretch.BeginWithSpots(ref list, layout.Spots, origDistance, length, StretchGeometry.ToDriving(curveX, inverse), margin, braking);
+            // JR-T-009-r (finding 1): a zebra section the car could not stop for after its spot is decided at that spot.
+            if (m_Stretch.Next < m_Stretch.Spots.Count && m_Stretch.CanStopBefore(m_Stretch.Spots[m_Stretch.Next])
+                && ZebraSections.MergeUnstoppable(ref layout, m_Stretch.Next, braking, length) > 0)
+            {
+                m_Stretch.Spots = layout.Spots;
+                if (Counting) m_ZebraEarlySeen = true;
+            }
             m_ZebraLayout = layout;
             m_ZebraActive = true;
             m_Inverse = inverse;
@@ -545,14 +559,13 @@ namespace JunctionRules.Stage2
             m_OwnStartRead = false;
             m_OwnTurnRead = false;
             if (RuleOn) SetMotion(lane, ref carLanes, ref laneConditions, margin, car, currentSpeed, timeStep, speedLimit);
-            int k = m_Stretch.Next;
-            bool canStop = k < m_Stretch.Spots.Count && m_Stretch.CanStopBefore(m_Stretch.Spots[k]);
-            if (Counting && layout.Merged > 0 && k < m_Stretch.Spots.Count) m_ZebraMergedSeen = true;
-            if (!ZebraSections.RoomCheckDue(layout, k, canStop)) return float.MaxValue;
+            if (Counting && layout.Merged > 0 && m_Stretch.Next < m_Stretch.Spots.Count) m_ZebraMergedSeen = true;
+            int k = ZebraSections.RoomSection(layout, m_Stretch);
+            if (k < 0) return float.MaxValue;
             float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, m_Stretch.Wait(m_Stretch.Spots[k]), safeTimeStep), speedRange);
             if (!(hold < currentMax)) return float.MaxValue;
             if (HasRoomPast(lane, layout.SectionEnd(k), inverse, length, -1f, Entity.Null, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
-                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars))
+                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes))
             {
                 return float.MaxValue;
             }
@@ -573,17 +586,19 @@ namespace JunctionRules.Stage2
         private bool HasRoomPast(Entity lane, float fromDriving, bool inverse, float length, float queueFrom, Entity boxNode, Entity self, float safeTimeStep,
             ref ComponentLookup<Game.Net.CarLane> carLanes, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves,
             ref ComponentLookup<Moving> moving, ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs,
-            ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars)
+            ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars,
+            ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
         {
             RoomScan scan = RoomScan.Begin(m_VehicleLength, m_RoomMargin);
+            bool unsorted = false;
             if (queueFrom >= 0f && fromDriving > queueFrom)
             {
                 ScanLane(ref scan, lane, StretchGeometry.ToDriving(queueFrom, inverse), inverse, length, (fromDriving - queueFrom) * length, 0f, true, self, safeTimeStep,
-                    ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars);
+                    ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted);
             }
             float read = (1f - fromDriving) * length;
             ScanLane(ref scan, lane, StretchGeometry.ToDriving(fromDriving, inverse), inverse, length, read, 0f, false, self, safeTimeStep, ref laneObjects, ref curves,
-                ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars);
+                ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted);
             if (!scan.Done(read) && m_HasPath)
             {
                 int start = -1;
@@ -598,12 +613,16 @@ namespace JunctionRules.Stage2
                     if (!carLanes.HasComponent(nav.m_Lane) || !curves.TryGetComponent(nav.m_Lane, out Curve navCurve)) break;
                     bool navInverse = nav.m_CurvePosition.y < nav.m_CurvePosition.x;
                     float span = math.abs(nav.m_CurvePosition.y - nav.m_CurvePosition.x) * navCurve.m_Length;
+                    // 0.4.2: a later lane of the same boxed junction is still inside the box: its vehicles queue for the exit.
                     bool inBox = boxNode != Entity.Null && m_OwnerData.TryGetComponent(nav.m_Lane, out Owner navOwner) && navOwner.m_Owner == boxNode;
+                    if (!inBox && FurtherZebras(ref scan, nav.m_Lane, nav.m_CurvePosition, navInverse, navCurve.m_Length, read, ref overlapData, ref pedestrianLanes, ref laneObjects)
+                        && Counting) m_ZebraFurtherSeen = true;
                     ScanLane(ref scan, nav.m_Lane, nav.m_CurvePosition.x, navInverse, navCurve.m_Length, span, inBox ? 0f : read, inBox, self, safeTimeStep, ref laneObjects,
-                        ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars);
+                        ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted);
                     if (!inBox) read += span;
                 }
             }
+            if (unsorted && Counting) m_ZebraUnsortedSeen = true;
             return scan.HasRoom;
         }
 
@@ -611,29 +630,101 @@ namespace JunctionRules.Stage2
         public const int MaxRoomLanes = 3;
 
         /// <summary>
+        /// 0.4.1 (JR-T-009-r, review finding 2): zebras of a later node lane of the path (another node, e.g. a mid-block
+        /// crossing after an edge shorter than the vehicle) that start inside the room window (the room needed so far,
+        /// metres from the section end). The car must not stop on them either: people on one = no room
+        /// (<see cref="RoomScan.Block"/>); else the room is needed past its end (<see cref="RoomScan.ExtendPast"/>, which
+        /// can bring a further zebra of the lane into the window: re-read until nothing changes, at most a few passes).
+        /// People = any object on the crosswalk lane (the game puts walkers and cyclists on the zebra there); people still
+        /// on the pavement are not seen (PROBE section 10). Returns true when a zebra was inside the window.
+        /// </summary>
+        private bool FurtherZebras(ref RoomScan scan, Entity navLane, float2 curvePosition, bool navInverse, float navLength, float baseDistance,
+            ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes, ref BufferLookup<LaneObject> laneObjects)
+        {
+            if (!m_NodeLaneData.HasComponent(navLane) || !overlapData.TryGetBuffer(navLane, out DynamicBuffer<LaneOverlap> overlaps)) return false;
+            float startD = StretchGeometry.ToDriving(curvePosition.x, navInverse), endD = StretchGeometry.ToDriving(curvePosition.y, navInverse);
+            bool hit = false;
+            for (int pass = 0, extensions = -1; pass < 3 && extensions != scan.Extensions && !scan.Blocked; pass++)
+            {
+                extensions = scan.Extensions;
+                for (int i = 0; i < overlaps.Length && !scan.Blocked; i++)
+                {
+                    LaneOverlap o = overlaps[i];
+                    int flags = (int)o.m_Flags;
+                    if ((flags & WholePathRule.Water) != 0 || !pedestrianLanes.TryGetComponent(o.m_Other, out Game.Net.PedestrianLane ped)
+                        || !ZebraSections.IsZebra((int)ped.m_Flags)) continue;
+                    StretchGeometry.ToConflict(flags, o.m_ThisStart, o.m_ThisEnd, navInverse, false, out float zs, out float ze);
+                    if (ze <= startD || zs >= endD) continue;
+                    bool people = laneObjects.TryGetBuffer(o.m_Other, out DynamicBuffer<LaneObject> walkers) && walkers.Length > 0;
+                    if (scan.FurtherZebra(baseDistance + (zs - startD) * navLength, baseDistance + (ze - startD) * navLength, people)) hit = true;
+                }
+            }
+            return hit;
+        }
+
+        /// <summary>
+        /// 0.4.2: the order keys of a LaneObject buffer for the room scan (Core ScanOrder): the object's current curve
+        /// position ahead of <see cref="m_From"/> in driving direction (lane offsets); oncoming objects are skipped.
+        /// </summary>
+        private struct LaneObjectKeys : IOrderKeys
+        {
+            public DynamicBuffer<LaneObject> m_Objects;
+            public float m_From;
+            public bool m_Inverse;
+            public int Count => m_Objects.Length;
+
+            public float Key(int i)
+            {
+                float2 cp = m_Objects[i].m_CurvePosition;
+                if (cp.y != cp.x && (cp.y < cp.x) != m_Inverse) return float.MaxValue;
+                return m_Inverse ? m_From - cp.x : cp.x - m_From;
+            }
+        }
+
+        /// <summary>Longest rear extent behind a lane object's reference point the scan allows for (an articulated vehicle).</summary>
+        private const float MaxRearReach = 30f;
+
+        /// <summary>
         /// 0.4.1: feeds the vehicles on <paramref name="lane"/> ahead of <paramref name="from"/> (game offset; driving
         /// direction <paramref name="inverse"/>) up to <paramref name="span"/> metres into the scan, nearest first, as the
         /// stock CheckSpace measures them: rear from the object's reference point minus its rear extent (here along the
         /// lane: curve offset times lane length), credit = its own braking distance (its prefab CarData, safe time step)
         /// when it moves forward. Oncoming objects, the car itself and its own trailers are skipped.
+        /// 0.4.2: nearest first by the objects' CURRENT curve position (Core ScanOrder), not by buffer order. The game keeps
+        /// a LaneObject buffer sorted by m_CurvePosition.y, which for a car is its TARGET position on the lane (Game.Net
+        /// NetUtils.AddLaneObject / UpdateLaneObject, 435-487, insert by .y; Game.Simulation CarNavigationHelpers
+        /// CurrentLaneCache 185/198/228 write CarCurrentLane.m_CurvePosition.xy = current, target), so a car stopping
+        /// short (target before the lane end) sits before a car behind it that drives on: buffer order is not position
+        /// order (the 0.4.1 probe counter "lane objects out of curve order" &gt; 0). The stock loops read the whole
+        /// buffer without relying on its order (CarLaneSpeedIterator.CheckCurrentLane 1059), RoomScan does rely on path order.
         /// </summary>
         private static void ScanLane(ref RoomScan scan, Entity lane, float from, bool inverse, float laneLength, float span, float baseDistance,
             bool queued, Entity self, float safeTimeStep, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves, ref ComponentLookup<Moving> moving,
             ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<ObjectGeometryData> geometries,
-            ref ComponentLookup<CarData> prefabCars)
+            ref ComponentLookup<CarData> prefabCars, ref bool unsorted)
         {
             if (!laneObjects.TryGetBuffer(lane, out DynamicBuffer<LaneObject> objects) || objects.Length == 0) return;
             bool hasCurve = curves.TryGetComponent(lane, out Curve curve);
-            for (int jj = 0; jj < objects.Length && !scan.Blocked; jj++)
+            LaneObjectKeys keys = default;
+            keys.m_Objects = objects;
+            keys.m_From = from;
+            keys.m_Inverse = inverse;
+            if (!unsorted && !ScanOrder.InOrder(ref keys)) unsorted = true;
+            float lastKey = float.MinValue;
+            int lastIndex = -1;
+            for (int guard = 0; guard < objects.Length && !scan.Blocked; guard++)
             {
-                LaneObject o = objects[inverse ? objects.Length - 1 - jj : jj];
+                int jj = ScanOrder.Next(ref keys, lastKey, lastIndex);
+                if (jj < 0) break;
+                lastKey = keys.Key(jj);
+                lastIndex = jj;
+                float d = lastKey * laneLength;
+                if (d - MaxRearReach > span) break;
+                LaneObject o = objects[jj];
                 Entity e = o.m_LaneObject;
                 if (e == self) continue;
                 if (controllers.TryGetComponent(e, out Controller c) && c.m_Controller == self) continue;
-                float2 cp = o.m_CurvePosition;
-                if (cp.y != cp.x && (cp.y < cp.x) != inverse) continue;
                 if (!prefabRefs.TryGetComponent(e, out PrefabRef pr) || !geometries.TryGetComponent(pr.m_Prefab, out ObjectGeometryData g)) continue;
-                float d = (inverse ? from - cp.x : cp.x - from) * laneLength;
                 if (d + g.m_Bounds.max.z < 0f || d + g.m_Bounds.min.z > span) continue;
                 // 0.4.2: inside the box / band ahead of the car: takes exit room first (RoomScan.AddQueued).
                 if (queued)
@@ -644,7 +735,7 @@ namespace JunctionRules.Stage2
                 float credit = 0f;
                 if (hasCurve && moving.TryGetComponent(e, out Moving m) && prefabCars.TryGetComponent(pr.m_Prefab, out CarData cd))
                 {
-                    float3 dir = math.normalizesafe(MathUtils.Tangent(curve.m_Bezier, cp.x));
+                    float3 dir = math.normalizesafe(MathUtils.Tangent(curve.m_Bezier, o.m_CurvePosition.x));
                     float v = math.dot(m.m_Velocity, inverse ? -dir : dir);
                     if (v > 0.001f) credit = VehicleUtils.GetBrakingDistance(cd, v, safeTimeStep);
                 }
@@ -1131,6 +1222,9 @@ namespace JunctionRules.Stage2
             if (Stage2Counters.IsStandingOn(m_HasZebraCs, m_ZebraCsSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.ZebraHeldCs, 1);
             if (Stage2Counters.IsStandingOn(m_HasZebraRoom, m_ZebraRoomSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.ZebraHeldRoom, 1);
             if (m_ZebraMergedSeen && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.ZebraMerged, 1);
+            if (m_ZebraEarlySeen) Add(counters, Stage2Counters.ZebraEarly, 1);
+            if (m_ZebraFurtherSeen) Add(counters, Stage2Counters.ZebraFurther, 1);
+            if (m_ZebraUnsortedSeen) Add(counters, Stage2Counters.ZebraScanUnsorted, 1);
             if (Stage2Counters.IsStandingOn(m_HasBoxRoom, m_BoxRoomSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxHeldRoom, 1);
             if (Stage2Counters.IsStandingOn(m_HasBoxTurnWait, m_BoxTurnWaitSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxTurnWaits, 1);
             if (Stage2Counters.IsStandingOn(m_HasEntranceMain, m_EntranceMainSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.EntranceHeldMain, 1);

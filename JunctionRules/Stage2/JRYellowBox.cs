@@ -73,7 +73,8 @@ namespace JunctionRules.Stage2
         public float BoxHold(Entity lane, float laneLength, float2 curveOffset, float distance, float margin, bool inverse, CarData car, float currentSpeed,
             float timeStep, float safeTimeStep, Bounds1 speedRange, float currentMax, Entity self, ref ComponentLookup<Game.Net.CarLane> carLanes,
             ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves, ref ComponentLookup<Moving> moving, ref ComponentLookup<Controller> controllers,
-            ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars)
+            ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars,
+            ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
         {
             if (!m_BoxLookups || !carLanes.HasComponent(lane)) return float.MaxValue;
             float start = StretchGeometry.ToDriving(curveOffset.x, inverse);
@@ -90,7 +91,7 @@ namespace JunctionRules.Stage2
                 float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, wait, safeTimeStep), speedRange);
                 if (!(hold < currentMax)) return float.MaxValue;
                 bool room = HasRoomPast(lane, 1f, inverse, laneLength, 0f, owner.m_Owner, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
-                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars);
+                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes);
                 if (!BoxDriving.Holds(a, room)) return float.MaxValue;
                 if (Counting) Min(ref m_HasBoxRoom, ref m_BoxRoomSpeed, hold);
                 return hold;
@@ -121,7 +122,7 @@ namespace JunctionRules.Stage2
                 float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, wait, safeTimeStep), speedRange);
                 if (!(hold < currentMax) || !(hold < result)) continue;
                 bool room = HasRoomPast(lane, b1, inverse, laneLength, entry, Entity.Null, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
-                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars);
+                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes);
                 if (!BoxDriving.Holds(a, room)) continue;
                 result = hold;
                 if (Counting)

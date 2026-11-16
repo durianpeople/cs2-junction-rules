@@ -185,7 +185,7 @@
         "files": {
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
-        "reason": "0.4.1 (JR-T-009): CheckOverlappingLanes, after S2-04, only with the setting 'Cars never stop on a zebra': a node lane with zebras gets the zebra sections as its waiting spots (Core/ZebraSections.cs) and the car is held before the next zebra section while there is no room for the whole vehicle past it (Core RoomScan)."
+        "reason": "0.4.1 (JR-T-009): CheckOverlappingLanes, after S2-04, only with the setting 'Cars never stop on a zebra': a node lane with zebras gets the zebra sections as its waiting spots (Core/ZebraSections.cs) and the car is held before the next zebra section while there is no room for the whole vehicle past it (Core RoomScan). JR-T-009-r: also passes the iterator's LaneOverlap lookup (further zebras on later path lanes); a zebra section the car cannot stop for after its spot is decided at that spot."
       },
       "S2-26": {
         "files": {

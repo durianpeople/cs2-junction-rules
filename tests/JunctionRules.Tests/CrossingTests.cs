@@ -83,7 +83,7 @@ namespace JunctionRules.Tests
             Check(f.Contains("; never push through people on crossings on; crossing give-ups refused 7 (5 s push 5, standing person 2, cyclist 1); crossings after W judged at the crossing 0, kept at W (vehicle does not fit) 0; points at W 0"), "counter text: " + f);
             Check(Stage2Counters.Format(1, null, 3) == "; junction gap rule stock; never push through people on crossings switched in this window", "setting reported without counters");
             Check(Stage2Counters.Format(1, null) == "; junction gap rule stock", "no push mask: line unchanged");
-            Check(Stage2Counters.CrossingRefusedCyclist == Stage2Counters.Count - 12 && Stage2Counters.CrossingsNoFit == Stage2Counters.Count - 9 && Stage2Counters.ZebraMerged == Stage2Counters.Count - 5 && Stage2Counters.EntranceHeldLeaving == Stage2Counters.Count - 1, "new counters at the end (earlier indices unchanged; 0.3.3 adds three after them, 0.4.1 four zebra counters after those, 0.4.2 four yellow box counters after those)");
+            Check(Stage2Counters.CrossingRefusedCyclist == Stage2Counters.Count - 15 && Stage2Counters.CrossingsNoFit == Stage2Counters.Count - 12 && Stage2Counters.ZebraMerged == Stage2Counters.Count - 8 && Stage2Counters.EntranceHeldLeaving == Stage2Counters.Count - 1, "new counters at the end (earlier indices unchanged; 0.3.3 adds three after them, 0.4.1 seven zebra counters after those, 0.4.2 four yellow box counters after those)");
         }
 
         private static void CrossingRepoTests()
