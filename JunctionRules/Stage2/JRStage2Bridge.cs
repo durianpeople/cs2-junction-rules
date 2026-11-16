@@ -42,7 +42,7 @@ namespace JunctionRules.Stage2
         private static int s_BoxEdgeVersion = -1;
 
         /// <summary>
-        /// 0.4.2 (JR-T-010-r): the road edges with boxed accesses (main thread, S2-23 takes it by value), rebuilt from
+        /// 0.4.2 (JR-T-010-r; 0.4.3: one band per boxed car exit): the boxed exits (main thread, S2-23 takes it by value), rebuilt from
         /// Core BoxEdgeHandoff when CarDrivingSwitchSystem published new keys.
         /// </summary>
         public static JRBoxEdges BoxEdges
@@ -51,7 +51,7 @@ namespace JunctionRules.Stage2
             {
                 if (s_BoxEdgeVersion != BoxEdgeHandoff.Version)
                 {
-                    s_BoxEdges = JRBoxEdges.FromKeys(BoxEdgeHandoff.Keys);
+                    s_BoxEdges = JRBoxEdges.FromBands(BoxEdgeHandoff.Keys, BoxEdgeHandoff.T);
                     s_BoxEdgeVersion = BoxEdgeHandoff.Version;
                 }
                 return s_BoxEdges;

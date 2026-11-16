@@ -331,29 +331,102 @@ namespace JunctionRules.Tests
             Check(SortedKeys.Contains(ref set, (3L << 32) | 2) && SortedKeys.Contains(ref set, (12L << 32) | 1) && !SortedKeys.Contains(ref set, (3L << 32) | 3)
                 && !SortedKeys.Contains(ref set, 0L), "edge set: binary search (version counts: a rebuilt edge with a reused index is not in the set)");
             int v0 = BoxEdgeHandoff.Version;
-            BoxEdgeHandoff.Publish(new long[] { 9L, 2L, 9L });
+            BoxEdgeHandoff.Publish(new[] { new ExitBand(9L, 0.5f), new ExitBand(2L, 0.25f), new ExitBand(9L, 0.5f) });
             int v1 = BoxEdgeHandoff.Version;
-            BoxEdgeHandoff.Publish(new long[] { 2L, 9L });
-            Check(v1 == v0 + 1 && BoxEdgeHandoff.Version == v1 && BoxEdgeHandoff.Keys.Length == 2 && BoxEdgeHandoff.Keys[0] == 2L, "handoff: sorted, deduplicated, same keys = no new version");
-            BoxEdgeHandoff.Publish(new long[0]);
-            Check(BoxEdgeHandoff.Version == v1 + 1 && BoxEdgeHandoff.Keys.Length == 0, "handoff: cleared");
+            BoxEdgeHandoff.Publish(new[] { new ExitBand(2L, 0.25f), new ExitBand(9L, 0.5f) });
+            Check(v1 == v0 + 1 && BoxEdgeHandoff.Version == v1 && BoxEdgeHandoff.Keys.Length == 2 && BoxEdgeHandoff.Keys[0] == 2L && BoxEdgeHandoff.T[1] == 0.5f, "handoff: sorted, deduplicated, same bands = no new version");
+            BoxEdgeHandoff.Publish(new[] { new ExitBand(2L, 0.25f), new ExitBand(9L, 0.75f) });
+            Check(BoxEdgeHandoff.Version == v1 + 1, "handoff: an exit moved along its road = new version");
+            BoxEdgeHandoff.Publish(new ExitBand[0]);
+            Check(BoxEdgeHandoff.Version == v1 + 2 && BoxEdgeHandoff.Keys.Length == 0 && BoxEdgeHandoff.T.Length == 0, "handoff: cleared");
             Check(SortedKeys.KeyOf(7, 1) == ((7L << 32) | 1), "entity key = index, version");
             var none = new TLongs { L = new System.Collections.Generic.List<long>() };
             Check(!SortedKeys.Contains(ref none, 5L) && SortedKeys.InsertAt(ref none, 5L) == 0, "empty set");
 
             string src = Path.Combine(RepoRoot(), "JunctionRules");
             string yb = File.ReadAllText(Path.Combine(src, "Stage2", "JRYellowBox.cs"));
-            int may = yb.IndexOf("m_BoxEdges.MayHave(edgeOwner.m_Owner)", StringComparison.Ordinal), loop = yb.IndexOf("m_ConnectedBuildings.TryGetBuffer", StringComparison.Ordinal);
-            Check(may > 0 && may < loop, "BoxHold asks the edge set before reading the ConnectedBuilding buffer");
+            // 0.4.3: one band per boxed car exit (edge + t), no building read in the job (no one-box-per-building format)
+            Check(yb.Contains("int first = m_BoxEdges.First(edgeOwner.m_Owner);") && yb.Contains("m_BoxEdges.Key(i) == edgeKey") && yb.Contains("(m_BoxEdges.T(i) - edgeLane.m_EdgeDelta.x) / delta"),
+                "BoxHold: one binary search to the edge's first exit band, then every exit on that edge as its own band");
+            string ybCode = System.Text.RegularExpressions.Regex.Replace(yb, @"//.*|///.*", "");
+            Check(!ybCode.Contains("m_ConnectedBuildings.TryGetBuffer") && !ybCode.Contains("m_RoadEdge") && !ybCode.Contains("m_CurvePosition") && !ybCode.Contains("m_BoxEntranceData.HasComponent"),
+                "BoxHold no longer reads Building.m_RoadEdge / m_CurvePosition or the building's box component (0.4.0-0.4.2 format)");
             string edges = File.ReadAllText(Path.Combine(src, "Stage2", "JRBoxEdges.cs"));
-            Check(edges.Contains("FixedList128Bytes<long> m_Keys") && edges.Contains("m_Overflow = true;") && edges.Contains("public bool MayHave(Entity edge) => m_Overflow ||"), "edge set by value, overflow = every edge (fallback to the building loop)");
+            Check(edges.Contains("FixedList512Bytes<long> m_Keys") && edges.Contains("FixedList512Bytes<float> m_T") && edges.Contains("SortedKeys.First(ref this, KeyOf(edge))"), "exit bands by value (keys + t), first band by binary search");
             string nav = File.ReadAllText(Path.Combine(src, "Vanilla", "JRCarNavigationSystem.cs"));
             Check(nav.Contains("jobData.m_JRBoxEdges = JunctionRules.Stage2.JRStage2Bridge.BoxEdges;") && nav.Contains("m_JREdgeLaneData, m_JRBoxEdges);"), "S2-23 takes the set by value, S2-26 hands it to the iterator");
             string sw = File.ReadAllText(Path.Combine(src, "Systems", "CarDrivingSwitchSystem.cs"));
-            Check(sw.Contains("UpdateBoxEdges((stage2Mode & Stage2Mode.BoxEntrances) != 0);") && sw.Contains("ToComponentDataArray<Game.Buildings.Building>(Unity.Collections.Allocator.Temp)")
-                && sw.Contains("BoxEdgeHandoff.Publish(keys);") && !sw.Contains("JunctionRules.Stage2"), "switch system rebuilds the set on the main thread when entrance boxes change (and periodically)");
+            Check(sw.Contains("UpdateBoxEdges((stage2Mode & Stage2Mode.BoxEntrances) != 0);") && sw.Contains("BoxFacts.BoxedExitBands(EntityManager, buildings[i], bands)")
+                && sw.Contains("BoxEdgeHandoff.Publish(bands);") && sw.Contains("version == m_BoxStoreVersion") && !sw.Contains("JunctionRules.Stage2") && !sw.Contains("m_RoadEdge"),
+                "switch system rebuilds the exit bands on the main thread when boxes change (count or BoxStore.Version) and periodically, from the saved exit keys");
+            string facts = File.ReadAllText(Path.Combine(src, "Boxes", "BoxFacts.cs"));
+            Check(facts.Contains("ExitBands.Boxed(keys, c.Legacy, old, cands, out int unmatched)") && facts.Contains("new ExitBand(SortedKeys.KeyOf(x.Road.Index, x.Road.Version), x.T)"), "BoxedExitBands: saved keys matched to current exits, band at the exit's road + t");
+            string store = File.ReadAllText(Path.Combine(src, "Boxes", "BoxStore.cs"));
+            Check(System.Text.RegularExpressions.Regex.Matches(store, @"Version\+\+;").Count == 5, "BoxStore bumps its version in all five writers (Add, AddExit, RemoveExit, SetExits, Remove)");
             string job = File.ReadAllText(Path.Combine(src, "Stage2", "JRWholeJunction.cs"));
             Check(job.Contains("bool ordered = ScanOrder.InOrder(ref keys, inverse);") && job.Contains("float lastKey = -MaxRearReach / math.max(laneLength, 0.001f);"), "ScanLane: straight read when in order, selection starts at the rear reach");
+        }
+
+        /// <summary>0.4.3: the driving rule reads one band per boxed car exit (Core/ExitBands.cs).</summary>
+        private static void BoxExitBandTests()
+        {
+            // A building with a driveway on road 1, a spawn location (depot gate) on road 2 and its own access road junction.
+            var exits = new System.Collections.Generic.List<ExitCandidate>
+            {
+                new ExitCandidate { Kind = ExitKind.Driveway, Key = new ExitKey(ExitKind.Driveway, -9.4, 23.7), RoadId = 1, World = new V2(100, 50) },
+                new ExitCandidate { Kind = ExitKind.SpawnLocation, Key = new ExitKey(ExitKind.SpawnLocation, 20, 10), RoadId = 2, World = new V2(130, 40) },
+                new ExitCandidate { Kind = ExitKind.Junction, Key = new ExitKey(ExitKind.Junction, 0, -30), RoadId = 77, World = new V2(110, 0) },
+            };
+            var keys = new System.Collections.Generic.List<ExitKey> { new ExitKey(ExitKind.SpawnLocation, 20.4, 9.8) };
+            var r = ExitBands.Boxed(keys, false, default, exits, out int un);
+            Check(r.Count == 1 && r[0] == 1 && un == 0, "one boxed exit of three: only that exit drives as a band (not the building's other exits)");
+            keys.Add(new ExitKey(ExitKind.Driveway, -9.4, 23.7));
+            r = ExitBands.Boxed(keys, false, default, exits, out un);
+            Check(r.Count == 2 && r[0] == 0 && r[1] == 1 && un == 0, "two boxed exits of one building: two bands");
+            keys.Add(new ExitKey(ExitKind.Driveway, 50, 50));
+            r = ExitBands.Boxed(keys, false, default, exits, out un);
+            Check(r.Count == 2 && un == 1, "a saved key with no exit now: not a band, counted");
+            r = ExitBands.Boxed(new System.Collections.Generic.List<ExitKey> { new ExitKey(ExitKind.Driveway, -9.4, 23.7), new ExitKey(ExitKind.Driveway, -9.5, 23.6) }, false, default, exits, out un);
+            Check(r.Count == 1 && un == 0, "two keys on one exit: one band");
+            r = ExitBands.Boxed(null, true, new V2(128, 41), exits, out un);
+            Check(r.Count == 1 && r[0] == 1 && un == 0, "legacy 0.4.0-0.4.2 box (no keys): the exit nearest its old access point, as the paint's load migration");
+            r = ExitBands.Boxed(null, true, new V2(110, 2), exits, out un);
+            Check(r.Count == 0 && un == 0, "legacy box nearest the building's own road junction: no band (it becomes a junction box on the node)");
+            r = ExitBands.Boxed(null, true, new V2(0, 0), new System.Collections.Generic.List<ExitCandidate>(), out un);
+            Check(r.Count == 0 && un == 1, "legacy box on a building without exits: nothing");
+            r = ExitBands.Boxed(new System.Collections.Generic.List<ExitKey> { new ExitKey(ExitKind.Fallback, -9.0, 23.0) }, false, default, exits, out un);
+            Check(r.Count == 1 && r[0] == 0, "a fallback key once the game shows a real drive: the drive within 2 m (ExitRules.Match second pass)");
+
+            // Hand-over: sorted by edge then t, near-equal merged, capped.
+            var n = ExitBands.Normalise(new[] { new ExitBand(5, 0.8f), new ExitBand(3, 0.4f), new ExitBand(5, 0.2f), new ExitBand(5, 0.20001f), new ExitBand(4, float.NaN) }, 63, out int dropped);
+            Check(n.Length == 3 && n[0].EdgeKey == 3 && n[1].EdgeKey == 5 && n[1].T == 0.2f && n[2].T == 0.8f && dropped == 0, "bands: by edge, then t; duplicates and NaN dropped");
+            var many = new System.Collections.Generic.List<ExitBand>();
+            for (int i = 0; i < 70; i++) many.Add(new ExitBand(i, 0.5f));
+            n = ExitBands.Normalise(many, ExitBands.Capacity, out dropped);
+            Check(n.Length == 63 && dropped == 7 && ExitBands.Capacity == 63, "over the job's 63 bands: the rest counted as dropped (Warn in the log)");
+
+            // Job loop as JRYellowBox.BoxHold runs it: first band of the edge by binary search, then each band on it.
+            var set = new TLongs { L = new System.Collections.Generic.List<long> { 3, 5, 5, 5, 9 } };
+            Check(SortedKeys.First(ref set, 5) == 1 && SortedKeys.First(ref set, 3) == 0 && SortedKeys.First(ref set, 9) == 4 && SortedKeys.First(ref set, 4) == -1 && SortedKeys.First(ref set, 10) == -1,
+                "First: the edge's first band among repeats; -1 for an edge without boxed exits");
+            var empty = new TLongs { L = new System.Collections.Generic.List<long>() };
+            Check(SortedKeys.First(ref empty, 1) == -1, "First on no bands");
+
+            // Two boxed exits on one 60 m road lane (t 0.25 and 0.75), band 8 m: a main-road car passing both meets each
+            // band at its own place; a car leaving the second drive joins inside the second band only.
+            float lane = 60f, band = 8f;
+            float[] ts = { 0.25f, 0.75f };
+            int mainBands = 0, leavingBands = 0;
+            float firstEntry = 2f;
+            foreach (float t in ts)
+            {
+                if (!BoxDriving.Band(t, lane, band, false, out float b0, out float b1)) continue;
+                var role = BoxDriving.Role(0f, 1f, b0, b1, out float entry);
+                if (role == BoxDriving.EntranceRole.Main) { mainBands++; if (entry < firstEntry) firstEntry = entry; }
+                if (BoxDriving.Role(0.75f, 1f, b0, b1, out _) == BoxDriving.EntranceRole.Leaving) leavingBands++;
+            }
+            Check(mainBands == 2 && Near(firstEntry, 11f / 60f), "main road: each boxed exit is its own band (first entry 4 m before the first exit)");
+            Check(leavingBands == 1, "leaving one drive: only that exit's band applies (the building's other boxed exit does not hold it)");
         }
     }
 }

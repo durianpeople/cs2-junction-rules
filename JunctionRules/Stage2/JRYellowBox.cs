@@ -19,8 +19,10 @@ namespace JunctionRules.Stage2
     {
         /// <summary>
         /// 0.4.2 (block S2-26, only with m_BoxRule): the read-only box lookups. Junction boxes are YellowBoxJunction on the
-        /// node (the Owner of its node lanes); entrance boxes are YellowBoxEntrance on a building whose Building.m_RoadEdge
-        /// is the road edge (found through the edge's ConnectedBuilding buffer, which the game keeps on road edges).
+        /// node (the Owner of its node lanes; 0.4.3: also where a building's own access road meets a public road, and
+        /// 0.4.0-0.4.2 boxes migrated there). 0.4.3: exit boxes come as bands in 'boxEdges' (one per boxed car exit: road
+        /// edge + curve position, resolved on the main thread); the entrance / building / ConnectedBuilding lookups are
+        /// still handed in by the unchanged S2-26 call but no longer read (no one-box-per-building assumption).
         /// </summary>
         public void SetBoxes(ComponentLookup<JunctionRules.Boxes.YellowBoxJunction> junctions, ComponentLookup<JunctionRules.Boxes.YellowBoxEntrance> entrances,
             ComponentLookup<Game.Buildings.Building> buildings, BufferLookup<Game.Buildings.ConnectedBuilding> connectedBuildings, ComponentLookup<Game.Net.EdgeLane> edgeLanes,
@@ -68,8 +70,8 @@ namespace JunctionRules.Stage2
         /// 0.4.2 (blocks S2-28 / S2-28b, top of both CheckCurrentLane overloads, only with m_BoxRule): the hold for the lane
         /// being iterated (m_Lane, its curve length, m_CurveOffset in game offsets, the game's distance from the car's front
         /// to the point at m_CurveOffset.x before its stop margin). Returns the speed limit (clamped) or float.MaxValue.
-        /// Junction box: the lane is a node lane of a boxed node, the entry is the lane start (the stop line). Entrance band:
-        /// the lane is an edge lane of a road with boxed building accesses. The hold is the game's own stop at the entry,
+        /// Junction box: the lane is a node lane of a boxed node, the entry is the lane start (the stop line). Exit band
+        /// (0.4.3): the lane is an edge lane of a road with boxed car exits; every exit on it is its own band. The hold is the game's own stop at the entry,
         /// GetMaxBrakingSpeed(car, distance, safe time step), as the zebra hold.
         /// </summary>
         public float BoxHold(Entity lane, float laneLength, float2 curveOffset, float distance, float margin, bool inverse, CarData car, float currentSpeed,
@@ -98,22 +100,21 @@ namespace JunctionRules.Stage2
                 if (Counting) Min(ref m_HasBoxRoom, ref m_BoxRoomSpeed, hold);
                 return hold;
             }
-            // JR-T-010-r: one binary search in the set of road edges with boxed accesses before any building is read.
-            if (!m_BoxEntrances || !m_EdgeLaneData.TryGetComponent(lane, out Game.Net.EdgeLane edgeLane) || !m_OwnerData.TryGetComponent(lane, out Owner edgeOwner)
-                || !m_BoxEdges.MayHave(edgeOwner.m_Owner) || !m_ConnectedBuildings.TryGetBuffer(edgeOwner.m_Owner, out DynamicBuffer<Game.Buildings.ConnectedBuilding> buildings))
-            {
+            // 0.4.3: the boxed CAR EXITS on this road (JRBoxEdges: edge key + curve position per exit, resolved on the main
+            // thread from the saved exit keys); one binary search finds the edge's first band. Buildings are not read here.
+            if (!m_BoxEntrances || !m_EdgeLaneData.TryGetComponent(lane, out Game.Net.EdgeLane edgeLane) || !m_OwnerData.TryGetComponent(lane, out Owner edgeOwner))
                 return float.MaxValue;
-            }
+            int first = m_BoxEdges.First(edgeOwner.m_Owner);
+            if (first < 0) return float.MaxValue;
+            long edgeKey = m_BoxEdges.Key(first);
             float delta = edgeLane.m_EdgeDelta.y - edgeLane.m_EdgeDelta.x;
             if (math.abs(delta) < 1e-4f) return float.MaxValue;
             float braking = -1f;
             float result = float.MaxValue;
-            for (int i = 0; i < buildings.Length; i++)
+            for (int i = first; i < m_BoxEdges.Count && m_BoxEdges.Key(i) == edgeKey; i++)
             {
-                Entity b = buildings[i].m_Building;
-                if (!m_BoxEntranceData.HasComponent(b) || !m_BuildingData.TryGetComponent(b, out Game.Buildings.Building building) || building.m_RoadEdge != edgeOwner.m_Owner) continue;
-                // The access point on this lane: the edge curve position mapped through the lane's own edge range.
-                float access = (building.m_CurvePosition - edgeLane.m_EdgeDelta.x) / delta;
+                // The exit point on this lane: the edge curve position mapped through the lane's own edge range.
+                float access = (m_BoxEdges.T(i) - edgeLane.m_EdgeDelta.x) / delta;
                 if (!BoxDriving.Band(access, laneLength, m_BoxEntranceLength, inverse, out float b0, out float b1)) continue;
                 BoxDriving.EntranceRole role = BoxDriving.Role(start, end, b0, b1, out float entry);
                 if (role != BoxDriving.EntranceRole.Main && role != BoxDriving.EntranceRole.Leaving) continue;

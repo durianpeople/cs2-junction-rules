@@ -90,6 +90,7 @@ namespace JunctionRules.Tests
             ("ScanOrderTests", ScanOrderTests),
             ("ZebraGapTests", ZebraGapTests),
             ("BoxEdgeSetTests", BoxEdgeSetTests),
+            ("BoxExitBandTests", BoxExitBandTests),
         };
 
         private static int Main(string[] args)

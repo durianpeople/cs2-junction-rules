@@ -166,6 +166,22 @@ namespace JunctionRules.Core
             return false;
         }
 
+        /// <summary>
+        /// 0.4.3: first index whose key equals <paramref name="key"/> in an ascending list that may repeat keys (one edge
+        /// with several boxed exits); -1 when absent.
+        /// </summary>
+        public static int First<T>(ref T keys, long key) where T : struct, IKeyList
+        {
+            int lo = 0, hi = keys.Count;
+            while (lo < hi)
+            {
+                int mid = (lo + hi) >> 1;
+                if (keys.Key(mid) < key) lo = mid + 1;
+                else hi = mid;
+            }
+            return lo < keys.Count && keys.Key(lo) == key ? lo : -1;
+        }
+
         /// <summary>The key of an entity (index, version): a rebuilt edge that reuses an index has another key.</summary>
         public static long KeyOf(int index, int version) => ((long)index << 32) | (uint)version;
 

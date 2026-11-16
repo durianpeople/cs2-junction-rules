@@ -281,6 +281,39 @@ namespace JunctionRules.Boxes
             return r2;
         }
 
+        /// <summary>
+        /// 0.4.3 driving rule: the building's boxed car exits as bands (road edge key + curve position), read-only. Saved
+        /// keys are matched to the building's current exits as the paint matches them; a legacy (0.4.0-0.4.2) box not yet
+        /// migrated by the paint takes the exit nearest its old access point (Core/ExitBands.Boxed). Junction exits are
+        /// junction boxes on their node (driven through YellowBoxJunction), never bands. Returns the keys without an exit.
+        /// </summary>
+        internal static int BoxedExitBands(EntityManager em, Entity building, List<ExitBand> into)
+        {
+            if (!Alive(em, building) || !em.HasComponent<YellowBoxEntrance>(building) || !em.HasComponent<Building>(building)) return 0;
+            YellowBoxEntrance c = em.GetComponentData<YellowBoxEntrance>(building);
+            List<Exit> exits = Exits(em, building, null);
+            var cands = new List<ExitCandidate>(exits.Count);
+            foreach (Exit x in exits) cands.Add(x.C);
+            var keys = new List<ExitKey>(c.m_Exits.Length);
+            for (int i = 0; i < c.m_Exits.Length; i++) keys.Add(c.m_Exits[i]);
+            V2 old = default;
+            if (c.Legacy)
+            {
+                Building bd = em.GetComponentData<Building>(building);
+                Access a = Alive(em, bd.m_RoadEdge) ? AccessOf(em, bd.m_RoadEdge, bd.m_CurvePosition) : default;
+                if (a.Valid) old = new V2(a.Point.x, a.Point.z);
+                else GetFrame(em, building, out old, out _);
+            }
+            List<int> boxed = ExitBands.Boxed(keys, c.Legacy, old, cands, out int unmatched);
+            foreach (int i in boxed)
+            {
+                Exit x = exits[i];
+                if (!Alive(em, x.Road)) continue;
+                into.Add(new ExitBand(SortedKeys.KeyOf(x.Road.Index, x.Road.Version), x.T));
+            }
+            return unmatched;
+        }
+
         private static Exit OnRoad(EntityManager em, Entity road, float t, ExitKind kind, V2 local, string source)
         {
             Bezier4x3 c = em.GetComponentData<Curve>(road).m_Bezier;

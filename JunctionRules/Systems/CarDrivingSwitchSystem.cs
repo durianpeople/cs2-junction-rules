@@ -34,6 +34,7 @@ namespace JunctionRules.Systems
         private Unity.Entities.EntityQuery m_EntranceBuildings;
         private int m_BoxEdgeCount = -1;
         private int m_BoxEdgeAge;
+        private int m_BoxStoreVersion = -1;
         private bool m_ProbesOn;
         private bool m_ProbesApplied;
 
@@ -44,33 +45,41 @@ namespace JunctionRules.Systems
         public static CopyState CopyState { get; private set; } = CopyState.NotCheckedYet;
 
         /// <summary>
-        /// 0.4.2 (JR-T-010-r, review item 1): rebuilds the set of road edges with boxed accesses (Stage2/JRBoxEdges.cs) on
-        /// the main thread when the number of entrance boxes changes, and every BoxEdgeRefreshSteps steps (an access
-        /// re-wired to a rebuilt road keeps its box but gets a new Building.m_RoadEdge). Tiny: a few buildings.
+        /// 0.4.2 (JR-T-010-r, review item 1) / 0.4.3: rebuilds the boxed car exits for the driving rule (Stage2/JRBoxEdges.cs)
+        /// on the main thread when the boxes change (count of boxed buildings or Boxes/BoxStore.Version: an exit added to a
+        /// building that already had one), and every BoxEdgeRefreshSteps steps (a drive re-wired to a rebuilt road keeps
+        /// its box but gets a new road edge). Every saved exit key becomes its own band at that exit (Boxes/BoxFacts
+        /// .BoxedExitBands); no one-box-per-building assumption. Tiny: a few buildings.
         /// </summary>
         private void UpdateBoxEdges(bool any)
         {
             if (!any)
             {
-                if (m_BoxEdgeCount != 0) BoxEdgeHandoff.Publish(new long[0]);
+                if (m_BoxEdgeCount != 0) BoxEdgeHandoff.Publish(new ExitBand[0]);
                 m_BoxEdgeCount = 0;
                 return;
             }
             int count = m_EntranceBuildings.CalculateEntityCount();
-            if (count == m_BoxEdgeCount && ++m_BoxEdgeAge < BoxEdgeRefreshSteps) return;
+            int version = JunctionRules.Boxes.BoxStore.Version;
+            if (count == m_BoxEdgeCount && version == m_BoxStoreVersion && ++m_BoxEdgeAge < BoxEdgeRefreshSteps) return;
             m_BoxEdgeCount = count;
+            m_BoxStoreVersion = version;
             m_BoxEdgeAge = 0;
-            using (var buildings = m_EntranceBuildings.ToComponentDataArray<Game.Buildings.Building>(Unity.Collections.Allocator.Temp))
+            var bands = new System.Collections.Generic.List<ExitBand>();
+            int unmatched = 0;
+            using (var buildings = m_EntranceBuildings.ToEntityArray(Unity.Collections.Allocator.Temp))
             {
-                var keys = new long[buildings.Length];
-                int n = 0;
-                for (int i = 0; i < buildings.Length; i++)
-                {
-                    Unity.Entities.Entity edge = buildings[i].m_RoadEdge;
-                    if (edge != Unity.Entities.Entity.Null) keys[n++] = SortedKeys.KeyOf(edge.Index, edge.Version);
-                }
-                if (n != keys.Length) System.Array.Resize(ref keys, n);
-                BoxEdgeHandoff.Publish(keys);
+                for (int i = 0; i < buildings.Length; i++) unmatched += JunctionRules.Boxes.BoxFacts.BoxedExitBands(EntityManager, buildings[i], bands);
+            }
+            int before = BoxEdgeHandoff.Version;
+            BoxEdgeHandoff.Publish(bands);
+            if (BoxEdgeHandoff.Version != before)
+            {
+                string msg = $"yellow boxes (driving): {BoxEdgeHandoff.Keys.Length} boxed car exit(s) on {count} building(s) handed to the box rule"
+                    + (unmatched > 0 ? $"; {unmatched} saved exit key(s) without an exit now (not obeyed until the paint re-keys or drops them)" : "")
+                    + (BoxEdgeHandoff.Dropped > 0 ? $"; {BoxEdgeHandoff.Dropped} more exit(s) over the limit of {ExitBands.Capacity} NOT obeyed" : "");
+                if (BoxEdgeHandoff.Dropped > 0) Mod.log.Warn(msg);
+                else Mod.log.Info(msg);
             }
         }
 

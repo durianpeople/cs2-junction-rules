@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
 
@@ -250,37 +251,45 @@ namespace JunctionRules.Core
     }
 
     /// <summary>
-    /// 0.4.2 (JR-T-010-r): the road edge keys with boxed accesses, published on the main thread by
+    /// 0.4.2 (JR-T-010-r): the boxed exits for the driving rule, published on the main thread by
     /// Systems/CarDrivingSwitchSystem.cs (which may not name copy types) and taken by Stage2/JRStage2Bridge.cs in the
     /// copy's OnUpdate (S2-23), the same hand-over path as <see cref="Stage2Handoff"/>. Main thread only.
+    /// 0.4.3: one entry per boxed CAR EXIT (Core/ExitBands.cs: edge key + curve position), sorted by edge then t; an
+    /// edge may repeat (several exits on one road). 0.4.2 published one edge key per boxed building.
     /// </summary>
     public static class BoxEdgeHandoff
     {
         private static long[] s_Keys = new long[0];
+        private static float[] s_T = new float[0];
 
-        /// <summary>Bumped on every publish that changes the keys.</summary>
+        /// <summary>Bumped on every publish that changes the bands.</summary>
         public static int Version { get; private set; }
 
+        /// <summary>Edge keys, ascending (repeats allowed).</summary>
         public static long[] Keys => s_Keys;
 
-        /// <summary>Publishes the keys (any order, duplicates allowed); sorted here. No change = no new version.</summary>
-        public static void Publish(long[] keys)
+        /// <summary>Curve position on the edge, parallel to <see cref="Keys"/>.</summary>
+        public static float[] T => s_T;
+
+        /// <summary>Exits not handed over at the last publish (more than ExitBands.Capacity).</summary>
+        public static int Dropped { get; private set; }
+
+        /// <summary>Publishes the bands (any order, duplicates allowed); normalised here. No change = no new version.</summary>
+        public static void Publish(IEnumerable<ExitBand> bands)
         {
-            long[] sorted = keys ?? new long[0];
-            System.Array.Sort(sorted);
-            int n = 0;
-            for (int i = 0; i < sorted.Length; i++)
-            {
-                if (n == 0 || sorted[i] != sorted[n - 1]) sorted[n++] = sorted[i];
-            }
-            if (n != sorted.Length) System.Array.Resize(ref sorted, n);
-            if (n == s_Keys.Length)
+            ExitBand[] n = ExitBands.Normalise(bands, ExitBands.Capacity, out int dropped);
+            Dropped = dropped;
+            if (n.Length == s_Keys.Length)
             {
                 bool same = true;
-                for (int i = 0; i < n && same; i++) same = sorted[i] == s_Keys[i];
+                for (int i = 0; i < n.Length && same; i++) same = n[i].EdgeKey == s_Keys[i] && n[i].T == s_T[i];
                 if (same) return;
             }
-            s_Keys = sorted;
+            var keys = new long[n.Length];
+            var t = new float[n.Length];
+            for (int i = 0; i < n.Length; i++) { keys[i] = n[i].EdgeKey; t[i] = n[i].T; }
+            s_Keys = keys;
+            s_T = t;
             Version++;
         }
     }

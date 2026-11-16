@@ -13,6 +13,9 @@ namespace JunctionRules.Boxes
     /// </summary>
     internal static class BoxStore
     {
+        /// <summary>0.4.3: bumped on every box write (tool, paint migration / re-key / drop): the driving rule's exit list is rebuilt when it moves.</summary>
+        internal static int Version;
+
         /// <summary>Raised after the tool added or removed a box (the paint system redraws at once).</summary>
         internal static event Action Changed;
 
@@ -91,6 +94,7 @@ namespace JunctionRules.Boxes
         {
             if (node == Entity.Null || !em.Exists(node) || Has(em, node, true)) return;
             em.AddComponentData(node, new YellowBoxJunction());
+            Version++;
             if (notify) RaiseChanged();
         }
 
@@ -112,6 +116,7 @@ namespace JunctionRules.Boxes
                 c.m_Exits.Add(key);
                 em.SetComponentData(building, c);
             }
+            Version++;
             if (notify) RaiseChanged();
             return true;
         }
@@ -124,6 +129,7 @@ namespace JunctionRules.Boxes
             for (int i = c.m_Exits.Length - 1; i >= 0; i--) if (c.m_Exits[i].Equals(key)) c.m_Exits.RemoveAt(i);
             if (c.m_Exits.Length == 0) em.RemoveComponent<YellowBoxEntrance>(building);
             else em.SetComponentData(building, c);
+            Version++;
             if (notify) RaiseChanged();
         }
 
@@ -135,6 +141,7 @@ namespace JunctionRules.Boxes
             c.m_Exits.Clear();
             c.m_Exits.Add(key);
             em.SetComponentData(building, c);
+            Version++;
         }
 
         /// <summary>Removes the box (tool click, or the paint system dropping a box whose target is no longer valid); building: all its exit boxes.</summary>
@@ -143,6 +150,7 @@ namespace JunctionRules.Boxes
             if (!Has(em, e, junction)) return;
             if (junction) em.RemoveComponent<YellowBoxJunction>(e);
             else em.RemoveComponent<YellowBoxEntrance>(e);
+            Version++;
             if (notify) RaiseChanged();
         }
 
