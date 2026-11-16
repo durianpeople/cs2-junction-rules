@@ -175,7 +175,9 @@ namespace JunctionRules.Systems
                 Mod.Settings == null || Mod.Settings.BoxTurnWait,
                 !m_JunctionBoxes.IsEmptyIgnoreFilter,
                 !m_EntranceBoxes.IsEmptyIgnoreFilter,
-                (float)JunctionRules.Boxes.BoxStore.EntranceLength);
+                (float)JunctionRules.Boxes.BoxStore.EntranceLength,
+                // 0.4.4 (JR-T-012): vehicles leaving buildings give way.
+                Mod.Settings == null || Mod.Settings.ExitGiveWay);
             Stage2Handoff.Publish(stage2Mode);
             UpdateBoxEdges((stage2Mode & Stage2Mode.BoxEntrances) != 0);
             if (ruleNote != null) Mod.log.Info(ruleNote);

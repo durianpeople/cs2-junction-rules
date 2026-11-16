@@ -1,0 +1,26 @@
+pass rename applies to whole identifier
+pass rename leaves longer identifiers alone
+pass second rename applies
+pass namespace moved
+pass usings inserted before namespace
+pass deviation applied
+pass regex deviation applied only where declared
+pass ILSpy trailer stripped
+pass source header added
+pass check: a declared, documented marked block is allowed
+pass header names the marked-block exception when blocks are declared
+pass check: a change outside the marked blocks is still reported
+pass check: a block without END is reported
+pass check: a block id missing from the rules is reported
+pass check: a nested block is reported
+pass check: a block id missing from DEVIATIONS.md is reported
+pass generate: keeps the marked blocks in place
+pass check: a block count that differs from the rules is reported
+pass check: generated copy has zero unexplained differences
+pass check: a planted logic change is reported
+pass check: CRLF and trailing blanks are not differences
+pass check: a rule missing from DEVIATIONS.md is reported
+pass check: a deviation whose find text no longer matches is reported
+pass compare-decomp: identical decompiles report SAME
+pass compare-decomp: a changed decompile is reported
+selftest: OK

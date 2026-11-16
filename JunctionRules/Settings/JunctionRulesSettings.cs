@@ -116,6 +116,16 @@ namespace JunctionRules.Settings
         [SettingsUISection(kSection, kDrivingGroup)]
         public float ZebraRoomMargin { get; set; }
 
+        /// <summary>
+        /// 0.4.4 (JR-T-012, owner rule 16 Nov 2026): "Cars coming out of ANY building must give way, and when that building
+        /// exit is a yellow box, must ALSO obey the yellow box rules." A vehicle leaving a building (drive, car park or
+        /// depot gate) waits at the exit until the road lanes it crosses or merges into are clear (the Whole junction gap
+        /// judgement, Core/ExitGiveWay.cs); at a boxed exit it also needs room past the band. On-duty emergency vehicles:
+        /// stock. Default on; off = the 0.4.3 behaviour. Acts while the copy drives; next simulation step.
+        /// </summary>
+        [SettingsUISection(kSection, kDrivingGroup)]
+        public bool ExitGiveWay { get; set; }
+
         /// <summary>Read-only: what runs now and the version gate result.</summary>
         [SettingsUISection(kSection, kDrivingGroup)]
         public string Status => StatusText();
@@ -270,6 +280,7 @@ namespace JunctionRules.Settings
             YellowBoxMarkingMargin = MarkingMargin.Default;
             ZebraNonBlocking = true;
             ZebraRoomMargin = RoomScan.DefaultMargin;
+            ExitGiveWay = true;
             BoxObey = true;
             HideMarkingsUnderBoxes = false;
             BoxTurnWait = true;
@@ -359,6 +370,10 @@ namespace JunctionRules.Settings
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.ZebraRoomMargin)), "Room margin past a zebra or yellow box (m)" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.ZebraRoomMargin)),
                     "Extra space, on top of the vehicle's own length, that must be free past a zebra (setting Cars never stop on a zebra) or past a yellow box (setting Cars obey yellow boxes) before a car drives onto it. A moving queue counts the distance the car ahead needs to stop (the game's own measure), so a queue that keeps moving lets cars in. Default 1 m. Larger: fewer tails left on a zebra, more waiting. Changes take effect at the next simulation step." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.ExitGiveWay)), "Vehicles leaving buildings give way" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.ExitGiveWay)),
+                    "\"Cars coming out of ANY building must give way, and when that building exit is a yellow box, must ALSO obey the yellow box rules.\" On (default): a car, van, truck or bus leaving any building (a drive, a car park or a depot gate) waits at the exit until every road lane it crosses or merges into is clear: no vehicle on that lane, in the junction before it or on the road before that junction would reach the exit before it is out of the way, judged from the approaching vehicles' speed as with the Whole junction gap rule (a vehicle stopped by a red light, or by amber when it can stop, does not count). This works at every exit, boxed or not. At an exit you gave a yellow box, the car must also have room past the box (Cars obey yellow boxes): both must hold. Vehicles on the road are not held for it (apart from the yellow box rules). On-duty emergency vehicles leave as in the game. There is no time limit: an exit onto a road that never clears waits until it does. Off: the 0.4.3 behaviour. Works with either junction gap rule, only while Car driving is the Junction Rules copy. Changes take effect at the next simulation step." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.Status)), "Status" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.Status)), "What runs now, the result of the version check made at game start, and whether the copy can run (set up at the first simulation step). Reopen the options page to refresh." },

@@ -52,12 +52,10 @@ game's own measure: a moving car ahead counts its braking distance; **room margi
 the whole vehicle cannot wait between two zebras (Z C Z), or between Cs and a zebra (a bus), they are one decision
 before the first. Carries 0.4.0 and 0.3.6.
 
-0.4.4-probe (JR-T-011 part A; PROBE-STAGE4-BOXTOOL.md section 15): yellow boxes that **overlap or touch are drawn
-as one box** (one outer border, one hatch; facing / staggered / end-to-end exits, an exit next to a junction box),
-the tool's hover shows the merged outline, and each box is still saved on its own (remove one, the other stays). An
-exit box on a **divided road** covers only the building's side, kerb to median; facing exits across a median stay two
-boxes. Driving: overlapping bands on a lane act as one box, a band applies only to its side's lanes, and an exit box
-joined to a junction box needs room past both. Carries 0.4.3.
+0.4.4-probe (JR-T-012; PROBE-STAGE4-BOXTOOL.md section 15): **vehicles leaving buildings give way** (setting, default
+on): every vehicle leaving any building (drive, car park or depot gate) waits until the lanes it crosses or merges into
+are clear (Whole junction gap judgement); at a boxed exit it must also have room past the box. On-duty emergency
+vehicles as stock; no time limit. Off = 0.4.3.
 
 0.4.3-probe (JR-T-007c; PROBE-STAGE4-BOXTOOL.md section 12): building boxes sit at each **car exit** (driveway,
 car park / depot gate; fallback the road access), **one box per exit**; a service building's own access road meeting a
@@ -116,6 +114,9 @@ PROBE-STAGE3-PAINT.md section 10.
 - **Whole junction: waiting spot**: `Before the first crossing` (default, owner ruling) or `At the stop line`.
 - **Whole junction: turning across oncoming traffic gives way** (0.2.4): on (default) or off (= 0.2.3). Acts only
   with the Whole junction rule; applies at the next simulation step; traffic side from the game's own city setting.
+- **Vehicles leaving buildings give way** (0.4.4, lot exits 0.4.5, judged earlier 0.4.6): on (default) or off (= 0.4.3). "Cars coming out of ANY building
+  must give way, and when that building exit is a yellow box, must ALSO obey the yellow box rules." Timing log:
+  building exits: waits (turning across, spawn/gate), go decisions, emergency passthroughs, cap hits, hand-overs to the road (lot, gate, other); since 0.4.6 counted per vehicle, not per car-step.
 - **Cars never stop on a zebra** (0.4.1): on (default) or off (= 0.4.0); **room margin (m)** 0-10 m, default 1 m
   (extra free space past a zebra on top of the vehicle's length). Acts while Car driving is the copy, with either gap
   rule (Stock: zebras and room only); applies at the next simulation step. Timing log: zebra entries held (people,

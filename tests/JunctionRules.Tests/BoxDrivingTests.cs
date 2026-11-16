@@ -162,7 +162,7 @@ namespace JunctionRules.Tests
             Check(sw.Step(JunctionGapRule.Stock, false, out _, boxObey: false, anyJunctionBox: false) == null, "setting off: box presence changes nothing (no message)");
 
             // Counters.
-            Check(Stage2Counters.BoxHeldRoom == Stage2Counters.ZebraScanUnsorted + 1 && Stage2Counters.EntranceHeldLeaving == Stage2Counters.Count - 1, "box counters after the zebra ones");
+            Check(Stage2Counters.BoxHeldRoom == Stage2Counters.ZebraScanUnsorted + 1 && Stage2Counters.EntranceHeldLeaving == Stage2Counters.ExitHeld - 1, "box counters after the zebra ones");
             var dl = new long[Stage2Counters.Count];
             dl[Stage2Counters.BoxHeldRoom] = 7; dl[Stage2Counters.BoxTurnWaits] = 3; dl[Stage2Counters.EntranceHeldMain] = 2; dl[Stage2Counters.EntranceHeldLeaving] = 1;
             string on2 = Stage2Counters.Format(2, dl, 2, 2, 2);

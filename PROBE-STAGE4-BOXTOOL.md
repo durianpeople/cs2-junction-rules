@@ -1,14 +1,12 @@
-# Probe kit: Junction Rules 0.4.4-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits; merged boxes; median)
+# Probe kit: Junction Rules 0.4.4-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits; vehicles leaving buildings give way)
 
-**0.4.4-probe (JR-T-011 part A), what changed since 0.4.3:** boxes that overlap or touch are **drawn as one box**:
-one outer border, one hatch laid out once for the whole group, no borders inside (two exits facing across a road,
-staggered exits, exits end to end, an exit box next to a junction box). Each box is still saved on its own: remove
-one and the other is drawn alone again. The tool's hover shows the merged outline of the group. On a **divided road**
-(raised median, barrier) an exit box covers only the building's side, kerb to median, never across it; two exits
-facing across a median stay two boxes (owner, Ironplace Avenue). Driving follows the paint: overlapping bands on one
-lane are one box, a band holds only its side's lanes, and an exit box drawn joined to a junction box needs room past
-the junction box too. Section 15. No vanilla block change (`docs/vanilla_copy_check_0.4.4.txt`).
-Carries 0.4.3 (below) and everything before.
+**0.4.4-probe (JR-T-012), what changed since 0.4.3:** new driving rule **Vehicles leaving buildings give way**
+(default on; section 15). Owner rule: "Cars coming out of ANY building must give way, and when that building exit is a
+yellow box, must ALSO obey the yellow box rules." Driving changes only while Car driving is the Junction Rules copy;
+with the setting off cars drive exactly as in 0.4.3. `docs/vanilla_copy_check_0.4.4.txt`: 0 unexplained differences,
+three new marked blocks (S2-29, S2-30, S2-31) and extended S2-20 / S2-23 / S2-26 (DEVIATIONS.md). Carries 0.4.3 and
+everything before.
+
 
 **0.4.3-probe (JR-T-007c), what changed since 0.4.2:** building boxes sit at each building's **car exit** (the drawn
 driveway, car park / depot gate), not the lot-front middle; a building with several exits gets **one box per exit**;
@@ -46,7 +44,7 @@ differences). Also: the T-junction through-side kerb fix (section 6) and the ent
 0.3.6 (JR-T-008, people pass a car blocking their crossing; merged from 784ba28) and everything before it
 (PROBE-STAGE3-PAINT.md).
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.4.4-probe/`. 0.4.3-probe is installed live (Burst-built from a14445d, sums in 1441805); never write into `.staged/0.4.3-probe` (it is the rollback). While `.staged/0.4.4-probe` holds a `STALE.md` it is a managed
+Build to install: `~/Code/cs2-junction-rules/.staged/0.4.6-probe/` (JR-T-012 fix 2, branch jr-t-012; managed build only until main does the Burst build, see its `STALE.md`; the block below refuses on the `0000...` placeholder sums and while `STALE.md` exists). 0.4.5-probe (installed 16 Nov, `.staged/0.4.5-probe`, Burst from 9639e71, sums in commit bb676cd) is the rollback; 0.4.4-probe (`.staged/0.4.4-probe-jr012`, sums in commit 853ea2b) before that. Earlier note: (JR-T-012 only; `.staged/0.4.4-probe` holds the paused JR-T-011 managed build: never install that one for this probe). 0.4.3-probe (installed) is the rollback. Earlier: 0.4.2-probe (jr-t-010 line) is installed live by main (code 59e731f, sums c781df0); never write into `.staged/0.4.2-probe`. While `.staged/0.4.3-probe` holds a `STALE.md` it is a managed
 build only: main does the Burst build in `STALE.md` (game closed, at the owner's quit), then puts the five sums into the
 install block below. Until then the block refuses (placeholder sums `0000...`).
 
@@ -59,29 +57,27 @@ copy does not run; the boxes stay in the save).
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.4.4-probe || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.4.6-probe || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.mjs
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
-0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
+4be8d47eeff7a00cd30141c67e834158dbe74318de3473dcbf88ac6a272d60ef  JunctionRules.dll
+faced6fda4ee68eea42c331c7ea784ac887d7f6ecdf3a634f6e1057b2fe6eb16  JunctionRules.pdb
+9e8f8a397f70bbeb121ef7224981278773595c1fe2ce7e31de01d4c4df2b65bf  JunctionRules.mjs
+253b4ef2e85a036a90f58216cdbaed31fc17e82918aa6af4e06b85a87c562b28  JunctionRules_win_x86_64.dll
+83a24e34bfc1bbf8fb162ea77cd327526c7c2c2ca23989d2e392e180ac4fddd1  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
   fi
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules.mjs JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
-  echo "installed 0.4.4-probe"
+  echo "installed 0.4.6-probe"
 )
 ```
 
-Rollback: to 0.4.3 (boxes drawn one by one, exit boxes across the whole divided road): the same block with
-`.staged/0.4.3-probe` and its sums (dll 70b4cda8..., pdb ec29605c..., mjs 9e8f8a39..., win dll be055964..., win pdb
-cffee44b...; full sums in commit 1441805). To 0.4.2 (the JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
+Rollback: to 0.4.5 (JR-T-012 lot-exit build, Burst from 9639e71, installed 16 Nov): the same block with `.staged/0.4.5-probe` and its sums (commit bb676cd). To 0.4.4 (JR-T-012 first build, Burst from ba75f0b, installed 16 Nov): the same block with `.staged/0.4.4-probe-jr012` and its sums (commit 853ea2b). To 0.4.3 (installed 16 Nov, Burst from a14445d): the same block with `.staged/0.4.3-probe` and its sums (commit 1441805). To 0.4.2 (the JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
 its loader, so exit boxes fall back to one entrance box per building): the same block with `.staged/0.4.2-probe` and
 its sums (full sums in commit c781df0). To 0.4.1 (boxes kept, box driving rule gone): the same block with `.staged/0.4.1-probe` and its sums
 (dll af5b1322..., pdb db04729f..., mjs 9e8f8a39..., win dll 5acf0104..., win pdb d5762071...; full sums in the 0.4.1 commit 07cc519)
@@ -518,7 +514,110 @@ slowdown; the 64-step refresh rebuilds every boxed building's exits on the main 
 cheap for a few boxed buildings, but watch for a periodic hitch (every 64 steps) with many; a building whose drive moved more than 2 m
 since the box was placed has no band until the paint re-keys or drops it (log `without an exit now`).
 
-## 15. 0.4.4: touching boxes drawn as one; exit boxes stop at a median (JR-T-011 part A)
+## 15. 0.4.4: vehicles leaving buildings give way (JR-T-012)
+
+Owner rule (binding wording, 16 Nov 2026): **"Cars coming out of ANY building must give way, and when that building
+exit is a yellow box, must ALSO obey the yellow box rules."** Setting **Vehicles leaving buildings give way** (Car
+driving group, default ON; OFF = exactly 0.4.3).
+
+**Why vehicles pulled out (owner screenshot, truck out of a boxed exit across Alderwood).** Decompile 2026-11-13:
+a drive's leaving lanes are node lanes owned by the road with `Unsafe | SideConnection | Yield`
+(`Game.Net/LaneSystem.cs` 3646+, flags 3864-3876). Stock `CheckOverlappingLanes` gives way there only to reservations
+(road vehicles never reserve the lane they are on) and to vehicles already on the crossed lane whose 2 s look-ahead
+reaches the drive; a vehicle in the junction or on the road before it is not seen, and a slow truck needs much more
+than 2 s. At a spawn / car park gate (`Connection` lane) the game never looks at the road at all
+(`CarNavigationSystem` 2022-2024) and drops the vehicle onto the road lane at <= 3 m/s (1873-1886). JR 0.4.3 did not
+change either (its band rule only asks for room past the box).
+
+**What changes.** Every vehicle leaving any building waits at the exit until every road lane it crosses or merges into
+is clear, judged as the Whole junction rule judges: an approaching vehicle on that lane, in the junction before it or
+on the road before that junction counts when its braking distance + speed x (2 s + the leaving vehicle's own arrival
+time) reaches the exit; a vehicle stopped before the exit does not; red skips it, amber skips it when it can stop. At
+every exit, boxed or not. At a boxed exit the 0.4.3 room-past-the-band rule applies too: both must hold. Road vehicles
+are never held for a leaving one (apart from the box bands). On-duty emergency vehicles (lights on) leave as in the
+game. Works for left- and right-hand traffic (the crossed lanes come from the game's lane overlaps / road geometry;
+the "turning across" counter label uses the city's own traffic-side flag).
+
+| # | Do | Expect |
+|---|---|---|
+| E1 | Alderwood busy exit (the screenshot's), timing log on | trucks / cars wait at the drive while a vehicle comes from either side; go in a real gap; timing log `building exits: waits N (turning across N, spawn/gate N), go decisions N` |
+| E2 | Same exit, a queue standing across it (unboxed) | the leaving vehicle waits (it cannot cross a standing vehicle); when the queue stopped short of the drive it may cross the near lane |
+| E3 | A boxed exit with a full road | as 0.4.3: road queue stops short of the band; the leaving vehicle needs BOTH a gap and room past the band |
+| E4 | A car park / depot gate on a busy road | vehicles appear on the road only in gaps (they wait unseen inside the building: `spawn/gate` count rises) |
+| E5 | Ambulance / fire engine on a call leaving its station | leaves at once (`emergency passthroughs` > 0) |
+| E6 | Setting OFF | driving as 0.4.3; the log line says `vehicles leaving buildings give way off` |
+| E7 | Navigation timing (timing log) | compare with 0.4.3; only the vehicle at its exit scans (a few lanes, at most 24 lanes / 96 vehicles); `cap hits` should stay near 0 |
+
+**Deadlock notes (no starvation safeguard, owner).** An exit onto a road that never clears waits for ever: a drive
+onto a permanently queued road where the queue stands ON the drive, or onto a road with a steady stream at speed.
+Signs: `waits` keeps rising at one place while `go decisions` stays flat; a building whose deliveries / commuters never
+leave; behind a held driveway vehicle the building's internal queue grows (only the front vehicle scans). A vehicle
+held at a spawn gate is invisible (unspawned inside the building); the game's "stuck" handling may still despawn it
+after a long wait (not checked). Known limits: (0.4.5: exits through an area, a building lot onto the road, ARE gated, see below); trams are not counted as approaching traffic; on a two-way lane only vehicles driving with its curve count;
+road vehicles about to turn INTO the building still count as approaching (cautious); when the work cap is hit the
+vehicles not read do not count (errs to go). Report any exit that stays blocked with the timing line and a screenshot.
+
+### 0.4.5-probe (JR-T-012 fix): lot exits were never gated in 0.4.4
+
+**Cause.** The live 0.4.4 log showed `spawn/gate 0` and `boxed spawn exit no room 0` although a truck still pulled
+out of a boxed exit. 0.4.4 hooked the wait into the `Connection` lane tail only (S2-30, `IL_09cd`). But a building's
+lot (the lane from the spawn point / gate across the lot to the road) is a `ConnectionLane` with
+`ConnectionLaneFlags.Area`, and that becomes `CarLaneFlags.Area`, not `Connection` (`InitializeSystem.cs` 288,
+`CarNavigationSystem.cs` 672, 1037, `TripNeededSystem.cs` 773). `CarNavigationSystem` runs the Area branch
+(`if ((LaneFlags & Area) == 0)` ~1596, `MoveAreaTarget` 1795-1803 / 2406) without ever calling the lane speed
+iterator, so the road lane the lot joins is never looked at and S2-30 is never reached: the vehicle drove the area
+lane at full speed and entered the road. The driveway case (road-owned node lane, S2-29) was fine (24 waits logged).
+
+**Fix (S2-32, S2-33; DEVIATIONS.md).** A vehicle on an Area lane whose next navigation lane is a public road car lane
+brakes to stop 1 m before the join point (`ExitAreaHold`) while the same gap decision as every other exit
+(`ExitJoinLane` + `ExitJoinWaits`, shared with S2-30; boxed exit: room past the band too) says wait; S2-33 keeps it on
+its area lane (like S2-31 for connection lanes). It only scans when it has to brake (`hold < max speed`); a vehicle
+that cannot stop in time, or is already clearly past the stop point, is left to the game (`CanHoldArea`). On-duty
+emergency vehicles keep stock behaviour. Timing log: lot exits count in `spawn/gate` (waits) and `go decisions`.
+Setting OFF = 0.4.4 / 0.4.3. `docs/vanilla_copy_check_0.4.5.txt`: 0 unexplained differences, 31 marked blocks.
+
+Not yet tested live (managed build only): decompile-derived diagnosis. E4 now also covers a lot exit: a held lot
+vehicle waits visibly on its lot lane just before the road and goes in a gap (one that cannot stop in time rolls out).
+
+### 0.4.6-probe (JR-T-012 fix 2): the lot-exit scan started too late
+
+**Live 0.4.5** (owner, 16 Nov 22:41): a tractor-trailer leaving an industrial lot drove into a boxed Alderwood exit,
+turned right across both lanes and stood in the box; the next boxed exit west: a dark truck pulled into the near
+lane under a Delivery Van. Log: `spawn/gate 0` still, `emergency passthroughs` 64 in one window.
+
+**Causes (decompile + code, no live trace; the probe counters below will say if another way out exists).**
+1. The stock area branch hands the vehicle over to the road lane as soon as the end of its area path is within
+   max(look-ahead, braking distance at 11.1 m/s + 1 m + pivot) (`CarNavigationSystem` num8, 1767-1772;
+   `MoveAreaTarget` 2529): up to ~20 m before the join point. 0.4.5 judged a vehicle only when its braking speed to the
+   stop point was already below its current limit (`hold < currentMax`), and S2-33 held it only if S2-32 had judged it
+   busy in that same update. A vehicle was therefore handed over to the road lane unjudged and drove on as a road
+   vehicle (no give-way on a road lane).
+2. The distance to the join point was cut by half the WHOLE train (trailers): a tractor-trailer looked "already
+   past the stop point" (`CanHoldArea` false = left to the game) ~8 m too early.
+3. An area lane had to have a building in its owner chain and the joined lane an edge as owner (a lot beside a
+   junction joins a junction node lane).
+4. The area branch ends in `goto IL_0a0a`, past the later `AddCounts`: S2-32's counters were never added (that is
+   `spawn/gate 0`, not proof that nothing waited). All exit counters were also added per car-step.
+`emergency passthroughs` is NOT a misclassification: priority 108 exists only with `CarFlags.Emergency`
+(`VehicleUtils.GetPriority(Car)` 654-657, set only by the ambulance / fire / police / transport AIs); one on-duty
+vehicle at a driveway or lot added one per car-step (64 car-steps = a few vehicles).
+
+**Fix.** S2-32 judges every vehicle within `ExitGiveWay.AreaScanMetres` (braking distance at 11.1 m/s + front offset
++ 15 m, at least 25 m) of the join point on every update, measured from the vehicle's front
+(`prefabObjectGeometryData.m_Bounds.max.z`), so the hold and S2-33 are in place before the stock hand-over. An area lane
+needs no building owner; the joined lane may be a junction node lane. Driveway (S2-29) and Connection (S2-30/31)
+exits unchanged. Counters are per vehicle episode (shared event table, kinds) and S2-32 feeds them. New probe
+S2-34 (counting only) adds `hand-overs to the road from: lot N, gate N, other N` to the building-exits part of the
+timing line: lot = area lane, gate = Connection lane, other = any other building-owned lane (should stay 0; if not,
+that is a way out of a building the hooks do not cover: report the line). `docs/vanilla_copy_check_0.4.6.txt`: 0
+unexplained differences, 32 marked blocks. Setting OFF = 0.4.3 driving.
+
+Not yet tested live (managed build only). E4: a lot vehicle (also a tractor-trailer and a van) waits visibly on its
+lot lane just before the road while a vehicle approaches, joins in a gap, never ends overlapping a road vehicle;
+the log's `waits` / `go decisions` now count vehicles, not car-steps.
+## 16. 0.4.7: touching boxes drawn as one; exit boxes stop at a median; markings hidden (JR-T-011, #17)
+
+### 16.1 Touching boxes drawn as one; exit boxes stop at a median (JR-T-011 part A)
 
 **What changed.** The paint groups the boxes whose outlines overlap or touch (within 5 cm) and draws each group as
 ONE box: the union of the members' straight-sided outlines (still straight-sided, every side on a member's side, so
@@ -563,12 +662,12 @@ the bridge only where the sides are parallel, so on a skewed junction the exit m
 a fail); the median rule relies on the road's divider piece blocking traffic (assumed for vanilla divided roads; a
 RoadBuilder road with a painted-only centre stays kerb to kerb, as it should).
 
-## 16. 0.4.4: road markings hidden under the boxes (JR-T-011 part B)
+### 16.2 Road markings hidden under the boxes (JR-T-011 part B; G2 review fixes)
 
-New setting **Hide road markings under yellow boxes** (Yellow boxes group, default ON). Inside every painted box (the
-merged outline of section 15) the road's own markings are not drawn: lane dashes, edge lines, the centre line (double
+New setting **Hide road markings under yellow boxes** (Yellow boxes group, default OFF since the G2 review fixes, until K1 passes). Inside every painted box (the
+merged outline of section 16.1) the road's own markings are not drawn: lane dashes, edge lines, the centre line (double
 solid too, owner 16 Nov: fine), node markings, arrows and the road's painted speed numbers ("40"). Outside the box
-nothing changes; on a divided road the box stops at the median (section 15), so the far side keeps its markings.
+nothing changes; on a divided road the box stops at the median (section 16.1), so the far side keeps its markings.
 Render-only: the game's own per-lane cut list (`CutRange`) on marking lanes and the tool tag `Hidden` on marking
 objects; both are taken off before every save and put back the next frame (docs/MARKINGS-UNDER-BOX-RESEARCH.md).
 Driving is not affected. Log line on every box change:
@@ -585,7 +684,7 @@ Driving is not affected. Log line on every box change:
 | K4 | A junction box with arrows / give-way or stop lines near it | arrows inside the box gone; stop / give-way lines and zebras (outside the box by the marking margin) still drawn |
 | K5 | A "40" or arrow straddling the box border | gone if about a quarter or more of it lies in the box, else kept whole (never cut in half) |
 | K6 | Look just outside a box along a dashed lane line | dashes may sit slightly differently next to the box (the game re-fits the dash pattern to the shortened line): note if it looks odd |
-| K7 | A merged pair of boxes (section 15 M1) | markings hidden under the whole merged box, no strip of dashes left at the join |
+| K7 | A merged pair of boxes (section 16.1 M1) | markings hidden under the whole merged box, no strip of dashes left at the join |
 | K8 | Ironplace Avenue (divided): an exit box on one side | markings on the box's carriageway hidden inside it; the median and the far carriageway's markings untouched |
 | K9 | Remove a box with the tool | its markings come back at once (a merged partner keeps hiding under its own outline) |
 | K10 | Options: switch the setting off, then on | off: markings show through the box exactly as 0.4.3; on: hidden again |

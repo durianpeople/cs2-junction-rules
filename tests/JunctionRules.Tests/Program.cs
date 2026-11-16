@@ -99,6 +99,14 @@ namespace JunctionRules.Tests
             ("BoxMergeTests", BoxMergeTests),
             ("MedianSplitTests", MedianSplitTests),
             ("BoxMergeRepoTests", BoxMergeRepoTests),
+            ("ExitLayoutTests", ExitLayoutTests),
+            ("ExitGapTests", ExitGapTests),
+            ("ExitDecisionTests", ExitDecisionTests),
+            ("ExitAreaTests", ExitAreaTests),
+            ("ExitEventTests", ExitEventTests),
+            ("ExitPriorityTests", ExitPriorityTests),
+            ("ExitModeTests", ExitModeTests),
+            ("ExitRepoTests", ExitRepoTests),
         };
 
         private static int Main(string[] args)
