@@ -305,11 +305,14 @@ namespace JunctionRules.Boxes
                 else GetFrame(em, building, out old, out _);
             }
             List<int> boxed = ExitBands.Boxed(keys, c.Legacy, old, cands, out int unmatched);
+            GetFrame(em, building, out V2 bpos, out _);
             foreach (int i in boxed)
             {
                 Exit x = exits[i];
                 if (!Alive(em, x.Road)) continue;
-                into.Add(new ExitBand(SortedKeys.KeyOf(x.Road.Index, x.Road.Version), x.T));
+                // 0.4.4 (JR-T-011): on a divided road the band holds the building side's lanes only (Core/MedianSplit)
+                uint mask = BoxShapes.MedianSide(em, x.Road, x.T, bpos, out SideSpanResult span, out _) && span.Divided ? span.CarriagewayMask : MedianSplit.AllCarriageways;
+                into.Add(new ExitBand(SortedKeys.KeyOf(x.Road.Index, x.Road.Version), x.T, mask));
             }
             return unmatched;
         }

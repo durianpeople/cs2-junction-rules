@@ -18,24 +18,29 @@ namespace JunctionRules.Stage2
     {
         public FixedList512Bytes<long> m_Keys;
         public FixedList512Bytes<float> m_T;
+        /// <summary>0.4.4: carriageway mask per band (Core ExitBand.Carriageways).</summary>
+        public FixedList512Bytes<uint> m_Mask;
 
         public int Count => m_Keys.Length;
         public long Key(int i) => m_Keys[i];
         /// <summary>Curve position on the edge of band i.</summary>
         public float T(int i) => m_T[i];
+        /// <summary>0.4.4: carriageway mask of band i.</summary>
+        public uint Mask(int i) => m_Mask[i];
 
         public static long KeyOf(Entity e) => SortedKeys.KeyOf(e.Index, e.Version);
 
         /// <summary>The set from the published bands (Core BoxEdgeHandoff: sorted, parallel arrays).</summary>
-        public static JRBoxEdges FromBands(long[] keys, float[] t)
+        public static JRBoxEdges FromBands(long[] keys, float[] t, uint[] masks)
         {
             JRBoxEdges set = default;
             int n = keys.Length < t.Length ? keys.Length : t.Length;
             for (int i = 0; i < n; i++)
             {
-                if (set.m_Keys.Length >= set.m_Keys.Capacity || set.m_T.Length >= set.m_T.Capacity) break;
+                if (set.m_Keys.Length >= set.m_Keys.Capacity || set.m_T.Length >= set.m_T.Capacity || set.m_Mask.Length >= set.m_Mask.Capacity) break;
                 set.m_Keys.Add(keys[i]);
                 set.m_T.Add(t[i]);
+                set.m_Mask.Add(masks != null && i < masks.Length ? masks[i] : MedianSplit.AllCarriageways);
             }
             return set;
         }

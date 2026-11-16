@@ -178,9 +178,21 @@ namespace JunctionRules.Paint
         public void StripForSave(EntityManager em)
         {
             if (m_Stripped || (m_Lanes.Count == 0 && m_Objects.Count == 0)) return;
-            foreach (Entity l in m_Lanes.Keys) if (em.Exists(l) && em.HasBuffer<CutRange>(l)) em.RemoveComponent<CutRange>(l);
-            foreach (Entity o in m_Objects) if (em.Exists(o) && em.HasComponent<Hidden>(o)) em.RemoveComponent<Hidden>(o);
-            m_Stripped = true;
+            m_Stripped = true;   // set first: whatever happens below, the next frame puts back what is still ours
+            int failed = 0;
+            Exception first = null;
+            // one entity at a time: a failure on one never leaves the others cut in the save
+            foreach (Entity l in m_Lanes.Keys)
+            {
+                try { if (em.Exists(l) && em.HasBuffer<CutRange>(l)) em.RemoveComponent<CutRange>(l); }
+                catch (Exception e) { failed++; first = first ?? e; }
+            }
+            foreach (Entity o in m_Objects)
+            {
+                try { if (em.Exists(o) && em.HasComponent<Hidden>(o)) em.RemoveComponent<Hidden>(o); }
+                catch (Exception e) { failed++; first = first ?? e; }
+            }
+            if (failed > 0) throw new InvalidOperationException($"{failed} marking cut(s) could not be taken off before the save", first);
         }
 
         private void RestoreIfStripped(EntityManager em)

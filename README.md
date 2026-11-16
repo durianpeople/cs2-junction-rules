@@ -52,6 +52,13 @@ game's own measure: a moving car ahead counts its braking distance; **room margi
 the whole vehicle cannot wait between two zebras (Z C Z), or between Cs and a zebra (a bus), they are one decision
 before the first. Carries 0.4.0 and 0.3.6.
 
+0.4.4-probe (JR-T-011 part A; PROBE-STAGE4-BOXTOOL.md section 15): yellow boxes that **overlap or touch are drawn
+as one box** (one outer border, one hatch; facing / staggered / end-to-end exits, an exit next to a junction box),
+the tool's hover shows the merged outline, and each box is still saved on its own (remove one, the other stays). An
+exit box on a **divided road** covers only the building's side, kerb to median; facing exits across a median stay two
+boxes. Driving: overlapping bands on a lane act as one box, a band applies only to its side's lanes, and an exit box
+joined to a junction box needs room past both. Carries 0.4.3.
+
 0.4.3-probe (JR-T-007c; PROBE-STAGE4-BOXTOOL.md section 12): building boxes sit at each **car exit** (driveway,
 car park / depot gate; fallback the road access), **one box per exit**; a service building's own access road meeting a
 public road is a selectable junction (building arm yields unless signed). Old entrance boxes migrate to the nearest

@@ -93,7 +93,11 @@ namespace JunctionRules.Tests
             ("BoxExitBandTests", BoxExitBandTests),
             ("BendExitTests", BendExitTests),
             ("MarkingMaskTests", MarkingMaskTests),
+            ("MarkingMergeTests", MarkingMergeTests),
             ("MarkingRepoTests", MarkingRepoTests),
+            ("BoxMergeTests", BoxMergeTests),
+            ("MedianSplitTests", MedianSplitTests),
+            ("BoxMergeRepoTests", BoxMergeRepoTests),
         };
 
         private static int Main(string[] args)
