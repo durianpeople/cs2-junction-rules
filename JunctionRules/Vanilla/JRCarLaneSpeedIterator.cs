@@ -1225,7 +1225,7 @@ public struct JRCarLaneSpeedIterator
 		// JR-STAGE2 BEGIN S2-25: 0.4.1 cars never stop on a zebra: the lane's spots become the zebra sections; hold before the next zebra section while there is no room past it
 		if (m_JR.m_ZebraRule)
 		{
-			float jrZebraHold = m_JR.BeginZebras(lane, bufferData, ref m_PedestrianLaneData, ref m_LaneSignalData, ref m_CarLaneData, ref m_LaneConditionData, curveOffset.x, length, origDistance, num, inverse, m_PrefabCar, m_CurrentSpeed, m_TimeStep, speedLimit, m_SafeTimeStep, m_SpeedRange, m_MaxSpeed, m_Entity, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabObjectGeometryData, ref m_PrefabCarData);
+			float jrZebraHold = m_JR.BeginZebras(lane, bufferData, ref m_PedestrianLaneData, ref m_LaneSignalData, ref m_CarLaneData, ref m_LaneConditionData, curveOffset.x, length, origDistance, num, inverse, m_PrefabCar, m_CurrentSpeed, m_TimeStep, speedLimit, m_SafeTimeStep, m_SpeedRange, m_MaxSpeed, m_Entity, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabObjectGeometryData, ref m_PrefabCarData, ref m_LaneOverlapData);
 			if (jrZebraHold < m_MaxSpeed)
 			{
 				m_MaxSpeed = jrZebraHold;

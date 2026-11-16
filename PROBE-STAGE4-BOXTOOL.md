@@ -168,6 +168,14 @@ zebra and what lies behind it (the Cs before it, or another zebra), the two sect
 first of them, chaining (Z C Z C Z with short gaps = one decision): a waiting spot is not a waiting spot if the
 vehicle does not fit there.
 
+Review fix (JR-T-009-r): the decision for a zebra is taken at the **last point where the car can still stop before
+it**. When the car, at its current speed, could not stop in normal braking (the game's braking distance) between its
+next spot (W) and the zebra, the zebra is merged into W's decision for that moment: people on the zebra and room past
+it hold the car at W. A slower car keeps the zebra's own spot, and the room past it is checked from before W already
+(the car is held before the zebra, never too fast to stop for it). A zebra on the **next node** of the path (e.g. a
+mid-block crossing just past the junction, on an edge shorter than the car) that starts within the car's length +
+margin past the section counts too: people on it = no room, else room is needed past that zebra as well.
+
 Settings (Options > Junction Rules, driving group): **Cars never stop on a zebra** (default on; off = 0.4.0) and
 **Cars never stop on a zebra: room margin (m)** (0-10 m, step 0.5, default 1 m; greyed while off). With the Stock gap
 rule the switch still applies: zebras only (people on any zebra of a merged section, and room past), no C sections.
@@ -196,13 +204,22 @@ Checks (copy on, gap rule Whole junction unless named; timing log on):
 | Z7 | Exit queue moving slowly | Cars still enter (no crawl gaps of a full car length) |
 | Z8 | Mid-block zebra with a queue past it | Same as Z6 at the mid-block crossing |
 | Z9 | Signalled crossing at a junction | Red holds as before; on green no car stops on the crossing for a queue |
+| Z11 | CCCZ with the zebra close to W (a few metres), exit queue backed up | Cars arriving at speed hold at W (counter "checked early at previous spot" rises), none ends up standing on the zebra |
+| Z12 | Junction zebra, short edge, mid-block zebra, queue past it | Cars hold before the junction zebra, never with the tail on it (counter "further zebra in reach" rises) |
+| Z13 | Timing log, any busy window | "lane objects out of curve order 0": the room scan assumes each lane's LaneObject buffer is sorted by curve position; a non-zero value = report it (the room verdict may then be wrong) |
 | Z10 | Setting off, then on (no restart) | Off: 0.4.0 behaviour (cars may stop on zebras); log line says "never stop on a zebra switched in this window" |
 
 Timing log (copy's line): `; never stop on a zebra on|off|switched in this window` and, while on, `; zebra entries
-held: people N, Cs after N, no room past N (zebra sections merged, vehicle does not fit between: M)`: car-steps a car
-stood held before a zebra by people, by a vehicle point after the zebra, by no room past, and car-steps standing at a
-lane whose zebra sections were merged.
+held: people N, Cs after N, no room past N (zebra sections merged, vehicle does not fit between: M; room/people checked
+early at previous spot (cannot stop before zebra): E); room scan: further zebra in reach F, lane objects out of curve
+order U`: car-steps a car stood held before a zebra by people, by a vehicle point after the zebra, by no room past,
+car-steps standing at a lane whose zebra sections were merged, car-steps (moving) in which a zebra was decided early at
+the spot before it, car-steps in which the room scan met a zebra on a later node, and car-steps in which it read a
+lane's objects out of curve order (expected 0).
 
 Watch for (report, no safeguard by brief): a car standing before a zebra for a long time because the exit never
-clears (gridlock now forms before the zebra instead of on it); a person stepping onto a later zebra of a merged
+clears (gridlock now forms before the zebra instead of on it); **mutual gridlock cycles**: the held car's exit queue
+stands inside another junction (or across its zebra) and waits on traffic that the held car itself blocks (its cross
+traffic, or the car behind it), so nothing ever moves. With No Despawn these cycles are **permanent**: note the
+location (junction names / coordinates) and report it, do not wait for it to clear; a person stepping onto a later zebra of a merged
 section after the car went (the car then stops before that zebra; it may stand on the earlier one: same as 0.4.0).

@@ -217,6 +217,116 @@ namespace JunctionRules.Tests
             Check(RoomScan.MinMargin == 0f && RoomScan.MaxMargin == 10f && RoomScan.StepMargin == 0.5f && RoomScan.DefaultMargin == 1f, "margin slider 0-10 m, step 0.5, default 1 m");
         }
 
+        /// <summary>
+        /// A car <paramref name="beforeW"/> metres before spot 0 (negative: past it) at <paramref name="speed"/>, the way
+        /// BeginZebras builds it: BeginWithSpots, then the early merge (JR-T-009-r finding 1) when it can stop at its next spot.
+        /// </summary>
+        private static StretchState ZApproach(ref ZebraLayout layout, float beforeW, float speed, (int, float, float)[] items)
+        {
+            var list = new ZConflicts { Items = items };
+            var s = default(StretchState);
+            float braking = BrakingDistance(speed);
+            s.BeginWithSpots(ref list, layout.Spots, -M, ZLane, layout.Spots[0] - (beforeW + M) / ZLane, M, braking);
+            if (s.Next < s.Spots.Count && s.CanStopBefore(s.Spots[s.Next]) && ZebraSections.MergeUnstoppable(ref layout, s.Next, braking, ZLane) > 0)
+            {
+                s.Spots = layout.Spots;
+            }
+            return s;
+        }
+
+        /// <summary>Room past section k with one standing car <paramref name="gap"/> metres past the section end.</summary>
+        private static bool ZRoom(float gap)
+        {
+            var r = RoomScan.Begin(ZCar, RoomScan.DefaultMargin);
+            r.Add(gap, ZCar, 0f);
+            return r.HasRoom;
+        }
+
+        private static void ZebraEarlyTests()
+        {
+            // ---- CCCZ, short W to Z (7.5 m): the car fits between the Cs and Z (5.1 m), but at 10 m/s it cannot stop before Z after W ----
+            var shortZ = new[] { Cv(0.10f, 0.11f), Cv(0.12f, 0.13f), Cv(0.14f, 0.15f), Zb(0.35f, 0.45f) };
+            Check(ZBuild(true, ZCar, shortZ).Spots.Count == 2, "CCCZ short: the car fits before Z (two sections by the fit rule)");
+            Check(BrakingDistance(10f) > ZLane * 0.25f && BrakingDistance(4f) < ZLane * 0.25f, "CCCZ short: 10 m/s cannot stop in 7.5 m, 4 m/s can");
+
+            var fast = ZBuild(true, ZCar, shortZ);
+            var carF = ZApproach(ref fast, 20f, 10f, shortZ);
+            Check(carF.Next == 0 && carF.CanStopBefore(0.10f), "CCCZ short, fast: 20 m before W it can still stop at W");
+            Check(fast.Spots.Count == 1 && fast.EarlyMerged == 1 && fast.HasZebra(0) && Near(fast.SectionEnd(0), 0.45f) && fast.Merged == 0,
+                "CCCZ short, fast: Z merged into W's section for this step (early, not the fit merge)");
+            Check(carF.Classify(true, 0.35f, out float wf) == PointPhase.Deciding && Near(wf, carF.Wait(0.10f)), "CCCZ short, fast: people on Z hold it at W");
+            int kf = ZebraSections.RoomSection(fast, carF);
+            Check(kf == 0 && Near(fast.Spots[kf], 0.10f), "CCCZ short, fast: room past Z is checked at W, the hold is at W");
+            Check(!ZRoom(2f), "CCCZ short, exit full (standing car 2 m past Z): held at W");
+            Check(ZRoom(8f), "CCCZ short, exit free: goes");
+
+            // The same car slowed at W (standing): Z is its own section again, checked from W already, held at Z.
+            var slow = ZBuild(true, ZCar, shortZ);
+            var carS = ZApproach(ref slow, 0.05f, 0f, shortZ);
+            Check(slow.Spots.Count == 2 && slow.EarlyMerged == 0, "CCCZ short, standing at W: no early merge (it can stop before Z)");
+            int ks = ZebraSections.RoomSection(slow, carS);
+            Check(ks == 1 && Near(slow.Spots[ks], 0.35f), "CCCZ short, standing at W: room past Z is checked already, hold before Z");
+
+            // Past W at 10 m/s it cannot stop before Z any more: nothing new (the decision was at W).
+            var past = ZBuild(true, ZCar, shortZ);
+            var carP = ZApproach(ref past, -2f, 10f, shortZ);
+            Check(carP.Next == 1 && ZebraSections.RoomSection(past, carP) == -1, "CCCZ short, past W too fast to stop: stock (it was decided at W)");
+
+            // ---- CCCZ, long W to Z (15 m): held at Z as before ----
+            var longZ = new[] { Cv(0.10f, 0.11f), Cv(0.12f, 0.13f), Cv(0.14f, 0.15f), Zb(0.60f, 0.70f) };
+            var lg = ZBuild(true, ZCar, longZ);
+            var carL = ZApproach(ref lg, 20f, 10f, longZ);
+            Check(lg.Spots.Count == 2 && lg.EarlyMerged == 0, "CCCZ long, 10 m/s: Z keeps its own spot (8.9 m braking < 15 m)");
+            Check(carL.Classify(true, 0.60f, out float wl) == PointPhase.Deciding && Near(wl, carL.Wait(0.60f)), "CCCZ long: people on Z hold it before Z");
+            Check(ZebraSections.RoomSection(lg, carL) == 1, "CCCZ long: no room past Z holds it before Z (checked from before W)");
+            var lgB = ZBuild(true, ZCar, longZ);
+            var carLb = ZApproach(ref lgB, -ZLane * 0.25f, 5f, longZ);
+            Check(carLb.Next == 1 && ZebraSections.RoomSection(lgB, carLb) == 1, "CCCZ long: past the Cs, room past Z still checked before Z (as 0.4.1)");
+
+            // ---- a chain: W, Z1 7.5 m on, Z2 6.9 m after Z1 (each fits a car): fast car decides all at W ----
+            var chain = new[] { Cv(0.10f, 0.11f), Zb(0.35f, 0.38f), Zb(0.58f, 0.61f) };
+            var lc = ZBuild(true, ZCar, chain);
+            Check(lc.Spots.Count == 3 && lc.Merged == 0, "chain: three spots by the fit rule");
+            var carC = ZApproach(ref lc, 20f, 10f, chain);
+            Check(lc.Spots.Count == 1 && lc.EarlyMerged == 2 && Near(lc.SectionEnd(0), 0.61f) && Near(lc.LastEnd, 0.61f), "chain, fast: Z1 and Z2 checked at W, room past Z2");
+            Check(carC.Classify(true, 0.58f, out float wc) == PointPhase.Deciding && Near(wc, carC.Wait(0.10f)), "chain, fast: people on Z2 hold it at W");
+            var lc2 = ZBuild(true, ZCar, chain);
+            var carC2 = ZApproach(ref lc2, 20f, 6f, chain);
+            Check(lc2.Spots.Count == 3 && lc2.EarlyMerged == 0 && ZebraSections.RoomSection(lc2, carC2) == 1, "chain, 6 m/s (3.9 m braking): each zebra keeps its spot");
+
+            // ---- MergeIntoPrevious keeps later sections intact ----
+            var three = ZBuild(true, ZCar, Cv(0.05f, 0.06f), Zb(0.30f, 0.32f), Zb(0.60f, 0.62f), Zb(0.90f, 0.92f));
+            three.MergeIntoPrevious(2);
+            Check(three.Spots.Count == 3 && Near(three.Spots[2], 0.90f) && three.HasZebra(1) && three.HasZebra(2) && !three.HasZebra(3)
+                && Near(three.SectionEnd(1), 0.62f) && Near(three.SectionEnd(2), 0.92f) && Near(three.FirstZebra(2), 0.90f) && Near(three.LastEnd, 0.92f),
+                "merge of a middle section: the later one moves down with its zebra and end");
+        }
+
+        private static void ZebraFurtherTests()
+        {
+            // Junction zebra, then a mid-block zebra on another node 2 m past the section end (edge shorter than the car).
+            var r = RoomScan.Begin(ZCar, 1f);
+            Check(r.FurtherZebra(2f, 5f, false) && Near(r.Needed, 10.5f) && r.Extensions == 1 && r.HasRoom, "further zebra 2-5 m on, empty: room needed past it (5 + 5.5 m)");
+            Check(!r.Done(10.4f) && r.Done(10.5f), "further zebra: the scan reads on to the new need");
+            var q = RoomScan.Begin(ZCar, 1f);
+            q.Add(8f, ZCar, 0f);
+            Check(q.HasRoom, "standing car 8 m on: room for one zebra");
+            q.FurtherZebra(2f, 5f, false);
+            Check(!q.HasRoom, "...but with the mid-block zebra at 2-5 m the car would stand on it: no room (re-judged)");
+            var p = RoomScan.Begin(ZCar, 1f);
+            Check(p.FurtherZebra(2f, 5f, true) && !p.HasRoom, "people on the further zebra: no room");
+            var far = RoomScan.Begin(ZCar, 1f);
+            Check(!far.FurtherZebra(6f, 9f, true) && far.HasRoom && Near(far.Needed, 5.5f), "a zebra beyond length + margin: not in reach (the car fits before it)");
+            var ch = RoomScan.Begin(ZCar, 1f);
+            Check(!ch.FurtherZebra(8f, 10f, false), "zebra B at 8 m: out of reach first");
+            ch.FurtherZebra(2f, 5f, false);
+            Check(ch.FurtherZebra(8f, 10f, false) && Near(ch.Needed, 15.5f), "after zebra A extends the window, zebra B comes into reach (the job re-reads the lane)");
+            var mv = RoomScan.Begin(ZCar, 1f);
+            mv.Add(7f, ZCar, BrakingDistance(8f));
+            mv.FurtherZebra(2f, 5f, false);
+            Check(mv.HasRoom, "a moving car ahead still promises its braking distance past the further zebra");
+        }
+
         private static void ZebraSettingTests()
         {
             // Setting off = the 0.4.0 mode, bit for bit.
@@ -243,11 +353,13 @@ namespace JunctionRules.Tests
             Check(Stage2Mode.RuleName(Stage2Mode.For(JunctionGapRule.WholeJunction, false, zebraClear: true, zebraMargin: 1f)).EndsWith("; cars never stop on a zebra (room margin 1.0 m)"), "rule name with the setting");
 
             // Counters.
-            Check(Stage2Counters.ZebraHeldPeople == Stage2Counters.CrossingsNoFit + 1 && Stage2Counters.ZebraMerged == Stage2Counters.Count - 1, "zebra counters after the 0.3.3 ones");
+            Check(Stage2Counters.ZebraHeldPeople == Stage2Counters.CrossingsNoFit + 1 && Stage2Counters.ZebraMerged == Stage2Counters.Count - 4
+                && Stage2Counters.ZebraEarly == Stage2Counters.Count - 3 && Stage2Counters.ZebraScanUnsorted == Stage2Counters.Count - 1, "zebra counters after the 0.3.3 ones (JR-T-009-r: early, further zebra, unsorted at the end)");
             var dl = new long[Stage2Counters.Count];
             dl[Stage2Counters.ZebraHeldPeople] = 4; dl[Stage2Counters.ZebraHeldCs] = 3; dl[Stage2Counters.ZebraHeldRoom] = 2; dl[Stage2Counters.ZebraMerged] = 1;
+            dl[Stage2Counters.ZebraEarly] = 5; dl[Stage2Counters.ZebraFurther] = 6; dl[Stage2Counters.ZebraScanUnsorted] = 0;
             string on2 = Stage2Counters.Format(2, dl, 2, 2);
-            Check(on2.Contains("; never push through people on crossings on; never stop on a zebra on;") && on2.Contains("; zebra entries held: people 4, Cs after 3, no room past 2 (zebra sections merged, vehicle does not fit between: 1); points at W 0"), "timing log: zebra counters " + on2);
+            Check(on2.Contains("; never push through people on crossings on; never stop on a zebra on;") && on2.Contains("; zebra entries held: people 4, Cs after 3, no room past 2 (zebra sections merged, vehicle does not fit between: 1; room/people checked early at previous spot (cannot stop before zebra): 5); room scan: further zebra in reach 6, lane objects out of curve order 0; points at W 0"), "timing log: zebra counters " + on2);
             string off2 = Stage2Counters.Format(2, dl, 2, 1);
             Check(off2.Contains("never stop on a zebra off") && !off2.Contains("zebra entries held"), "timing log, setting off: no zebra counts");
             Check(!Stage2Counters.Format(2, dl, 2).Contains("zebra"), "timing log without the zebra mask: the 0.4.0 text");
