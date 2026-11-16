@@ -85,6 +85,7 @@ namespace JunctionRules.Systems
             m_LastNavigationVersion = Navigation.LastSystemVersion;
             m_Window.Restart(m_SimulationSystem.frameIndex, Stopwatch.GetTimestamp());
             OpenWindow();
+            m_PassHasStart = PeoplePassSystem.Read(m_PassStart);
         }
 
         [Preserve]
@@ -130,9 +131,26 @@ namespace JunctionRules.Systems
             if (m_Window.Due(frame))
             {
                 int cars = m_Window.Count > 0 ? m_CarQuery.CalculateEntityCountWithoutFiltering() : 0;
-                string line = m_Window.Tick(frame, Stopwatch.GetTimestamp(), Stopwatch.Frequency, cars, CloseWindow());
+                string line = m_Window.Tick(frame, Stopwatch.GetTimestamp(), Stopwatch.Frequency, cars, CloseWindow() + ClosePassWindow());
                 if (line != null) Mod.log.Info(line);
             }
+        }
+
+        // 0.3.6 (JR-T-008): people / cyclists who passed a vehicle standing on their crossing, deltas over the window.
+        private readonly long[] m_PassStart = new long[PeoplePassSystem.CountSlots];
+        private readonly long[] m_PassNow = new long[PeoplePassSystem.CountSlots];
+        private bool m_PassHasStart;
+
+        private string ClosePassWindow()
+        {
+            string part = null;
+            if (m_PassHasStart && PeoplePassSystem.Read(m_PassNow))
+            {
+                part = PeoplePassCounts.Format(m_PassNow[PeoplePassSystem.CountPeople] - m_PassStart[PeoplePassSystem.CountPeople],
+                    m_PassNow[PeoplePassSystem.CountCyclists] - m_PassStart[PeoplePassSystem.CountCyclists]);
+            }
+            m_PassHasStart = PeoplePassSystem.Read(m_PassStart);
+            return part ?? PeoplePassCounts.Format(-1, -1);
         }
 
         private int FreeSlot()

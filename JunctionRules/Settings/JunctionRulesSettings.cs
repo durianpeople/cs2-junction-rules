@@ -70,6 +70,30 @@ namespace JunctionRules.Settings
         [SettingsUISection(kSection, kDrivingGroup)]
         public bool NoPushThroughPeople { get; set; }
 
+        /// <summary>
+        /// 0.3.6 (JR-T-008, second owner ruling 16 Nov 2026): master switch for the pass, default on. Off = exactly the
+        /// game's behaviour (the people-pass system does nothing, its counter stays 0), for A/B tests.
+        /// </summary>
+        [SettingsUISection(kSection, kDrivingGroup)]
+        public bool PeoplePassOn { get; set; }
+
+        /// <summary>The wait slider is greyed out while the switch is off (SettingsUIDisableByCondition).</summary>
+        public bool PeoplePassSliderDisabled() => !PeoplePassOn;
+
+        /// <summary>The wait the pass uses now: 0 (off) when the switch is off, else the slider value (PeoplePass.Effective).</summary>
+        public float PeoplePassEffectiveSeconds() => PeoplePass.Effective(PeoplePassOn, PeoplePassSeconds);
+
+        /// <summary>
+        /// 0.3.6 (JR-T-008, owner ask and ruling 16 Nov 2026): a person (or a cyclist) held at a crossing by a vehicle
+        /// standing on it walks (rides) on through it after this many seconds of game time. Default 2 s; used only while PeoplePassOn;
+        /// 0 also switches the pass off. Works with either Car driving mode
+        /// (Systems/PeoplePassSystem.cs, Core/PeoplePass.cs); next simulation step.
+        /// </summary>
+        [SettingsUIDisableByCondition(typeof(JunctionRulesSettings), nameof(PeoplePassSliderDisabled))]
+        [SettingsUISlider(min = PeoplePass.MinSeconds, max = PeoplePass.MaxSeconds, step = PeoplePass.StepSeconds, unit = "floatSingleFraction")]
+        [SettingsUISection(kSection, kDrivingGroup)]
+        public float PeoplePassSeconds { get; set; }
+
         /// <summary>Read-only: what runs now and the version gate result.</summary>
         [SettingsUISection(kSection, kDrivingGroup)]
         public string Status => StatusText();
@@ -167,6 +191,8 @@ namespace JunctionRules.Settings
             WaitingSpot = JunctionWaitingSpot.BeforeFirstCrossing;
             TurnAcrossGivesWay = true;
             NoPushThroughPeople = true;
+            PeoplePassOn = true;
+            PeoplePassSeconds = PeoplePass.DefaultSeconds;
             YellowBoxPaintTest = false;
             PaintMode = BoxPaintMode.Hatch;
             PaintLayers = PaintSettingsMigration.Default;
@@ -239,6 +265,13 @@ namespace JunctionRules.Settings
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.NoPushThroughPeople)), "Cars never push through people on crossings" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.NoPushThroughPeople)),
                     "On (default): a car waiting for people on a crossing of its path (a zebra, a crossing at a junction, a footway across a driveway), or for a cyclist riding across it, keeps waiting until they are clear, however long that takes. Off: the game's own behaviour, where after about 5 seconds the car creeps on at walking pace through the people (and creeps at once past a person standing still). Cars waiting for other cars are not changed. Works with either junction gap rule, only while Car driving is the Junction Rules copy. Changes take effect at the next simulation step." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.PeoplePassOn)), "People pass a car that blocks them" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.PeoplePassOn)),
+                    "On (default): a person or cyclist held on a crossing by a vehicle standing across it goes on through the vehicle after the wait set below. Off: exactly the game's behaviour (they wait as long as the vehicle stands), for comparison. Works with either Car driving setting. Changes take effect at the next simulation step." },
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.PeoplePassSeconds)), "People pass a car that blocks a crossing after (s)" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.PeoplePassSeconds)),
+                    "A person walking a crossing (a zebra, a crossing at a junction, a footway across a driveway) who is held by a car or other vehicle standing on it walks on through the vehicle after this many seconds; a cyclist riding the crossing likewise rides on through it at walking pace. Default 2 seconds. Used only while People pass a car that blocks them is on; 0 also switches the pass off. Cars still never push through people (setting above). Works with either Car driving setting. Changes take effect at the next simulation step." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.Status)), "Status" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.Status)), "What runs now, the result of the version check made at game start, and whether the copy can run (set up at the first simulation step). Reopen the options page to refresh." },

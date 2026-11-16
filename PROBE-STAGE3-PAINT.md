@@ -1,4 +1,12 @@
-# Probe kit: Junction Rules 0.3.5-probe (stage 3, yellow box paint test, option E; plus the crossing settings)
+# Probe kit: Junction Rules 0.3.6-probe (stage 3, yellow box paint test, option E; plus the crossing settings)
+
+**0.3.6-probe (JR-T-008), what changed since 0.3.5:** one crowd change, nothing in the paint test or in car driving.
+New settings **People pass a car that blocks them** (on/off, default **on**; off = exactly the game's behaviour, for
+A/B tests) and **People pass a car that blocks a crossing after (s)** (slider right below it, default **2** seconds,
+greyed out while the switch is off): a person held on a zebra or junction crosswalk by a car (or bus, tram, truck) standing
+across it walks on through the vehicle after that wait; a cyclist riding the crossing rides on through it at walking
+pace. Cars still never push through people (0.3.2 setting unchanged). Works with either **Car driving** setting. What
+to watch: section 15. Car driving is 0.3.5's as it is (`docs/vanilla_copy_check_0.3.6.txt` equals 0.3.5's).
 
 **0.3.5-probe (JR-T-003e), what changed since 0.3.4:** paint test only, no driving change. (1) The box is now on the
 **carriageway only**: kerb to kerb, following the kerb corner curves, from each arm's stop / give-way line, or from the
@@ -50,45 +58,45 @@ does option E look right and cost little? (Probe steps S6-S11 of the research do
 - **Fail safe.** If anything in the paint test fails, it logs one `FAILED` line and switches itself off until the game
   restarts. The rest of the mod keeps working.
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.3.5-probe/`. If that folder holds a `STALE.md`, it has only a
+Build to install: `~/Code/cs2-junction-rules/.staged/0.3.6-probe/`. If that folder holds a `STALE.md`, it has only a
 managed build (made while the game was running): main does the Burst rebuild in `STALE.md` (game closed) when the owner
 quits, then puts the new sha256s in the table and the install block below. Until then the install block refuses (the
-sums below are placeholders on purpose: `0000...`). 0.3.5-probe was Burst-built from commit bb28fef and installed by main on 15 Nov. 0.3.4-probe was Burst-built from commit 559ae78 and installed by main on 15 Nov (dll `405b5772...`, Burst dll `d3f10173...`; the rollback, in `.staged/0.3.4-probe`); 0.3.3 was never
+sums below are placeholders on purpose: `0000...`). 0.3.6-probe is staged as a managed build only (STALE.md). 0.3.5-probe was Burst-built from commit bb28fef and installed by main on 15 Nov (dll `3af93435...`, Burst dll `a3949df1...`; the rollback, in `.staged/0.3.5-probe`). 0.3.4-probe was Burst-built from commit 559ae78 and installed by main on 15 Nov (dll `405b5772...`, Burst dll `d3f10173...`; the rollback, in `.staged/0.3.4-probe`); 0.3.3 was never
 Burst-built or installed, 0.3.4 carries it.
 0.3.2-probe was Burst-built from commit 319fac8 and installed by main on 15 Nov (dll `4043fcc9...`, Burst dll `5eb55ab6...`).
 (0.3.0-probe was Burst-built from commit 82ec0ce and installed by main on 15 Nov.)
 
 | File | sha256 |
 |---|---|
-| `JunctionRules.dll` | `3af93435142890b106f2301ab792178d3b1d9cd21acb0dc4ad8d0ec0f7aabd69` |
-| `JunctionRules.pdb` | `42d7812e537c38c3dcf5c9d880f9fd2fc2d26d75ac7c09a8597cdb4964802f67` |
-| `JunctionRules_win_x86_64.dll` (Burst code) | `a3949df1af1d39ec6f3e1508c3eb9026fb315840d07a34a47096febb9c1c7ac6` |
-| `JunctionRules_win_x86_64.pdb` | `a4d7eb2ee592f49dc79292ba974f8c094f87c6e339717d993fbe7bd27054cd6a` |
+| `JunctionRules.dll` | `0000000000000000000000000000000000000000000000000000000000000000` |
+| `JunctionRules.pdb` | `0000000000000000000000000000000000000000000000000000000000000000` |
+| `JunctionRules_win_x86_64.dll` (Burst code) | `0000000000000000000000000000000000000000000000000000000000000000` |
+| `JunctionRules_win_x86_64.pdb` | `0000000000000000000000000000000000000000000000000000000000000000` |
 
 Built for game **1.6.4f1 (1097.158a)** only (same version gate as before: on another game version the paint test does not start, and the status says so).
 
-## 1. Install over 0.3.4-probe / 0.3.3-probe / 0.3.2-probe / 0.3.1-probe / 0.3.0-probe / 0.2.4 (game closed only; the 0.2.4 backup made by the 0.3.0 install is kept as it is)
+## 1. Install over 0.3.5-probe / 0.3.4-probe / 0.3.3-probe / 0.3.2-probe / 0.3.1-probe / 0.3.0-probe / 0.2.4 (game closed only; the 0.2.4 backup made by the 0.3.0 install is kept as it is)
 
 ```
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.3.5-probe || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.3.6-probe || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-3af93435142890b106f2301ab792178d3b1d9cd21acb0dc4ad8d0ec0f7aabd69  JunctionRules.dll
-42d7812e537c38c3dcf5c9d880f9fd2fc2d26d75ac7c09a8597cdb4964802f67  JunctionRules.pdb
-a3949df1af1d39ec6f3e1508c3eb9026fb315840d07a34a47096febb9c1c7ac6  JunctionRules_win_x86_64.dll
-a4d7eb2ee592f49dc79292ba974f8c094f87c6e339717d993fbe7bd27054cd6a  JunctionRules_win_x86_64.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
   fi
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
-  echo "installed 0.3.5-probe"
+  echo "installed 0.3.6-probe"
 )
 ```
 
@@ -97,7 +105,7 @@ Paste the whole block. It copies nothing unless the game is closed, the build is
 ## 2. Log checks
 
 `$CS2/Logs/JunctionRules.Mod.log` after the main menu:
-- `OnLoad version 0.3.5.0, ...`
+- `OnLoad version 0.3.6.0, ...`; the settings line names `people pass a car that blocks a crossing after 2.0 s`
 - first start of 0.3.5 only: `settings migrated (schema 0 -> 1): yellow box paint onto RoadsAndOther -> Roads ...` (or
   `settings schema 0 -> 1: ... kept` when it was not Roads + Other)
 - `settings: ... cars never push through people on crossings on, ... yellow box paint test off, ...` (defaults)
@@ -527,3 +535,43 @@ hedge may also take paint.) If a jag stays on the carriageway, report it with a 
 
 Report: screenshots of 2-4 (one top-down), the `footways` / `zebra` log lines, and any arm where the box edge is off
 the kerb (by how much, which side).
+
+## 15. 0.3.6: people pass a car that blocks a crossing
+
+**The settings:** Options > Junction Rules > **People pass a car that blocks them** (on/off, default **on**; off =
+exactly the game's behaviour: the pass does nothing and its counter stays 0) and, right below it, **People pass a car
+that blocks a crossing after (s)**, slider 0-30 s in 0.5 s steps, default **2 s** (owner rulings 16 Nov; greyed out
+while the switch is off; 0 also means off). Both work with either **Car driving** setting (not part of the car copy)
+and apply at the next simulation step.
+
+**Why people stood still behind a car (stock, Game.dll 1.6.4f1):** people never bump into cars on a crossing, but the
+game stops a person at the edge of each road lane of the crossing while any vehicle stands on that lane across the
+crossing (CreatureTargetIterator.CheckOverlapLane), with **no time limit**. In the game that rarely lasts: the car
+creeps on after 5 s (or at once past a person standing still). With **Cars never push through people** on (0.3.2), a car
+standing on a crossing because it waits for people further on (0.3.3/0.3.4: inside the junction before the exit
+crosswalk, its tail on the entry crosswalk) or in a queue that spills onto a zebra no longer creeps, so the people it
+covers waited until it moved. Worst case, a mutual wait: the person stands at the edge of lane 2 (car B there), inside
+lane 1's part of the crossing; the car on lane 1 waits for that standing person (0.3.2 refuses the creep); B waits in
+a queue behind lane 1's car. 0.3.6 lets the person walk through B after the wait, which ends all of these.
+
+**What it does:** after the wait the person's next step goes to the far side of that lane (or of the vehicle, if it
+covers two lanes) and they walk on through the vehicle at normal pace. A cyclist riding the crossing gets the game's own
+"ignore this blocker" pass and rides through at about 11 km/h. Only vehicles that **stand** (under 0.5 m/s) count; a
+car driving across holds people as in the game. People waiting at a red pedestrian signal are not affected.
+
+**What to watch** (game speed 1, close camera; timing log on for the counter):
+
+| Where | Look for | Good | Bad |
+|---|---|---|---|
+| Junction crosswalk, turning car stopped inside the junction before a busy exit crosswalk | people on the entry crosswalk behind its tail | they stop at the car for about 2 s, then walk through it | they stand until the car leaves |
+| Mid-block zebra with a queue spilling onto it | people at the queued car | about 2 s, then through | they wait for the queue |
+| Same scene, a car still rolling across the zebra | people | they wait for it as before (no pass through a moving car) | they walk into a moving car |
+| Signalled crossing, red man | people | wait for green as before | walk on red |
+| Cyclist on a crossing with a car standing across it | the cyclist | about 2 s, then rides through slowly | stuck |
+| **People pass a car that blocks them** off (A/B) | the same scenes | the game's behaviour (people wait); log counter `n/a` or 0 | any pass while off |
+
+**Log:** each timing line (game's own and copy) ends with `; people passed blocking cars N (cyclists C)`: people and
+cyclists who passed a standing vehicle in that window (`n/a` when the pass has not run yet, e.g. switched off since the game started; it never moves while switched off).
+
+**Report back:** verdicts per table row, a log excerpt with the counter, and any person or cyclist stuck at a car for
+longer than about 10 s (place, screenshot).
