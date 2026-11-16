@@ -1,0 +1,143 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.RegularExpressions;
+using JunctionRules.Core;
+
+namespace JunctionRules.Tests
+{
+    /// <summary>
+    /// 0.4.4 (JR-T-011 part B): road markings under yellow boxes are hidden (Core/MarkingMask.cs maths,
+    /// Paint/MarkingHider.cs + Paint/MarkingSaveGuardSystem.cs wiring).
+    /// </summary>
+    internal static partial class Program
+    {
+        private static List<V2> Rect(double x0, double z0, double x1, double z1) =>
+            new List<V2> { new V2(x0, z0), new V2(x1, z0), new V2(x1, z1), new V2(x0, z1) };
+
+        private static MarkingMask.Curve Line(double x0, double z0, double x1, double z1) =>
+            new MarkingMask.Curve(new V3(x0, 0, z0), new V3(x0 + (x1 - x0) / 3, 0, z0 + (z1 - z0) / 3), new V3(x0 + 2 * (x1 - x0) / 3, 0, z0 + 2 * (z1 - z0) / 3), new V3(x1, 0, z1));
+
+        private static bool Near(double a, double b, double tol = 1e-3) => Math.Abs(a - b) <= tol;
+
+        private static void MarkingMaskTests()
+        {
+            // box 10 x 8 m on a road along X; lane dashes along X at z = 2 (inside), z = 9 (outside, far side of a median)
+            var box = new List<IList<V2>> { Rect(10, -4, 20, 4) };
+
+            // a lane dash line from x = 0 to x = 30 through the box: cut [1/3, 2/3]
+            var r = MarkingMask.InsideRanges(Line(0, 2, 30, 2), box);
+            Check(r.Count == 1 && Near(r[0].Min, 1.0 / 3) && Near(r[0].Max, 2.0 / 3), "lane through the box: one cut exactly at the box sides " + string.Join(",", r));
+
+            // centre line (owner 16 Nov: hidden too): z = 0
+            r = MarkingMask.InsideRanges(Line(0, 0, 30, 0), box);
+            Check(r.Count == 1 && Near(r[0].Min, 1.0 / 3) && Near(r[0].Max, 2.0 / 3), "centre line under the box is cut as well");
+
+            // the far side of a median (box stops at the median): no cut
+            r = MarkingMask.InsideRanges(Line(0, 9, 30, 9), box);
+            Check(r.Count == 0, "lane beyond the box (far side of a median) is not cut");
+
+            // lane starting inside the box: range snaps to 0
+            r = MarkingMask.InsideRanges(Line(15, 1, 30, 1), box);
+            Check(r.Count == 1 && r[0].Min == 0.0 && Near(r[0].Max, 1.0 / 3), "lane starting in the box: cut from exactly 0");
+
+            // lane ending inside: snaps to 1
+            r = MarkingMask.InsideRanges(Line(0, 1, 15, 1), box);
+            Check(r.Count == 1 && Near(r[0].Min, 2.0 / 3) && r[0].Max == 1.0, "lane ending in the box: cut to exactly 1");
+
+            // node marking wholly inside: [0, 1] (the renderer then draws nothing)
+            r = MarkingMask.InsideRanges(Line(12, -2, 18, 2), box);
+            Check(r.Count == 1 && r[0].Min == 0.0 && r[0].Max == 1.0, "marking wholly inside the box: whole curve cut");
+
+            // two boxes on one lane (staggered exits): two cuts, sorted
+            var two = new List<IList<V2>> { Rect(10, -4, 14, 4), Rect(20, -4, 24, 4) };
+            r = MarkingMask.InsideRanges(Line(0, 0, 30, 0), two);
+            Check(r.Count == 2 && r[0].Max < r[1].Min && Near(r[0].Min, 10.0 / 30) && Near(r[1].Max, 24.0 / 30), "two separate boxes: two sorted cuts");
+
+            // overlapping boxes (exits facing each other, before part A merges them): one merged cut
+            var overlap = new List<IList<V2>> { Rect(10, -4, 18, 1), Rect(14, -1, 22, 4) };
+            r = MarkingMask.InsideRanges(Line(0, 0, 30, 0), overlap);
+            Check(r.Count == 1 && Near(r[0].Min, 10.0 / 30) && Near(r[0].Max, 22.0 / 30), "overlapping boxes: one continuous cut (no gap at the inner borders)");
+
+            // grazing a corner (shorter than MinCutLength): ignored
+            var tri = new List<IList<V2>> { new List<V2> { new V2(10, -4), new V2(20, -4), new V2(15, 0.01) } };
+            r = MarkingMask.InsideRanges(Line(0, 0, 30, 0), tri);
+            Check(r.Count == 0, "a lane grazing a box tip by a few cm is not cut");
+
+            // curved lane (quarter bend) entering the box from below
+            var bend = new MarkingMask.Curve(new V3(15, 0, -20), new V3(15, 0, -5), new V3(15, 0, 0), new V3(30, 0, 0));
+            r = MarkingMask.InsideRanges(bend, box);
+            Check(r.Count == 1 && r[0].Min > 0 && r[0].Max < 1, "curved lane: one inner cut " + string.Join(",", r));
+            if (r.Count == 1)
+            {
+                V2 a = bend.PositionXZ(r[0].Min), b = bend.PositionXZ(r[0].Max);
+                Check(Near(a.Z, -4, 0.01) && Near(b.X, 20, 0.01), $"curved lane: cut ends on the box sides ({a}, {b})");
+            }
+
+            // no rings / bounds reject
+            Check(MarkingMask.InsideRanges(Line(0, 0, 30, 0), new List<IList<V2>>()).Count == 0, "no box: no cut");
+            Check(MarkingMask.InsideRanges(Line(100, 0, 130, 0), box).Count == 0, "lane far away: no cut");
+
+            // L-shaped (non-convex) merged polygon: the notch is not cut
+            var ell = new List<IList<V2>> { new List<V2> { new V2(0, 0), new V2(20, 0), new V2(20, 5), new V2(10, 5), new V2(10, 10), new V2(0, 10) } };
+            r = MarkingMask.InsideRanges(Line(-5, 7, 25, 7), ell);
+            Check(r.Count == 1 && Near(r[0].Min, 5.0 / 30) && Near(r[0].Max, 15.0 / 30), "non-convex (merged) polygon: the notch keeps its marking");
+
+            // same-range comparison
+            var a1 = new List<MarkingMask.Range> { new MarkingMask.Range(0.1, 0.2) };
+            var a2 = new List<MarkingMask.Range> { new MarkingMask.Range(0.10001, 0.2) };
+            var a3 = new List<MarkingMask.Range> { new MarkingMask.Range(0.1, 0.3) };
+            Check(MarkingMask.SameRanges(a1, a2) && !MarkingMask.SameRanges(a1, a3) && !MarkingMask.SameRanges(a1, new List<MarkingMask.Range>()), "range lists compare with tolerance");
+
+            // objects: footprint and hide rule
+            var fp = MarkingMask.Footprint(new V2(15, 0), new V2(1, 0), new V2(0, 1), -1, 1, -2, 2);
+            Check(MarkingMask.SignedArea(fp) > 0 && Near(Math.Abs(MarkingMask.SignedArea(fp)), 8), "footprint: 2 x 4 m, counter-clockwise");
+            var rot = MarkingMask.Footprint(new V2(0, 0), new V2(0, -1), new V2(1, 0), -1, 1, -2, 2);   // rotated 90 degrees
+            Check(Near(MarkingMask.InsideFraction(rot, new List<IList<V2>> { Rect(-2, -1, 2, 1) }), 1), "rotated footprint lies along X");
+            Check(MarkingMask.HideObject(new V2(15, 0), fp, box), "a '40' in the middle of the box is hidden");
+            var outside = MarkingMask.Footprint(new V2(30, 0), new V2(1, 0), new V2(0, 1), -1, 1, -2, 2);
+            Check(!MarkingMask.HideObject(new V2(30, 0), outside, box), "a '40' outside the box stays");
+            var edge = MarkingMask.Footprint(new V2(20.4, 0), new V2(1, 0), new V2(0, 1), -1, 1, -2, 2);   // x 19.4..21.4: 0.6 of 2 m inside
+            Check(Near(MarkingMask.InsideFraction(edge, box), 0.3) && MarkingMask.HideObject(new V2(20.4, 0), edge, box), "a '40' straddling the border (30% inside, centre outside) is hidden");
+            var sliver = MarkingMask.Footprint(new V2(20.9, 0), new V2(1, 0), new V2(0, 1), -1, 1, -2, 2);   // 0.1 m of 2 m inside
+            Check(!MarkingMask.HideObject(new V2(20.9, 0), sliver, box), "an arrow only touching the box border stays");
+            Check(Near(MarkingMask.InsideFraction(fp, overlap), 1), "overlapping rings: share capped at 1");
+        }
+
+        private static void MarkingRepoTests()
+        {
+            string root = RepoRoot();
+            Check(root != null, "repo root found");
+            if (root == null) return;
+            string paint = Path.Combine(root, "JunctionRules", "Paint");
+            string hider = StripComments(File.ReadAllText(Path.Combine(paint, "MarkingHider.cs")));
+            // the hider writes only the render-side buffer / tags, through EntityManager on the main thread
+            var writes = new Regex(@"\b(AddComponent|RemoveComponent|AddBuffer|SetComponentData|SetBuffer|CreateEntity|DestroyEntity|EntityCommandBuffer|CommandBuffer)\b(<[^>]+>)?");
+            var bad = new List<string>();
+            foreach (Match m in writes.Matches(hider))
+            {
+                string v = m.Value;
+                if (v == "AddComponent<BatchesUpdated>" || v == "AddComponent<Hidden>" || v == "RemoveComponent<Hidden>" || v == "RemoveComponent<CutRange>" || v == "AddBuffer<CutRange>") continue;
+                bad.Add(v);
+            }
+            Check(bad.Count == 0, "marking hider writes only CutRange / Hidden / BatchesUpdated: " + string.Join(", ", bad));
+            Check(Regex.IsMatch(hider, @"em\.HasBuffer<CutRange>\(lane\)\) \{ foreignLanes\+\+; continue; \}") && Regex.IsMatch(hider, @"em\.HasComponent<Hidden>\(o\)\) \{ foreignObjects\+\+; continue; \}"), "lanes / objects already cut or hidden by someone else are left alone");
+            Check(Regex.IsMatch(hider, @"HasComponent<Game\.Net\.CarLane>[\s\S]*PedestrianLane[\s\S]*TrackLane[\s\S]*ParkingLane[\s\S]*ConnectionLane[\s\S]*UtilityLane") && hider.Contains("MeshFlags.Decal"), "only decal-only marking lanes / objects (never zebras, car lanes, signs or poles)");
+            Check(Regex.IsMatch(hider, @"public void StripForSave\(EntityManager em\)[\s\S]*?RemoveComponent<CutRange>[\s\S]*?RemoveComponent<Hidden>[\s\S]*?m_Stripped = true;"), "before a save every CutRange / Hidden of ours comes off");
+
+            string reg = StripComments(File.ReadAllText(Path.Combine(paint, "PaintRegistration.cs")));
+            Check(reg.Contains("updateSystem.UpdateBefore<MarkingSaveGuardSystem>(SystemUpdatePhase.Serialize);"), "save guard runs in the Serialize phase ahead of the serializer");
+            string guard = StripComments(File.ReadAllText(Path.Combine(paint, "MarkingSaveGuardSystem.cs")));
+            Check(guard.Contains("YellowBoxPaintSystem.StripMarkingsForSave(EntityManager);"), "save guard calls the strip");
+
+            string sys = StripComments(File.ReadAllText(Path.Combine(paint, "YellowBoxPaintSystem.cs")));
+            Check(Regex.IsMatch(sys, @"private void Deactivate\(string why\)[\s\S]*?ClearMarkings\(\);"), "painting off puts the markings back");
+            Check(Regex.IsMatch(sys, @"private void ApplyMarkings\(\)\s*\{\s*if \(!m_HideMarkings\) \{ ClearMarkings\(\); return; \}"), "setting off = markings shown (0.4.3 look)");
+            Check(Regex.IsMatch(sys, @"Upload\(\);\s*m_NeedMarkings = true;"), "every box change re-applies the marking hide (removed box: markings back)");
+            Check(sys.Contains("m_Hider.Forget();"), "a new city forgets the old entities");
+
+            string set = StripComments(File.ReadAllText(Path.Combine(root, "JunctionRules", "Settings", "JunctionRulesSettings.cs")));
+            Check(set.Contains("private bool m_HideMarkingsUnderBoxes = true;") && set.Contains("HideMarkingsUnderBoxes = true;") && set.Contains("\"Hide road markings under yellow boxes\""), "setting 'Hide road markings under yellow boxes' exists, default on, labelled");
+        }
+    }
+}

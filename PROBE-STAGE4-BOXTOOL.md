@@ -505,3 +505,28 @@ through a pointer (no per-car copy): still compare the navigation timing with 0.
 slowdown; the 64-step refresh rebuilds every boxed building's exits on the main thread (BoxFacts.Exits, allocating):
 cheap for a few boxed buildings, but watch for a periodic hitch (every 64 steps) with many; a building whose drive moved more than 2 m
 since the box was placed has no band until the paint re-keys or drops it (log `without an exit now`).
+
+## 16. 0.4.4: road markings hidden under the boxes (JR-T-011 B)
+
+New setting **Hide road markings under yellow boxes** (Yellow boxes group, default ON). Inside every painted box the
+road's own markings are not drawn: lane dashes, edge lines, the centre line (double solid too, owner 16 Nov: fine),
+node markings, arrows and the road's painted speed numbers ("40"). Outside the box nothing changes; on a divided road
+the box stops at the median, so the far side keeps its markings. Render-only: the game's own per-lane cut list
+(`CutRange`) on marking lanes and the tool tag `Hidden` on marking objects; both are taken off before every save and
+put back the next frame (docs/MARKINGS-UNDER-BOX-RESEARCH.md). Driving is not affected. Log line on every box change:
+`yellow boxes: road markings under the boxes hidden: N marking lane(s) cut, M marking object(s) hidden; x ms`.
+
+| # | Do | Expect |
+|---|---|---|
+| M1 | Load the city with the setting on; look at the owner's screenshot site (two facing exit boxes, "40"s) | no lane dashes and no "40" inside the hatch; dashes stop at the box border and carry on outside; the road surface inside looks like the road outside (no patch) |
+| M2 | A boxed 2-lane road with a centre line (double solid or dashed) | the centre line stops at both box sides and resumes outside |
+| M3 | A junction box with arrows / give-way or stop lines near it | arrows inside the box gone; stop / give-way lines and zebras (outside the box by the marking margin) still drawn |
+| M4 | A "40" or arrow straddling the box border | gone if about a quarter or more of it lies in the box, else kept whole (never cut in half) |
+| M5 | Look just outside a box along a dashed lane line | dashes may sit slightly differently next to the box (the game re-fits the dash pattern to the shortened line): note if it looks odd |
+| M6 | Remove a box with the tool | its markings come back at once |
+| M7 | Options: switch the setting off, then on | off: markings show through the box exactly as 0.4.3; on: hidden again |
+| M8 | Edit the boxed road (upgrade / change lanes / bulldoze a node next to it) | after the edit the markings inside the (rebuilt) box are hidden again; nothing hidden outside it; a hidden arrow may flash for a frame while a tool previews over it |
+| M9 | Save (and wait for an autosave), keep playing | markings stay hidden after the save (a one-frame flicker at most) |
+| M10 | Save safety: load that save WITHOUT the mod (on a copy, as section 7) | every marking under the old boxes is drawn normally (nothing of the hide was saved) |
+| M11 | Divided road with an exit box (part A merged) | markings on the far carriageway untouched |
+| M12 | Log check | the `marking lane(s) cut` line per box change; any `left alone (already cut / hidden by the game or a tool)` count: report it |

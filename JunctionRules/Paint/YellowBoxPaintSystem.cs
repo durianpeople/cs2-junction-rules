@@ -57,6 +57,8 @@ namespace JunctionRules.Paint
             public AreaTriangleData[] Tris = Array.Empty<AreaTriangleData>();
             public Bounds3 Bounds;
             public string Label;
+            /// <summary>0.4.4: the painted straight-sided outline (world space), null when nothing is painted.</summary>
+            public List<V3> Outline;
         }
 
         private readonly List<Box> m_Boxes = new List<Box>();
@@ -93,6 +95,11 @@ namespace JunctionRules.Paint
 
         private PaintGpu m_Gpu;
 
+        /// <summary>0.4.4 (JR-T-011 B): hides the road's own markings under the painted boxes (Paint/MarkingHider.cs).</summary>
+        private readonly MarkingHider m_Hider = new MarkingHider();
+        private bool m_NeedMarkings;
+        private bool m_HideMarkings;
+
         // ------------------------------------------------------------------ control (settings call these; never throw)
 
         /// <summary>Settings changed (toggle, mode, layers): turns the system on or off and marks what to redo.</summary>
@@ -123,6 +130,7 @@ namespace JunctionRules.Paint
                     if (Mod.Settings.PaintMode != s.m_Mode) { s.m_Mode = Mod.Settings.PaintMode; s.m_NeedRebuildAll = true; }
                     if (Mod.Settings.PaintLayers != s.m_Layers) { s.m_Layers = Mod.Settings.PaintLayers; s.m_NeedMaterial = true; }
                     if (s.UpdateShapeParams()) s.m_NeedRebuildAll = true;
+                    if (Mod.Settings.HideMarkingsUnderBoxes != s.m_HideMarkings) { s.m_HideMarkings = Mod.Settings.HideMarkingsUnderBoxes; s.m_NeedMarkings = true; }
                 }
             }
             catch (Exception e)
@@ -173,6 +181,21 @@ namespace JunctionRules.Paint
                 else ApplySettings();
             }
             catch (Exception e) { Fail("taking the tool's change", e); }
+        }
+
+        /// <summary>0.4.4: MarkingSaveGuardSystem, right before the city is serialized. Never throws.</summary>
+        internal static void StripMarkingsForSave(EntityManager em)
+        {
+            try
+            {
+                YellowBoxPaintSystem s = s_Instance;
+                if (s == null) return;
+                s.m_Hider.StripForSave(em);
+            }
+            catch (Exception e)
+            {
+                try { Mod.log.Error(e, "yellow boxes: taking the marking cuts off before the save failed"); } catch { }
+            }
         }
 
         internal static void RequestReload() { Request(s => s.m_NeedReload = true, "reload the test list"); }
@@ -276,6 +299,7 @@ namespace JunctionRules.Paint
             m_TriangleCount = 0;
             m_Boxes.Clear();
             m_Tracked.Clear();
+            m_Hider.Forget();   // 0.4.4: the old city's lanes / objects went with it
             // 0.4.0: saved boxes in this city? (two empty-query checks, once per load)
             int j = m_InCity ? m_SavedJunctionQuery.CalculateEntityCount() : 0, en = m_InCity ? m_SavedEntranceQuery.CalculateEntityCount() : 0;
             s_SavedPresent = j + en > 0;
@@ -289,6 +313,8 @@ namespace JunctionRules.Paint
             m_NeedReload = true;
             m_Mode = Mod.Settings.PaintMode;
             m_Layers = Mod.Settings.PaintLayers;
+            m_HideMarkings = Mod.Settings.HideMarkingsUnderBoxes;
+            m_NeedMarkings = true;
             m_Meter.Reset();
             m_LastCostLog = UnityEngine.Time.realtimeSinceStartup;
             s_Status = "on, starting";
@@ -304,6 +330,7 @@ namespace JunctionRules.Paint
             Enabled = false;
             Unsubscribe();
             if (m_Gpu != null) { m_Gpu.Dispose(); m_Gpu = null; }
+            ClearMarkings();   // 0.4.4: the road's markings come back with the boxes gone
             m_Boxes.Clear();
             m_Tracked.Clear();
             m_TriangleCount = 0;
@@ -405,7 +432,19 @@ namespace JunctionRules.Paint
                 {
                     step = "uploading the boxes";
                     Upload();
+                    m_NeedMarkings = true;
                     if (!m_TestOn && !s_SavedPresent) { Deactivate("paint test off and no saved boxes left"); return; }
+                }
+                if (m_NeedMarkings)
+                {
+                    step = "hiding the road markings under the boxes";
+                    m_NeedMarkings = false;
+                    ApplyMarkings();
+                }
+                else
+                {
+                    step = "keeping the road markings hidden";
+                    m_Hider.Tick(EntityManager);
                 }
                 if (m_LogCostRequested || (m_Boxes.Count > 0 && UnityEngine.Time.realtimeSinceStartup - m_LastCostLog >= m_Config.Render.LogIntervalSeconds))
                 {
@@ -631,6 +670,7 @@ namespace JunctionRules.Paint
         {
             b.Dropped = true;
             b.Tris = Array.Empty<AreaTriangleData>();
+            b.Outline = null;
             EntityManager em = EntityManager;
             Entity e = b.Kind == BoxKind.SavedJunction ? b.Node : b.Building;
             if (e != Entity.Null && em.Exists(e))
@@ -718,6 +758,7 @@ namespace JunctionRules.Paint
         {
             long t0 = Stopwatch.GetTimestamp();
             b.Tris = Array.Empty<AreaTriangleData>();
+            b.Outline = null;
             b.Edges.Clear();
             try
             {
@@ -763,6 +804,7 @@ namespace JunctionRules.Paint
                 }
                 notes.AddRange(res.Warnings);
                 b.Tris = ToTriangles(res, m_Config.Render, m_Config.Diag, out b.Bounds);
+                if (m_Config.Diag.TestSquare <= 0) b.Outline = res.Outline;
                 long ticks = Stopwatch.GetTimestamp() - t0;
                 Mod.log.Info($"yellow box paint test: {b.Label}: node {b.Node} at {b.LastPos}, {shape.Arms} arms, outline {res.Outline.Count} pts / {BoxPaintGeometry.SignedArea(res.Outline):0.0} m2, box {res.Rect.LenU:0.0} x {res.Rect.LenV:0.0} m, spacing {res.SpacingUsed} m, pieces {res.Pieces.Count}, triangles {b.Tris.Length}, built in {ticks * 1000.0 / Stopwatch.Frequency:0.000} ms" + (notes.Count > 0 ? "; notes: " + string.Join("; ", notes) : ""));
             }
@@ -820,6 +862,7 @@ namespace JunctionRules.Paint
             notes.AddRange(res.Warnings);
             notes.AddRange(exitNotes);
             b.Tris = ToTriangles(res, m_Config.Render, m_Config.Diag, out b.Bounds);
+            b.Outline = res.Outline;
             Mod.log.Info($"yellow boxes: {b.Label}: exit source {exit.C.Source}; box on edge {a.Edge} at {b.LastPos}, {shape.To - shape.From:0.0} m x kerb to kerb, outline {res.Outline.Count} pts, triangles {b.Tris.Length}" + (notes.Count > 0 ? "; notes: " + string.Join("; ", notes) : ""));
         }
 
@@ -871,6 +914,48 @@ namespace JunctionRules.Paint
 
         private static float3 F3(V3 p) => new float3((float)p.X, (float)p.Y, (float)p.Z);
         private static float2 F2(V3 p) => new float2((float)p.X, (float)p.Z);
+
+        // ------------------------------------------------------------------ 0.4.4: road markings under the boxes
+
+        /// <summary>
+        /// The marking-hide input: one group per painted box (its outline, and the road node / edges it was built from).
+        /// Part A (merged boxes) replaces this with one group per merged box group (union polygon(s) + all sources); the
+        /// hider already merges overlapping polygons per lane, so per-box groups hide the same markings.
+        /// </summary>
+        internal static List<MarkingHider.Group> MarkingGroups(IEnumerable<(List<V3> Outline, Entity Node, IEnumerable<Entity> Edges)> boxes)
+        {
+            var groups = new List<MarkingHider.Group>();
+            foreach (var b in boxes)
+            {
+                if (b.Outline == null || b.Outline.Count < 3) continue;
+                var g = new MarkingHider.Group();
+                g.Rings.Add(b.Outline);
+                if (b.Node != Entity.Null) g.Sources.Add(b.Node);
+                foreach (Entity e in b.Edges) if (e != Entity.Null) g.Sources.Add(e);
+                groups.Add(g);
+            }
+            return groups;
+        }
+
+        private void ApplyMarkings()
+        {
+            if (!m_HideMarkings) { ClearMarkings(); return; }
+            var input = new List<(List<V3>, Entity, IEnumerable<Entity>)>();
+            foreach (Box b in m_Boxes) if (b.Tris.Length > 0) input.Add((b.Outline, b.Node, b.Edges));
+            long t0 = Stopwatch.GetTimestamp();
+            m_Hider.Apply(EntityManager, MarkingGroups(input));
+            double ms = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
+            Mod.log.Info($"yellow boxes: road markings under the boxes hidden: {m_Hider.LaneCount} marking lane(s) cut, {m_Hider.ObjectCount} marking object(s) hidden"
+                + (m_Hider.ForeignLanes + m_Hider.ForeignObjects > 0 ? $"; left alone (already cut / hidden by the game or a tool): {m_Hider.ForeignLanes} lane(s), {m_Hider.ForeignObjects} object(s)" : "")
+                + $"; {ms:0.000} ms");
+        }
+
+        private void ClearMarkings()
+        {
+            bool any = m_Hider.LaneCount + m_Hider.ObjectCount > 0;
+            m_Hider.Clear(EntityManager);
+            if (any) Mod.log.Info("yellow boxes: road markings under the boxes shown again");
+        }
 
         private void Upload()
         {

@@ -152,6 +152,20 @@ namespace JunctionRules.Settings
             }
         }
 
+        private bool m_HideMarkingsUnderBoxes = true;
+
+        /// <summary>
+        /// 0.4.4 (JR-T-011 B, owner 16 Nov 2026): the road's own markings inside a painted yellow box (lane dashes, centre
+        /// lines, arrows, painted speed numbers) are not drawn, so only the hatch shows. Render-side only, never saved
+        /// (Paint/MarkingHider.cs). Default on; off = the 0.4.3 look (markings show through the box).
+        /// </summary>
+        [SettingsUISection(kSection, kBoxesGroup)]
+        public bool HideMarkingsUnderBoxes
+        {
+            get => m_HideMarkingsUnderBoxes;
+            set { m_HideMarkingsUnderBoxes = value; PaintControl.ApplySettings(); }
+        }
+
         /// <summary>
         /// 0.4.2 (JR-T-010, owner rule 16 Nov 2026, UK yellow box): a car does not enter a box the owner placed (junction or
         /// entrance) unless there is room for its whole length past it; default on; off = 0.4.1 driving (Core/BoxDriving.cs).
@@ -255,6 +269,7 @@ namespace JunctionRules.Settings
             ZebraNonBlocking = true;
             ZebraRoomMargin = RoomScan.DefaultMargin;
             BoxObey = true;
+            HideMarkingsUnderBoxes = true;
             BoxTurnWait = true;
             YellowBoxPaintTest = false;
             PaintMode = BoxPaintMode.Hatch;
@@ -355,6 +370,8 @@ namespace JunctionRules.Settings
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.OpenBoxTool)), "Same as the yellow box button at the top left of the screen and the shortcut. In the tool, point at a road junction, at a building or at the road in front of a building's car exit: what can take a box shows a thin outline of the box it would get (white: click adds the box; orange: click removes it). Right click or Esc leaves the tool. Boxes are saved with the city and painted at once. Junctions: at-grade road junctions with 3 or more road arms (not highways, bridges, tunnels, elevated roads, roundabouts or level crossings). Exits: each car exit of a building (its drive, car park or depot gate) on an at-grade, non-highway road, away from junctions: one box per exit. Where a service building's own road meets a public road, that is a junction. How cars drive at the boxes: see Cars obey yellow boxes below." },
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.YellowBoxMarkingMargin)), "Yellow box: gap to road markings (m)" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.YellowBoxMarkingMargin)), "How far every yellow box edge stays clear of zebra stripes and stop / give-way lines, measured from the painted edge of the marking (default 0.5 m). Exit boxes keep the same gap from junction mouths. Boxes are redrawn at once." },
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.HideMarkingsUnderBoxes)), "Hide road markings under yellow boxes" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.HideMarkingsUnderBoxes)), "On (default): the road's own markings inside a yellow box (lane lines, centre lines, arrows, painted speed numbers) are not drawn, so only the box hatch shows. Markings outside the box stay; on a divided road the box stops at the median, so the far side keeps its markings. Removing a box brings its markings back. Only the drawing changes: nothing is saved with the city and driving is not affected. Off: markings show through the box as before." },
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.BoxObey)), "Cars obey yellow boxes" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.BoxObey)),
                     "On (default): at a junction or building car exit you gave a yellow box, a car does not drive into the box unless there is room for its whole length (trailers included) plus the room margin on its exit beyond the box. A queue that keeps moving counts as room (the same measure as Cars never stop on a zebra); a queue that stands does not. Cars already in the box drive on. With the Whole junction gap rule, cars also take their give-way decision at the box's stop line instead of inside the box. At an exit box, cars on the main road do not stop inside the band in front of that exit, and cars leaving the building there wait until there is room past the band on their lane; cars turning in are not held. A building with several boxed exits: each exit's band counts on its own. Only the boxes you placed count. Off: cars drive as in 0.4.1 (the boxes are paint only). Changes take effect at the next simulation step." },

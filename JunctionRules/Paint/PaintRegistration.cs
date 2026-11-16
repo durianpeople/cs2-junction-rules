@@ -16,6 +16,8 @@ namespace JunctionRules.Paint
         public static void Register(UpdateSystem updateSystem)
         {
             updateSystem.UpdateAt<YellowBoxPaintSystem>(SystemUpdatePhase.PreCulling);
+            // 0.4.4 (JR-T-011 B): takes the marking cuts / hides off before every save (Paint/MarkingSaveGuardSystem.cs)
+            updateSystem.UpdateBefore<MarkingSaveGuardSystem>(SystemUpdatePhase.Serialize);
         }
 
         /// <summary>After a failed registration: makes sure an already created paint system is off. Never throws.</summary>

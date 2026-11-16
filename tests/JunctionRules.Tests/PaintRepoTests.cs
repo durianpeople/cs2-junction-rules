@@ -26,7 +26,10 @@ namespace JunctionRules.Tests
             var offenders = new List<string>();
             foreach (string f in Directory.GetFiles(paintDir, "*.cs"))
             {
-                string code = StripComments(File.ReadAllText(f));
+                // 0.4.4 (JR-T-011 B): MarkingHider.cs is the one paint file that writes (render-only CutRange / Hidden /
+                // BatchesUpdated on road lanes and marking objects); MarkingRepoTests holds it to exactly that.
+                if (Path.GetFileName(f) == "MarkingHider.cs") continue;
+                string code = StripComments(File.ReadAllText(f)).Replace("SystemUpdatePhase.Serialize", "SystemUpdatePhase.PHASE");
                 foreach (Match m in writes.Matches(code)) offenders.Add(Path.GetFileName(f) + ": " + m.Value);
                 if (Regex.IsMatch(code, @"GetBuffer<[^>]+>\(\s*[\w.]+\s*\)")) offenders.Add(Path.GetFileName(f) + ": GetBuffer without isReadOnly");
             }
