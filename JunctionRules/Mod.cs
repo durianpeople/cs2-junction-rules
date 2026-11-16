@@ -181,6 +181,8 @@ namespace JunctionRules
         public void OnDispose()
         {
             log.Info(nameof(OnDispose));
+            // JR-T-013e (G2 F4): painting off and the road markings hidden under boxes shown again
+            try { PaintControl.Shutdown(); } catch (Exception e) { log.Error(e, "switching the yellow box paint off on dispose failed"); }
             if (Settings != null)
             {
                 Settings.UnregisterInOptionsUI();

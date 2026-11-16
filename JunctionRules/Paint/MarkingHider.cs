@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Colossal.Mathematics;
 using Game.Common;
 using Game.Net;
@@ -20,11 +21,18 @@ namespace JunctionRules.Paint
     ///   pedestrian lanes, LaneSystem.cs 8694-8712) with the ranges inside the box (Core/MarkingMask.InsideRanges), plus
     ///   BatchesUpdated so the batches are rebuilt (PreCullingSystem.cs 2428-2436).
     /// - Marking objects: Game.Tools.Hidden (CullingData.isHidden, BatchDataSystem.cs 605/1588), plus BatchesUpdated.
+    /// JR-T-013e (G2): every write runs from <see cref="Run"/>, which MarkingRenderSystem calls in PreCulling BEFORE the
+    /// game's PreCullingSystem: that system reads BatchesUpdated (PreCullingSystem.cs 2428-2436 query, 652, 1895) and
+    /// PrepareCleanUpSystem / CleanUpSystem take the tag off at the end of the same frame (PrepareCleanUpSystem.cs 29-40,
+    /// CleanUpSystem.cs 24-31, 53), so a tag added after PreCullingSystem (where the paint system runs) was never seen. The
+    /// paint system only posts requests (<see cref="RequestApply"/>, <see cref="RequestClear"/>). The bookkeeping (strip /
+    /// restore / clear order) is Core/MarkingLedger.cs, tested offline.
     /// Never persisted: CutRange is a saved type, so <see cref="StripForSave"/> (run by MarkingSaveGuardSystem ahead of the
-    /// game's SerializerSystem) takes ours off before every save and <see cref="Tick"/> puts them back the next frame;
-    /// Hidden is not a saved type (no ISerializable) but is taken off for the save as well. Only lanes / objects that had no CutRange / Hidden
-    /// of their own are touched ("foreign" ones are left alone), and everything this class added is removed again when a
-    /// box goes, the setting goes off, painting stops or the paint fails. Driving never reads any of this.
+    /// game's SerializerSystem) takes ours off before every save (retry, then empty in place; anything left is logged
+    /// CRITICAL) and <see cref="Run"/> puts them back the next frame; Hidden is not a saved type (no ISerializable) but is
+    /// taken off for the save as well. Only lanes / objects that had no CutRange / Hidden of their own are touched
+    /// ("foreign" ones are left alone), and everything this class added is removed again when a box goes, the setting
+    /// goes off, painting stops, the paint fails or the mod is disposed. Driving never reads any of this.
     /// Input: groups of world-space straight-sided polygons with the road entities (nodes / edges) whose markings they may
     /// hide; overlapping polygons are fine (ranges merge). Part A feeds merged group polygons through the same call.
     /// </summary>
@@ -37,19 +45,112 @@ namespace JunctionRules.Paint
             public readonly HashSet<Entity> Sources = new HashSet<Entity>();
         }
 
-        private readonly Dictionary<Entity, List<MarkingMask.Range>> m_Lanes = new Dictionary<Entity, List<MarkingMask.Range>>();
-        private readonly HashSet<Entity> m_Objects = new HashSet<Entity>();
-        private bool m_Stripped;
+        private enum Pending { None, Apply, Clear }
 
-        public int LaneCount => m_Lanes.Count;
-        public int ObjectCount => m_Objects.Count;
+        private readonly MarkingLedger<Entity> m_Ledger = new MarkingLedger<Entity>();
+        private Pending m_Pending;
+        private IList<Group> m_PendingGroups;
+
+        public int LaneCount => m_Ledger.LaneCount;
+        public int ObjectCount => m_Ledger.ObjectCount;
         public int ForeignLanes { get; private set; }
         public int ForeignObjects { get; private set; }
 
-        /// <summary>Puts the cuts / hides for these groups in place; anything of ours no longer wanted is undone.</summary>
-        public void Apply(EntityManager em, IList<Group> groups)
+        /// <summary>True when <see cref="Run"/> has something to do (a request, or cuts / hides of ours to keep).</summary>
+        public bool HasWork => m_Pending != Pending.None || !m_Ledger.IsEmpty;
+
+        /// <summary>Paint system: hide under these groups on the next <see cref="Run"/> (replaces an earlier request).</summary>
+        public void RequestApply(IList<Group> groups) { m_Pending = Pending.Apply; m_PendingGroups = groups; }
+
+        /// <summary>Paint system: show every marking of ours again on the next <see cref="Run"/> (replaces an earlier request).</summary>
+        public void RequestClear() { m_Pending = Pending.Clear; m_PendingGroups = null; }
+
+        /// <summary>
+        /// MarkingRenderSystem, once per frame before PreCullingSystem: does the request, else keeps ours in place (after
+        /// a save puts our cuts / hides back; re-hides an object whose Hidden a tool took off, ToolClearSystem.cs 93-107 /
+        /// Apply*System clear Hidden on the originals of a preview). Throws on an Apply / Tick write failure (the caller
+        /// fails the paint, which requests a Clear).
+        /// </summary>
+        public void Run(EntityManager em)
         {
-            RestoreIfStripped(em);
+            Pending p = m_Pending;
+            IList<Group> groups = m_PendingGroups;
+            m_Pending = Pending.None;
+            m_PendingGroups = null;
+            if (p == Pending.Clear) { ClearNow(em); return; }
+            var w = new EntityWorld(em);
+            if (p == Pending.Apply)
+            {
+                long t0 = Stopwatch.GetTimestamp();
+                Apply(em, w, groups ?? new List<Group>());
+                double ms = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
+                Mod.log.Info($"yellow boxes: road markings under the boxes hidden: {LaneCount} marking lane(s) cut, {ObjectCount} marking object(s) hidden"
+                    + (ForeignLanes + ForeignObjects > 0 ? $"; left alone (already cut / hidden by the game or a tool): {ForeignLanes} lane(s), {ForeignObjects} object(s)" : "")
+                    + $"; {ms:0.000} ms");
+                return;
+            }
+            if (!m_Ledger.IsEmpty) m_Ledger.Tick(w);
+        }
+
+        /// <summary>Removes everything this class added right now and queues the re-render (also after a strip). Never throws.</summary>
+        public void ClearNow(EntityManager em)
+        {
+            m_Pending = Pending.None;
+            m_PendingGroups = null;
+            bool any = !m_Ledger.IsEmpty;
+            int failed = 0;
+            Exception first = null;
+            try { failed = m_Ledger.Clear(new EntityWorld(em), out first); }
+            catch (Exception e) { failed++; first = e; m_Ledger.Forget(); }
+            ForeignLanes = ForeignObjects = 0;
+            try
+            {
+                if (failed > 0) Mod.log.Error(first, $"yellow boxes: putting the road markings back failed on {failed} entit(ies)");
+                else if (any) Mod.log.Info("yellow boxes: road markings under the boxes shown again");
+            }
+            catch { }
+        }
+
+        /// <summary>A new city was loaded: the old entities are gone with the old world; just forget them (and any request).</summary>
+        public void Forget()
+        {
+            m_Ledger.Forget();
+            m_Pending = Pending.None;
+            m_PendingGroups = null;
+        }
+
+        /// <summary>
+        /// Right before the game serializes the city: our CutRange buffers and Hidden tags come off (no batch rebuild, so
+        /// nothing flickers). Never throws; never silent: anything that may still be cut in the save is logged CRITICAL.
+        /// </summary>
+        public void StripForSave(EntityManager em)
+        {
+            MarkingStripResult r;
+            try { r = m_Ledger.StripForSave(new EntityWorld(em)); }
+            catch (Exception e)
+            {
+                try { Mod.log.Critical(e, "yellow boxes: taking the marking cuts off before the save failed outright; " + SaveWarning); } catch { }
+                return;
+            }
+            if (r.Skipped || r.Retried == 0) return;
+            try
+            {
+                string counts = $"{r.Lanes} lane(s), {r.Objects} object(s); {r.Retried} needed a retry, {r.Emptied} lane cut list(s) emptied in place, {r.StillCut} lane(s) still cut, {r.HiddenLeft} object(s) still hidden";
+                if (r.StillCut > 0)
+                    Mod.log.Critical(r.First, "yellow boxes: marking cuts could not be taken off before the save: " + counts + "; " + SaveWarning);
+                else if (r.HiddenLeft > 0)
+                    Mod.log.Error(r.First, "yellow boxes: marking hide tags could not be taken off before the save (Hidden is not a saved type, the save is clean): " + counts);
+                else
+                    Mod.log.Warn("yellow boxes: taking the marking cuts off before the save needed a fallback, the save is clean: " + counts + "; first error " + r.First?.GetType().Name + ": " + r.First?.Message);
+            }
+            catch { }
+        }
+
+        private const string SaveWarning = "THIS SAVE MAY CONTAIN HIDDEN ROAD MARKINGS: switch 'Hide road markings under yellow boxes' off and save again";
+
+        private void Apply(EntityManager em, EntityWorld w, IList<Group> groups)
+        {
+            m_Ledger.Tick(w);   // a stripped state goes back first, so the foreign checks below see our own buffers as ours
             var laneRings = new Dictionary<Entity, List<IList<V2>>>();
             var objRings = new Dictionary<Entity, List<IList<V2>>>();
             foreach (Group g in groups)
@@ -90,18 +191,8 @@ namespace JunctionRules.Paint
                 var curve = new MarkingMask.Curve(V(bz.a), V(bz.b), V(bz.c), V(bz.d));
                 List<MarkingMask.Range> ranges = MarkingMask.InsideRanges(curve, kv.Value);
                 if (ranges.Count == 0) continue;
-                if (!m_Lanes.ContainsKey(lane) && em.HasBuffer<CutRange>(lane)) { foreignLanes++; continue; }
+                if (!m_Ledger.TracksLane(lane) && em.HasBuffer<CutRange>(lane)) { foreignLanes++; continue; }
                 wantLanes[lane] = ranges;
-            }
-            foreach (var kv in new List<KeyValuePair<Entity, List<MarkingMask.Range>>>(m_Lanes))
-            {
-                if (!wantLanes.ContainsKey(kv.Key)) { UncutLane(em, kv.Key); m_Lanes.Remove(kv.Key); }
-            }
-            foreach (var kv in wantLanes)
-            {
-                if (m_Lanes.TryGetValue(kv.Key, out var have) && MarkingMask.SameRanges(have, kv.Value) && em.HasBuffer<CutRange>(kv.Key)) continue;
-                m_Lanes[kv.Key] = kv.Value;   // tracked BEFORE the write: a failure half way still leaves it in Clear / StripForSave's reach
-                CutLane(em, kv.Key, kv.Value);
             }
 
             // objects
@@ -112,104 +203,12 @@ namespace JunctionRules.Paint
                 Entity o = kv.Key;
                 if (!IsMarkingObject(em, o, out List<V2> footprint, out V2 centre)) continue;
                 if (!MarkingMask.HideObject(centre, footprint, kv.Value)) continue;
-                if (!m_Objects.Contains(o) && em.HasComponent<Hidden>(o)) { foreignObjects++; continue; }
+                if (!m_Ledger.TracksObject(o) && em.HasComponent<Hidden>(o)) { foreignObjects++; continue; }
                 wantObjects.Add(o);
             }
-            foreach (Entity o in new List<Entity>(m_Objects))
-            {
-                if (!wantObjects.Contains(o)) { Unhide(em, o); m_Objects.Remove(o); }
-            }
-            foreach (Entity o in wantObjects)
-            {
-                m_Objects.Add(o);   // tracked before the write (see lanes)
-                if (!em.HasComponent<Hidden>(o)) Hide(em, o);
-            }
+            m_Ledger.Sync(w, wantLanes, wantObjects);
             ForeignLanes = foreignLanes;
             ForeignObjects = foreignObjects;
-        }
-
-        /// <summary>
-        /// Once per frame (cheap: our own few entities): after a save puts our cuts / hides back; re-hides an object whose
-        /// Hidden a tool took off (ToolClearSystem.cs 93-107 / Apply*System clear Hidden on the originals of a preview).
-        /// </summary>
-        public void Tick(EntityManager em)
-        {
-            RestoreIfStripped(em);
-            if (m_Objects.Count == 0) return;
-            List<Entity> gone = null;
-            foreach (Entity o in m_Objects)
-            {
-                if (!em.Exists(o) || em.HasComponent<Deleted>(o)) { (gone ??= new List<Entity>()).Add(o); continue; }
-                if (!em.HasComponent<Hidden>(o) && !em.HasComponent<Temp>(o)) Hide(em, o);
-            }
-            if (gone != null) foreach (Entity o in gone) m_Objects.Remove(o);
-        }
-
-        /// <summary>Removes everything this class added (setting off, painting off, failure). Never throws.</summary>
-        public void Clear(EntityManager em)
-        {
-            try
-            {
-                if (!m_Stripped)
-                {
-                    foreach (Entity l in m_Lanes.Keys) UncutLane(em, l);
-                    foreach (Entity o in m_Objects) Unhide(em, o);
-                }
-            }
-            catch (Exception e)
-            {
-                try { Mod.log.Error(e, "yellow boxes: putting the road markings back failed"); } catch { }
-            }
-            m_Lanes.Clear();
-            m_Objects.Clear();
-            m_Stripped = false;
-            ForeignLanes = ForeignObjects = 0;
-        }
-
-        /// <summary>A new city was loaded: the old entities are gone with the old world; just forget them.</summary>
-        public void Forget()
-        {
-            m_Lanes.Clear();
-            m_Objects.Clear();
-            m_Stripped = false;
-        }
-
-        /// <summary>Right before the game serializes the city: our CutRange buffers and Hidden tags come off (no batch rebuild, so nothing flickers).</summary>
-        public void StripForSave(EntityManager em)
-        {
-            if (m_Stripped || (m_Lanes.Count == 0 && m_Objects.Count == 0)) return;
-            m_Stripped = true;   // set first: whatever happens below, the next frame puts back what is still ours
-            int failed = 0;
-            Exception first = null;
-            // one entity at a time: a failure on one never leaves the others cut in the save
-            foreach (Entity l in m_Lanes.Keys)
-            {
-                try { if (em.Exists(l) && em.HasBuffer<CutRange>(l)) em.RemoveComponent<CutRange>(l); }
-                catch (Exception e) { failed++; first = first ?? e; }
-            }
-            foreach (Entity o in m_Objects)
-            {
-                try { if (em.Exists(o) && em.HasComponent<Hidden>(o)) em.RemoveComponent<Hidden>(o); }
-                catch (Exception e) { failed++; first = first ?? e; }
-            }
-            if (failed > 0) throw new InvalidOperationException($"{failed} marking cut(s) could not be taken off before the save", first);
-        }
-
-        private void RestoreIfStripped(EntityManager em)
-        {
-            if (!m_Stripped) return;
-            m_Stripped = false;
-            foreach (var kv in new List<KeyValuePair<Entity, List<MarkingMask.Range>>>(m_Lanes))
-            {
-                if (!em.Exists(kv.Key) || em.HasComponent<Deleted>(kv.Key)) { m_Lanes.Remove(kv.Key); continue; }
-                if (em.HasBuffer<CutRange>(kv.Key)) { m_Lanes.Remove(kv.Key); continue; }   // someone else's now
-                WriteCut(em, kv.Key, kv.Value, rebuild: true);   // re-instanced meanwhile (LOD / camera)? rebuild to be sure
-            }
-            foreach (Entity o in new List<Entity>(m_Objects))
-            {
-                if (!em.Exists(o) || em.HasComponent<Deleted>(o)) { m_Objects.Remove(o); continue; }
-                if (!em.HasComponent<Hidden>(o)) Hide(em, o);
-            }
         }
 
         // ------------------------------------------------------------------ filters (read-only)
@@ -270,34 +269,41 @@ namespace JunctionRules.Paint
 
         // ------------------------------------------------------------------ writes (our own buffer / tag only)
 
-        private static void CutLane(EntityManager em, Entity lane, List<MarkingMask.Range> ranges) => WriteCut(em, lane, ranges, rebuild: true);
-
-        private static void WriteCut(EntityManager em, Entity lane, List<MarkingMask.Range> ranges, bool rebuild)
+        /// <summary>The ledger's view of the EntityManager (main thread only).</summary>
+        private sealed class EntityWorld : IMarkingWorld<Entity>
         {
-            DynamicBuffer<CutRange> buf = em.HasBuffer<CutRange>(lane) ? em.GetBuffer<CutRange>(lane) : em.AddBuffer<CutRange>(lane);
-            buf.Clear();
-            foreach (MarkingMask.Range r in ranges) buf.Add(new CutRange { m_CurveDelta = new Bounds1((float)r.Min, (float)r.Max) });
-            if (rebuild) em.AddComponent<BatchesUpdated>(lane);
-        }
+            private readonly EntityManager m_Em;
+            public EntityWorld(EntityManager em) { m_Em = em; }
 
-        private static void UncutLane(EntityManager em, Entity lane)
-        {
-            if (!em.Exists(lane) || em.HasComponent<Deleted>(lane)) return;
-            if (em.HasBuffer<CutRange>(lane)) em.RemoveComponent<CutRange>(lane);
-            em.AddComponent<BatchesUpdated>(lane);
-        }
+            public bool Exists(Entity e) => m_Em.Exists(e);
+            public bool Alive(Entity e) => m_Em.Exists(e) && !m_Em.HasComponent<Deleted>(e);
+            public bool IsTemp(Entity e) => m_Em.HasComponent<Temp>(e);
+            public bool HasCut(Entity lane) => m_Em.HasBuffer<CutRange>(lane);
 
-        private static void Hide(EntityManager em, Entity o)
-        {
-            em.AddComponent<Hidden>(o);
-            em.AddComponent<BatchesUpdated>(o);
-        }
+            public void WriteCut(Entity lane, IList<MarkingMask.Range> ranges)
+            {
+                DynamicBuffer<CutRange> buf = m_Em.HasBuffer<CutRange>(lane) ? m_Em.GetBuffer<CutRange>(lane) : m_Em.AddBuffer<CutRange>(lane);
+                buf.Clear();
+                foreach (MarkingMask.Range r in ranges) buf.Add(new CutRange { m_CurveDelta = new Bounds1((float)r.Min, (float)r.Max) });
+                m_Em.AddComponent<BatchesUpdated>(lane);
+            }
 
-        private static void Unhide(EntityManager em, Entity o)
-        {
-            if (!em.Exists(o) || em.HasComponent<Deleted>(o)) return;
-            if (em.HasComponent<Hidden>(o)) em.RemoveComponent<Hidden>(o);
-            em.AddComponent<BatchesUpdated>(o);
+            public void RemoveCut(Entity lane) => m_Em.RemoveComponent<CutRange>(lane);
+
+            /// <summary>Save fallback: an empty CutRange list draws the whole lane (BatchInstanceSystem.cs 787-812: no range = 0..1).</summary>
+            public void EmptyCut(Entity lane) { if (m_Em.HasBuffer<CutRange>(lane)) m_Em.GetBuffer<CutRange>(lane).Clear(); }
+
+            public bool HasHidden(Entity o) => m_Em.HasComponent<Hidden>(o);
+
+            public void AddHidden(Entity o)
+            {
+                m_Em.AddComponent<Hidden>(o);
+                m_Em.AddComponent<BatchesUpdated>(o);
+            }
+
+            public void RemoveHidden(Entity o) => m_Em.RemoveComponent<Hidden>(o);
+
+            public void Rerender(Entity e) => m_Em.AddComponent<BatchesUpdated>(e);
         }
 
         private static V3 V(float3 p) => new V3(p.x, p.y, p.z);

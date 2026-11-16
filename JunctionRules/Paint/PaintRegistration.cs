@@ -18,6 +18,9 @@ namespace JunctionRules.Paint
             updateSystem.UpdateAt<YellowBoxPaintSystem>(SystemUpdatePhase.PreCulling);
             // 0.4.4 (JR-T-011 B): takes the marking cuts / hides off before every save (Paint/MarkingSaveGuardSystem.cs)
             updateSystem.UpdateBefore<MarkingSaveGuardSystem>(SystemUpdatePhase.Serialize);
+            // JR-T-013e (G2): the marking writes run before the game's PreCullingSystem, so it sees their BatchesUpdated
+            // the same frame (Paint/MarkingRenderSystem.cs)
+            updateSystem.UpdateBefore<MarkingRenderSystem, Game.Rendering.PreCullingSystem>(SystemUpdatePhase.PreCulling);
         }
 
         /// <summary>After a failed registration: makes sure an already created paint system is off. Never throws.</summary>
@@ -40,6 +43,10 @@ namespace JunctionRules.Paint
     /// <summary>Settings-side entry points: every call is wrapped so a settings change can never throw into the options UI.</summary>
     internal static class PaintControl
     {
+        /// <summary>JR-T-013e (G2 F4): Mod.OnDispose: painting off, road markings shown again.</summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static void Shutdown() { try { YellowBoxPaintSystem.Shutdown(); } catch (Exception e) { Log(e); } }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static void ApplySettings() { try { YellowBoxPaintSystem.ApplySettings(); } catch (Exception e) { Log(e); } }
 

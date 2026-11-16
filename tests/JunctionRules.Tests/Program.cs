@@ -95,6 +95,7 @@ namespace JunctionRules.Tests
             ("MarkingMaskTests", MarkingMaskTests),
             ("MarkingMergeTests", MarkingMergeTests),
             ("MarkingRepoTests", MarkingRepoTests),
+            ("MarkingLedgerTests", MarkingLedgerTests),
             ("BoxMergeTests", BoxMergeTests),
             ("MedianSplitTests", MedianSplitTests),
             ("BoxMergeRepoTests", BoxMergeRepoTests),

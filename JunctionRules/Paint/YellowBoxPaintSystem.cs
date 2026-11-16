@@ -206,11 +206,40 @@ namespace JunctionRules.Paint
             {
                 YellowBoxPaintSystem s = s_Instance;
                 if (s == null) return;
-                s.m_Hider.StripForSave(em);
+                s.m_Hider.StripForSave(em);   // retries, falls back, logs CRITICAL if a cut may stay in the save
             }
             catch (Exception e)
             {
-                try { Mod.log.Error(e, "yellow boxes: taking the marking cuts off before the save failed"); } catch { }
+                try { Mod.log.Critical(e, "yellow boxes: taking the marking cuts off before the save failed; THIS SAVE MAY CONTAIN HIDDEN ROAD MARKINGS: switch 'Hide road markings under yellow boxes' off and save again"); } catch { }
+            }
+        }
+
+        /// <summary>
+        /// JR-T-013e (G2): MarkingRenderSystem, every frame in PreCulling before the game's PreCullingSystem: does the
+        /// marking request of the paint system (apply / clear) or keeps ours in place. Runs also while painting is off, so a
+        /// clear requested by Deactivate is done. Never throws: a failure fails the paint (which requests the clear).
+        /// </summary>
+        internal static void RunMarkings(EntityManager em)
+        {
+            YellowBoxPaintSystem s = s_Instance;
+            if (s == null || !s.m_Hider.HasWork) return;
+            try { s.m_Hider.Run(em); }
+            catch (Exception e) { Fail("hiding the road markings under the boxes", e); }
+        }
+
+        /// <summary>JR-T-013e (G2 F4): Mod.OnDispose: painting off and the road's markings back at once. Never throws.</summary>
+        internal static void Shutdown()
+        {
+            try
+            {
+                YellowBoxPaintSystem s = s_Instance;
+                if (s == null) return;
+                s.Deactivate("the mod is unloading");
+                if (s.World != null && s.World.IsCreated) s.m_Hider.ClearNow(s.EntityManager);
+            }
+            catch (Exception e)
+            {
+                try { Mod.log.Error(e, "yellow boxes: switching off on mod unload failed"); } catch { }
             }
         }
 
@@ -301,6 +330,7 @@ namespace JunctionRules.Paint
         protected override void OnDestroy()
         {
             try { Deactivate(null); } catch { }
+            try { m_Hider.ClearNow(EntityManager); } catch { }   // G2: the render system does not run again
             BoxStore.Changed -= NotifyBoxesChanged;
             if (s_Instance == this) s_Instance = null;
             base.OnDestroy();
@@ -468,11 +498,7 @@ namespace JunctionRules.Paint
                     m_NeedMarkings = false;
                     ApplyMarkings();
                 }
-                else
-                {
-                    step = "keeping the road markings hidden";
-                    m_Hider.Tick(EntityManager);
-                }
+                // G2: keeping ours in place (after a save, after a tool) is MarkingRenderSystem's job (before PreCullingSystem)
                 if (m_LogCostRequested || (m_Boxes.Count > 0 && UnityEngine.Time.realtimeSinceStartup - m_LastCostLog >= m_Config.Render.LogIntervalSeconds))
                 {
                     m_LogCostRequested = false;
@@ -1055,20 +1081,11 @@ namespace JunctionRules.Paint
         {
             m_MarkVersion = MergedBoxes.Version;
             if (!m_HideMarkings) { ClearMarkings(); return; }
-            long t0 = Stopwatch.GetTimestamp();
-            m_Hider.Apply(EntityManager, m_MarkGroups);
-            double ms = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
-            Mod.log.Info($"yellow boxes: road markings under the boxes hidden: {m_Hider.LaneCount} marking lane(s) cut, {m_Hider.ObjectCount} marking object(s) hidden"
-                + (m_Hider.ForeignLanes + m_Hider.ForeignObjects > 0 ? $"; left alone (already cut / hidden by the game or a tool): {m_Hider.ForeignLanes} lane(s), {m_Hider.ForeignObjects} object(s)" : "")
-                + $"; {ms:0.000} ms");
+            m_Hider.RequestApply(m_MarkGroups);   // G2: done (and logged) by MarkingRenderSystem before the next PreCullingSystem
         }
 
-        private void ClearMarkings()
-        {
-            bool any = m_Hider.LaneCount + m_Hider.ObjectCount > 0;
-            m_Hider.Clear(EntityManager);
-            if (any) Mod.log.Info("yellow boxes: road markings under the boxes shown again");
-        }
+        /// <summary>G2: the clear is done (and logged) by MarkingRenderSystem before the next PreCullingSystem (also while painting is off).</summary>
+        private void ClearMarkings() => m_Hider.RequestClear();
 
         private void Upload()
         {

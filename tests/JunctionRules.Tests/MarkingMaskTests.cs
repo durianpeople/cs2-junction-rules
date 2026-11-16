@@ -154,24 +154,40 @@ namespace JunctionRules.Tests
             Check(bad.Count == 0, "marking hider writes only CutRange / Hidden / BatchesUpdated: " + string.Join(", ", bad));
             Check(Regex.IsMatch(hider, @"em\.HasBuffer<CutRange>\(lane\)\) \{ foreignLanes\+\+; continue; \}") && Regex.IsMatch(hider, @"em\.HasComponent<Hidden>\(o\)\) \{ foreignObjects\+\+; continue; \}"), "lanes / objects already cut or hidden by someone else are left alone");
             Check(Regex.IsMatch(hider, @"HasComponent<Game\.Net\.CarLane>[\s\S]*PedestrianLane[\s\S]*TrackLane[\s\S]*ParkingLane[\s\S]*ConnectionLane[\s\S]*UtilityLane") && hider.Contains("MeshFlags.Decal"), "only decal-only marking lanes / objects (never zebras, car lanes, signs or poles)");
-            Check(Regex.IsMatch(hider, @"public void StripForSave\(EntityManager em\)[\s\S]*?m_Stripped = true;[\s\S]*?try \{[^\n]*RemoveComponent<CutRange>[^\n]*\}\s*catch[\s\S]*?try \{[^\n]*RemoveComponent<Hidden>[^\n]*\}\s*catch"), "before a save every CutRange / Hidden of ours comes off, one entity at a time (a failure never stops the rest)");
+            // JR-T-013e (G2): strip / restore / clear order is Core/MarkingLedger.cs (behaviour: MarkingLedgerTests); the hider
+            // only adapts the EntityManager, logs, and never lets a strip failure pass silently
+            Check(hider.Contains("m_Ledger.StripForSave(new EntityWorld(em))") && Regex.Matches(hider, @"Mod\.log\.Critical\(").Count >= 2 && hider.Contains("THIS SAVE MAY CONTAIN HIDDEN ROAD MARKINGS"), "G2 F2: a strip that may leave a cut in the save is logged CRITICAL, never swallowed");
+            Check(hider.Contains("public void RemoveCut(Entity lane) => m_Em.RemoveComponent<CutRange>(lane);") && Regex.IsMatch(hider, @"public void EmptyCut\(Entity lane\) \{ if \(m_Em\.HasBuffer<CutRange>\(lane\)\) m_Em\.GetBuffer<CutRange>\(lane\)\.Clear\(\); \}"), "G2 F2: save fallback empties our cut list in place (empty list = whole lane drawn)");
+            Check(Regex.IsMatch(hider, @"public void Run\(EntityManager em\)[\s\S]*?if \(p == Pending\.Clear\) \{ ClearNow\(em\); return; \}") && Regex.IsMatch(hider, @"public void ClearNow\(EntityManager em\)[\s\S]*?m_Ledger\.Clear\("), "G2 F3: a clear goes straight to the ledger's clear (re-render even while stripped), no restore first");
 
             string reg = StripComments(File.ReadAllText(Path.Combine(paint, "PaintRegistration.cs")));
             Check(reg.Contains("updateSystem.UpdateBefore<MarkingSaveGuardSystem>(SystemUpdatePhase.Serialize);"), "save guard runs in the Serialize phase ahead of the serializer");
+            Check(reg.Contains("updateSystem.UpdateBefore<MarkingRenderSystem, Game.Rendering.PreCullingSystem>(SystemUpdatePhase.PreCulling);"), "G2 F1: marking writes run before the game's PreCullingSystem (it reads BatchesUpdated the same frame)");
+            string render = StripComments(File.ReadAllText(Path.Combine(paint, "MarkingRenderSystem.cs")));
+            Check(render.Contains("YellowBoxPaintSystem.RunMarkings(EntityManager);"), "G2 F1: the render system runs the hider");
             string guard = StripComments(File.ReadAllText(Path.Combine(paint, "MarkingSaveGuardSystem.cs")));
             Check(guard.Contains("YellowBoxPaintSystem.StripMarkingsForSave(EntityManager);"), "save guard calls the strip");
 
             string sys = StripComments(File.ReadAllText(Path.Combine(paint, "YellowBoxPaintSystem.cs")));
             Check(Regex.IsMatch(sys, @"private void Deactivate\(string why\)[\s\S]*?ClearMarkings\(\);"), "painting off puts the markings back");
             Check(Regex.IsMatch(sys, @"private void ApplyMarkings\(\)\s*\{\s*m_MarkVersion = MergedBoxes\.Version;\s*if \(!m_HideMarkings\) \{ ClearMarkings\(\); return; \}"), "setting off = markings shown (0.4.3 look)");
-            Check(Regex.IsMatch(sys, @"m_MarkGroups = MarkingGroups\(groups, inputBoxes\);\s*MergedBoxes\.Publish\(inputs, groups, prm\);") && sys.Contains("m_Hider.Apply(EntityManager, m_MarkGroups);"), "hiding uses the merged groups (median-clipped rings), one group per MergedBoxGroup");
+            Check(Regex.IsMatch(sys, @"m_MarkGroups = MarkingGroups\(groups, inputBoxes\);\s*MergedBoxes\.Publish\(inputs, groups, prm\);") && sys.Contains("m_Hider.RequestApply(m_MarkGroups);"), "hiding uses the merged groups (median-clipped rings), one group per MergedBoxGroup");
+            // G2 F1: the paint system (after PreCullingSystem) never writes the markings itself; only requests
+            var direct = Regex.Matches(sys, @"m_Hider\.(Run|Tick|Apply|Clear|ClearNow)\(");
+            var directOk = new List<string>();
+            foreach (Match m in direct) directOk.Add(m.Value);
+            Check(directOk.Count == 3 && Regex.IsMatch(sys, @"internal static void RunMarkings\(EntityManager em\)[\s\S]*?s\.m_Hider\.Run\(em\)") && Regex.IsMatch(sys, @"internal static void Shutdown\(\)[\s\S]*?s\.m_Hider\.ClearNow\(") && Regex.IsMatch(sys, @"OnDestroy\(\)[\s\S]*?m_Hider\.ClearNow\(EntityManager\)"), "G2 F1: the paint system writes markings only via RunMarkings (render system), Shutdown and OnDestroy: " + string.Join(", ", directOk));
+            Check(sys.Contains("private void ClearMarkings() => m_Hider.RequestClear();"), "G2: painting off / setting off requests the clear (done before the next PreCullingSystem)");
+            string mod = StripComments(File.ReadAllText(Path.Combine(root, "JunctionRules", "Mod.cs")));
+            Check(Regex.IsMatch(mod, @"public void OnDispose\(\)[\s\S]*?PaintControl\.Shutdown\(\)"), "G2 F4: mod dispose puts the markings back");
             Check(Regex.IsMatch(sys, @"foreach \(MergedBoxGroup mg in groups\)[\s\S]*?foreach \(List<V3> r in mg\.Rings\)[\s\S]*?foreach \(int i in mg\.Members\)[\s\S]*?g\.Sources\.Add\(b\.Node\)[\s\S]*?g\.Sources\.Add\(e\)"), "group sources = union of the members' node and edges");
             Check(sys.Contains("if (MergedBoxes.Version != m_MarkVersion) m_NeedMarkings = true;"), "a new merged snapshot re-applies the hide");
             Check(Regex.IsMatch(sys, @"Upload\(\);\s*m_NeedMarkings = true;"), "every box change re-applies the marking hide (removed box: markings back)");
             Check(sys.Contains("m_Hider.Forget();"), "a new city forgets the old entities");
 
             string set = StripComments(File.ReadAllText(Path.Combine(root, "JunctionRules", "Settings", "JunctionRulesSettings.cs")));
-            Check(set.Contains("private bool m_HideMarkingsUnderBoxes = true;") && set.Contains("HideMarkingsUnderBoxes = true;") && set.Contains("\"Hide road markings under yellow boxes\""), "setting 'Hide road markings under yellow boxes' exists, default on, labelled");
+            // JR-T-013e (G2): default OFF until the owner's live gates K1 / K2 pass (probe/G2.md)
+            Check(set.Contains("private bool m_HideMarkingsUnderBoxes = false;") && set.Contains("HideMarkingsUnderBoxes = false;") && set.Contains("\"Hide road markings under yellow boxes\""), "setting 'Hide road markings under yellow boxes' exists, default OFF (G2), labelled");
         }
     }
 }
