@@ -193,7 +193,7 @@ namespace JunctionRules.Tests
             int s26e = nav.IndexOf("JR-STAGE2 END", s26, StringComparison.Ordinal);
             string b26 = nav.Substring(s26, s26e - s26);
             Check(b26.Contains("if (carLaneSpeedIterator.m_JR.m_BoxRule)") || b26.Contains("m_JR.m_BoxRule"), "S2-26 hands the box lookups only with the setting on");
-            Check(b26.Contains("m_JR.SetBoxes(m_JRBoxJunctionData, m_JRBoxEntranceData, m_JRBuildingData, m_JRConnectedBuildings, m_JREdgeLaneData)"), "S2-26 SetBoxes");
+            Check(b26.Contains("m_JR.SetBoxes(m_JRBoxJunctionData, m_JRBoxEntranceData, m_JRBuildingData, m_JRConnectedBuildings, m_JREdgeLaneData, m_JRBoxEdges)"), "S2-26 SetBoxes");
             Check(nav.Contains("GetComponentLookup<JunctionRules.Boxes.YellowBoxJunction>(isReadOnly: true)") || nav.Contains("YellowBoxJunction>(true)"), "box lookups read-only");
             string job = File.ReadAllText(Path.Combine(src, "Stage2", "JRWholeJunction.cs"));
             Check(job.Contains("j.m_BoxRule = (mode & Stage2Mode.BoxObey) != 0;") && job.Contains("mode &= ~Stage2Mode.Stripped;"), "Create reads and strips the box bits");
@@ -252,9 +252,12 @@ namespace JunctionRules.Tests
             Check(!ScanOrder.InOrder(ref k), "buffer out of order detected (probe counter)");
             var sorted = new TKeys { K = new[] { 0.1f, float.MaxValue, 0.1f, 0.4f } };
             Check(ScanOrder.InOrder(ref sorted), "sorted buffer (skips ignored)");
+            // reviewer: an inverse lane reads the (ascending-by-position) buffer from its end: keys fall along the buffer.
+            var inv = new TKeys { K = new[] { 0.9f, 0.5f, float.MaxValue, 0.2f } };
+            Check(!ScanOrder.InOrder(ref inv) && ScanOrder.InOrder(ref inv, true), "inverse lane: a sorted buffer is not reported as out of order");
             var empty = new TKeys { K = new float[0] };
             Check(ScanOrder.Next(ref empty, float.MinValue, -1) == -1 && ScanOrder.InOrder(ref empty), "empty buffer");
-            // The live 0.4.1 case: the game sorts LaneObject by target position (.y); a car stopping short sits first.
+            // The live 0.4.1 case: the game sorts LaneObject by .y (the reservation look-ahead); a faster car behind a slower one sorts after it.
             // Buffer [car at 14 m, car at 8 m]: read in buffer order the near car looks 'behind' the far one (false hold).
             Check(!FeedRoom(false, BCar, (14f, BCar), (8f, BCar)), "buffer order: false 'no room' (the 0.4.1 risk)");
             Check(FeedRoom(true, BCar, (14f, BCar), (8f, BCar)), "curve order: room (8 m and 14 - 5.5 m both fit 5.5 m)");
@@ -306,6 +309,51 @@ namespace JunctionRules.Tests
             // Room section: before Z it is Z's (room past Z = O free); at O no zebra follows: none (0.2.3: no exit-room check).
             string job = File.ReadAllText(Path.Combine(RepoRoot(), "JunctionRules", "Stage2", "JRWholeJunction.cs"));
             Check(job.Contains("m_BoxLane ? -1f : m_RoomMargin"), "job: gaps on, except inside a box (the box decides at the line)");
+        }
+
+        private struct TLongs : IKeyList
+        {
+            public System.Collections.Generic.List<long> L;
+            public int Count => L.Count;
+            public long Key(int i) => L[i];
+        }
+
+        private static void BoxEdgeSetTests()
+        {
+            // The sorted set the entrance band asks before any building is read (JRBoxEdges.Add uses InsertAt + Insert).
+            var set = new TLongs { L = new System.Collections.Generic.List<long>() };
+            foreach (long k in new long[] { (7L << 32) | 1, (3L << 32) | 2, (7L << 32) | 1, (12L << 32) | 1, (3L << 32) | 1 })
+            {
+                int at = SortedKeys.InsertAt(ref set, k);
+                if (at >= 0) set.L.Insert(at, k);
+            }
+            Check(set.L.Count == 4 && set.L[0] == ((3L << 32) | 1) && set.L[3] == ((12L << 32) | 1), "edge set: sorted, duplicates dropped");
+            Check(SortedKeys.Contains(ref set, (3L << 32) | 2) && SortedKeys.Contains(ref set, (12L << 32) | 1) && !SortedKeys.Contains(ref set, (3L << 32) | 3)
+                && !SortedKeys.Contains(ref set, 0L), "edge set: binary search (version counts: a rebuilt edge with a reused index is not in the set)");
+            int v0 = BoxEdgeHandoff.Version;
+            BoxEdgeHandoff.Publish(new long[] { 9L, 2L, 9L });
+            int v1 = BoxEdgeHandoff.Version;
+            BoxEdgeHandoff.Publish(new long[] { 2L, 9L });
+            Check(v1 == v0 + 1 && BoxEdgeHandoff.Version == v1 && BoxEdgeHandoff.Keys.Length == 2 && BoxEdgeHandoff.Keys[0] == 2L, "handoff: sorted, deduplicated, same keys = no new version");
+            BoxEdgeHandoff.Publish(new long[0]);
+            Check(BoxEdgeHandoff.Version == v1 + 1 && BoxEdgeHandoff.Keys.Length == 0, "handoff: cleared");
+            Check(SortedKeys.KeyOf(7, 1) == ((7L << 32) | 1), "entity key = index, version");
+            var none = new TLongs { L = new System.Collections.Generic.List<long>() };
+            Check(!SortedKeys.Contains(ref none, 5L) && SortedKeys.InsertAt(ref none, 5L) == 0, "empty set");
+
+            string src = Path.Combine(RepoRoot(), "JunctionRules");
+            string yb = File.ReadAllText(Path.Combine(src, "Stage2", "JRYellowBox.cs"));
+            int may = yb.IndexOf("m_BoxEdges.MayHave(edgeOwner.m_Owner)", StringComparison.Ordinal), loop = yb.IndexOf("m_ConnectedBuildings.TryGetBuffer", StringComparison.Ordinal);
+            Check(may > 0 && may < loop, "BoxHold asks the edge set before reading the ConnectedBuilding buffer");
+            string edges = File.ReadAllText(Path.Combine(src, "Stage2", "JRBoxEdges.cs"));
+            Check(edges.Contains("FixedList128Bytes<long> m_Keys") && edges.Contains("m_Overflow = true;") && edges.Contains("public bool MayHave(Entity edge) => m_Overflow ||"), "edge set by value, overflow = every edge (fallback to the building loop)");
+            string nav = File.ReadAllText(Path.Combine(src, "Vanilla", "JRCarNavigationSystem.cs"));
+            Check(nav.Contains("jobData.m_JRBoxEdges = JunctionRules.Stage2.JRStage2Bridge.BoxEdges;") && nav.Contains("m_JREdgeLaneData, m_JRBoxEdges);"), "S2-23 takes the set by value, S2-26 hands it to the iterator");
+            string sw = File.ReadAllText(Path.Combine(src, "Systems", "CarDrivingSwitchSystem.cs"));
+            Check(sw.Contains("UpdateBoxEdges((stage2Mode & Stage2Mode.BoxEntrances) != 0);") && sw.Contains("ToComponentDataArray<Game.Buildings.Building>(Unity.Collections.Allocator.Temp)")
+                && sw.Contains("BoxEdgeHandoff.Publish(keys);") && !sw.Contains("JunctionRules.Stage2"), "switch system rebuilds the set on the main thread when entrance boxes change (and periodically)");
+            string job = File.ReadAllText(Path.Combine(src, "Stage2", "JRWholeJunction.cs"));
+            Check(job.Contains("bool ordered = ScanOrder.InOrder(ref keys, inverse);") && job.Contains("float lastKey = -MaxRearReach / math.max(laneLength, 0.001f);"), "ScanLane: straight read when in order, selection starts at the rear reach");
         }
     }
 }

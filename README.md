@@ -42,7 +42,7 @@ counts). UK right-turn exception (setting, default on): a vehicle turning across
 in the box when its exit has room. Entrance band: main-road vehicles keep it clear, vehicles leaving the driveway need
 room past it. Also refines the 0.4.1 zebra sections (owner): a zebra followed by a gap that holds the whole vehicle
 before the first crossing traffic (Z O C C) lets the car cross the zebra and wait in the gap; and the room scan reads
-each lane's vehicles in position order (the game's buffer is in target order). Carries 0.4.1.
+each lane's vehicles in position order (the game's buffer is in look-ahead order). Carries 0.4.1.
 
 0.4.1-probe (JR-T-009; PROBE-STAGE4-BOXTOOL.md section 10): new setting **Cars never stop on a zebra** (default
 on; off = 0.4.0). Zebras split a car's path through a node (junctions and mid-block crossings) into sections; a car

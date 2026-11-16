@@ -510,9 +510,10 @@ namespace JunctionRules.Core
     /// <summary>
     /// 0.4.2 (JR-T-010, after the live 0.4.1 probe: "lane objects out of curve order" 2-4 per window): reads a list in
     /// ascending key order whatever its storage order, without allocation (selection: each call one pass over the list;
-    /// the room scan stops after a few vehicles). The game sorts a lane's LaneObject buffer by the objects' TARGET curve
-    /// position (m_CurvePosition.y), not by where they are (m_CurvePosition.x), so the buffer is not in path order when
-    /// a car's target lies short of the lane end; <see cref="RoomScan"/> needs path order (Stage2/JRWholeJunction.cs ScanLane).
+    /// the room scan stops after a few vehicles). The game sorts a lane's LaneObject buffer by m_CurvePosition.y, which
+    /// for a driving car is its reservation look-ahead (position + braking distance, capped at its target), not where it
+    /// is (m_CurvePosition.x), so the buffer is not in path order when a faster car follows a slower one or a car's
+    /// target lies short of the lane end; <see cref="RoomScan"/> needs path order (Stage2/JRWholeJunction.cs ScanLane).
     /// </summary>
     public static class ScanOrder
     {
@@ -535,11 +536,13 @@ namespace JunctionRules.Core
         }
 
         /// <summary>The list is stored in ascending key order (skipped entries ignored): the probe counter.</summary>
-        public static bool InOrder<T>(ref T keys) where T : struct, IOrderKeys
+        public static bool InOrder<T>(ref T keys, bool reversed = false) where T : struct, IOrderKeys
         {
+            // JR-T-010-r: a lane driven inverse reads the buffer from its end (the game keeps it ascending by curve offset).
             float prev = float.MinValue;
-            for (int i = 0; i < keys.Count; i++)
+            for (int n = 0; n < keys.Count; n++)
             {
+                int i = reversed ? keys.Count - 1 - n : n;
                 float k = keys.Key(i);
                 if (!(k < float.MaxValue)) continue;
                 if (k < prev) return false;

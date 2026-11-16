@@ -31,6 +31,9 @@ namespace JunctionRules.Systems
         private readonly GapRuleSwitch m_GapRule = new GapRuleSwitch();
         private Unity.Entities.EntityQuery m_JunctionBoxes;
         private Unity.Entities.EntityQuery m_EntranceBoxes;
+        private Unity.Entities.EntityQuery m_EntranceBuildings;
+        private int m_BoxEdgeCount = -1;
+        private int m_BoxEdgeAge;
         private bool m_ProbesOn;
         private bool m_ProbesApplied;
 
@@ -39,6 +42,40 @@ namespace JunctionRules.Systems
 
         /// <summary>Whether the switch holds the copy (for the settings status line).</summary>
         public static CopyState CopyState { get; private set; } = CopyState.NotCheckedYet;
+
+        /// <summary>
+        /// 0.4.2 (JR-T-010-r, review item 1): rebuilds the set of road edges with boxed accesses (Stage2/JRBoxEdges.cs) on
+        /// the main thread when the number of entrance boxes changes, and every BoxEdgeRefreshSteps steps (an access
+        /// re-wired to a rebuilt road keeps its box but gets a new Building.m_RoadEdge). Tiny: a few buildings.
+        /// </summary>
+        private void UpdateBoxEdges(bool any)
+        {
+            if (!any)
+            {
+                if (m_BoxEdgeCount != 0) BoxEdgeHandoff.Publish(new long[0]);
+                m_BoxEdgeCount = 0;
+                return;
+            }
+            int count = m_EntranceBuildings.CalculateEntityCount();
+            if (count == m_BoxEdgeCount && ++m_BoxEdgeAge < BoxEdgeRefreshSteps) return;
+            m_BoxEdgeCount = count;
+            m_BoxEdgeAge = 0;
+            using (var buildings = m_EntranceBuildings.ToComponentDataArray<Game.Buildings.Building>(Unity.Collections.Allocator.Temp))
+            {
+                var keys = new long[buildings.Length];
+                int n = 0;
+                for (int i = 0; i < buildings.Length; i++)
+                {
+                    Unity.Entities.Entity edge = buildings[i].m_RoadEdge;
+                    if (edge != Unity.Entities.Entity.Null) keys[n++] = SortedKeys.KeyOf(edge.Index, edge.Version);
+                }
+                if (n != keys.Length) System.Array.Resize(ref keys, n);
+                BoxEdgeHandoff.Publish(keys);
+            }
+        }
+
+        /// <summary>Steps between rebuilds of the boxed edge set while the box count is unchanged.</summary>
+        private const int BoxEdgeRefreshSteps = 64;
 
         [Preserve]
         protected override void OnCreate()
@@ -49,6 +86,8 @@ namespace JunctionRules.Systems
             // 0.4.2: the saved yellow boxes (0.4.0 components), only to tell the copy which kinds exist.
             m_JunctionBoxes = GetEntityQuery(Unity.Entities.ComponentType.ReadOnly<JunctionRules.Boxes.YellowBoxJunction>());
             m_EntranceBoxes = GetEntityQuery(Unity.Entities.ComponentType.ReadOnly<JunctionRules.Boxes.YellowBoxEntrance>());
+            m_EntranceBuildings = GetEntityQuery(Unity.Entities.ComponentType.ReadOnly<JunctionRules.Boxes.YellowBoxEntrance>(),
+                Unity.Entities.ComponentType.ReadOnly<Game.Buildings.Building>());
             // Nothing of the copy here: it may not be registered yet (see the class summary). Until the first update,
             // the game's pair keeps its default (on) and the copy and the probes stay off (CopyPair.Register's finally).
         }
@@ -121,6 +160,7 @@ namespace JunctionRules.Systems
                 !m_EntranceBoxes.IsEmptyIgnoreFilter,
                 (float)JunctionRules.Boxes.BoxStore.EntranceLength);
             Stage2Handoff.Publish(stage2Mode);
+            UpdateBoxEdges((stage2Mode & Stage2Mode.BoxEntrances) != 0);
             if (ruleNote != null) Mod.log.Info(ruleNote);
             if (!m_ProbesApplied || probes != m_ProbesOn)
             {

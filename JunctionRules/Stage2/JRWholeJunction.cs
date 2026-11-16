@@ -186,6 +186,8 @@ namespace JunctionRules.Stage2
         private ComponentLookup<Game.Buildings.Building> m_BuildingData;
         private BufferLookup<Game.Buildings.ConnectedBuilding> m_ConnectedBuildings;
         private ComponentLookup<Game.Net.EdgeLane> m_EdgeLaneData;
+        /// <summary>0.4.2 (JR-T-010-r): road edges with boxed accesses (by value, Stage2/JRBoxEdges.cs).</summary>
+        private JRBoxEdges m_BoxEdges;
         /// <summary>The lane being checked (BeginLane, Whole junction) is a lane of a boxed junction: its decision is at the stop line.</summary>
         private bool m_BoxLane;
         /// <summary>Its turn spot (UK right-turn exception, driving coordinates; 2 = none) and that spot's index in the stretch spots (-1 = none).</summary>
@@ -693,12 +695,16 @@ namespace JunctionRules.Stage2
         /// lane: curve offset times lane length), credit = its own braking distance (its prefab CarData, safe time step)
         /// when it moves forward. Oncoming objects, the car itself and its own trailers are skipped.
         /// 0.4.2: nearest first by the objects' CURRENT curve position (Core ScanOrder), not by buffer order. The game keeps
-        /// a LaneObject buffer sorted by m_CurvePosition.y, which for a car is its TARGET position on the lane (Game.Net
-        /// NetUtils.AddLaneObject / UpdateLaneObject, 435-487, insert by .y; Game.Simulation CarNavigationHelpers
-        /// CurrentLaneCache 185/198/228 write CarCurrentLane.m_CurvePosition.xy = current, target), so a car stopping
-        /// short (target before the lane end) sits before a car behind it that drives on: buffer order is not position
-        /// order (the 0.4.1 probe counter "lane objects out of curve order" &gt; 0). The stock loops read the whole
-        /// buffer without relying on its order (CarLaneSpeedIterator.CheckCurrentLane 1059), RoomScan does rely on path order.
+        /// a LaneObject buffer sorted by m_CurvePosition.y (Game.Net NetUtils.AddLaneObject / UpdateLaneObject, 435-487,
+        /// insert by .y; Game.Simulation CarNavigationHelpers CurrentLaneCache 185/198/228 write
+        /// CarCurrentLane.m_CurvePosition.xy). For a driving car .y is its reservation look-ahead, set in
+        /// CarNavigationSystem.ReserveNavigationLanes (~2263-2269): current position x + its braking distance at its max
+        /// speed, capped at the lane target z. So the buffer is in look-ahead order, not position order: a faster car
+        /// close behind a slower one (longer braking distance) sorts after it, and a car whose target lies short of the
+        /// lane end sorts early (the 0.4.1 probe counter "lane objects out of curve order" &gt; 0). The stock loops read the
+        /// whole buffer without relying on its order (CarLaneSpeedIterator.CheckCurrentLane 1059); RoomScan relies on
+        /// path order. JR-T-010-r: a buffer already in reading order is read straight; objects more than MaxRearReach
+        /// behind <paramref name="from"/> are never selected.
         /// </summary>
         private static void ScanLane(ref RoomScan scan, Entity lane, float from, bool inverse, float laneLength, float span, float baseDistance,
             bool queued, Entity self, float safeTimeStep, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves, ref ComponentLookup<Moving> moving,
@@ -711,16 +717,31 @@ namespace JunctionRules.Stage2
             keys.m_Objects = objects;
             keys.m_From = from;
             keys.m_Inverse = inverse;
-            if (!unsorted && !ScanOrder.InOrder(ref keys)) unsorted = true;
-            float lastKey = float.MinValue;
+            // JR-T-010-r: a buffer already in reading order is read straight (no selection); else nearest first by selection.
+            bool ordered = ScanOrder.InOrder(ref keys, inverse);
+            if (!ordered) unsorted = true;
+            // Objects further back than MaxRearReach behind `from` cannot reach past it: start the order there.
+            float lastKey = -MaxRearReach / math.max(laneLength, 0.001f);
             int lastIndex = -1;
-            for (int guard = 0; guard < objects.Length && !scan.Blocked; guard++)
+            for (int n = 0; n < objects.Length && !scan.Blocked; n++)
             {
-                int jj = ScanOrder.Next(ref keys, lastKey, lastIndex);
-                if (jj < 0) break;
-                lastKey = keys.Key(jj);
-                lastIndex = jj;
-                float d = lastKey * laneLength;
+                int jj;
+                float key;
+                if (ordered)
+                {
+                    jj = inverse ? objects.Length - 1 - n : n;
+                    key = keys.Key(jj);
+                    if (!(key < float.MaxValue) || key < lastKey) continue;
+                }
+                else
+                {
+                    jj = ScanOrder.Next(ref keys, lastKey, lastIndex);
+                    if (jj < 0) break;
+                    key = keys.Key(jj);
+                    lastKey = key;
+                    lastIndex = jj;
+                }
+                float d = key * laneLength;
                 if (d - MaxRearReach > span) break;
                 LaneObject o = objects[jj];
                 Entity e = o.m_LaneObject;

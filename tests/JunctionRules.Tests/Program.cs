@@ -84,6 +84,7 @@ namespace JunctionRules.Tests
             ("BoxRepoTests", BoxRepoTests),
             ("ScanOrderTests", ScanOrderTests),
             ("ZebraGapTests", ZebraGapTests),
+            ("BoxEdgeSetTests", BoxEdgeSetTests),
         };
 
         private static int Main(string[] args)

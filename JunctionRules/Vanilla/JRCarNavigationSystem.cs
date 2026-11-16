@@ -409,6 +409,8 @@ public class JRCarNavigationSystem : GameSystemBase
 		[ReadOnly]
 		public BufferLookup<Game.Buildings.ConnectedBuilding> m_JRConnectedBuildings;
 
+		public JunctionRules.Stage2.JRBoxEdges m_JRBoxEdges;
+
 		[ReadOnly]
 		public ComponentLookup<Game.Net.EdgeLane> m_JREdgeLaneData;
 		// JR-STAGE2 END
@@ -1605,7 +1607,7 @@ public class JRCarNavigationSystem : GameSystemBase
 			// JR-STAGE2 BEGIN S2-26: 0.4.1 cars never stop on a zebra / 0.4.2 cars obey yellow boxes: the navigation lanes for the room-past scan; whole vehicle length (trailers incl.) also with the stock gap rule; 0.4.2 the box lookups
 			if (carLaneSpeedIterator.m_JR.m_BoxRule)
 			{
-				carLaneSpeedIterator.m_JR.SetBoxes(m_JRBoxJunctionData, m_JRBoxEntranceData, m_JRBuildingData, m_JRConnectedBuildings, m_JREdgeLaneData);
+				carLaneSpeedIterator.m_JR.SetBoxes(m_JRBoxJunctionData, m_JRBoxEntranceData, m_JRBuildingData, m_JRConnectedBuildings, m_JREdgeLaneData, m_JRBoxEdges);
 			}
 			if (carLaneSpeedIterator.m_JR.m_ZebraRule || carLaneSpeedIterator.m_JR.m_BoxRule)
 			{
@@ -3150,6 +3152,7 @@ public class JRCarNavigationSystem : GameSystemBase
 		jobData.m_JRBuildingData = GetComponentLookup<Game.Buildings.Building>(isReadOnly: true);
 		jobData.m_JRConnectedBuildings = GetBufferLookup<Game.Buildings.ConnectedBuilding>(isReadOnly: true);
 		jobData.m_JREdgeLaneData = GetComponentLookup<Game.Net.EdgeLane>(isReadOnly: true);
+		jobData.m_JRBoxEdges = JunctionRules.Stage2.JRStage2Bridge.BoxEdges;
 		// JR-STAGE2 END
 		JobHandle jobHandle = JobChunkExtensions.ScheduleParallel(jobData, m_VehicleQuery, JobUtils.CombineDependencies(base.Dependency, dependencies, dependencies2, dependencies3, dependencies4));
 		m_NetSearchSystem.AddNetSearchTreeReader(jobHandle);

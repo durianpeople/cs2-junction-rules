@@ -134,3 +134,54 @@ namespace JunctionRules.Core
         }
     }
 }
+
+namespace JunctionRules.Core
+{
+    /// <summary>0.4.2 (JR-T-010-r): a list of keys kept in ascending order.</summary>
+    public interface IKeyList
+    {
+        int Count { get; }
+        long Key(int i);
+    }
+
+    /// <summary>
+    /// 0.4.2 (JR-T-010-r, review item 1): the set of road edges that carry a boxed building access, kept sorted so the
+    /// entrance-band test asks one binary search per edge lane instead of looping the edge's ConnectedBuilding buffer.
+    /// Burst-compatible, no allocation. Job side: Stage2/JRBoxEdges.cs.
+    /// </summary>
+    public static class SortedKeys
+    {
+        /// <summary>Binary search: the key is in the (ascending) list.</summary>
+        public static bool Contains<T>(ref T keys, long key) where T : struct, IKeyList
+        {
+            int lo = 0, hi = keys.Count - 1;
+            while (lo <= hi)
+            {
+                int mid = (lo + hi) >> 1;
+                long k = keys.Key(mid);
+                if (k == key) return true;
+                if (k < key) lo = mid + 1;
+                else hi = mid - 1;
+            }
+            return false;
+        }
+
+        /// <summary>The key of an entity (index, version): a rebuilt edge that reuses an index has another key.</summary>
+        public static long KeyOf(int index, int version) => ((long)index << 32) | (uint)version;
+
+        /// <summary>Where <paramref name="key"/> goes to keep the list ascending; -1 when it is already there.</summary>
+        public static int InsertAt<T>(ref T keys, long key) where T : struct, IKeyList
+        {
+            int lo = 0, hi = keys.Count - 1;
+            while (lo <= hi)
+            {
+                int mid = (lo + hi) >> 1;
+                long k = keys.Key(mid);
+                if (k == key) return -1;
+                if (k < key) lo = mid + 1;
+                else hi = mid - 1;
+            }
+            return lo;
+        }
+    }
+}

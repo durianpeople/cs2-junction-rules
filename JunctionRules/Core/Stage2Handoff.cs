@@ -248,4 +248,40 @@ namespace JunctionRules.Core
                    "; " + points;
         }
     }
+
+    /// <summary>
+    /// 0.4.2 (JR-T-010-r): the road edge keys with boxed accesses, published on the main thread by
+    /// Systems/CarDrivingSwitchSystem.cs (which may not name copy types) and taken by Stage2/JRStage2Bridge.cs in the
+    /// copy's OnUpdate (S2-23), the same hand-over path as <see cref="Stage2Handoff"/>. Main thread only.
+    /// </summary>
+    public static class BoxEdgeHandoff
+    {
+        private static long[] s_Keys = new long[0];
+
+        /// <summary>Bumped on every publish that changes the keys.</summary>
+        public static int Version { get; private set; }
+
+        public static long[] Keys => s_Keys;
+
+        /// <summary>Publishes the keys (any order, duplicates allowed); sorted here. No change = no new version.</summary>
+        public static void Publish(long[] keys)
+        {
+            long[] sorted = keys ?? new long[0];
+            System.Array.Sort(sorted);
+            int n = 0;
+            for (int i = 0; i < sorted.Length; i++)
+            {
+                if (n == 0 || sorted[i] != sorted[n - 1]) sorted[n++] = sorted[i];
+            }
+            if (n != sorted.Length) System.Array.Resize(ref sorted, n);
+            if (n == s_Keys.Length)
+            {
+                bool same = true;
+                for (int i = 0; i < n && same; i++) same = sorted[i] == s_Keys[i];
+                if (same) return;
+            }
+            s_Keys = sorted;
+            Version++;
+        }
+    }
 }

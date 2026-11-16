@@ -23,13 +23,15 @@ namespace JunctionRules.Stage2
         /// is the road edge (found through the edge's ConnectedBuilding buffer, which the game keeps on road edges).
         /// </summary>
         public void SetBoxes(ComponentLookup<JunctionRules.Boxes.YellowBoxJunction> junctions, ComponentLookup<JunctionRules.Boxes.YellowBoxEntrance> entrances,
-            ComponentLookup<Game.Buildings.Building> buildings, BufferLookup<Game.Buildings.ConnectedBuilding> connectedBuildings, ComponentLookup<Game.Net.EdgeLane> edgeLanes)
+            ComponentLookup<Game.Buildings.Building> buildings, BufferLookup<Game.Buildings.ConnectedBuilding> connectedBuildings, ComponentLookup<Game.Net.EdgeLane> edgeLanes,
+            JRBoxEdges boxEdges)
         {
             m_BoxJunctionData = junctions;
             m_BoxEntranceData = entrances;
             m_BuildingData = buildings;
             m_ConnectedBuildings = connectedBuildings;
             m_EdgeLaneData = edgeLanes;
+            m_BoxEdges = boxEdges;
             m_BoxLookups = true;
         }
 
@@ -96,8 +98,9 @@ namespace JunctionRules.Stage2
                 if (Counting) Min(ref m_HasBoxRoom, ref m_BoxRoomSpeed, hold);
                 return hold;
             }
+            // JR-T-010-r: one binary search in the set of road edges with boxed accesses before any building is read.
             if (!m_BoxEntrances || !m_EdgeLaneData.TryGetComponent(lane, out Game.Net.EdgeLane edgeLane) || !m_OwnerData.TryGetComponent(lane, out Owner edgeOwner)
-                || !m_ConnectedBuildings.TryGetBuffer(edgeOwner.m_Owner, out DynamicBuffer<Game.Buildings.ConnectedBuilding> buildings))
+                || !m_BoxEdges.MayHave(edgeOwner.m_Owner) || !m_ConnectedBuildings.TryGetBuffer(edgeOwner.m_Owner, out DynamicBuffer<Game.Buildings.ConnectedBuilding> buildings))
             {
                 return float.MaxValue;
             }

@@ -256,7 +256,9 @@ Only boxes placed with the tool count.
 - **With zebras**: both rules apply; the lower speed wins (a car held by either waits). People on a zebra still stop
   everyone; people pass after 2 s; no starvation safeguard.
 
-Settings (Options > Junction Rules, yellow box group): **Cars obey yellow boxes** (default on; off = 0.4.1) and
+Settings (Options > Junction Rules, yellow box group): **Cars obey yellow boxes** (default on; off = 0.4.1 **for boxes
+only**: with **Cars never stop on a zebra** on, the Z O waiting gaps and the position-ordered room scan below still
+apply, since they belong to the zebra rule) and
 **Yellow boxes: turning across oncoming traffic may wait in the box** (default on, UK; greyed while off). The room margin slider is shared
 with the zebra rule: **Room margin past a zebra or yellow box (m)**.
 
@@ -299,12 +301,15 @@ decides at the line); a gap BEFORE a box (a mid-block zebra, then the road up to
 crosses the zebra into the free gap and the box rule applies at the box line.
 
 **Lane objects out of curve order (live 0.4.1: 2 then 4 per window), cause:** the game keeps each lane's LaneObject
-buffer sorted by the objects' TARGET curve position (`m_CurvePosition.y`; NetUtils.AddLaneObject / UpdateLaneObject),
-not by where they are (`.x`), so a car whose target lies short of the lane end (stopping) sits in the buffer before a
-car behind it that drives on. 0.4.1 read the buffer in storage order and could therefore judge "no room" wrongly (a
-near car read after a far one). 0.4.2 reads each lane in curve order (Core ScanOrder; cost one pass per vehicle read,
-the scan stops after a few vehicles, and it now also stops once the next vehicle is past the window). The counter
-stays as a diagnostic.
+buffer sorted by `m_CurvePosition.y` (NetUtils.AddLaneObject / UpdateLaneObject), and for a driving car that value is
+its reservation look-ahead (CarNavigationSystem.ReserveNavigationLanes ~2263: current position + braking distance at
+its max speed, capped at its target on the lane), not where it is (`.x`). So a faster car close behind a slower one
+(longer braking distance) sorts after it, and a car whose target lies short of the lane end sorts early. 0.4.1 read
+the buffer in storage order and could therefore judge "no room" wrongly (a near car read after a far one). 0.4.2 reads
+each lane in position order (Core ScanOrder: a buffer already in order is read straight, otherwise one pass per
+vehicle read; the scan stops after a few vehicles and once the next vehicle is past the window). On lanes driven in
+the inverse direction the counter reads the buffer from its end (no false reports there). The counter stays as a
+diagnostic.
 
 Deadlock notes (report, no safeguard by brief):
 - Gridlock moves to the box entry: if the exit never clears, vehicles stand at the line indefinitely (by design).
@@ -313,4 +318,8 @@ Deadlock notes (report, no safeguard by brief):
 - A boxed entrance in front of a queue that never clears keeps the driveway vehicle waiting (it never joins).
 - Vehicles from another arm already in the box are not counted against the exit (only the own path ahead).
 - An unknown rest of the path (destination, parking, end of the read lanes) counts as free, as in section 10.
+- Cars from another arm heading to the same exit are not counted: two arms can each see room and both enter, and the
+  second may then stand in the box (only the own path ahead, and vehicles already in the box on it, count).
+- Emergency vehicles are held by boxes like everyone else (no exemption in this probe): watch for an ambulance or fire
+  engine waiting at a box line behind a standing exit queue and report it.
 - Z O: a car waiting at O blocks the zebra for nobody, but cars behind it wait before the zebra (O occupied) until it goes.
