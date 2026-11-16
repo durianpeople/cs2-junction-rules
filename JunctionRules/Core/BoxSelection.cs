@@ -46,6 +46,7 @@ namespace JunctionRules.Core
         public bool Owned;           // Owner (sub-building / extension): its main building is the one to pick
         public bool HasRoadEdge;     // Building.m_RoadEdge != Entity.Null and that edge exists
         public bool RoadIsRoad;      // the road edge has Game.Net.Road (not a path / track)
+        public bool RoadOwned;       // the road edge has Game.Common.Owner: a building's own sub-net road (RoadConnectionSystem.cs 463-486), inside its site
         public bool RoadHighway;
         public bool RoadElevatedOrTunnel;
         public bool OnRoad;          // prefab CanBeOnRoad / CanBeOnRoadArea without CanBeRoadSide: stands on the road itself
@@ -81,6 +82,7 @@ namespace JunctionRules.Core
             if (f.Owned) { why = "part of another building (pick the main building)"; return false; }
             if (!f.HasRoadEdge) { why = "no road access"; return false; }
             if (!f.RoadIsRoad) { why = "access is not on a road"; return false; }
+            if (f.RoadOwned) { why = "access is on a road inside a building's own site"; return false; }
             if (f.OnRoad) { why = "stands on the road itself"; return false; }
             if (f.RoadHighway) { why = "access on a highway"; return false; }
             if (f.RoadElevatedOrTunnel) { why = "access road not at ground level"; return false; }

@@ -34,7 +34,9 @@ namespace JunctionRules
             log.Info($"{nameof(OnLoad)} version {typeof(Mod).Assembly.GetName().Version}, copy made from game {MadeFrom.GameVersion}");
 
             Settings = new JunctionRulesSettings(this);
-            Settings.RegisterKeyBindings();
+            // 0.4.0 (JR-T-007-r): a key binding problem must not take the driving rules down with it (the tool then has no shortcut).
+            try { Settings.RegisterKeyBindings(); }
+            catch (Exception e) { log.Warn("yellow box tool shortcut not registered: " + e.GetType().Name + ": " + e.Message); }
             Settings.RegisterInOptionsUI();
             GameManager.instance.localizationManager.AddSource("en-US", new LocaleEN(Settings));
             AssetDatabase.global.LoadSettings(nameof(JunctionRules), Settings, new JunctionRulesSettings(this));

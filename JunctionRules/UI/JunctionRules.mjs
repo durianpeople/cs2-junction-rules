@@ -1,3 +1,11 @@
+/*!
+ * Cities: Skylines II UI Module
+ *
+ * Id: JunctionRules
+ * Author: Junction Rules
+ * Version: 0.4.0
+ * Dependencies:
+ */
 // Junction Rules 0.4.0-probe (JR-T-007): yellow box tool button, top left of the city screen.
 // Hand-written UI module (no bundler): uses the game's globals the way built mods do (window.React, window["cs2/api"],
 // window["cs2/ui"]; see e.g. Traffic.mjs: Button variant "floating" appended to "GameTopLeft").

@@ -78,7 +78,7 @@ curve nearest the middle of the lot front (lot depth x 4 m forward of the buildi
 371-385, 455-458, 505-509; BuildingUtils.CalculateFrontPosition 88-92). The game itself never connects a building to an
 elevated / tunnel edge (358-361) or a Raised / Lowered side (375-381). Excluded: a sub-building / extension (pick the
 main building: the tool does that when you point at the extension), no road access, access on a path / track, highway,
-elevated / tunnel road, a building that stands on the road itself (CanBeOnRoad / CanBeOnRoadArea without CanBeRoadSide),
+elevated / tunnel road, access on a road the building owns (its own sub-net inside its site; JR-T-007-r), a building that stands on the road itself (CanBeOnRoad / CanBeOnRoadArea without CanBeRoadSide),
 an access inside a junction's node area.
 
 ## 4. Box shapes

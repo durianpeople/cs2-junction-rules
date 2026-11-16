@@ -142,6 +142,8 @@ namespace JunctionRules.Tests
             Check(!BoxSelection.EntranceOk(e, out why) && why.Contains("highway"), "entrance: highway access excluded");
             e = Good(); e.RoadElevatedOrTunnel = true;
             Check(!BoxSelection.EntranceOk(e, out _), "entrance: elevated / tunnel access excluded");
+            e = Good(); e.RoadOwned = true;
+            Check(!BoxSelection.EntranceOk(e, out why) && why.Contains("own site"), "entrance: access on a building's own sub-net road excluded (JR-T-007-r)");
             e = Good(); e.OnRoad = true;
             Check(!BoxSelection.EntranceOk(e, out why) && why.Contains("on the road"), "entrance: building standing on the road excluded");
             e = Good(); e.AccessInsideEdge = false;

@@ -116,6 +116,7 @@ namespace JunctionRules.Boxes
             if (!f.HasRoadEdge) return f;
             f.RoadIsRoad = em.HasComponent<Road>(road) && em.HasComponent<Edge>(road);
             if (!f.RoadIsRoad) return f;
+            f.RoadOwned = em.HasComponent<Owner>(road);
             f.RoadHighway = IsHighway(em, road);
             f.RoadElevatedOrTunnel = EdgeOffGround(em, road);
             access = AccessOf(em, road, b.m_CurvePosition);
