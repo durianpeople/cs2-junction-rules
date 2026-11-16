@@ -182,12 +182,13 @@ namespace JunctionRules.Stage2
         /// <summary>SetBoxes ran (the box lookups below are valid).</summary>
         private bool m_BoxLookups;
         private ComponentLookup<JunctionRules.Boxes.YellowBoxJunction> m_BoxJunctionData;
-        private ComponentLookup<JunctionRules.Boxes.YellowBoxEntrance> m_BoxEntranceData;
-        private ComponentLookup<Game.Buildings.Building> m_BuildingData;
-        private BufferLookup<Game.Buildings.ConnectedBuilding> m_ConnectedBuildings;
         private ComponentLookup<Game.Net.EdgeLane> m_EdgeLaneData;
-        /// <summary>0.4.2 (JR-T-010-r): road edges with boxed accesses (by value, Stage2/JRBoxEdges.cs).</summary>
-        private JRBoxEdges m_BoxEdges;
+        /// <summary>
+        /// 0.4.3: the boxed car exits (Stage2/JRBoxEdges.cs). A POINTER to the navigation job's single copy (its field
+        /// m_JRBoxEdges, S2-26), so the ~1 KB list is not zeroed / copied with every car's iterator. Valid only inside the
+        /// job's Execute (the job struct does not move while it runs); null until SetBoxes (m_BoxLookups guards every read).
+        /// </summary>
+        private unsafe JRBoxEdges* m_BoxEdges;
         /// <summary>The lane being checked (BeginLane, Whole junction) is a lane of a boxed junction: its decision is at the stop line.</summary>
         private bool m_BoxLane;
         /// <summary>Its turn spot (UK right-turn exception, driving coordinates; 2 = none) and that spot's index in the stretch spots (-1 = none).</summary>

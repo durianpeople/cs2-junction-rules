@@ -50,7 +50,7 @@ namespace JunctionRules.Tests
                 Check(BoxSelection.Toggle(false, false) == ToggleAction.None && BoxSelection.Toggle(true, false) == ToggleAction.Remove, "F3: invalid without a box = nothing; with a box = remove");
                 string tool = Code("Boxes", "YellowBoxToolSystem.cs");
                 Check(Regex.IsMatch(tool, @"h\.Segments\.Count == 0 && !m_Hover\.HasBox\)[\s\S]{0,200}m_Hover\.Valid = false;"), "F3: a target with no outline and no box is made invalid (no invisible box saved)");
-                Check(tool.Contains("m_NoShapeWarned.Add(m_Hover.Entity)") && tool.Contains("Mod.log.Warn($\"yellow box tool:"), "F3: shape failure warned once per target entity");
+                Check(tool.Contains("m_NoShapeWarned.Add((m_Hover.Entity, ExitSub(m_Hover)))") && tool.Contains("Mod.log.Warn($\"yellow box tool:"), "F3: shape failure warned once per target (0.4.3: per exit of a building)");
                 Check(Code("Paint", "YellowBoxPaintSystem.cs").Contains("Mod.log.Warn($\"yellow boxes: {b.Label}: building {b.Building}: not painted"), "F3: entrance rebuild failure logged at Warn");
             }
 
@@ -87,33 +87,47 @@ namespace JunctionRules.Tests
                 Check(!Regex.IsMatch(shapes, @"arms\[best\]\.Yielding = true"), "F4: no 'any yielding lane' rule left");
             }
 
-            // ---- F5: hover solved once per target; re-solved on target / box state / params / source change.
+            // ---- F5: hover solved once per target; re-solved on target / params / source change (0.4.3: not on box state;
+            // an exit also on its exit key and where it sits now).
             {
                 var c = new HoverCache<string>();
                 int n = 0;
                 Func<string> solve = () => (++n).ToString();
-                var k = new HoverKey(42, 1, false, 0, 8, 0.5);
+                var k = new HoverKey(42, 1, 0, 8, 0.5);
                 c.Get(k, false, solve);
                 for (int i = 0; i < 100; i++) c.Get(k, false, solve);
                 Check(n == 1, $"F5: same target for 100 frames: solved once ({n})");
-                c.Get(new HoverKey(42, 1, true, 0, 8, 0.5), false, solve);
-                Check(n == 2, "F5: box added: re-solved");
-                c.Get(new HoverKey(42, 1, true, 0, 8, 0.7), false, solve);
-                Check(n == 3, "F5: margin changed: re-solved");
-                c.Get(new HoverKey(42, 1, true, 0, 10, 0.7), false, solve);
-                c.Get(new HoverKey(42, 1, true, 0.2, 10, 0.7), false, solve);
-                Check(n == 5, "F5: entrance length / kerb inset changed: re-solved");
-                c.Get(new HoverKey(43, 1, true, 0.2, 10, 0.7), false, solve);
-                Check(n == 6, "F5: another target: re-solved");
-                c.Get(new HoverKey(43, 1, true, 0.2, 10, 0.7), true, solve);
-                Check(n == 7, "F5: a source Updated: re-solved");
+                c.Get(new HoverKey(42, 1, 0, 8, 0.5), false, solve);
+                Check(n == 1, "F5 (0.4.3): box added / removed: same shape, not re-solved (colour at draw time)");
+                c.Get(new HoverKey(42, 1, 0, 8, 0.7), false, solve);
+                Check(n == 2, "F5: margin changed: re-solved");
+                c.Get(new HoverKey(42, 1, 0, 10, 0.7), false, solve);
+                c.Get(new HoverKey(42, 1, 0.2, 10, 0.7), false, solve);
+                Check(n == 4, "F5: entrance length / kerb inset changed: re-solved");
+                c.Get(new HoverKey(43, 1, 0.2, 10, 0.7), false, solve);
+                Check(n == 5, "F5: another target: re-solved");
+                c.Get(new HoverKey(43, 1, 0.2, 10, 0.7), true, solve);
+                Check(n == 6, "F5: a source Updated: re-solved");
                 c.Reset();
-                c.Get(new HoverKey(43, 1, true, 0.2, 10, 0.7), false, solve);
-                Check(n == 8 && c.Solves == 8, "F5: reset (tool stopped): re-solved");
+                c.Get(new HoverKey(43, 1, 0.2, 10, 0.7), false, solve);
+                Check(n == 7 && c.Solves == 7, "F5: reset (tool stopped): re-solved");
+                // 0.4.3 review F5: exits
+                var e1 = new HoverKey(50, 2, 0, 8, 0.5, 11, (7L << 32) | 1, HoverKey.QuantiseT(0.25));
+                c.Get(e1, false, solve);
+                c.Get(new HoverKey(50, 2, 0, 8, 0.5, 11, (7L << 32) | 1, HoverKey.QuantiseT(0.25 + 1e-6)), false, solve);
+                Check(n == 8, "F5 (0.4.3): same exit, same place (t noise under the grid): solved once");
+                c.Get(new HoverKey(50, 2, 0, 8, 0.5, 12, (7L << 32) | 1, HoverKey.QuantiseT(0.25)), false, solve);
+                Check(n == 9, "F5 (0.4.3): another exit of the same building: re-solved");
+                c.Get(new HoverKey(50, 2, 0, 8, 0.5, 12, (9L << 32) | 1, HoverKey.QuantiseT(0.25)), false, solve);
+                Check(n == 10, "F5 (0.4.3): the exit's road changed (drive re-wired): re-solved, no stale failure kept");
+                c.Get(new HoverKey(50, 2, 0, 8, 0.5, 12, (9L << 32) | 1, HoverKey.QuantiseT(0.30)), false, solve);
+                Check(n == 11, "F5 (0.4.3): the exit moved along its road: re-solved");
+                Check(HoverKey.QuantiseT(-1) == 0 && HoverKey.QuantiseT(2) == 4096 && HoverKey.QuantiseT(double.NaN) == -1, "F5: t quantised, clamped");
                 string tool = Code("Boxes", "YellowBoxToolSystem.cs");
                 Check(!tool.Contains("kRefreshFrames") && !tool.Contains("m_CacheAge"), "F5: no periodic re-solve");
                 Check(Regex.IsMatch(tool, @"OnStopRunning\(\)[\s\S]{0,120}m_Cache\.Reset\(\)") && Regex.IsMatch(tool, @"OnStartRunning\(\)[\s\S]{0,200}m_Cache\.Reset\(\)"), "F5: cache reset when the tool starts and stops");
                 Check(tool.Contains("HasComponent<Updated>(e)"), "F5: a source entity Updated forces a re-solve");
+                Check(tool.Contains("m_NoShapeWarned.Add((m_Hover.Entity, ExitSub(m_Hover)))") && tool.Contains("HoverKey.QuantiseT(t.Access.T)") && !Regex.IsMatch(tool, @"new HoverKey\([^;]*HasBox"), "F5 (0.4.3): no-shape warning once per exit; key has the exit's road + t, not the box state");
             }
 
             // ---- F6: shape parameters published at mod load / tool start; Options setter keeps a list override.

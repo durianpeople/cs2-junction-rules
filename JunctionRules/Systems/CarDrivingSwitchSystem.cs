@@ -35,6 +35,7 @@ namespace JunctionRules.Systems
         private int m_BoxEdgeCount = -1;
         private int m_BoxEdgeAge;
         private int m_BoxStoreVersion = -1;
+        private int m_LastDropped;
         private bool m_ProbesOn;
         private bool m_ProbesApplied;
 
@@ -57,6 +58,7 @@ namespace JunctionRules.Systems
             {
                 if (m_BoxEdgeCount != 0) BoxEdgeHandoff.Publish(new ExitBand[0]);
                 m_BoxEdgeCount = 0;
+                m_LastDropped = 0;
                 return;
             }
             int count = m_EntranceBuildings.CalculateEntityCount();
@@ -73,13 +75,19 @@ namespace JunctionRules.Systems
             }
             int before = BoxEdgeHandoff.Version;
             BoxEdgeHandoff.Publish(bands);
+            int dropped = BoxEdgeHandoff.Dropped;
             if (BoxEdgeHandoff.Version != before)
             {
-                string msg = $"yellow boxes (driving): {BoxEdgeHandoff.Keys.Length} boxed car exit(s) on {count} building(s) handed to the box rule"
-                    + (unmatched > 0 ? $"; {unmatched} saved exit key(s) without an exit now (not obeyed until the paint re-keys or drops them)" : "")
-                    + (BoxEdgeHandoff.Dropped > 0 ? $"; {BoxEdgeHandoff.Dropped} more exit(s) over the limit of {ExitBands.Capacity} NOT obeyed" : "");
-                if (BoxEdgeHandoff.Dropped > 0) Mod.log.Warn(msg);
-                else Mod.log.Info(msg);
+                Mod.log.Info($"yellow boxes (driving): {BoxEdgeHandoff.Keys.Length} boxed car exit(s) on {count} building(s) handed to the box rule"
+                    + (unmatched > 0 ? $"; {unmatched} saved exit key(s) without an exit now (not obeyed until the paint re-keys or drops them)" : ""));
+            }
+            // 0.4.3 review F2: the kept bands can stay the same (no new version) while the number over the limit changes
+            // (a 64th exit sorting last), so the over-limit count is logged on its own change.
+            if (dropped != m_LastDropped)
+            {
+                if (dropped > 0) Mod.log.Warn($"yellow boxes (driving): {dropped} boxed car exit(s) over the limit of {ExitBands.Capacity} are NOT obeyed ({bands.Count} found)");
+                else if (m_LastDropped > 0) Mod.log.Info($"yellow boxes (driving): back within the limit of {ExitBands.Capacity} boxed car exits; all obeyed");
+                m_LastDropped = dropped;
             }
         }
 

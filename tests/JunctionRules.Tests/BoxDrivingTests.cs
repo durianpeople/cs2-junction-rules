@@ -193,7 +193,8 @@ namespace JunctionRules.Tests
             int s26e = nav.IndexOf("JR-STAGE2 END", s26, StringComparison.Ordinal);
             string b26 = nav.Substring(s26, s26e - s26);
             Check(b26.Contains("if (carLaneSpeedIterator.m_JR.m_BoxRule)") || b26.Contains("m_JR.m_BoxRule"), "S2-26 hands the box lookups only with the setting on");
-            Check(b26.Contains("m_JR.SetBoxes(m_JRBoxJunctionData, m_JRBoxEntranceData, m_JRBuildingData, m_JRConnectedBuildings, m_JREdgeLaneData, m_JRBoxEdges)"), "S2-26 SetBoxes");
+            Check(b26.Contains("m_JR.SetBoxes(m_JRBoxJunctionData, m_JREdgeLaneData, ref m_JRBoxEdges)"), "S2-26 SetBoxes (0.4.3 review F1: the job's one copy by ref, no building lookups)");
+            Check(!nav.Contains("m_JRBoxEntranceData") && !nav.Contains("m_JRBuildingData") && !nav.Contains("m_JRConnectedBuildings"), "0.4.3 review F1: the unused building lookups are gone from the job");
             Check(nav.Contains("GetComponentLookup<JunctionRules.Boxes.YellowBoxJunction>(isReadOnly: true)") || nav.Contains("YellowBoxJunction>(true)"), "box lookups read-only");
             string job = File.ReadAllText(Path.Combine(src, "Stage2", "JRWholeJunction.cs"));
             Check(job.Contains("j.m_BoxRule = (mode & Stage2Mode.BoxObey) != 0;") && job.Contains("mode &= ~Stage2Mode.Stripped;"), "Create reads and strips the box bits");
@@ -346,19 +347,28 @@ namespace JunctionRules.Tests
             string src = Path.Combine(RepoRoot(), "JunctionRules");
             string yb = File.ReadAllText(Path.Combine(src, "Stage2", "JRYellowBox.cs"));
             // 0.4.3: one band per boxed car exit (edge + t), no building read in the job (no one-box-per-building format)
-            Check(yb.Contains("int first = m_BoxEdges.First(edgeOwner.m_Owner);") && yb.Contains("m_BoxEdges.Key(i) == edgeKey") && yb.Contains("(m_BoxEdges.T(i) - edgeLane.m_EdgeDelta.x) / delta"),
+            Check(yb.Contains("int first = bands->First(edgeOwner.m_Owner);") && yb.Contains("bands->Key(i) == edgeKey") && yb.Contains("(bands->T(i) - edgeLane.m_EdgeDelta.x) / delta"),
                 "BoxHold: one binary search to the edge's first exit band, then every exit on that edge as its own band");
             string ybCode = System.Text.RegularExpressions.Regex.Replace(yb, @"//.*|///.*", "");
             Check(!ybCode.Contains("m_ConnectedBuildings.TryGetBuffer") && !ybCode.Contains("m_RoadEdge") && !ybCode.Contains("m_CurvePosition") && !ybCode.Contains("m_BoxEntranceData.HasComponent"),
                 "BoxHold no longer reads Building.m_RoadEdge / m_CurvePosition or the building's box component (0.4.0-0.4.2 format)");
+            string whole = File.ReadAllText(Path.Combine(src, "Stage2", "JRWholeJunction.cs"));
+            Check(whole.Contains("private unsafe JRBoxEdges* m_BoxEdges;") && !System.Text.RegularExpressions.Regex.IsMatch(whole, @"\bJRBoxEdges\s+m_BoxEdges\b")
+                && !whole.Contains("m_BoxEntranceData") && !whole.Contains("m_BuildingData") && !whole.Contains("m_ConnectedBuildings")
+                && yb.Contains("m_BoxEdges = (JRBoxEdges*)UnsafeUtility.AddressOf(ref boxEdges);"),
+                "0.4.3 review F1: each car's iterator holds a pointer to the job's one band set (no ~1 KB copy per car), no unused lookups");
             string edges = File.ReadAllText(Path.Combine(src, "Stage2", "JRBoxEdges.cs"));
             Check(edges.Contains("FixedList512Bytes<long> m_Keys") && edges.Contains("FixedList512Bytes<float> m_T") && edges.Contains("SortedKeys.First(ref this, KeyOf(edge))"), "exit bands by value (keys + t), first band by binary search");
             string nav = File.ReadAllText(Path.Combine(src, "Vanilla", "JRCarNavigationSystem.cs"));
-            Check(nav.Contains("jobData.m_JRBoxEdges = JunctionRules.Stage2.JRStage2Bridge.BoxEdges;") && nav.Contains("m_JREdgeLaneData, m_JRBoxEdges);"), "S2-23 takes the set by value, S2-26 hands it to the iterator");
+            Check(nav.Contains("jobData.m_JRBoxEdges = JunctionRules.Stage2.JRStage2Bridge.BoxEdges;") && nav.Contains("m_JREdgeLaneData, ref m_JRBoxEdges);"), "S2-23 takes the set by value (one copy per job), S2-26 hands the iterator a pointer to it");
             string sw = File.ReadAllText(Path.Combine(src, "Systems", "CarDrivingSwitchSystem.cs"));
             Check(sw.Contains("UpdateBoxEdges((stage2Mode & Stage2Mode.BoxEntrances) != 0);") && sw.Contains("BoxFacts.BoxedExitBands(EntityManager, buildings[i], bands)")
                 && sw.Contains("BoxEdgeHandoff.Publish(bands);") && sw.Contains("version == m_BoxStoreVersion") && !sw.Contains("JunctionRules.Stage2") && !sw.Contains("m_RoadEdge"),
                 "switch system rebuilds the exit bands on the main thread when boxes change (count or BoxStore.Version) and periodically, from the saved exit keys");
+            Check(sw.Contains("if (dropped != m_LastDropped)") && sw.IndexOf("if (dropped != m_LastDropped)", StringComparison.Ordinal) > sw.IndexOf("BoxEdgeHandoff.Publish(bands);", StringComparison.Ordinal)
+                && System.Text.RegularExpressions.Regex.IsMatch(sw, @"if \(dropped != m_LastDropped\)\s*\{\s*if \(dropped > 0\) Mod\.log\.Warn")
+                && sw.Contains("m_LastDropped = 0;"),
+                "0.4.3 review F2: the over-limit Warn follows the Dropped count, not the hand-over Version");
             string facts = File.ReadAllText(Path.Combine(src, "Boxes", "BoxFacts.cs"));
             Check(facts.Contains("ExitBands.Boxed(keys, c.Legacy, old, cands, out int unmatched)") && facts.Contains("new ExitBand(SortedKeys.KeyOf(x.Road.Index, x.Road.Version), x.T)"), "BoxedExitBands: saved keys matched to current exits, band at the exit's road + t");
             string store = File.ReadAllText(Path.Combine(src, "Boxes", "BoxStore.cs"));
@@ -404,6 +414,21 @@ namespace JunctionRules.Tests
             for (int i = 0; i < 70; i++) many.Add(new ExitBand(i, 0.5f));
             n = ExitBands.Normalise(many, ExitBands.Capacity, out dropped);
             Check(n.Length == 63 && dropped == 7 && ExitBands.Capacity == 63, "over the job's 63 bands: the rest counted as dropped (Warn in the log)");
+            // 0.4.3 review F2: 63 exits, then a 64th that sorts last: the kept bands (and so the Version) do not change,
+            // but Dropped goes 0 -> 1, which the switch system logs on its own.
+            var full = new System.Collections.Generic.List<ExitBand>();
+            for (int i = 0; i < 63; i++) full.Add(new ExitBand(100 + i, 0.5f));
+            BoxEdgeHandoff.Publish(full);
+            int vFull = BoxEdgeHandoff.Version;
+            Check(BoxEdgeHandoff.Dropped == 0 && BoxEdgeHandoff.Keys.Length == 63, "F2: 63 exits: all kept, none dropped");
+            full.Add(new ExitBand(1000, 0.5f));
+            BoxEdgeHandoff.Publish(full);
+            Check(BoxEdgeHandoff.Dropped == 1 && BoxEdgeHandoff.Version == vFull && BoxEdgeHandoff.Keys.Length == 63 && BoxEdgeHandoff.Keys[62] == 162,
+                "F2: a 64th exit sorting last: Dropped = 1 with the same kept bands and Version (warned on the Dropped change)");
+            full.RemoveAt(63);
+            BoxEdgeHandoff.Publish(full);
+            Check(BoxEdgeHandoff.Dropped == 0 && BoxEdgeHandoff.Version == vFull, "F2: back to 63: Dropped = 0");
+            BoxEdgeHandoff.Publish(new ExitBand[0]);
 
             // Job loop as JRYellowBox.BoxHold runs it: first band of the edge by binary search, then each band on it.
             var set = new TLongs { L = new System.Collections.Generic.List<long> { 3, 5, 5, 5, 9 } };

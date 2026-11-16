@@ -482,8 +482,13 @@ obeyed; more gives a Warn line with the count (report it). Junction boxes have n
 
 Per exit band (same rules as section 13, now per exit): main-road vehicles do not enter that exit's band without room
 past it; vehicles leaving at that exit need room past its band on their lane; vehicles turning in are not held. A
-building with two boxed exits on one road has two separate bands (a car passing both checks each one); a car leaving at
-one exit is not held by the building's other exit box.
+building with two boxed exits on one road has two separate bands (a car passing both checks each one). Two boxed exits
+closer than the band length (8 m: drives under about 8 m apart) have overlapping bands and act as ONE longer box: a car
+leaving at one exit whose join point lies inside the other exit's band also needs room past that band when it lies
+ahead (so it never stops inside the neighbour's box); a band behind it asks less than its own and changes nothing.
+Known 0.4.3 limit: the band a car obeys is a fixed +-L/2 (entrance length) along the road around the exit, not the
+painted outline (which is clipped at junctions / neighbours and shifted on bends); on a bend or next to a junction the
+two can differ by a metre or two.
 
 | # | Do | Expect |
 |---|---|---|
@@ -492,9 +497,11 @@ one exit is not held by the building's other exit box.
 | D3 | Box a second gate of a car park / depot (X2) | the driving line count goes up by one; each gate keeps its own band clear |
 | D4 | Remove one exit box of a two-box building | its band goes (line count down by one); the other gate still kept clear |
 | D5 | Lindbergh x Anchor (junction box, section 13) | as 0.4.2: no vehicle stops inside; timing log `box entries held`, `right-turn waits` |
-| D6 | A boxed exit on a bend | band centred on the drive; the painted box (section 12 X7) covers the drive |
+| D6 | A boxed exit on a bend | band centred on the drive; the painted box (section 12 X7) covers the drive. Known limit: the obeyed band is the fixed +-L/2 around the exit, not the painted (clipped / bend-shifted) box; a queue may stop up to a metre or two off the paint there (note it, not a fail) |
 | D7 | Timing log on | counters as 0.4.2: `box entries held N, right-turn waits N`, entrance band holds (main / leaving) |
 
-Risks to watch: the job now carries the exit list by value (1 KB per car step, 0.4.2: 128 bytes): compare the
-navigation timing with 0.4.2 (timing log) and report a clear slowdown; a building whose drive moved more than 2 m
+Risks to watch: the job carries the exit list (about 1 KB, 0.4.2: 128 bytes) once per job and each car reads it
+through a pointer (no per-car copy): still compare the navigation timing with 0.4.2 (timing log) and report a clear
+slowdown; the 64-step refresh rebuilds every boxed building's exits on the main thread (BoxFacts.Exits, allocating):
+cheap for a few boxed buildings, but watch for a periodic hitch (every 64 steps) with many; a building whose drive moved more than 2 m
 since the box was placed has no band until the paint re-keys or drops it (log `without an exit now`).

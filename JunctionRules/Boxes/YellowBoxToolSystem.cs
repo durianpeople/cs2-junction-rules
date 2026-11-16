@@ -55,7 +55,7 @@ namespace JunctionRules.Boxes
         }
         private readonly HoverCache<HoverShape> m_Cache = new HoverCache<HoverShape>();
         // F3: targets already warned about having no box shape (once per entity per tool session)
-        private readonly HashSet<Entity> m_NoShapeWarned = new HashSet<Entity>();
+        private readonly HashSet<(Entity, long)> m_NoShapeWarned = new HashSet<(Entity, long)>();
         // exit lists are re-read every kExitListFrames frames while the tool runs (buildings grow / move their drives)
         private const int kExitListFrames = 30;
 
@@ -145,7 +145,7 @@ namespace JunctionRules.Boxes
                         m_Hover.Valid = false;
                         m_Hover.NoShape = true;
                         m_Hover.Why = "no box shape can be built here: " + h.Failure;
-                        if (m_NoShapeWarned.Add(m_Hover.Entity))
+                        if (m_NoShapeWarned.Add((m_Hover.Entity, ExitSub(m_Hover))))   // review F5: once per exit, not per building
                             Mod.log.Warn($"yellow box tool: {What(m_Hover)} not selectable: {m_Hover.Why}");
                     }
                     else Draw(m_Hover, h.Segments);
@@ -319,7 +319,10 @@ namespace JunctionRules.Boxes
         /// </summary>
         private HoverShape Outline(Target t)
         {
-            var key = new HoverKey(((long)t.Entity.Index << 32) | (uint)t.Entity.Version, (int)t.Kind, t.HasBox, BoxStore.KerbInset, BoxStore.EntranceLength, BoxStore.MarkingMargin, ExitSub(t));
+            // review F5: no box state in the key (colour is picked at draw time); exits carry their key and current road + t
+            long accessEdge = t.Kind == Kind.Exit && t.Access.Edge != Entity.Null ? ((long)t.Access.Edge.Index << 32) | (uint)t.Access.Edge.Version : 0;
+            int accessT = t.Kind == Kind.Exit ? HoverKey.QuantiseT(t.Access.T) : 0;
+            var key = new HoverKey(((long)t.Entity.Index << 32) | (uint)t.Entity.Version, (int)t.Kind, BoxStore.KerbInset, BoxStore.EntranceLength, BoxStore.MarkingMargin, ExitSub(t), accessEdge, accessT);
             return m_Cache.Get(key, SourcesChanged(m_Cache.Value, t.Entity), () =>
             {
                 BoxShapes.Shape shape = t.Kind == Kind.Junction

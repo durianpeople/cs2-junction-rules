@@ -400,15 +400,7 @@ public class JRCarNavigationSystem : GameSystemBase
 		[ReadOnly]
 		public ComponentLookup<JunctionRules.Boxes.YellowBoxJunction> m_JRBoxJunctionData;
 
-		[ReadOnly]
-		public ComponentLookup<JunctionRules.Boxes.YellowBoxEntrance> m_JRBoxEntranceData;
-
-		[ReadOnly]
-		public ComponentLookup<Game.Buildings.Building> m_JRBuildingData;
-
-		[ReadOnly]
-		public BufferLookup<Game.Buildings.ConnectedBuilding> m_JRConnectedBuildings;
-
+		// 0.4.3: the boxed car exits, ONE copy per job; each car's iterator gets a pointer to it (S2-26)
 		public JunctionRules.Stage2.JRBoxEdges m_JRBoxEdges;
 
 		[ReadOnly]
@@ -1607,7 +1599,7 @@ public class JRCarNavigationSystem : GameSystemBase
 			// JR-STAGE2 BEGIN S2-26: 0.4.1 cars never stop on a zebra / 0.4.2 cars obey yellow boxes: the navigation lanes for the room-past scan; whole vehicle length (trailers incl.) also with the stock gap rule; 0.4.2 the box lookups
 			if (carLaneSpeedIterator.m_JR.m_BoxRule)
 			{
-				carLaneSpeedIterator.m_JR.SetBoxes(m_JRBoxJunctionData, m_JRBoxEntranceData, m_JRBuildingData, m_JRConnectedBuildings, m_JREdgeLaneData, m_JRBoxEdges);
+				carLaneSpeedIterator.m_JR.SetBoxes(m_JRBoxJunctionData, m_JREdgeLaneData, ref m_JRBoxEdges);
 			}
 			if (carLaneSpeedIterator.m_JR.m_ZebraRule || carLaneSpeedIterator.m_JR.m_BoxRule)
 			{
@@ -3148,9 +3140,6 @@ public class JRCarNavigationSystem : GameSystemBase
 		jobData.m_JRTrailerData = GetComponentLookup<CarTrailerData>(isReadOnly: true);
 		jobData.m_JRLayoutData = GetBufferLookup<LayoutElement>(isReadOnly: true);
 		jobData.m_JRBoxJunctionData = GetComponentLookup<JunctionRules.Boxes.YellowBoxJunction>(isReadOnly: true);
-		jobData.m_JRBoxEntranceData = GetComponentLookup<JunctionRules.Boxes.YellowBoxEntrance>(isReadOnly: true);
-		jobData.m_JRBuildingData = GetComponentLookup<Game.Buildings.Building>(isReadOnly: true);
-		jobData.m_JRConnectedBuildings = GetBufferLookup<Game.Buildings.ConnectedBuilding>(isReadOnly: true);
 		jobData.m_JREdgeLaneData = GetComponentLookup<Game.Net.EdgeLane>(isReadOnly: true);
 		jobData.m_JRBoxEdges = JunctionRules.Stage2.JRStage2Bridge.BoxEdges;
 		// JR-STAGE2 END
