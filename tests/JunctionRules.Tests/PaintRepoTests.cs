@@ -93,7 +93,7 @@ namespace JunctionRules.Tests
             foreach (Match m in Regex.Matches(store, @"var c = (new )?(\w+)")) if (m.Groups[2].Value != "YellowBoxEntrance") ownOnly = false;
             Check(ownOnly && !Regex.IsMatch(store, @"DestroyEntity|CreateEntity|Updated"), "BoxStore writes only YellowBoxJunction / YellowBoxEntrance (add, key list, remove), never marks the entity Updated");
             // JR-T-007b-r F6: PublishParams / ListPath share the shape parameters and the list path (no component write)
-            var calls = Regex.Matches(sys, @"BoxStore\.(\w+)\(").Cast<Match>().Select(m => m.Groups[1].Value).Where(c => c != "PublishParams" && c != "ListPath").ToList();
+            var calls = Regex.Matches(sys, @"BoxStore\.(\w+)\(").Cast<Match>().Select(m => m.Groups[1].Value).Where(c => c != "PublishParams" && c != "ListPath" && c != "Has" /* 0.4.8 review: read only */).ToList();
             bool allowed = calls.All(c => c == "Remove" || c == "RemoveExit" || c == "AddExit" || c == "SetExits" || c == "Add");
             Check(allowed && calls.Count(c => c == "Add") == 1 && calls.Count(c => c == "AddExit") == 1 && calls.Count(c => c == "SetExits") == 2 /* JR-T-014c: legacy box -> marker key when the building has only entrances */ && !sys.Contains("YellowBoxToolSystem"),
                 "paint code writes only through BoxStore: drop (Remove / RemoveExit), legacy migration (SetExits, Add = junction), re-key (AddExit); never names the tool (" + string.Join(",", calls) + ")");
