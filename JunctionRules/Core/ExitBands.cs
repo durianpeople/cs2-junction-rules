@@ -105,7 +105,11 @@ namespace JunctionRules.Core
             foreach (ExitBand b in all)
             {
                 if (float.IsNaN(b.T)) continue;
-                if (r.Count > 0 && r[r.Count - 1].EdgeKey == b.EdgeKey && Math.Abs(r[r.Count - 1].T - b.T) < SameT && r[r.Count - 1].Carriageways == b.Carriageways) continue;
+                bool dup = false;
+                // 0.4.4: same edge + near-equal t kept once per carriageway mask (two sides of a median are two bands)
+                for (int k = r.Count - 1; k >= 0 && r[k].EdgeKey == b.EdgeKey && Math.Abs(r[k].T - b.T) < SameT; k--)
+                    if (r[k].Carriageways == b.Carriageways) { dup = true; break; }
+                if (dup) continue;
                 r.Add(b);
             }
             dropped = Math.Max(0, r.Count - capacity);

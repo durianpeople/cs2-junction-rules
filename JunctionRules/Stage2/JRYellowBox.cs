@@ -143,11 +143,11 @@ namespace JunctionRules.Stage2
                 int last = merged.Length - 1;
                 if (last >= 0 && ExitBands.Touch(merged[last].x, merged[last].y, b0, b1, touch))
                 {
-                    merged[last] = new float2(math.min(merged[last].x, b0), math.max(merged[last].y, b1));
+                    merged[last] = math.float2(math.min(merged[last].x, b0), math.max(merged[last].y, b1));
                     continue;
                 }
                 if (merged.Length >= merged.Capacity) break;
-                merged.Add(new float2(b0, b1));
+                merged.Add(math.float2(b0, b1));
             }
             float braking = -1f;
             float result = float.MaxValue;

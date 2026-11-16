@@ -370,7 +370,7 @@ namespace JunctionRules.Tests
                 && sw.Contains("m_LastDropped = 0;"),
                 "0.4.3 review F2: the over-limit Warn follows the Dropped count, not the hand-over Version");
             string facts = File.ReadAllText(Path.Combine(src, "Boxes", "BoxFacts.cs"));
-            Check(facts.Contains("ExitBands.Boxed(keys, c.Legacy, old, cands, out int unmatched)") && facts.Contains("new ExitBand(SortedKeys.KeyOf(x.Road.Index, x.Road.Version), x.T)"), "BoxedExitBands: saved keys matched to current exits, band at the exit's road + t");
+            Check(facts.Contains("ExitBands.Boxed(keys, c.Legacy, old, cands, out int unmatched)") && facts.Contains("new ExitBand(SortedKeys.KeyOf(x.Road.Index, x.Road.Version), x.T, mask)"), "BoxedExitBands: saved keys matched to current exits, band at the exit's road + t");
             string store = File.ReadAllText(Path.Combine(src, "Boxes", "BoxStore.cs"));
             Check(System.Text.RegularExpressions.Regex.Matches(store, @"Version\+\+;").Count == 5, "BoxStore bumps its version in all five writers (Add, AddExit, RemoveExit, SetExits, Remove)");
             string job = File.ReadAllText(Path.Combine(src, "Stage2", "JRWholeJunction.cs"));
