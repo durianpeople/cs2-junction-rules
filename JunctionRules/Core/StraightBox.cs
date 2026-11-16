@@ -55,6 +55,12 @@ namespace JunctionRules.Core
         public V2 Inward;
         /// <summary>Largest forward shift allowed (metres): the mouth line may not pass the junction centre.</summary>
         public double MaxShift;
+        /// <summary>
+        /// 0.4.8 (JR-T-014b, G5): smallest shift (metres): the arm's marking (+ margin) lies past its kerb lines, so the
+        /// box may not start at the mouth (it would lie on the zebra); 0 = none. Holds for priority arms too (it is
+        /// where the box starts, not a slide). Set only by the 0.4.8 retry of CarriagewayOutline.BuildStraight.
+        /// </summary>
+        public double MinShift;
         /// <summary>STOP / Give Way on this approach (the game's CarLaneFlags.Stop / Yield on the node lanes from this arm).</summary>
         public bool Yielding;
         /// <summary>Label for notes (e.g. "arm 2").</summary>
@@ -186,13 +192,15 @@ namespace JunctionRules.Core
                 if (ctx.Dir[i].Length < 0.5) ctx.Dir[i] = mouths[i].Inward.Left * -1;
             }
             // Conflict points: only those inside every base mouth line count (a point already behind a stop line is not the box's business).
+            // 0.4.8 (JR-T-014b): an arm held clear of a marking past its kerb lines (MinShift) has its base line there,
+            // exactly as an arm trimmed to its zebra + margin has (a point between the mouth and that line is skipped too).
             var cps = new List<V2>();
             int skipped = 0;
             if (conflictPoints != null)
                 foreach (var c in conflictPoints)
                 {
                     bool ok = true;
-                    for (int i = 0; i < n; i++) if (V2.Dot(c - ctx.Mid[i], mouths[i].Inward) < -1e-6) ok = false;
+                    for (int i = 0; i < n; i++) if (V2.Dot(c - ctx.Mid[i], mouths[i].Inward) < Math.Max(0, mouths[i].MinShift) - 1e-6) ok = false;
                     if (ok) cps.Add(c); else skipped++;
                 }
             ctx.Conflicts = cps;
@@ -263,8 +271,22 @@ namespace JunctionRules.Core
                 var cp = corners[prev];
                 if (cp.Closed)
                 {
-                    ring.Add(ctx.C[prev].At(0.5 * (cp.Ta + cp.Tb)));
-                    res.Notes.Add($"corner {Name(mouths, prev)} - {Name(mouths, i)} closed: the slid mouths meet on the kerb");
+                    V3 v = ctx.C[prev].At(0.5 * (cp.Ta + cp.Tb));
+                    // 0.4.8 (JR-T-014b): a mouth held clear of a marking past its kerb lines can lie beyond the whole kerb
+                    // chain (Crescent W: zebra 2.3 m in, kerb lines 1.8 m long); the corner is then where the two mouth
+                    // lines meet, on the asphalt, not a point of the kerb behind them. Only for such mouths (MinShift > 0):
+                    // every other closed corner keeps its 0.4.7 vertex.
+                    if ((Lo(ctx, prev) > 0 || Lo(ctx, i) > 0) && LineHit(ctx.Mid[prev] + mouths[prev].Inward * shift[prev], ctx.Dir[prev], ctx.Mid[i] + mouths[i].Inward * shift[i], ctx.Dir[i], out V2 x)
+                        && NoKerbInside(ctx.C[prev], ctx.Mid[prev] + mouths[prev].Inward * shift[prev], mouths[prev].Inward, ctx.Mid[i] + mouths[i].Inward * shift[i], mouths[i].Inward))
+                    {
+                        ring.Add(V3.FromXZ(x, v.Y));
+                        res.Notes.Add($"corner {Name(mouths, prev)} - {Name(mouths, i)} closed: the mouth lines meet on the asphalt");
+                    }
+                    else
+                    {
+                        ring.Add(v);
+                        res.Notes.Add($"corner {Name(mouths, prev)} - {Name(mouths, i)} closed: the slid mouths meet on the kerb");
+                    }
                 }
                 else ring.Add(cp.Chamfered ? cp.Qc : ctx.C[prev].At(cp.Tb));
                 var ci = corners[i];
@@ -322,6 +344,9 @@ namespace JunctionRules.Core
 
         private static double Cap(Ctx ctx, int i) => Math.Max(0, ctx.M[i].MaxShift);
 
+        /// <summary>0.4.8 (JR-T-014b): the smallest shift of mouth i (BoxMouth.MinShift, 0 unless a marking lies past its kerb lines).</summary>
+        private static double Lo(Ctx ctx, int i) => Math.Max(0, ctx.M[i].MinShift);
+
         /// <summary>Exact cyclic DP over the shift grid, then per-arm bisection refinement. Returns shifts; cost = total penalty + shifts.</summary>
         private static double[] Search(Ctx ctx, bool[] movable, out double cost)
         {
@@ -329,10 +354,11 @@ namespace JunctionRules.Core
             var grid = new double[n][];
             for (int i = 0; i < n; i++)
             {
-                if (!movable[i] || Cap(ctx, i) <= 1e-9) { grid[i] = new[] { 0.0 }; continue; }
-                double step = Math.Max(GridStep, Cap(ctx, i) / (MaxGrid - 1));
+                double lo0 = Lo(ctx, i);
+                if (!movable[i] || Cap(ctx, i) <= lo0 + 1e-9) { grid[i] = new[] { lo0 }; continue; }
+                double step = Math.Max(GridStep, (Cap(ctx, i) - lo0) / (MaxGrid - 1));
                 var g = new List<double>();
-                for (double s = 0; s < Cap(ctx, i) - 1e-9; s += step) g.Add(s);
+                for (double s = lo0; s < Cap(ctx, i) - 1e-9; s += step) g.Add(s);
                 g.Add(Cap(ctx, i));
                 grid[i] = g.ToArray();
             }
@@ -396,12 +422,12 @@ namespace JunctionRules.Core
             // refinement: each moved arm down to the smallest shift that keeps its two corners and mouth as good
             for (int i = 0; i < n; i++)
             {
-                if (shift[i] <= 1e-9) continue;
+                if (shift[i] <= Lo(ctx, i) + 1e-9) continue;
                 int p = (i + n - 1) % n, q = (i + 1) % n;
                 double Pen(double s) => MouthPenalty(ctx, i, s) + CornerPenalty(ctx, p, shift[p], s) + CornerPenalty(ctx, i, s, shift[q]);
                 double target = Pen(shift[i]);
                 int k = Array.IndexOf(grid[i], shift[i]);
-                double lo = k > 0 ? grid[i][k - 1] : 0, hi = shift[i];
+                double lo = k > 0 ? grid[i][k - 1] : Lo(ctx, i), hi = shift[i];
                 if (Pen(lo) <= target) { shift[i] = lo; continue; }
                 for (int it = 0; it < RefineSteps; it++)
                 {
@@ -603,6 +629,14 @@ namespace JunctionRules.Core
             if (bestArea < double.MaxValue) { area = bestArea; return true; }
             why = bestWhy ?? "no straight cut meets both mouth lines";
             return false;
+        }
+
+        /// <summary>0.4.8 (JR-T-014b): no point of kerb chain c lies more than KerbTolerance inside both mouth lines
+        /// (origins o1/o2, inward normals n1/n2), so the box corner where the lines meet is on the asphalt.</summary>
+        private static bool NoKerbInside(Chain c, V2 o1, V2 n1, V2 o2, V2 n2)
+        {
+            foreach (var p in c.P) if (V2.Dot(p.XZ - o1, n1) > KerbTolerance && V2.Dot(p.XZ - o2, n2) > KerbTolerance) return false;
+            return true;
         }
 
         /// <summary>Where the line o1 + t d1 meets the line o2 + u d2 (false when parallel).</summary>

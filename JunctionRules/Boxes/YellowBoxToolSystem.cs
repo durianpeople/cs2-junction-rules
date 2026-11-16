@@ -56,6 +56,8 @@ namespace JunctionRules.Boxes
             public List<Entity> Sources;
             /// <summary>0.4.7 (G5): the solver's notes (footways, arms yield / priority, conflict points, shifts), logged with a no-shape refusal.</summary>
             public string Notes;
+            /// <summary>0.4.8 (JR-T-014b): junction only: the solved shape in one line (BoxShapes.Shape.Summary), logged when a box is added.</summary>
+            public string Summary;
         }
         private readonly HoverCache<HoverShape> m_Cache = new HoverCache<HoverShape>();
         // F3: targets already warned about having no box shape (once per entity per tool session)
@@ -359,7 +361,7 @@ namespace JunctionRules.Boxes
                     shape.Outline, t.Kind == Kind.Exit && t.Access.Edge != Entity.Null ? SortedKeys.KeyOf(t.Access.Edge.Index, t.Access.Edge.Version) : 0, shape.Carriageways);
                 var segs = new List<(V3 A, V3 B)>();
                 foreach (List<V3> ring in MergedBoxes.HoverRings(self)) segs.AddRange(BoxHover.Segments(ring));
-                return new HoverShape { Segments = segs, Failure = null, Sources = sources, Notes = string.Join("; ", shape.Notes) };
+                return new HoverShape { Segments = segs, Failure = null, Sources = sources, Notes = string.Join("; ", shape.Notes), Summary = shape.Summary };
             });
         }
 
@@ -403,7 +405,9 @@ namespace JunctionRules.Boxes
             else BoxStore.RemoveExit(em, t.Entity, t.Exit.C.Key);
             m_ExitCache.Clear();
             string where = t.Kind == Kind.Junction ? "junction " + What(t) : $"{What(t)} (source: {t.Exit.C.Source})";
-            Mod.log.Info($"yellow box tool: {(add ? "box added on" : "box removed from")} {where} at {t.Position}" + (!add && !t.Valid ? " (target no longer valid: " + t.Why + ")" : ""));
+            // 0.4.8 (JR-T-014b): an added junction box names its solved shape (the hover's, cached: no second solve)
+            string shape = add && t.Kind == Kind.Junction ? m_Cache.Value?.Summary : null;
+            Mod.log.Info($"yellow box tool: {(add ? "box added on" : "box removed from")} {where} at {t.Position}" + (!add && !t.Valid ? " (target no longer valid: " + t.Why + ")" : "") + (shape != null ? "; " + shape : ""));
         }
     }
 }

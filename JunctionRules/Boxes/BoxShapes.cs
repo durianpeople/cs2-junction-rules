@@ -35,6 +35,8 @@ namespace JunctionRules.Boxes
             /// <summary>0.4.4 exit box only: the road is divided and the box covers the building's side (Carriageways) only.</summary>
             public bool Divided;
             public uint Carriageways = MedianSplit.AllCarriageways;
+            /// <summary>0.4.8 (JR-T-014b): junction box only: one line naming the solved shape (CarriagewayResult.ShapeSummary), for logs.</summary>
+            public string Summary;
         }
 
         // ------------------------------------------------------------------ junction
@@ -125,6 +127,19 @@ namespace JunctionRules.Boxes
                     // each half's width at the mouth, measured (no middle-offset sign convention needed)
                     arm.HalfA = V2.Distance(arm.OuterA[0].XZ, arm.InnerA[0].XZ);
                     arm.HalfB = V2.Distance(arm.OuterB[0].XZ, arm.InnerB[0].XZ);
+                    // 0.4.8 (JR-T-014b, G5): the game's corner kerb data (node composition sync offsets, node-end sync
+                    // targets; Core KerbRemap), used only where the one-kerb shape is refused
+                    if (em.HasComponent<Composition>(e))
+                    {
+                        Composition comp = em.GetComponentData<Composition>(e);
+                        Entity nodeComp = isStart ? comp.m_StartNode : comp.m_EndNode;
+                        if (nodeComp != Entity.Null && em.HasComponent<NetCompositionData>(nodeComp))
+                        {
+                            NetCompositionData ncd = em.GetComponentData<NetCompositionData>(nodeComp);
+                            arm.RemapA = new KerbRemap { Outer = Ctrl(g.m_Left.m_Left), Inner = Ctrl(g.m_Left.m_Right), Offsets = F4(ncd.m_SyncVertexOffsetsLeft), Targets = F4(g.m_SyncVertexTargetsLeft), OuterIsLeft = true, Half = ncd.m_Width * 0.5 + ncd.m_MiddleOffset };
+                            arm.RemapB = new KerbRemap { Outer = Ctrl(g.m_Right.m_Right), Inner = Ctrl(g.m_Right.m_Left), Offsets = F4(ncd.m_SyncVertexOffsetsRight), Targets = F4(g.m_SyncVertexTargetsRight), OuterIsLeft = false, Half = ncd.m_Width * 0.5 - ncd.m_MiddleOffset };
+                        }
+                    }
                 }
                 if (FootwayWidths(em, e, isStart, out double footLeft, out double footRight, out string src, s.Notes))
                 {
@@ -176,6 +191,9 @@ namespace JunctionRules.Boxes
                 s.Notes.Add($"shape rule {cw.Straight.RuleText}; mouth shift per arm [{string.Join(", ", sh)}] m");
             }
             s.Notes.AddRange(cw.Notes);
+            string shape = cw.ShapeSummary();
+            if (shape != null) s.Notes.Add(shape);
+            s.Summary = shape;
             if (s.Roundabout) s.Notes.Add("roundabout node: kerbs from the outer curves offset sideways; island not cut out");
             s.Outline = cw.Outline;
             s.Failure = cw.Failure;
@@ -329,6 +347,11 @@ namespace JunctionRules.Boxes
         }
 
         // ------------------------------------------------------------------ shared readers (moved from the paint system, 0.4.0)
+
+        /// <summary>0.4.8 (JR-T-014b): a curve's four control points (a = the mouth for node-slice curves).</summary>
+        internal static V3[] Ctrl(Bezier4x3 c) => new[] { new V3(c.a.x, c.a.y, c.a.z), new V3(c.b.x, c.b.y, c.b.z), new V3(c.c.x, c.c.y, c.c.z), new V3(c.d.x, c.d.y, c.d.z) };
+
+        internal static double[] F4(float4 v) => new double[] { v.x, v.y, v.z, v.w };
 
         internal static List<V3> Sample(Bezier4x3 c)
         {
