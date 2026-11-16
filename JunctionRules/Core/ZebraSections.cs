@@ -60,6 +60,29 @@ namespace JunctionRules.Core
         /// lane has no zebra (nothing changes then).
         /// </summary>
         public static bool Build<T>(ref T list, bool sections, bool atLine, float laneLength, float margin, float vehicleLength, out ZebraLayout layout)
+            where T : struct, IPathElements => Build(ref list, sections, atLine, laneLength, margin, vehicleLength, 2f, out layout);
+
+        /// <summary>
+        /// 0.4.2 (JR-T-010): as above with one extra waiting spot <paramref name="extraSpot"/> (driving coordinates; 2 = none):
+        /// the yellow box turn spot of a car turning across oncoming traffic (Core/BoxDriving.cs). It becomes a section start
+        /// without a zebra, but only where the zebra rule allows a car to stand: not on a zebra and with the whole vehicle
+        /// clear of every zebra behind it (the zebra rule wins). Otherwise it is left out and the car decides at the spot
+        /// before it. <see cref="ZebraLayout.ExtraIndex"/> tells where it went (-1 = left out).
+        /// </summary>
+        public static bool Build<T>(ref T list, bool sections, bool atLine, float laneLength, float margin, float vehicleLength, float extraSpot, out ZebraLayout layout)
+            where T : struct, IPathElements => Build(ref list, sections, atLine, laneLength, margin, vehicleLength, extraSpot, -1f, out layout);
+
+        /// <summary>
+        /// 0.4.2 (owner refinement of the 0.4.1 sections, 16 Nov 2026): as above; with <paramref name="sections"/> and
+        /// <paramref name="gapMargin"/> &gt;= 0 (the room margin) a zebra followed by a gap O big enough for the whole
+        /// vehicle plus the stop margin plus <paramref name="gapMargin"/> before the first vehicle point C after it (Z O C C)
+        /// gets a waiting spot at O (the start of that C, a section without a zebra): the car crosses Z when Z is clear of
+        /// people and O is free (room past Z), waits at O, and the Cs are decided at O (the normal whole-junction decision).
+        /// A section therefore ends at the next WAITING SPOT (a point where the whole vehicle stands clear of every zebra
+        /// behind it), which is not always the next zebra. No such gap (Z C C): the 0.4.1 layout. Only right after a zebra:
+        /// 0.2.3 has no other mid-junction waiting spots. <paramref name="gapMargin"/> &lt; 0 = off (the 0.4.1 layout).
+        /// </summary>
+        public static bool Build<T>(ref T list, bool sections, bool atLine, float laneLength, float margin, float vehicleLength, float extraSpot, float gapMargin, out ZebraLayout layout)
             where T : struct, IPathElements
         {
             layout = default;
@@ -82,19 +105,40 @@ namespace JunctionRules.Core
                 {
                     spots.Add(zs);
                     layout.SetZebra(0, zs);
-                    continue;
-                }
-                float prev = PreviousEnd(ref list, sections, zs);
-                if (CrossingPoint.Fits(laneLength, zs, prev, margin, vehicleLength) && spots.Add(zs))
-                {
-                    layout.SetZebra(spots.Count - 1, zs);
                 }
                 else
                 {
-                    // Detail 2 / ZCZ: no room to wait before this zebra clear of what lies behind: one decision with the section before.
-                    layout.SetZebra(spots.Count - 1, zs);
-                    layout.Merged++;
+                    float prev = PreviousEnd(ref list, sections, zs);
+                    if (CrossingPoint.Fits(laneLength, zs, prev, margin, vehicleLength) && spots.Add(zs))
+                    {
+                        layout.SetZebra(spots.Count - 1, zs);
+                    }
+                    else
+                    {
+                        // Detail 2 / ZCZ: no room to wait before this zebra clear of what lies behind: one decision with the section before.
+                        layout.SetZebra(spots.Count - 1, zs);
+                        layout.Merged++;
+                    }
                 }
+                // 0.4.2 Z O C: a waiting gap after this zebra, before the next zebra.
+                if (sections && gapMargin >= 0f)
+                {
+                    float o = NextPointAfter(ref list, zs);
+                    float nextZebra = j + 1 < z.Count ? z.Start(j + 1) : 2f;
+                    if (o < 1f && o < nextZebra - WholePathRule.SpotEpsilon && o > spots[spots.Count - 1] + WholePathRule.SpotEpsilon
+                        && CrossingPoint.Fits(laneLength, o, PreviousEnd(ref list, true, o), margin + gapMargin, vehicleLength) && spots.Add(o))
+                    {
+                        layout.Gaps++;
+                    }
+                }
+            }
+            // The stop-line variant first (0.4.2: before the extra spot goes in; section membership is the same either way).
+            if (atLine) spots[0] = 0f;
+            layout.ExtraIndex = -1;
+            if (extraSpot > WholePathRule.SpotEpsilon && extraSpot < 1f && !OnZebra(ref list, extraSpot)
+                && CrossingPoint.Fits(laneLength, extraSpot, PreviousEnd(ref list, false, extraSpot), margin, vehicleLength))
+            {
+                layout.ExtraIndex = layout.InsertPlainSpot(ref spots, extraSpot);
             }
             // Section ends: the end of the last element (zebra, or with sections a vehicle point) of each section.
             for (int k = 0; k < spots.Count; k++) layout.SetEnd(k, spots[k]);
@@ -106,10 +150,21 @@ namespace JunctionRules.Core
                 int k = spots.StretchOf(s);
                 if (e > layout.SectionEnd(k)) layout.SetEnd(k, e);
             }
-            if (atLine) spots[0] = 0f;
             layout.Spots = spots;
             layout.LastEnd = layout.SectionEnd(spots.Count - 1);
             return true;
+        }
+
+        /// <summary>0.4.2: start of the first vehicle point (not a zebra) that starts after <paramref name="u"/>; 2 = none.</summary>
+        public static float NextPointAfter<T>(ref T list, float u) where T : struct, IPathElements
+        {
+            float next = 2f;
+            for (int i = 0; i < list.Count; i++)
+            {
+                list.Get(i, out int kind, out float s, out _);
+                if ((kind & SpotPoint) != 0 && (kind & Zebra) == 0 && s > u + WholePathRule.SpotEpsilon && s < next) next = s;
+            }
+            return next;
         }
 
         /// <summary>
@@ -126,6 +181,17 @@ namespace JunctionRules.Core
                 if (counts && s < zebraStart - WholePathRule.SpotEpsilon && e > prev) prev = e;
             }
             return prev;
+        }
+
+        /// <summary>0.4.2: <paramref name="u"/> lies on a zebra (inside its range, edges included).</summary>
+        public static bool OnZebra<T>(ref T list, float u) where T : struct, IPathElements
+        {
+            for (int i = 0; i < list.Count; i++)
+            {
+                list.Get(i, out int kind, out float s, out float e);
+                if ((kind & Zebra) != 0 && u >= s - WholePathRule.SpotEpsilon && u <= e + WholePathRule.SpotEpsilon) return true;
+            }
+            return false;
         }
 
         /// <summary>
@@ -152,7 +218,9 @@ namespace JunctionRules.Core
             if (next < 0 || next >= layout.Spots.Count) return 0;
             int merged = 0;
             float prev = layout.Spots[next];
-            while (next + 1 < layout.Spots.Count && layout.HasZebra(next + 1))
+            // 0.4.2: every following spot, not only zebra ones (a Z O gap spot or the box turn spot the car cannot stop at
+            // any more is decided at the earlier spot too). 0.4.1 layouts had no other spots after the first.
+            while (next + 1 < layout.Spots.Count)
             {
                 float s = layout.Spots[next + 1];
                 if (!(braking > laneLength * (s - prev))) break;
@@ -217,6 +285,10 @@ namespace JunctionRules.Core
         public float LastEnd;
         /// <summary>Zebras merged into the section before them (vehicle does not fit before them).</summary>
         public int Merged;
+        /// <summary>0.4.2: index of the extra (yellow box turn) spot in <see cref="Spots"/>, -1 = none.</summary>
+        public int ExtraIndex;
+        /// <summary>0.4.2: Z O waiting gaps (sections without a zebra right after one).</summary>
+        public int Gaps;
         /// <summary>0.4.1 (JR-T-009-r): zebra sections merged this car-step because the car cannot stop before them (<see cref="ZebraSections.MergeUnstoppable"/>).</summary>
         public int EarlyMerged;
         /// <summary>Bit k: section k holds a zebra.</summary>
@@ -251,6 +323,36 @@ namespace JunctionRules.Core
         }
 
         /// <summary>
+        /// 0.4.2: inserts a section start without a zebra into <paramref name="spots"/> (sorted), shifting the zebra marks of
+        /// the later sections. Before the section ends are set. Returns its index, or -1 when full or already a spot.
+        /// </summary>
+        public int InsertPlainSpot(ref WaitingSpots spots, float u)
+        {
+            if (spots.Count >= WaitingSpots.Capacity) return -1;
+            int at = spots.Count;
+            for (int i = 0; i < spots.Count; i++)
+            {
+                float d = spots[i] - u;
+                if (d < WholePathRule.SpotEpsilon && d > -WholePathRule.SpotEpsilon) return -1;
+                if (spots[i] > u) { at = i; break; }
+            }
+            spots.Add(0f);
+            WaitingSpots first = m_FirstZebra;
+            for (int i = spots.Count - 1; i > at; i--)
+            {
+                spots[i] = spots[i - 1];
+                first[i] = first[i - 1];
+            }
+            spots[at] = u;
+            first[at] = 2f;
+            m_FirstZebra = first;
+            int low = m_ZebraBits & ((1 << at) - 1);
+            int high = (m_ZebraBits >> at) << (at + 1);
+            m_ZebraBits = low | high;
+            return at;
+        }
+
+        /// <summary>
         /// 0.4.1 (JR-T-009-r): section <paramref name="i"/> joins section i - 1 (its zebra, its end); later sections move
         /// down one place. Spots[i] is no longer a waiting spot.
         /// </summary>
@@ -276,6 +378,9 @@ namespace JunctionRules.Core
             m_End = ends;
             m_FirstZebra = first;
             LastEnd = SectionEnd(Spots.Count - 1);
+            // 0.4.2: the yellow box turn spot moves with its section (gone when it was the merged one).
+            if (ExtraIndex == i) ExtraIndex = -1;
+            else if (ExtraIndex > i) ExtraIndex--;
         }
 
         /// <summary>A vehicle point at u (driving coordinates) lies after the first zebra of its section k: a "C after" the zebra.</summary>
@@ -339,6 +444,18 @@ namespace JunctionRules.Core
         }
 
         /// <summary>
+        /// 0.4.2 (JR-T-010): a vehicle that is ahead of the car INSIDE the box (or entrance band) it wants to clear, on its
+        /// own path: it leaves the box into the same exit, so it takes exit room first (its length + <see cref="Spacing"/>)
+        /// and can never give room itself (no block test, no credit: it has not left the box yet).
+        /// </summary>
+        public void AddQueued(float length)
+        {
+            if (Blocked) return;
+            m_Occupied += (length > 0f ? length : 0f) + Spacing;
+            Obstacles++;
+        }
+
+        /// <summary>
         /// 0.4.1 (JR-T-009-r, review finding 2): a further zebra (another node, e.g. a mid-block crossing after a short
         /// edge) starts inside the room window: the car must not stop on it either, so the room is needed past its end
         /// (<paramref name="zebraEnd"/>, metres from the section end): Needed = zebraEnd + whole length + margin. Vehicles
@@ -381,5 +498,57 @@ namespace JunctionRules.Core
         /// destination lies there and holding for it could hold forever.
         /// </summary>
         public readonly bool HasRoom => !Blocked;
+    }
+
+    /// <summary>0.4.2: order keys of a list read in an order of its own (float.MaxValue = skip the entry).</summary>
+    public interface IOrderKeys
+    {
+        int Count { get; }
+        float Key(int i);
+    }
+
+    /// <summary>
+    /// 0.4.2 (JR-T-010, after the live 0.4.1 probe: "lane objects out of curve order" 2-4 per window): reads a list in
+    /// ascending key order whatever its storage order, without allocation (selection: each call one pass over the list;
+    /// the room scan stops after a few vehicles). The game sorts a lane's LaneObject buffer by m_CurvePosition.y, which
+    /// for a driving car is its reservation look-ahead (position + braking distance, capped at its target), not where it
+    /// is (m_CurvePosition.x), so the buffer is not in path order when a faster car follows a slower one or a car's
+    /// target lies short of the lane end; <see cref="RoomScan"/> needs path order (Stage2/JRWholeJunction.cs ScanLane).
+    /// </summary>
+    public static class ScanOrder
+    {
+        /// <summary>
+        /// The index with the smallest key after (<paramref name="lastKey"/>, <paramref name="lastIndex"/>) (ties by
+        /// index); -1 when none is left. Start with float.MinValue, -1.
+        /// </summary>
+        public static int Next<T>(ref T keys, float lastKey, int lastIndex) where T : struct, IOrderKeys
+        {
+            int best = -1;
+            float bestKey = float.MaxValue;
+            for (int i = 0; i < keys.Count; i++)
+            {
+                float k = keys.Key(i);
+                if (!(k < float.MaxValue)) continue;
+                if (k < lastKey || (k == lastKey && i <= lastIndex)) continue;
+                if (k < bestKey) { best = i; bestKey = k; }
+            }
+            return best;
+        }
+
+        /// <summary>The list is stored in ascending key order (skipped entries ignored): the probe counter.</summary>
+        public static bool InOrder<T>(ref T keys, bool reversed = false) where T : struct, IOrderKeys
+        {
+            // JR-T-010-r: a lane driven inverse reads the buffer from its end (the game keeps it ascending by curve offset).
+            float prev = float.MinValue;
+            for (int n = 0; n < keys.Count; n++)
+            {
+                int i = reversed ? keys.Count - 1 - n : n;
+                float k = keys.Key(i);
+                if (!(k < float.MaxValue)) continue;
+                if (k < prev) return false;
+                prev = k;
+            }
+            return true;
+        }
     }
 }

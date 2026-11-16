@@ -38,6 +38,26 @@ namespace JunctionRules.Stage2
 
         public static NativeArray<long> Counters => s_Counters;
 
+        private static JRBoxEdges s_BoxEdges;
+        private static int s_BoxEdgeVersion = -1;
+
+        /// <summary>
+        /// 0.4.2 (JR-T-010-r): the road edges with boxed accesses (main thread, S2-23 takes it by value), rebuilt from
+        /// Core BoxEdgeHandoff when CarDrivingSwitchSystem published new keys.
+        /// </summary>
+        public static JRBoxEdges BoxEdges
+        {
+            get
+            {
+                if (s_BoxEdgeVersion != BoxEdgeHandoff.Version)
+                {
+                    s_BoxEdges = JRBoxEdges.FromKeys(BoxEdgeHandoff.Keys);
+                    s_BoxEdgeVersion = BoxEdgeHandoff.Version;
+                }
+                return s_BoxEdges;
+            }
+        }
+
         /// <summary>0.2.3: the safety-stop event table (written by the job only when counting; atomic compare-exchange).</summary>
         public static NativeArray<long> SafetyEvents => s_SafetyEvents;
 

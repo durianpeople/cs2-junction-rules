@@ -329,7 +329,23 @@ namespace JunctionRules.Tests
             string iter = File.ReadAllText(Path.Combine(src, "Vanilla", "JRCarLaneSpeedIterator.cs"));
             int ccl = iter.IndexOf("private void CheckCurrentLane(", StringComparison.Ordinal);
             int cpl = iter.IndexOf("private void CheckOverlappingLanes(", StringComparison.Ordinal);
-            Check(ccl > 0 && cpl > ccl && iter.IndexOf("JR-STAGE2", ccl, cpl - ccl, StringComparison.Ordinal) < 0, "car-following (CheckCurrentLane) has no stage 2 block: exit queues stay stock");
+            // 0.4.2 (JR-T-010): the only stage 2 code in CheckCurrentLane is the yellow box hold (S2-28 / S2-28b), at the top of
+            // each overload, before the game's car-following loop, which stays stock (exit queues stay stock).
+            string cclPart = ccl > 0 && cpl > ccl ? iter.Substring(ccl, cpl - ccl) : "";
+            var cclBlocks = System.Text.RegularExpressions.Regex.Matches(cclPart, @"// JR-STAGE2 BEGIN (S2-\w+)[\s\S]*?// JR-STAGE2 END");
+            bool cclOk = cclBlocks.Count == 2;
+            foreach (System.Text.RegularExpressions.Match m in cclBlocks)
+            {
+                string body = m.Value;
+                cclOk &= (m.Groups[1].Value == "S2-28" || m.Groups[1].Value == "S2-28b") && body.Contains("if (m_JR.m_BoxRule)") && body.Contains("m_JR.BoxHold(")
+                    && !body.Contains("UpdateMaxSpeed") && !body.Contains("canUseLane");
+            }
+            int firstLoop = cclPart.IndexOf("for (int i = 0; i < bufferData.Length; i++)", StringComparison.Ordinal);
+            int lastEnd = cclPart.LastIndexOf("// JR-STAGE2 END", StringComparison.Ordinal);
+            int secondHead = cclPart.IndexOf("ref float canUseLane)", StringComparison.Ordinal);
+            int secondLoop = secondHead < 0 ? -1 : cclPart.IndexOf("for (int i = 0; i < bufferData.Length; i++)", secondHead, StringComparison.Ordinal);
+            Check(cclOk && firstLoop > cclPart.IndexOf("// JR-STAGE2 END", StringComparison.Ordinal) && secondLoop > lastEnd,
+                "car-following (CheckCurrentLane): only the 0.4.2 box hold (S2-28 / S2-28b, setting-gated, before the stock loop); the loop stays stock");
             Check(iter.Contains("x = (@float.x = math.min(x, @float.x));"), "roundabout clamp of the game kept");
             bool rbInBlock = false;
             foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(iter, @"// JR-STAGE2 BEGIN[\s\S]*?// JR-STAGE2 END"))
@@ -348,7 +364,7 @@ namespace JunctionRules.Tests
             string bridgeCode = System.Text.RegularExpressions.Regex.Replace(bridge, @"//.*", "");
             Check(!System.Text.RegularExpressions.Regex.IsMatch(bridgeCode, @"\bnew\s+(?!PathNode\()\w"), "job-side struct has no 'new' except the PathNode value type (no managed allocation)");
             string proj = File.ReadAllText(Path.Combine(src, "JunctionRules.csproj"));
-            Check(ProjectVersion(out string pv, out string pinfo) && proj.Contains($"<Version>{pv}</Version>") && pinfo.StartsWith(pv + "-probe"), $"version {pinfo} read from the csproj (JR-T-007b-r F7: single source; history: 0.4.3: yellow boxes at building CAR EXITS (one per exit, keyed in the save, 0.4.0-0.4.2 boxes migrated), building access junctions selectable; 0.4.2: straight-sided yellow boxes (mouths slide forward, priority arms keep theirs), 0.5 m gap to road markings, Traffic-style hover outline; 0.4.1: cars never stop on a zebra (zebra sections, room past, ZCZ merge); 0.4.0: yellow box selection tool, boxes saved with the city, entrance boxes, T through-side kerb fix; carries 0.3.6's people pass a car standing on their crossing; 0.3.5: paint box on the carriageway only, Roads layer default; carries 0.3.4's edge-noise fix and 0.3.3's Moonflower unsafe-lane fix and crossings out of the whole-junction gap)");
+            Check(ProjectVersion(out string pv, out string pinfo) && proj.Contains($"<Version>{pv}</Version>") && pinfo.StartsWith(pv + "-probe"), $"version {pinfo} read from the csproj (JR-T-007b-r F7: single source; history: 0.4.3: yellow boxes at building CAR EXITS (one per exit, keyed in the save, 0.4.0-0.4.2 boxes migrated), building access junctions selectable, the box driving rule reads exit boxes; 0.4.2: cars obey yellow boxes, straight-sided yellow boxes (mouths slide forward, priority arms keep theirs), 0.5 m gap to road markings, Traffic-style hover outline; 0.4.1: cars never stop on a zebra (zebra sections, room past, ZCZ merge); 0.4.0: yellow box selection tool, boxes saved with the city, entrance boxes, T through-side kerb fix; carries 0.3.6's people pass a car standing on their crossing; 0.3.5: paint box on the carriageway only, Roads layer default; carries 0.3.4's edge-noise fix and 0.3.3's Moonflower unsafe-lane fix and crossings out of the whole-junction gap)");
         }
     }
 }

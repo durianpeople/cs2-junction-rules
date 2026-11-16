@@ -1,22 +1,28 @@
-# Probe kit: Junction Rules 0.4.3-probe (stage 4, yellow box selection tool; cars never stop on a zebra; straight-sided boxes; boxes at car exits)
+# Probe kit: Junction Rules 0.4.3-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits)
 
 **0.4.3-probe (JR-T-007c), what changed since 0.4.2:** building boxes sit at each building's **car exit** (the drawn
 driveway, car park / depot gate), not the lot-front middle; a building with several exits gets **one box per exit**;
 where a service building's own access road meets a public road, that node is a **junction** box (building road
 yields unless signed). UI and log say "exit" instead of "entrance". Saved boxes from 0.4.0-0.4.2 move to the nearest
-exit on load (or are dropped with a log line). Paint and tool only: cars drive exactly as in 0.4.2.
-`docs/vanilla_copy_check_0.4.3.txt`: 0 unexplained differences. Section 12. Carries 0.4.2 (below) and everything before.
+exit on load (or are dropped with a log line). Sections 12 and 14. Also first install of JR-T-007b's straight-sided
+boxes, marking margin and hover outline (section 11; built as a "0.4.2" that was never installed). The box driving rule
+of the installed 0.4.2 (section 13) now reads exit boxes: each boxed exit has its own band; boxes at a building's
+access-road junction are junction boxes. `docs/vanilla_copy_check_0.4.3.txt`: 0 unexplained differences.
+Carries the installed 0.4.2 (JR-T-010) and everything before.
 
-**0.4.2-probe (JR-T-007b), what changed since 0.4.1:** box shapes and the tool's hover look only (section 11). Every
+**JR-T-007b (labelled 0.4.2 on its branch, never installed; ships in 0.4.3), what changed since 0.4.1:** box shapes and the tool's hover look only (section 11). Every
 yellow box (junction and entrance) is now **straight-sided**: each arm's mouth line slides forward along its own arm,
 parallel to itself, until the straight sides between neighbouring mouths stay on the carriageway; arms with priority
 keep their mouths, give-way / STOP arms slide (signals: all arms equal). Every box edge keeps **0.5 m clear of the
 painted edge** of zebras and stop / give-way lines (new Options slider; paint list `"markingMargin"`). The tool shows
 the box it would add as a **thin outline** like Traffic's Priorities tool (white = adds, orange = removes) instead of
-the glow. Fixes boxes running over the kerb at skewed junctions (Lindbergh x Anchor). Cars drive exactly as in 0.4.1.
-`docs/vanilla_copy_check_0.4.2.txt` equals 0.4.1's (0 unexplained differences). Carries 0.4.1 (below) and everything
-before.
+the glow. Fixes boxes running over the kerb at skewed junctions (Lindbergh x Anchor). No driving change (its vanilla copy equalled 0.4.1's).
 
+**0.4.2-probe (JR-T-010, installed live 16 Nov), what changed since 0.4.1:** new driving rule **Cars obey yellow boxes** (default on;
+section 13): at the boxes placed with the tool, a vehicle does not enter a box without room for its whole length past
+it (UK right-turn exception, default on). Driving changes only while Car driving is the Junction Rules copy; with the
+setting off cars drive exactly as in 0.4.1. `docs/vanilla_copy_check_0.4.2.txt`: 0 unexplained differences, two new
+marked blocks (S2-28, S2-28b) and extended S2-20 / S2-23 / S2-26 (DEVIATIONS.md). Carries 0.4.1 (below) and everything before.
 
 **0.4.1-probe (JR-T-009), what changed since 0.4.0:** new driving rule **Cars never stop on a zebra** (default on;
 section 10). Driving changes only while Car driving is the Junction Rules copy; with the setting off cars drive exactly
@@ -32,7 +38,7 @@ differences). Also: the T-junction through-side kerb fix (section 6) and the ent
 
 Build to install: `~/Code/cs2-junction-rules/.staged/0.4.3-probe/`. 0.4.2-probe (jr-t-010 line) is installed live by main (code 59e731f, sums c781df0); never write into `.staged/0.4.2-probe`. While `.staged/0.4.3-probe` holds a `STALE.md` it is a managed
 build only: main does the Burst build in `STALE.md` (game closed, at the owner's quit), then puts the five sums into the
-install block below. Until then the block refuses (placeholder sums `0000...`).
+install block below. (0.4.1-probe stays in `.staged/0.4.1-probe` as the rollback.) Until then the block refuses (placeholder sums `0000...`).
 
 Built for game **1.6.4f1 (1097.158a)** only (same version gate: on another version saved boxes are not painted and the
 copy does not run; the boxes stay in the save).
@@ -63,7 +69,11 @@ SUMS
 )
 ```
 
-Rollback: to 0.4.1 (boxes kept, 0.4.1 shapes and glow): the same block with `.staged/0.4.1-probe` and its sums (git 07cc519). To 0.4.0 (boxes kept, zebra rule gone): the same block with `.staged/0.4.0-probe` and its sums (switching the
+Rollback: to 0.4.2 (the installed JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
+its loader, so exit boxes fall back to one entrance box per building): the same block with `.staged/0.4.2-probe` and
+its sums (full sums in commit c781df0). To 0.4.1 (boxes kept, box driving rule gone): the same block with `.staged/0.4.1-probe` and its sums
+(dll af5b1322..., pdb db04729f..., mjs 9e8f8a39..., win dll 5acf0104..., win pdb d5762071...; full sums in the 0.4.1 commit 07cc519)
+(or switch **Cars obey yellow boxes** off in Options). To 0.4.0 (boxes kept, zebra rule gone): the same block with `.staged/0.4.0-probe` and its sums (switching the
 setting off in Options does the same without reinstalling). Further back: the block from `.staged/0.3.5-probe`
 (PROBE-STAGE3-PAINT.md), then delete `Mods/JunctionRules/JunctionRules.mjs`.
 A save with boxes still loads after a rollback or with the mod removed (section 7).
@@ -167,16 +177,17 @@ Test it on a copy (never on the owner's only save):
 
 ## 8. Driving
 
-No yellow-box driving rule exists in 0.4.0 (stage 2 leaves exit queues stock; no code in Vanilla/ or Stage2/ reads the
-box components). Plan for a separate brief: in the copy's CheckSpace (Vanilla/JRCarLaneSpeedIterator.cs 670), apply the
-"don't enter unless the exit is clear" test only at boxed nodes / in front of boxed entrances when a "boxes only"
-setting is on (component lookup in the job), keep level crossings as stock; Burst build and a live probe. Effort:
-small to medium code, one Burst build, one probe session.
+0.4.0 painted boxes only. From 0.4.2 cars obey them (section 11): the setting **Cars obey yellow boxes** reads the
+saved box components (only boxed nodes and boxed entrances; every other junction stays as before). The hook is not
+CheckSpace (the stock "space after junction" test, Vanilla/JRCarLaneSpeedIterator.cs 670) but the top of
+CheckCurrentLane (blocks S2-28 / S2-28b), which sees every lane of the car's path; it shares the zebra rule's room
+scan (section 10). Level crossings stay stock.
 
 ## 9. Report back
 
 B1-B12 results, a screenshot of B4 and B6, the save-without-mod result (section 7, step 4 log lines), and any `FAILED` line.
 0.4.1: Z1-Z10 results (section 10) and two consecutive timing-log lines with the zebra counters.
+0.4.2: Y1-Y10 results (section 11), a screenshot of Y1 and Y3, and two consecutive timing-log lines with the box counters.
 
 ## 10. 0.4.1: cars never stop on a zebra (JR-T-009)
 
@@ -361,3 +372,96 @@ shared between both road mouths (sum-of-squares cost), so an exit off the window
 Live note 16 Nov (read-only): every service building checked (bus depots, road maintenance, hospital, police, fire,
 car parks) joins its roads mid-road (driveways), none with an access road ending on a public node, so X4 may have no
 site in Bevy Valley today.
+
+## 13. 0.4.2 (installed): cars obey yellow boxes (JR-T-010)
+
+0.4.3 reads the boxes from the exit storage instead (section 14); the rest of this section is unchanged.
+
+Owner rule (16 Nov 2026, UK yellow box): at a boxed junction or a boxed building entrance a vehicle does not enter the
+box unless it can clear it: there is room for its **whole length** (trailers included) plus the room margin on its
+exit beyond the box. Room is the zebra rule's measure (section 10, one mechanism): a moving queue counts the braking
+distance of the vehicle ahead, a standing one does not; vehicles already in the box ahead of it on its own path take
+exit room first. Vehicles already in the box carry on; a vehicle that can no longer stop at the line carries on.
+Only boxes placed with the tool count.
+
+- **UK right-turn exception** (setting, default on): a vehicle turning across oncoming traffic (right in left-hand
+  traffic) may enter and wait in the box when its exit has room and only oncoming traffic stops it. With **Junction
+  gap rule = Whole junction** the box moves the decision to the stop line (nobody waits in the box), except that the
+  turner gets a second waiting spot inside the box just before its first crossing with an oncoming straight lane (the
+  same pair "turning across oncoming gives way" uses). Crossing points before that spot are decided at the line, the
+  oncoming ones at the turn spot. With the Stock gap rule the box is the room test at the line only (the game's own
+  gap judgement inside the junction, as before). The turn spot is never on a zebra and only where the whole vehicle
+  fits clear of the zebras behind it (zebra rule wins); otherwise the turner decides at the line.
+- **Entrance box**: a band of the painted length centred on the access. Main-road vehicles do not enter the band
+  without room past it; a vehicle leaving the driveway does not join the road inside the band without room past the
+  band on its target lane; a vehicle turning into the driveway is exempt.
+- **With zebras**: both rules apply; the lower speed wins (a car held by either waits). People on a zebra still stop
+  everyone; people pass after 2 s; no starvation safeguard.
+
+Settings (Options > Junction Rules, yellow box group): **Cars obey yellow boxes** (default on; off = 0.4.1 **for boxes
+only**: with **Cars never stop on a zebra** on, the Z O waiting gaps and the position-ordered room scan below still
+apply, since they belong to the zebra rule) and
+**Yellow boxes: turning across oncoming traffic may wait in the box** (default on, UK; greyed while off). The room margin slider is shared
+with the zebra rule: **Room margin past a zebra or yellow box (m)**.
+
+Where to watch: **Lindbergh St x Anchor St, node 874943** (Bevy Valley, box placed 16 Nov). In 0.4.0 a bus turning
+from Anchor into Lindbergh eastbound stood stuck inside the box while the Lindbergh eastbound exit was a solid queue,
+and the crossing traffic was blocked.
+
+Checks (copy on; timing log on; gap rule as named):
+
+| # | Where | Expect |
+|---|-------|--------|
+| Y1 | Lindbergh x Anchor, Lindbergh eastbound exit queue standing | Buses and cars from Anchor hold at the stop line, none stands inside the box; crossing traffic keeps flowing |
+| Y2 | Same, queue starts moving | Vehicles enter again without waiting for a full gap (no crawl) |
+| Y3 | Same, a bus | Holds until its whole 12 m (+ margin) fits past the box; a car behind it may not overtake its decision (same lane) |
+| Y4 | Lindbergh x Anchor, right turn (left-hand traffic) with oncoming traffic, exit clear | Turner enters and waits inside the box before the oncoming lane (counter "right-turn waits" rises) |
+| Y5 | Same, exit full | Turner holds at the line, does not enter |
+| Y6 | Setting **Yellow boxes: turning across oncoming traffic may wait in the box** off | Turner holds at the line until the oncoming gap and room |
+| Y7 | Unboxed junction nearby | Unchanged from 0.4.1 |
+| Y8 | Boxed entrance, main road queue standing past it | Main-road cars stop before the band, the driveway stays open |
+| Y9 | Same, vehicle leaving the driveway into a standing queue | Waits in the driveway until the target lane has room past the band |
+| Y10 | **Cars obey yellow boxes** off, then on (no restart) | Off: 0.4.1 behaviour (vehicles may stop in the box); log says "obey yellow boxes switched in this window" |
+| Y11 | A zebra with a car-length gap before the first crossing traffic (Z O C C), Whole junction | Car crosses the zebra once it is clear of people and the gap is free, waits in the gap for the crossing traffic; never on the zebra |
+| Y12 | Same, gap occupied by a waiting car | The next car waits before the zebra |
+| Y13 | Z13 (section 10) again | "lane objects out of curve order" may stay above 0: from 0.4.2 it is a diagnostic only (the scan reads lanes in curve order) |
+
+Timing log (copy's line): `; obey yellow boxes on|off|switched in this window` and, while on, `; box entries held N,
+right-turn waits N; entrance band holds: main road N, leaving driveway N` (car-steps standing held at a box line, a
+turner waiting at its turn spot inside a box, cars held before an entrance band, cars held in a driveway). The switch
+line also names the boxes the rule sees (`yellow boxes present: junctions yes|no, entrances yes|no`).
+
+**Zebra sections refined (0.4.2, owner 16 Nov; applies with "Cars never stop on a zebra" too, not only at boxes).** A
+section ends at the next WAITING SPOT, the next point where the whole vehicle (+ stop margin + room margin) stands
+clear of every zebra behind it, which is not always the next zebra. Z O C C: when the gap O after a zebra holds the
+whole vehicle before the first crossing point C, the car enters the zebra once it is clear of people and O is free
+(room past the zebra up to O), then waits at O; the Cs are decided at O with the normal Whole junction decision. No
+such gap (Z C C): as 0.4.1, the Cs decided before the zebra. Only right after a zebra: 0.2.3 has no other
+mid-junction waiting spots, and a car too fast to stop at O decides the Cs before the zebra (as the JR-T-009-r early
+decision). Whole junction only (with Stock there are no C sections). Inside a yellow box there is no O spot (the box
+decides at the line); a gap BEFORE a box (a mid-block zebra, then the road up to the box) works the same way: the car
+crosses the zebra into the free gap and the box rule applies at the box line.
+
+**Lane objects out of curve order (live 0.4.1: 2 then 4 per window), cause:** the game keeps each lane's LaneObject
+buffer sorted by `m_CurvePosition.y` (NetUtils.AddLaneObject / UpdateLaneObject), and for a driving car that value is
+its reservation look-ahead (CarNavigationSystem.ReserveNavigationLanes ~2263: current position + braking distance at
+its max speed, capped at its target on the lane), not where it is (`.x`). So a faster car close behind a slower one
+(longer braking distance) sorts after it, and a car whose target lies short of the lane end sorts early. 0.4.1 read
+the buffer in storage order and could therefore judge "no room" wrongly (a near car read after a far one). 0.4.2 reads
+each lane in position order (Core ScanOrder: a buffer already in order is read straight, otherwise one pass per
+vehicle read; the scan stops after a few vehicles and once the next vehicle is past the window). On lanes driven in
+the inverse direction the counter reads the buffer from its end (no false reports there). The counter stays as a
+diagnostic.
+
+Deadlock notes (report, no safeguard by brief):
+- Gridlock moves to the box entry: if the exit never clears, vehicles stand at the line indefinitely (by design).
+- Opposing right-turners both waiting in the box can block each other's view of the oncoming gap (as in 0.4.1).
+- A turner waiting in the box waits as long as oncoming traffic never gaps (UK practice; no timeout).
+- A boxed entrance in front of a queue that never clears keeps the driveway vehicle waiting (it never joins).
+- Vehicles from another arm already in the box are not counted against the exit (only the own path ahead).
+- An unknown rest of the path (destination, parking, end of the read lanes) counts as free, as in section 10.
+- Cars from another arm heading to the same exit are not counted: two arms can each see room and both enter, and the
+  second may then stand in the box (only the own path ahead, and vehicles already in the box on it, count).
+- Emergency vehicles are held by boxes like everyone else (no exemption in this probe): watch for an ambulance or fire
+  engine waiting at a box line behind a standing exit queue and report it.
+- Z O: a car waiting at O blocks the zebra for nobody, but cars behind it wait before the zebra (O occupied) until it goes.

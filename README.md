@@ -35,6 +35,15 @@ oncoming straight, and the straight car no longer waits for the turner's reserva
 Analysis, per-case behaviour and owner rulings: `docs/STAGE2-ANALYSIS.md`;
 code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 
+0.4.2-probe (JR-T-010; PROBE-STAGE4-BOXTOOL.md section 11): new setting **Cars obey yellow boxes** (default on;
+off = 0.4.1). At the boxes placed with the tool (junctions and building entrances), a vehicle does not enter the box
+unless there is room for its whole length (trailers included) past it, the zebra rule's room measure (a moving queue
+counts). UK right-turn exception (setting, default on): a vehicle turning across oncoming traffic may enter and wait
+in the box when its exit has room. Entrance band: main-road vehicles keep it clear, vehicles leaving the driveway need
+room past it. Also refines the 0.4.1 zebra sections (owner): a zebra followed by a gap that holds the whole vehicle
+before the first crossing traffic (Z O C C) lets the car cross the zebra and wait in the gap; and the room scan reads
+each lane's vehicles in position order (the game's buffer is in look-ahead order). Carries 0.4.1.
+
 0.4.1-probe (JR-T-009; PROBE-STAGE4-BOXTOOL.md section 10): new setting **Cars never stop on a zebra** (default
 on; off = 0.4.0). Zebras split a car's path through a node (junctions and mid-block crossings) into sections; a car
 drives onto a zebra only when the zebra is clear of people, (Whole junction) every crossing point with other lanes
@@ -105,6 +114,9 @@ PROBE-STAGE3-PAINT.md section 10.
   Cs after, no room past) and merged sections.
 - **Yellow box: gap to road markings (m)** (0.4.2): 0-2 m, default 0.5 m, from the painted edge of zebras and stop /
   give-way lines (entrance boxes: also from junction mouths); redraws all boxes at once.
+- **Cars obey yellow boxes** (0.4.2): on (default) or off (= 0.4.1); **Yellow boxes: turning across oncoming traffic may wait in the box**
+  on (default, UK) or off. Only boxes placed with the yellow box tool; shares the room margin slider (now "Room
+  margin past a zebra or yellow box"). Timing log: box entries held, right-turn waits, entrance band holds.
 - **Yellow box paint test** (stage 3 probe): off (default) or on; **what to draw** (Box / Plain fill / Outline only);
   **paint onto** (Roads (default) / Roads + Other / Everything but vehicles); buttons Refresh test list, Add junction at
   camera centre, Log paint cost now; Paint test status. See PROBE-STAGE3-PAINT.md.
