@@ -258,6 +258,12 @@
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
         "reason": "0.4.7 (JR-T-013a, G1): UpdateNavigationTarget at IL_09cd, after S2-30, only with the exit setting: a vehicle on a car lane of a building's own road (not a drive's SideConnection lane) whose next lane is a public road lane (the junction where the building road meets the public road) brakes to stop short of the join point while the joined lane or a lane it crosses (the joined junction lane's overlaps) is busy or a boxed exit band has no room past it; the lot exit's approach hold."
+      },
+      "S2-37": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "JR-T-013b (G3): CheckOverlappingLanes, after S2-25 and before S2-29, only with the setting 'Cars obey yellow boxes': BoxTurnRoomHold re-runs the box exit-room test (HasRoomPast, own path only) for a turner whose next spot is its UK right-turn spot inside the box; no room = stop at the turn spot (GetMaxBrakingSpeed, blocker Entity.Null, type Continuing), clear of the oncoming lane."
       }
     }
   }

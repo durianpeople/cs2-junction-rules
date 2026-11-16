@@ -69,6 +69,18 @@ namespace JunctionRules.Core
             (otherCarLaneFlags & TurnAcross.Forward) != 0 && ownStartIsOtherEnd;
 
         /// <summary>
+        /// JR-T-013b (G3): the turner's room test runs again at its turn spot. A turner that entered the box with room on its
+        /// exit can find the exit full by the time the oncoming gap comes (the exit queue grew while it waited, an oncoming
+        /// left-turner took the room); it must then stay at the turn spot, clear of the oncoming lane, instead of crossing
+        /// and stopping across it. Applies while the turn spot is the car's next spot (front past the line and every earlier
+        /// spot, not yet past the turn spot; <paramref name="turnIndex"/> = its index, -1 = none) and the car can still stop
+        /// before it (the game's can-stop test). The exit room itself is the line's test (RoomScan via HasRoomPast).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TurnSpotRoomCheck(int turnIndex, int next, int spotCount, bool canStopBefore) =>
+            turnIndex > 0 && turnIndex < spotCount && next == turnIndex && canStopBefore;
+
+        /// <summary>
         /// The waiting spots of a boxed junction lane under the Whole junction rule: the stop line (0) and, for a turner
         /// with the exception, its turn spot (driving coordinates, 2 = none). False when the lane has no conflict point
         /// (the rule does not cover it: stock).

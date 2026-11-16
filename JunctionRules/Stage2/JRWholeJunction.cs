@@ -198,6 +198,9 @@ namespace JunctionRules.Stage2
         private float m_BoxRoomSpeed;
         private bool m_HasBoxTurnWait;
         private float m_BoxTurnWaitSpeed;
+        /// <summary>JR-T-013b (G3): this car-step a turner was held at its turn spot because its exit had no room (S2-37).</summary>
+        private bool m_HasBoxTurnRoom;
+        private float m_BoxTurnRoomSpeed;
         private bool m_HasEntranceMain;
         private float m_EntranceMainSpeed;
         private bool m_HasEntranceLeaving;
@@ -239,6 +242,12 @@ namespace JunctionRules.Stage2
         /// <summary>Setting "Exit trace (log)": the ring (Stage2/JRStage2Bridge.cs TraceRing) handed in by S2-26 SetTrace.</summary>
         private bool m_TraceOn;
         private NativeArray<long> m_TraceRing;
+
+        // ---- JR-T-013b (G4): watch one junction (Core/JunctionWatch.cs; methods in Stage2/JRJunctionWatch.cs) ----
+        /// <summary>The watched node (S2-21 SetWatch; Entity.Null = off, nothing recorded).</summary>
+        private Entity m_WatchNode;
+        /// <summary>This car-step the iterator checked a lane of the watched node (BeginLane).</summary>
+        private bool m_WatchSeen;
 
         public bool RuleOn
         {
@@ -371,6 +380,8 @@ namespace JunctionRules.Stage2
             m_BoxTurnSpot = 2f;
             m_BoxTurnIndex = -1;
             if (!m_NodeLaneData.HasComponent(lane)) return;
+            // JR-T-013b (G4): the car checks a lane of the watched junction (debug log only; no driving effect).
+            if (m_WatchNode != Entity.Null && !m_WatchSeen && m_OwnerData.TryGetComponent(lane, out Owner watchOwner) && watchOwner.m_Owner == m_WatchNode) m_WatchSeen = true;
             OverlapConflicts list = default;
             list.m_Overlaps = overlaps;
             list.m_Inverse = inverse;
@@ -1290,6 +1301,7 @@ namespace JunctionRules.Stage2
             if (m_ZebraUnsortedSeen) Add(counters, Stage2Counters.ZebraScanUnsorted, 1);
             if (Stage2Counters.IsStandingOn(m_HasBoxRoom, m_BoxRoomSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxHeldRoom, 1);
             if (Stage2Counters.IsStandingOn(m_HasBoxTurnWait, m_BoxTurnWaitSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxTurnWaits, 1);
+            if (Stage2Counters.IsStandingOn(m_HasBoxTurnRoom, m_BoxTurnRoomSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxTurnRoomWaits, 1);
             if (Stage2Counters.IsStandingOn(m_HasEntranceMain, m_EntranceMainSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.EntranceHeldMain, 1);
             if (Stage2Counters.IsStandingOn(m_HasEntranceLeaving, m_EntranceLeavingSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.EntranceHeldLeaving, 1);
             // 0.4.4: vehicles leaving buildings give way. 0.4.6: counted once per vehicle episode (consecutive updates of one vehicle

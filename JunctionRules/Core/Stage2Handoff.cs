@@ -181,7 +181,9 @@ namespace JunctionRules.Core
         public const int ExitCapLanes = FeedingScans + 40;
         /// <summary>0.4.7: exit decisions that hit the vehicle cap (dense traffic; counts as busy: wait).</summary>
         public const int ExitCapVehicles = FeedingScans + 41;
-        public const int Count = FeedingScans + 42;
+        /// <summary>JR-T-013b (G3): car-steps in which a car turning across oncoming traffic stood at its turn spot inside a box because its exit had no room (room test re-run at the turn spot).</summary>
+        public const int BoxTurnRoomWaits = FeedingScans + 42;
+        public const int Count = FeedingScans + 43;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -318,6 +320,8 @@ namespace JunctionRules.Core
                          "; cap hits by kind: lanes " + deltas[ExitCapLanes].ToString(ci) +
                          " (go), vehicles " + deltas[ExitCapVehicles].ToString(ci) + " (wait)"
                        : "") +
+                   // JR-T-013b (G3): newest counter, at the end of the text (before the points).
+                   (boxMask >= 2 ? "; right-turn waits for exit room " + deltas[BoxTurnRoomWaits].ToString(ci) : "") +
                    "; " + points;
         }
     }

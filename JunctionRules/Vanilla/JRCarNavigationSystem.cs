@@ -419,6 +419,10 @@ public class JRCarNavigationSystem : GameSystemBase
 		[NativeDisableParallelForRestriction]
 		[Unity.Collections.LowLevel.Unsafe.NativeDisableContainerSafetyRestriction]
 		public NativeArray<long> m_JRExitTrace;
+		// JR-T-013b: watch one junction (debug log; slot 0 = watched node, events written atomically)
+		[NativeDisableParallelForRestriction]
+		[Unity.Collections.LowLevel.Unsafe.NativeDisableContainerSafetyRestriction]
+		public NativeArray<long> m_JRWatch;
 		// JR-STAGE2 END
 
 		public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
@@ -1609,6 +1613,10 @@ public class JRCarNavigationSystem : GameSystemBase
 				jrVehicleLength = JunctionRules.Stage2.JRVehicleLength.WithTrailers(prefabObjectGeometryData, jrLayout, ref m_PrefabRefData, ref m_PrefabObjectGeometryData, ref m_JRTractorData, ref m_JRTrailerData);
 			}
 			carLaneSpeedIterator.m_JR = JunctionRules.Stage2.JRWholeJunction.Create(m_JRMode, m_NodeLaneData, m_OwnerData, m_LaneData, m_Lanes, m_JRConnectedEdges, m_JRCounters, jrVehicleLength);
+			if ((m_JRMode & JunctionRules.Core.Stage2Mode.Count) != 0)
+			{
+				carLaneSpeedIterator.m_JR.SetWatch(m_JRWatch);
+			}
 			// JR-STAGE2 END
 			// JR-STAGE2 BEGIN S2-26: 0.4.1 cars never stop on a zebra / 0.4.2 cars obey yellow boxes: the navigation lanes for the room-past scan; whole vehicle length (trailers incl.) also with the stock gap rule; 0.4.2 the box lookups
 			if (carLaneSpeedIterator.m_JR.m_BoxRule)
@@ -1792,10 +1800,11 @@ public class JRCarNavigationSystem : GameSystemBase
 			// JR-STAGE2 END
 			navigation.m_MaxSpeed = laneIterator.m_MaxSpeed;
 			CheckBlocker(ref currentLane, ref blocker, ref laneIterator);
-			// JR-STAGE2 BEGIN S2-22: debug counters (only when counting)
+			// JR-STAGE2 BEGIN S2-22: debug counters (only when counting); JR-T-013b: watch-one-junction events
 			if ((m_JRMode & JunctionRules.Core.Stage2Mode.Count) != 0)
 			{
 				laneIterator.m_JR.AddCounts(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, laneIterator.m_MaxSpeed, num2);
+				laneIterator.m_JR.Watch(m_JRWatch, entity, laneIterator.m_MaxSpeed, num2, laneIterator.m_Blocker, laneIterator.m_BlockerType);
 			}
 			// JR-STAGE2 END
 			if (laneIterator.m_TempBuffer.IsCreated)
@@ -3253,6 +3262,7 @@ public class JRCarNavigationSystem : GameSystemBase
 		jobData.m_JRExitEdges = GetComponentLookup<Game.Net.Edge>(isReadOnly: true);
 		jobData.m_JRExitTraceOn = JunctionRules.Stage2.JRStage2Bridge.TraceOn;
 		jobData.m_JRExitTrace = JunctionRules.Stage2.JRStage2Bridge.TraceRing;
+		jobData.m_JRWatch = JunctionRules.Stage2.JRStage2Bridge.Watch;
 		// JR-STAGE2 END
 		JobHandle jobHandle = JobChunkExtensions.ScheduleParallel(jobData, m_VehicleQuery, JobUtils.CombineDependencies(base.Dependency, dependencies, dependencies2, dependencies3, dependencies4));
 		m_NetSearchSystem.AddNetSearchTreeReader(jobHandle);
