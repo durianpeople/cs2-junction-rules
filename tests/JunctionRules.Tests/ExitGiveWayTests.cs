@@ -211,9 +211,9 @@ namespace JunctionRules.Tests
                 "timing line: exit waits, go decisions, emergency passthroughs");
             Check(!Stage2Counters.Format(1, d, 0, 0, 0, 1).Contains("building exits:") && Stage2Counters.Format(1, d, 0, 0, 0, 1).Contains("give way off"), "setting off: no exit counters, says off");
             Check(!Stage2Counters.Format(1, d).Contains("leaving buildings"), "0.4.3 callers (no exit mask): unchanged text");
-            Check(Stage2Counters.ExitCapHits == Stage2Counters.Count - 14 && Stage2Counters.ExitJoinArea == Stage2Counters.ExitCapHits + 1 && Stage2Counters.ExitJoinOther == Stage2Counters.Count - 11 && Stage2Counters.ExitHeld == Stage2Counters.EntranceHeldLeaving + 1, "exit counters appended after the 0.4.3 ones");
-            Check(Stage2Counters.ExitJoinSpawnPoint == Stage2Counters.ExitJoinOther + 1 && Stage2Counters.ExitCapVehicles == Stage2Counters.Count - 3, "0.4.7 G1 counters appended after 0.4.6 (the G3 counter after them)"); 
-            Check(Stage2Counters.ExitRoadStart == Stage2Counters.BoxTurnRoomWaits + 1 && Stage2Counters.ExitRoadStart == Stage2Counters.Count - 1, "review F1 counter appended at the end (after G3)");
+            Check(Stage2Counters.ExitCapHits == Stage2Counters.Count - 18 && Stage2Counters.ExitJoinArea == Stage2Counters.ExitCapHits + 1 && Stage2Counters.ExitJoinOther == Stage2Counters.Count - 15 && Stage2Counters.ExitHeld == Stage2Counters.EntranceHeldLeaving + 1, "exit counters appended after the 0.4.3 ones");
+            Check(Stage2Counters.ExitJoinSpawnPoint == Stage2Counters.ExitJoinOther + 1 && Stage2Counters.ExitCapVehicles == Stage2Counters.Count - 7, "0.4.7 G1 counters appended after 0.4.6 (the G3 counter after them)"); 
+            Check(Stage2Counters.ExitRoadStart == Stage2Counters.BoxTurnRoomWaits + 1 && Stage2Counters.ExitRoadStart == Stage2Counters.Count - 5 && Stage2Counters.ExitHeldBeforeSidewalk == Stage2Counters.ExitRoadStart + 1 && Stage2Counters.ExitDriveUnjudged == Stage2Counters.Count - 1, "review F1 counter after G3; 0.4.8 sidewalk counters at the end");
             long[] rs = new long[Stage2Counters.Count];
             rs[Stage2Counters.ExitRoadStart] = 3;
             string rsOn = Stage2Counters.Format(2, rs, 2, 2, 2, 2);
@@ -263,10 +263,10 @@ namespace JunctionRules.Tests
             Check(nav.Contains("SetExits(m_JRExitBuildings, m_JRExitEdges, m_LeftHandTraffic)"), "traffic side from the game's own m_LeftHandTraffic (never hardcoded)");
             Check(!nav.Contains("m_JRBuildingData"), "no 0.4.2 building lookup name reused");
             // The connection exit: the gap is checked first, the box only as the second condition (Core Decide).
-            Check(glue.Contains("ExitGiveWay.Decide(true, priority, !busy, m_BoxRule, boxed, room)"), "spawn exit: one decision with gap AND box");
+            Check(glue.Contains("ExitGiveWay.Decide(true, priority, !busy, m_BoxRule, boxed, room, roomJoin)"), "spawn exit: one decision with gap AND box");
             int dh = glue.IndexOf("public float ExitDrivewayHold", StringComparison.Ordinal);
             int dhEnd = glue.IndexOf("private static bool ExitConflict", StringComparison.Ordinal);
-            Check(dh > 0 && dhEnd > dh && !glue.Substring(dh, dhEnd - dh).Contains("m_BoxRule"), "driveway gap check never reads the box rule (the 0.4.3 band hold stays in S2-28)");
+            Check(dh > 0 && dhEnd > dh && glue.Substring(dh, dhEnd - dh).Contains("ExitBandBlocks(joinNav.m_Lane") && glue.Substring(dh, dhEnd - dh).Contains("HasRoomPast(lane, 1f"), "0.4.8: the driveway decision includes the box band room (boxed) and the room on the lane it joins (unboxed), before the sidewalk");
             Check(glue.Contains("ExitGiveWay.IsEmergency(priority)"), "both hooks let on-duty emergency vehicles through");
             Check(settings.Contains("ExitGiveWay = true;") && settings.Contains("\"Vehicles leaving buildings give way\""), "setting default on, label");
             Check(settings.Contains("Cars coming out of ANY building must give way, and when that building exit is a yellow box, must ALSO obey the yellow box rules."), "settings description quotes the owner rule");

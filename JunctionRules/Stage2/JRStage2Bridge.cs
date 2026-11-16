@@ -19,7 +19,7 @@ namespace JunctionRules.Stage2
         private static bool s_TraceLogged;
 
         /// <summary>0.2.3: slots of the safety-stop event table (Core/ArrivalTime.cs SafetyStopEvents), 64 KiB.</summary>
-        public const int SafetyEventSlots = 8192;
+        public const int SafetyEventSlots = 32768;   // 0.4.8: 8192 -> 32768 (drive Go records must survive until the drive entry, Core ExitGiveWay.DriveGoWindow)
 
         /// <summary>The mode the copy's last navigation step ran with (main thread).</summary>
         public static int AppliedMode { get; private set; }

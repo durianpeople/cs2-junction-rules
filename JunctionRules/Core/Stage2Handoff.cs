@@ -190,7 +190,15 @@ namespace JunctionRules.Core
         /// AddEdgeTargets(Building.m_RoadEdge)). Not judged by the exit rule (counted only); one per vehicle and episode.
         /// </summary>
         public const int ExitRoadStart = FeedingScans + 43;
-        public const int Count = FeedingScans + 44;
+        /// <summary>0.4.8 (G7): exit vehicles standing at their spot before the sidewalk (every hold of the exit rule: gap, box, room; events per vehicle).</summary>
+        public const int ExitHeldBeforeSidewalk = FeedingScans + 44;
+        /// <summary>0.4.8 (G7): of those, unboxed exits held because the lane they join has no room for the whole vehicle (events).</summary>
+        public const int ExitHeldRoom = FeedingScans + 45;
+        /// <summary>0.4.8 (G7): vehicles entering a driveway's leaving lane (crossing the sidewalk onto the road).</summary>
+        public const int ExitDriveEntries = FeedingScans + 46;
+        /// <summary>0.4.8 (G7): of those, entered without a full judgement (gap + room / box) taken while they could still stop before the sidewalk. Must be 0.</summary>
+        public const int ExitDriveUnjudged = FeedingScans + 47;
+        public const int Count = FeedingScans + 48;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -331,6 +339,13 @@ namespace JunctionRules.Core
                    (boxMask >= 2 ? "; right-turn waits for exit room " + deltas[BoxTurnRoomWaits].ToString(ci) : "") +
                    // 0.4.7 review (G1 F1): newest counter, after the G3 one.
                    (exitMask >= 2 ? "; placed straight onto a road lane (not judged) " + deltas[ExitRoadStart].ToString(ci) : "") +
+                   // 0.4.8 (G7): the sidewalk rule's proof counters, newest at the end.
+                   (exitMask >= 2
+                       ? "; exits held before the sidewalk " + deltas[ExitHeldBeforeSidewalk].ToString(ci) +
+                         " (no room on the lane it joins " + deltas[ExitHeldRoom].ToString(ci) + ")" +
+                         "; driveway exits crossing the sidewalk " + deltas[ExitDriveEntries].ToString(ci) +
+                         ", of them without a full judgement " + deltas[ExitDriveUnjudged].ToString(ci) + " (must be 0)"
+                       : "") +
                    "; " + points;
         }
     }

@@ -241,6 +241,17 @@ namespace JunctionRules.Stage2
         private Entity m_ExitRoadOwner;
         /// <summary>Review F6: the building road joins a signalled arm (the signal decides; trace reason).</summary>
         private bool m_ExitSignalArm;
+        // ---- 0.4.8 (JR-T-014, G7): driveway exits decide everything before the sidewalk (S2-29) ----
+        /// <summary>S2-29 took the full decision (gap + room / box) this update while the vehicle could still stop before the sidewalk.</summary>
+        private bool m_DriveJudged;
+        private ExitGiveWay.Decision m_DriveDecision;
+        private bool m_DriveBoxed;
+        /// <summary>The drive lane that decision was for.</summary>
+        private Entity m_DriveLane;
+        /// <summary>The S2-29 hold this update (speed), for the "held before the sidewalk" counters.</summary>
+        private bool m_HasDriveHold;
+        private float m_DriveHoldSpeed;
+        private bool m_DriveRoomHold;
         /// <summary>Setting "Exit trace (log)": the ring (Stage2/JRStage2Bridge.cs TraceRing) handed in by S2-26 SetTrace.</summary>
         private bool m_TraceOn;
         private NativeArray<long> m_TraceRing;
@@ -526,6 +537,9 @@ namespace JunctionRules.Stage2
             public bool m_Inverse;
             public ComponentLookup<LaneSignal> m_Signals;
             public ComponentLookup<Game.Net.PedestrianLane> m_Pedestrian;
+            /// <summary>0.4.8 (G7, owner 17 Nov): the lane is a driveway's leaving lane and the exit rule is on: the sidewalk it
+            /// crosses (every pedestrian overlap, marked or not) is a zebra Z, directly followed by the road lanes.</summary>
+            public bool m_SidewalkZebra;
 
             public int Count => m_Overlaps.Length;
 
@@ -537,7 +551,7 @@ namespace JunctionRules.Stage2
                 if (m_Pedestrian.TryGetComponent(o.m_Other, out Game.Net.PedestrianLane ped))
                 {
                     StretchGeometry.ToConflict(flags, o.m_ThisStart, o.m_ThisEnd, m_Inverse, false, out start, out end);
-                    if ((flags & WholePathRule.Water) == 0 && ZebraSections.IsZebra((int)ped.m_Flags)) kind = ZebraSections.Zebra;
+                    if ((flags & WholePathRule.Water) == 0 && (m_SidewalkZebra || ZebraSections.IsZebra((int)ped.m_Flags))) kind = ZebraSections.Zebra;
                     return;
                 }
                 if (StretchGeometry.ToConflict(flags, o.m_ThisStart, o.m_ThisEnd, m_Inverse, HeldByRed(o, ref m_Signals), out start, out end)) kind |= ZebraSections.SpotPoint;
@@ -574,6 +588,7 @@ namespace JunctionRules.Stage2
             elements.m_Inverse = inverse;
             elements.m_Signals = signals;
             elements.m_Pedestrian = pedestrianLanes;
+            elements.m_SidewalkZebra = m_ExitRule && carLanes.TryGetComponent(lane, out Game.Net.CarLane exitLane) && ExitGiveWay.IsDrivewayExitLane((uint)exitLane.m_Flags);
             bool atLine = RuleOn && ((m_Mode & Stage2Mode.AtLine) != 0 || m_BoxLane);
             // 0.4.2: a boxed junction lane: stop-line decision and the turner's spot in the box, where the zebra rule allows it.
             // Z O gaps (a waiting spot right after a zebra, owner refinement) everywhere but inside a box (the box decides at the line).
@@ -1316,6 +1331,16 @@ namespace JunctionRules.Stage2
             }
             if (Stage2Counters.IsStandingOn(m_HasExitBox, m_ExitBoxSpeed, finalMaxSpeed, currentSpeed) && ExitEvent(eventTable, entity, frame, 2)) Add(counters, Stage2Counters.ExitSpawnBoxHeld, 1);
             if (m_ExitGo && ExitEvent(eventTable, entity, frame, 3)) Add(counters, Stage2Counters.ExitGo, 1);
+            // 0.4.8 (G7): every exit hold now stands before the sidewalk (drive: S2-29 spot; lot: the sidewalk line; spawn point /
+            // gate / parking: inside the building or the space; building road: before the junction); one per vehicle episode.
+            bool exitStanding = Stage2Counters.IsStandingOn(m_HasDriveHold, m_DriveHoldSpeed, finalMaxSpeed, currentSpeed)
+                || Stage2Counters.IsStandingOn(m_HasExitHold, m_ExitHoldSpeed, finalMaxSpeed, currentSpeed)
+                || Stage2Counters.IsStandingOn(m_HasExitBox, m_ExitBoxSpeed, finalMaxSpeed, currentSpeed);
+            if (exitStanding && ExitEvent(eventTable, entity, frame, ExitGiveWay.SidewalkHoldKind))
+            {
+                Add(counters, Stage2Counters.ExitHeldBeforeSidewalk, 1);
+            }
+            if (exitStanding && m_DriveRoomHold && ExitEvent(eventTable, entity, frame, ExitGiveWay.RoomHoldKind)) Add(counters, Stage2Counters.ExitHeldRoom, 1);
             if (m_ExitEmergency && ExitEvent(eventTable, entity, frame, 4)) Add(counters, Stage2Counters.ExitEmergencyPass, 1);
             if (m_ExitCapHit) Add(counters, Stage2Counters.ExitCapHits, 1);
             // 0.4.7: the cap hits by kind (lane cap: go; vehicle cap: wait).

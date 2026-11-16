@@ -141,7 +141,7 @@ namespace JunctionRules.Core
         /// speed = its speed along the lane (m/s, &gt;= 0).
         /// </summary>
         public static bool CountsAgainstBudget(float rear, float conflictEnd, float gapToConflict, float speed) =>
-            CountsAgainstBudget(rear, conflictEnd, gapToConflict) && !(gapToConflict > 0f && !(speed > 0f));
+            CountsAgainstBudget(rear, conflictEnd, gapToConflict) && !(gapToConflict > ExitGiveWay.PresentMetres && !(speed > 0f));
 
         public static string Name(Path p)
         {
@@ -196,6 +196,9 @@ namespace JunctionRules.Core
             Wait = 0,
             /// <summary>The vehicle hands over from its exit lane to the road lane.</summary>
             HandOver = 1,
+            /// <summary>0.4.8 (G7): the vehicle enters a driveway's leaving lane (its front is at / past the sidewalk): the
+            /// decision it entered with ("go" from a full judgement before the sidewalk, or not judged).</summary>
+            EnterDrive = 2,
         }
 
         /// <summary>Why the decision came out as it did (bit flags).</summary>
@@ -232,10 +235,13 @@ namespace JunctionRules.Core
             else if ((reasons & ReasonDecided) == 0) decided = path == ExitPaths.Path.Drive ? "judged before the hand-over (driveway give-way)" : "not judged";
             else if (decision == ExitGiveWay.Decision.WaitGap) decided = (reasons & ReasonVehicleCap) != 0 ? "wait (dense traffic: vehicle cap)" : "wait (gap)";
             else if (decision == ExitGiveWay.Decision.WaitBox) decided = "wait (box: no room past)";
+            else if (decision == ExitGiveWay.Decision.WaitRoom) decided = "wait (no room on the lane it joins)";
             else if ((reasons & ReasonSignal) != 0) decided = "go (signalled arm)";
             else decided = (reasons & ReasonLaneCap) != 0 ? "go (gap clear; lane cap hit, far lanes not read)" : "go (gap clear)";
             string bld = building == 0 ? "none" : Ent(building);
-            return "exit trace: " + (e == Event.Wait ? "waits" : "joins road") + " vehicle " + Ent(vehicle) + " building " + bld
+            if (e == Event.EnterDrive)
+                decided = (reasons & ReasonDecided) != 0 ? "go (full judgement before the sidewalk)" : "NOT judged before the sidewalk";
+            return "exit trace: " + (e == Event.Wait ? "waits" : e == Event.EnterDrive ? "crosses the sidewalk" : "joins road") + " vehicle " + Ent(vehicle) + " building " + bld
                    + " path " + ExitPaths.Name(path) + " (" + ExitPaths.Name(kind) + ")"
                    + " road owner " + ((int)(frameRoad >> 32)).ToString(ci) + ((reasons & ReasonNodeJoin) != 0 ? " (junction)" : "")
                    + " decision " + decided + " boxed " + (boxed ? "yes" : "no") + " frame " + ((uint)frameRoad).ToString(ci);

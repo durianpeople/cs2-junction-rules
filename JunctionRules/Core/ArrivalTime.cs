@@ -334,6 +334,33 @@ namespace JunctionRules.Core
         }
     }
 
+    /// <summary>0.4.8 (G7): read side of the event table (no write).</summary>
+    public static class EventLookup
+    {
+        /// <summary>The frame of the last recorded step of key <paramref name="entityIndex"/> (the same probing as
+        /// <see cref="SafetyStopEvents.Record"/>); false when the key is not in its probe range.</summary>
+        public static bool Last<T>(ref T slots, int entityIndex, out uint frame) where T : struct, IAtomicSlots
+        {
+            frame = 0;
+            int n = slots.Length;
+            if (n <= 0) return false;
+            int key = entityIndex + 1;
+            int home = (int)(((uint)key * 2654435761u) % (uint)n);
+            int probes = SafetyStopEvents.Probes < n ? SafetyStopEvents.Probes : n;
+            for (int i = 0; i < probes; i++)
+            {
+                long v = slots.Read((home + i) % n);
+                if ((int)(v >> 32) != key) continue;
+                frame = (uint)v;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>A recorded frame is fresh: at most <paramref name="window"/> frames before <paramref name="now"/> (uint wrap safe).</summary>
+        public static bool Fresh(bool found, uint last, uint now, uint window) => found && now - last <= window;
+    }
+
     /// <summary>0.2.3 diagnostics (b1): fixed histogram buckets for the per-point distance from W and the projected own arrival time.</summary>
     public static class PointBuckets
     {

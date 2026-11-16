@@ -1270,10 +1270,10 @@ public struct JRCarLaneSpeedIterator
 			}
 		}
 		// JR-STAGE2 END
-		// JR-STAGE2 BEGIN S2-29: 0.4.4 vehicles leaving buildings give way: a drive's leaving lane (SideConnection + Yield) waits before its first road lane until every crossed / merged lane is clear
+		// JR-STAGE2 BEGIN S2-29: 0.4.4 vehicles leaving buildings give way: a drive's leaving lane (SideConnection + Yield) waits before its first road lane until every crossed / merged lane is clear; 0.4.8 waits before the SIDEWALK and also needs room on the lane it joins (or past the box band)
 		if (m_JR.m_ExitRule)
 		{
-			float jrExitHold = m_JR.ExitDrivewayHold(lane, bufferData, curveOffset.x, length, origDistance, num, inverse, m_Priority, m_PrefabCar, m_CurrentSpeed, m_TimeStep, m_SafeTimeStep, m_SpeedRange, m_MaxSpeed, speedLimit, m_Entity, ref m_CarLaneData, ref m_LaneConditionData, ref m_LaneSignalData, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_CarData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabCarData, ref m_PrefabObjectGeometryData);
+			float jrExitHold = m_JR.ExitDrivewayHold(lane, bufferData, curveOffset.x, length, origDistance, num, inverse, m_Priority, m_PrefabCar, m_CurrentSpeed, m_TimeStep, m_SafeTimeStep, m_SpeedRange, m_MaxSpeed, speedLimit, m_Entity, ref m_CarLaneData, ref m_LaneConditionData, ref m_LaneSignalData, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_CarData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabCarData, ref m_PrefabObjectGeometryData, ref m_LaneOverlapData, ref m_PedestrianLaneData);
 			if (jrExitHold < m_MaxSpeed)
 			{
 				m_MaxSpeed = jrExitHold;

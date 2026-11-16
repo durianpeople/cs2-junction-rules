@@ -97,7 +97,17 @@ namespace JunctionRules.Tests
                 if (ExitGiveWay.VehicleBlocks(gap, false, 0f, 0f, 1f)) anyBlocks = true;
             }
             Check(before == 100 && before > ExitGiveWay.MaxVehiclesPerScan, "the jam hit the vehicle cap before the review fix (busy: wait for ever)");
-            Check(standing == 0 && !anyBlocks, "standing jam of 100 before the exit: no budget used, nobody blocks: go");
+            // 0.4.8 (G7): the queue heads within PresentMetres of the exit (2 m and 8 m on each of the four lanes) are AT the exit and block
+            // (owner: the exit gives way to the vehicle right next to it); the rest of the jam still uses no budget.
+            Check(standing == 8 && anyBlocks, "standing jam of 100 before the exit: only the 8 queue heads within 10 m count and block, the rest no budget");
+            int farStanding = 0; bool farBlocks = false;
+            for (int i = 0; i < 100; i++)
+            {
+                float gap = 12f + 6f * (i % 25), front = 20f - gap, rear = front - 4.5f;
+                if (ExitPaths.CountsAgainstBudget(rear, 24f, gap, 0f)) farStanding++;
+                if (ExitGiveWay.VehicleBlocks(gap, false, 0f, 0f, 1f)) farBlocks = true;
+            }
+            Check(farStanding == 0 && !farBlocks, "a jam that stopped 12 m or more short of the exit: no budget used, nobody blocks: go (0.4.7 review F2 kept)");
             Check(ExitPaths.CountsAgainstBudget(15f, 24f, 0f, 0f) && ExitPaths.CountsAgainstBudget(15f, 24f, -2f, 0f), "a standing vehicle on the conflict still counts (it blocks)");
             Check(ExitPaths.CountsAgainstBudget(-40f, 20f, 35f, 0.1f), "a moving approaching vehicle in reach still counts");
         }
@@ -216,7 +226,7 @@ namespace JunctionRules.Tests
             Check(Block("S2-22").Contains("CountRoadStart(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane, currentLane.m_LaneFlags, m_UnspawnedData.HasComponent(entity)")
                 && glue.Contains("(flags & (NotRoadLane | Game.Vehicles.CarLaneFlags.ResetSpeed)) != 0) return;"), "F1: vehicles placed straight onto a road lane counted in S2-22 (gate exits with ResetSpeed not)");
             Check(glue.Contains("feed == reads.m_OwnLane") && glue.Contains("reads.m_OwnLane = ownLane;") && glue.Contains("reads.m_OwnLane = lane;")
-                && glue.Contains("ExitApproachHold(self, lane, priority,"), "F3: the leaving vehicle's own lane is never a feeding lane");
+                && glue.Contains("ExitApproachHold(self, lane, false, priority,"), "F3: the leaving vehicle's own lane is never a feeding lane");
             Check(glue.Contains("m_ExitSignalArm = true;") && glue.Contains("ExitTrace.ReasonSignal"), "F6: signalled arm reason set and traced");
             string bridge = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRStage2Bridge.cs"));
             int dt = bridge.IndexOf("private static void DrainTrace()", StringComparison.Ordinal);

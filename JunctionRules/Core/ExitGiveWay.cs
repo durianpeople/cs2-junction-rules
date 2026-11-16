@@ -131,10 +131,66 @@ namespace JunctionRules.Core
         public static bool VehicleBlocks(float gap, bool occupies, float speed, float braking, float delta)
         {
             if (occupies || !(gap > 0f)) return true;
+            // 0.4.8 (G7, owner: the exit gives way to the westbound truck right next to it): a road vehicle standing or
+            // creeping with its front within PresentMetres of the conflict is AT the exit (often held before an entrance
+            // band, waiting for room past it): it has priority, the exit waits. Further back a standing queue still does not
+            // block (0.4.7 review F2: a jam that stopped short of the exit).
+            if (gap <= PresentMetres) return true;
             if (!(speed > 0f)) return false;
             float reach = (braking > 0f ? braking : 0f) + speed * (ArrivalProjection.StockLookAhead + (delta > 0f ? delta : 0f));
             return reach >= gap;
         }
+
+        /// <summary>
+        /// 0.4.8 (G7): a road vehicle whose front is this close (m) before a conflict blocks the exit whatever its speed: it
+        /// is present at the exit (the blue westbound truck of the 17 Nov shot stood ~2-6 m before the exit, held before the
+        /// entrance band, and 0.4.7 let the leaving truck out in front of it because it stood still). 10 m = an 8 m entrance
+        /// band's half plus the game's stop margins and a car's nose.
+        /// </summary>
+        public const float PresentMetres = 10f;
+
+        /// <summary>
+        /// 0.4.8 (G7): a driveway exit vehicle within this distance (m) of its spot is judged on every update. 0.4.7 judged it
+        /// only while its own exit hold was the binding limit (hold &lt; currentMax), so one creeping under a lower limit (the car
+        /// ahead, a curve) reached the spot without a decision and crossed. 12 m &gt; what a vehicle covers between two
+        /// navigation updates (16 frames) at 30 m/s.
+        /// </summary>
+        public const float JudgeNearMetres = 12f;
+
+        /// <summary>0.4.8 (G7): half a sidewalk past its pedestrian lane (m): the outer line a lot exit stops before.</summary>
+        public const float SidewalkHalfWidth = 1.5f;
+
+        /// <summary>
+        /// 0.4.8 (G7): metres before the join point where a lot exit's straight way meets the sidewalk's outer line.
+        /// lateral = the outermost building-side pedestrian lane's distance across the road from the join point (m);
+        /// crossing = |cos| of the way's angle to the road's normal (1 = straight across). A shallow way is capped at
+        /// 1 / 0.3 (about 73 degrees) so a near-parallel way never pushes the stop point far back.
+        /// </summary>
+        public static float SidewalkBack(float lateral, float crossing)
+        {
+            if (!(lateral > 0f)) return 0f;
+            float c = crossing > 0.3f ? (crossing < 1f ? crossing : 1f) : 0.3f;
+            return (lateral + SidewalkHalfWidth) / c;
+        }
+
+        /// <summary>0.4.8 (G7): the exit scan runs when the exit hold binds (as 0.4.7) or the vehicle is within JudgeNearMetres of its spot.</summary>
+        public static bool MustJudge(float hold, float currentMax, float waitDistance) => hold < currentMax || waitDistance <= JudgeNearMetres;
+
+        /// <summary>
+        /// 0.4.8 (G7): metres the leaving vehicle's front must travel until its WHOLE length (trailers incl.) is past a crossed
+        /// conflict (from its front to the conflict start, plus the conflict's length, plus its own length). Its own arrival
+        /// time for a CROSSED lane is the time to clear it, not to reach it: a slow 18 m lorry blocks the near lane for
+        /// seconds after its nose has passed (0.4.7 used the time to reach the conflict start).
+        /// </summary>
+        public static float ClearMetres(float toConflictStart, float conflictLength, float ownLength) =>
+            (toConflictStart > 0f ? toConflictStart : 0f) + (conflictLength > 0f ? conflictLength : 0f) + (ownLength > 0f ? ownLength : 0f);
+
+        /// <summary>
+        /// 0.4.8 (G7, owner rule 17 Nov: the sidewalk a building exit crosses is a ZEBRA): the exit's waiting spot is the
+        /// start of the FIRST element on its way: the sidewalk (any pedestrian lane the drive lane overlaps, marked crossing
+        /// or not) or, if it comes first, the first road lane. Driving coordinates of the drive lane; 2 = nothing ahead.
+        /// </summary>
+        public static float ExitSpot(float firstRoad, float firstSidewalk) => firstSidewalk < firstRoad ? firstSidewalk : firstRoad;
 
         /// <summary>
         /// Where the leaving vehicle waits: W = metres from its front to the first conflict start, minus the game's stop
@@ -180,7 +236,27 @@ namespace JunctionRules.Core
         public const float AreaScanMin = 25f;
 
         /// <summary>Counter episodes (0.4.6): a vehicle's consecutive exit decisions (at most <see cref="Core.SafetyStopEvents.ContinueFrames"/> apart) are one event, per kind.</summary>
-        public const int EventKinds = 8;
+        public const int EventKinds = 12;
+
+        /// <summary>0.4.8 (G7): event kind of "a full Go judgement before the sidewalk" (the frame is read back at the drive entry).</summary>
+        public const int DriveGoKind = 8;
+
+        /// <summary>0.4.8 (G7): event kind of "held before the sidewalk" (counter episode).</summary>
+        public const int SidewalkHoldKind = 9;
+
+        /// <summary>0.4.8 (G7): event kind of "held: no room on the lane it joins" (counter episode).</summary>
+        public const int RoomHoldKind = 10;
+
+        /// <summary>0.4.8 (G7): event kind of the drive exit's trace "waits" line (episode).</summary>
+        public const int DriveTraceWaitKind = 11;
+
+        /// <summary>
+        /// 0.4.8 (G7): a Go judgement counts for the drive entry when it is at most this many frames old. The vehicle is
+        /// re-judged every navigation update (16 frames) while it can still stop before the sidewalk; from its last Go its
+        /// front passes the spot and its pivot reaches the drive lane within a few metres. 960 frames = 16 s at 60 frames/s
+        /// (a lorry creeping out at 0.5 m/s).
+        /// </summary>
+        public const uint DriveGoWindow = 960;
 
         /// <summary>0.4.7: event kind of the exit trace's "starts waiting" line (one per wait episode).</summary>
         public const int TraceWaitKind = 6;
@@ -202,6 +278,23 @@ namespace JunctionRules.Core
             WaitGap = 1,
             /// <summary>Gap clear (or not checked), but a yellow box at the exit has no room past it (0.4.3 rule).</summary>
             WaitBox = 2,
+            /// <summary>0.4.8 (G7): unboxed exit, gap clear, but no room for the whole vehicle on the lane it joins (a stopped
+            /// far-lane queue): it would end up across the lanes it crossed, nose in a lane it cannot join.</summary>
+            WaitRoom = 3,
+        }
+
+        /// <summary>
+        /// 0.4.8 (G7): the whole decision, taken at the spot before the sidewalk. As <see cref="Decide(bool,int,bool,bool,bool,bool)"/>,
+        /// plus: with the setting on, an UNBOXED exit (or a boxed one with the box rule off) also needs room for its whole
+        /// length on the lane it joins, past the join point (the zebra / box room-past scan). A boxed exit's room past the
+        /// band already implies it. On-duty emergency vehicles: only the box rule (stock otherwise).
+        /// </summary>
+        public static Decision Decide(bool settingOn, int priority, bool gapClear, bool boxRuleOn, bool boxed, bool roomPastBox, bool roomOnJoin)
+        {
+            Decision d = Decide(settingOn, priority, gapClear, boxRuleOn, boxed, roomPastBox);
+            if (d != Decision.Go) return d;
+            if (boxRuleOn && boxed) return Decision.Go;
+            return Applies(settingOn, priority) && !roomOnJoin ? Decision.WaitRoom : Decision.Go;
         }
 
         /// <summary>

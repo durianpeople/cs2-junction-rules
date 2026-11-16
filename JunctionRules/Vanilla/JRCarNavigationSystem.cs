@@ -1679,6 +1679,7 @@ public class JRCarNavigationSystem : GameSystemBase
 						blocker.m_Type = BlockerType.Crossing;
 					}
 					laneIterator.m_JR.TraceWait(m_JRSafetyEvents, entity, m_SimulationFrame);
+					laneIterator.m_JR.NoteExit(m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane);
 					// this branch never reaches the counters of S2-22 (goto IL_0a0a)
 					if ((m_JRMode & JunctionRules.Core.Stage2Mode.Count) != 0)
 					{
@@ -1761,6 +1762,7 @@ public class JRCarNavigationSystem : GameSystemBase
 					}
 					// 0.4.7: the exit trace's first-wait line
 					laneIterator.m_JR.TraceWait(m_JRSafetyEvents, entity, m_SimulationFrame);
+					laneIterator.m_JR.NoteExit(m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane);
 					// 0.4.6: this branch never reaches the counters below (goto IL_0a0a), so the lot exit's own counters were lost in 0.4.5
 					if ((m_JRMode & JunctionRules.Core.Stage2Mode.Count) != 0)
 					{
@@ -1800,13 +1802,18 @@ public class JRCarNavigationSystem : GameSystemBase
 			// JR-STAGE2 END
 			navigation.m_MaxSpeed = laneIterator.m_MaxSpeed;
 			CheckBlocker(ref currentLane, ref blocker, ref laneIterator);
-			// JR-STAGE2 BEGIN S2-22: debug counters (only when counting); JR-T-013b: watch-one-junction events; 0.4.7 review: vehicles placed straight onto a road lane
+			// JR-STAGE2 BEGIN S2-22: debug counters (only when counting); JR-T-013b: watch-one-junction events; 0.4.7 review: vehicles placed straight onto a road lane; 0.4.8 driveway Go records / trace
 			if ((m_JRMode & JunctionRules.Core.Stage2Mode.Count) != 0)
 			{
 				laneIterator.m_JR.AddCounts(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, laneIterator.m_MaxSpeed, num2);
 				laneIterator.m_JR.Watch(m_JRWatch, entity, laneIterator.m_MaxSpeed, num2, laneIterator.m_Blocker, laneIterator.m_BlockerType);
 				// 0.4.7 review (G1 F1): a vehicle placed straight onto a public road lane (not judged; counted only)
 				laneIterator.m_JR.CountRoadStart(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane, currentLane.m_LaneFlags, m_UnspawnedData.HasComponent(entity), ref laneIterator.m_CarLaneData);
+			}
+			// 0.4.8 (G7): an exit's Go judgement (read back at its hand-over / drive entry) and the driveway trace "waits" line
+			if ((m_JRMode & JunctionRules.Core.Stage2Mode.Count) != 0 || m_JRExitTraceOn)
+			{
+				laneIterator.m_JR.NoteExit(m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane);
 			}
 			// JR-STAGE2 END
 			if (laneIterator.m_TempBuffer.IsCreated)
@@ -2074,7 +2081,7 @@ public class JRCarNavigationSystem : GameSystemBase
 					// JR-STAGE2 BEGIN S2-34: 0.4.6 probe; 0.4.7 classified hand-over counters and the exit trace (counting or tracing only): which way out of a building / parking hands over to a public road lane
 					if (laneIterator.m_JR.m_ExitRule && ((m_JRMode & JunctionRules.Core.Stage2Mode.Count) != 0 || m_JRExitTraceOn))
 					{
-						laneIterator.m_JR.ExitHandOver(m_JRCounters, entity, m_SimulationFrame, currentLane.m_Lane, currentLane.m_LaneFlags, carNavigationLane2, ref laneIterator.m_CarLaneData, ref laneIterator.m_CurveData);
+						laneIterator.m_JR.ExitHandOver(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane, currentLane.m_LaneFlags, carNavigationLane2, ref laneIterator.m_CarLaneData, ref laneIterator.m_CurveData);
 					}
 					// JR-STAGE2 END
 					if ((currentLane.m_LaneFlags & Game.Vehicles.CarLaneFlags.HighBeams) != 0 && m_CarLaneData.TryGetComponent(carNavigationLane2.m_Lane, out var componentData9) && (componentData9.m_Flags & Game.Net.CarLaneFlags.Highway) != 0 && !IsLit(carNavigationLane2.m_Lane))
