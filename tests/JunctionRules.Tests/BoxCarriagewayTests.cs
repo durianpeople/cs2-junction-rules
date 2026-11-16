@@ -327,7 +327,11 @@ namespace JunctionRules.Tests
             int load = mod.IndexOf("AssetDatabase.global.LoadSettings(", StringComparison.Ordinal), mig = mod.IndexOf("Settings.MigrateAfterLoad()", StringComparison.Ordinal);
             Check(load >= 0 && mig > load, "Mod.OnLoad migrates right after loading the saved settings");
             // 0.3.5 outline source: edge composition + carriageway builder, no node-composition road-lane test any more
-            Check(!sys.Contains("no road-lane pieces") && sys.Contains("comp.m_Edge") && sys.Contains("CarriagewayOutline.Build(arms, centre, crossings,"), "paint system: footways from the edge composition, outline from CarriagewayOutline.Build");
+            // 0.4.2: the shape readers moved to Boxes/BoxShapes.cs (shared by the paint and the tool's hover outline)
+            string shapes = File.ReadAllText(Path.Combine(RepoRoot(), "JunctionRules", "Boxes", "BoxShapes.cs"));
+            Check(sys.Contains("BoxShapes.Junction(") && !sys.Contains("HullOutline"), "paint system: junction shape from Boxes/BoxShapes.cs, no hull fallback (0.4.2)");
+            sys = shapes;
+            Check(!sys.Contains("no road-lane pieces") && sys.Contains("comp.m_Edge") && sys.Contains("CarriagewayOutline.BuildStraight(arms, centre, markings,"), "box shapes: footways from the edge composition, outline from CarriagewayOutline.BuildStraight");
             Check(sys.Contains("NetCompositionLane") && sys.Contains("NetLaneData ld = em.GetComponentData<NetLaneData>(l.m_Lane)") && sys.Contains("CarriagewayOutline.IsCarriagewayLane(") && !sys.Contains("NetPieceFlags.HasRoadLanes"), "paint system: carriageway from lane extents (position +- NetLaneData width / 2), not piece spans");
             Check(sys.Contains("footway unknown") && sys.Contains("kerbNotes.Add(\"unknown\")") && !sys.Contains("kerbNotes.Add(\"0|0\")"), "paint system: unknown footway is logged, never a silent 0|0");
             Check(sys.Contains("!em.HasComponent<Game.Net.Road>(e)") && sys.Contains("non-road edge(s)"), "paint system: non-road edges (paths) are skipped as arms, with a note");

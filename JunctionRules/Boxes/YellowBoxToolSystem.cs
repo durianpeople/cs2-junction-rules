@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Colossal.Mathematics;
 using Game.Buildings;
 using Game.Common;
@@ -21,8 +22,10 @@ namespace JunctionRules.Boxes
     /// TypeMask.Net; TLE Systems.Tool/ToolSystem.cs: the game's applyAction, OverlayRenderSystem circles).
     /// - Inert until used: created disabled by the game's ToolBaseSystem.OnCreate (Enabled = false); it runs only while it
     ///   is the active tool (toolbar button, the Options button, or the keyboard shortcut).
-    /// - Hover: a valid junction node (Core/BoxSelection.JunctionOk) or building access (EntranceOk) glows (yellow: click
-    ///   adds a box; orange: has a box, click removes it). Nothing glows on anything else.
+    /// - Hover (0.4.2, owner 16 Nov 2026: look like Traffic's Priorities tool, not a yellow blob): a thin outline of the
+    ///   box itself (the same straight-sided shape the paint draws, Boxes/BoxShapes.cs) on a valid junction node
+    ///   (Core/BoxSelection.JunctionOk) or building access (EntranceOk): white = click adds a box, orange = has a box,
+    ///   click removes it (Core/BoxHover.cs: Traffic's colours and line width, with cites). No fill. Nothing on anything else.
     /// - Left click (the game's Apply action): toggles the box component on the node / building (Boxes/BoxComponents.cs),
     ///   then asks the paint system to redraw at once.
     /// - Right click (the game's Cancel action) or Esc: back to the game's default tool.
@@ -38,8 +41,12 @@ namespace JunctionRules.Boxes
         private Target m_Hover;
         private string m_LastWhy;
 
-        private static readonly Color kAdd = new Color(1f, 0.85f, 0f, 0.9f);
-        private static readonly Color kRemove = new Color(1f, 0.45f, 0f, 0.9f);
+        // hover outline cache: the shape is solved once per hovered target (re-solved every kRefreshFrames while hovered)
+        private Entity m_CacheEntity;
+        private List<(V3 A, V3 B)> m_CacheSegments;
+        private string m_CacheFailure;
+        private int m_CacheAge;
+        private const int kRefreshFrames = 30;
 
         internal enum Kind { None, Junction, Entrance }
 
@@ -50,8 +57,7 @@ namespace JunctionRules.Boxes
             public bool Valid, HasBox;
             public string Why;
             public float3 Position;
-            public float Size;
-            public Bezier4x3 Across;   // entrance: a line across the road at the access point
+            public BoxFacts.Access Access;   // entrance: the building's access on its road
         }
 
         public override PrefabBase GetPrefab() => null;
@@ -158,17 +164,7 @@ namespace JunctionRules.Boxes
             var t = new Target { Kind = Kind.Junction, Entity = node };
             t.Valid = BoxSelection.JunctionOk(BoxFacts.Junction(em, node), out t.Why);
             t.HasBox = em.HasComponent<YellowBoxJunction>(node);
-            if (em.HasComponent<NodeGeometry>(node))
-            {
-                Bounds3 b = em.GetComponentData<NodeGeometry>(node).m_Bounds;
-                t.Position = (b.min + b.max) * 0.5f;
-                t.Size = math.max(4f, math.cmax((b.max - b.min).xz) * 0.8f);
-            }
-            else if (em.HasComponent<Game.Net.Node>(node))
-            {
-                t.Position = em.GetComponentData<Game.Net.Node>(node).m_Position;
-                t.Size = 8f;
-            }
+            if (em.HasComponent<Game.Net.Node>(node)) t.Position = em.GetComponentData<Game.Net.Node>(node).m_Position;
             return t;
         }
 
@@ -200,42 +196,49 @@ namespace JunctionRules.Boxes
             var t = new Target { Kind = Kind.Entrance, Entity = building };
             t.Valid = BoxSelection.EntranceOk(BoxFacts.Entrance(em, building, out BoxFacts.Access a), out t.Why);
             t.HasBox = em.HasComponent<YellowBoxEntrance>(building);
-            if (a.Valid && em.HasComponent<Curve>(a.Edge))
-            {
-                Bezier4x3 c = em.GetComponentData<Curve>(a.Edge).m_Bezier;
-                float3 tan = MathUtils.Tangent(c, a.T);
-                float2 side = math.normalizesafe(MathUtils.Right(tan.xz));
-                float half = 4f;
-                if (em.HasComponent<Composition>(a.Edge))
-                {
-                    Entity comp = em.GetComponentData<Composition>(a.Edge).m_Edge;
-                    if (em.HasComponent<NetCompositionData>(comp)) half = em.GetComponentData<NetCompositionData>(comp).m_Width * 0.5f;
-                }
-                float3 p0 = a.Point - new float3(side.x, 0f, side.y) * half, p1 = a.Point + new float3(side.x, 0f, side.y) * half;
-                t.Across = NetUtils.StraightCurve(p0, p1);
-                t.Position = a.Point;
-                t.Size = 3f;
-            }
-            else if (em.HasComponent<Game.Objects.Transform>(building))
-            {
-                t.Position = em.GetComponentData<Game.Objects.Transform>(building).m_Position;
-                t.Size = 6f;
-            }
+            t.Access = a;
+            if (a.Valid) t.Position = a.Point;
+            else if (em.HasComponent<Game.Objects.Transform>(building)) t.Position = em.GetComponentData<Game.Objects.Transform>(building).m_Position;
             return t;
         }
 
-        // ------------------------------------------------------------------ glow and click
+        // ------------------------------------------------------------------ hover outline and click
 
+        /// <summary>
+        /// The box outline as Traffic draws its hover (Core/BoxHover.cs): one OverlayRenderSystem.Buffer.DrawLine per ring
+        /// side (decompile Game.Rendering/OverlayRenderSystem.cs 207: DrawLine(outlineColor, fillColor, outlineWidth,
+        /// styleFlags, Line3.Segment, width, roundness)) with outline = fill colour, outlineWidth 0, StyleFlags 0, width
+        /// BoxHover.LineWidth, roundness (1, 1). Nothing is filled.
+        /// </summary>
         private void Draw(Target t)
         {
+            List<(V3 A, V3 B)> segs = Outline(t);
+            if (segs == null || segs.Count == 0) return;
+            float[] rgba = BoxHover.Colour(t.HasBox);
+            var c = new Color(rgba[0], rgba[1], rgba[2], rgba[3]);
             OverlayRenderSystem.Buffer buffer = m_Overlay.GetBuffer(out JobHandle deps);
             deps.Complete();
-            Color c = t.HasBox ? kRemove : kAdd;
-            if (t.Kind == Kind.Entrance && !t.Across.Equals(default(Bezier4x3)))
+            foreach (var (a, b) in segs)
             {
-                buffer.DrawCurve(c, t.Across, (float)BoxStore.EntranceLength, new float2(0f, 0f));
+                var line = new Line3.Segment(new float3((float)a.X, (float)a.Y, (float)a.Z), new float3((float)b.X, (float)b.Y, (float)b.Z));
+                buffer.DrawLine(c, c, 0f, (OverlayRenderSystem.StyleFlags)0, line, BoxHover.LineWidth, new float2(1f, 1f));
             }
-            else buffer.DrawCircle(c, t.Position, t.Size);
+        }
+
+        /// <summary>The hovered target's box outline (cached per target; solved by Boxes/BoxShapes.cs, the paint's shape code).</summary>
+        private List<(V3 A, V3 B)> Outline(Target t)
+        {
+            if (t.Entity == m_CacheEntity && m_CacheSegments != null && ++m_CacheAge < kRefreshFrames) return m_CacheSegments;
+            m_CacheEntity = t.Entity;
+            m_CacheAge = 0;
+            BoxShapes.Shape shape = t.Kind == Kind.Junction
+                ? BoxShapes.Junction(EntityManager, t.Entity, BoxStore.KerbInset, BoxStore.MarkingMargin)
+                : BoxShapes.Entrance(EntityManager, t.Access, BoxStore.KerbInset, BoxStore.EntranceLength, BoxStore.MarkingMargin);
+            m_CacheSegments = BoxHover.Segments(shape.Outline);
+            if (shape.Outline == null && shape.Failure != m_CacheFailure)
+                Mod.log.Info($"yellow box tool: {(t.Kind == Kind.Junction ? "node" : "building")} {t.Entity}: no box outline to show ({shape.Failure})");
+            m_CacheFailure = shape.Outline == null ? shape.Failure : null;
+            return m_CacheSegments;
         }
 
         private void Toggle(Target t)

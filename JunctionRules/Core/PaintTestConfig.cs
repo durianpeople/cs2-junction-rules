@@ -139,6 +139,11 @@ namespace JunctionRules.Core
                 g.MitreLimit = NumOr(p, "mitreLimit", g.MitreLimit);
                 g.StraightenTolerance = NumOr(p, "straightenTolerance", g.StraightenTolerance);
                 g.EntranceLength = NumOr(p, "entranceLength", g.EntranceLength);
+                if (p.ContainsKey("markingMargin"))
+                {
+                    g.MarkingMargin = NumOr(p, "markingMargin", double.NaN);
+                    if (double.IsNaN(g.MarkingMargin) || double.IsInfinity(g.MarkingMargin)) { g.MarkingMargin = double.NaN; cfg.Problems.Add("paint.markingMargin is not a number, ignored (the Options value applies)"); }
+                }
                 double ml = NumOr(p, "maxLinesPerFamily", g.MaxLinesPerFamily);
                 g.MaxLinesPerFamily = (int)Math.Round(ml);
 
@@ -208,6 +213,8 @@ namespace JunctionRules.Core
                 $"\"plainTextures\": {(r.PlainTextures ? "true" : "false")}", $"\"swapPrevNext\": {(r.SwapPrevNext ? "true" : "false")}",
                 $"\"snapRadius\": {F(r.SnapRadius)}", $"\"logIntervalSeconds\": {F(r.LogIntervalSeconds)}",
             };
+            // 0.4.2: markingMargin only when the file had it (absent = the Options value applies; writing the default would pin it)
+            if (!double.IsNaN(g.MarkingMargin)) lines.Insert(9, $"\"markingMargin\": {F(g.MarkingMargin)}");
             for (int i = 0; i < lines.Count; i++) sb.Append("    ").Append(lines[i]).Append(i < lines.Count - 1 ? ",\n" : "\n");
             sb.Append("  }");
             // Diagnostic switches the owner set are kept (only the non-default ones; the mod never adds any).

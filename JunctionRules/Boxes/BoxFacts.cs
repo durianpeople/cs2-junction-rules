@@ -148,16 +148,23 @@ namespace JunctionRules.Boxes
             if (em.HasComponent<EdgeGeometry>(road))
             {
                 // The edge's own part runs from its start mouth (EdgeGeometry m_Start .a ends) to its end mouth (m_End .d ends).
+                // 0.4.2: from the NEARER corner of each mouth (Core/EntranceBox.EdgePart), not the mouth middle.
                 EdgeGeometry g = em.GetComponentData<EdgeGeometry>(road);
-                float3 s = (g.m_Start.m_Left.a + g.m_Start.m_Right.a) * 0.5f;
-                float3 e = (g.m_End.m_Left.d + g.m_End.m_Right.d) * 0.5f;
-                MathUtils.Distance(curve.m_Bezier.xz, s.xz, out float ts);
-                MathUtils.Distance(curve.m_Bezier.xz, e.xz, out float te);
-                a.MinM = MathUtils.Length(curve.m_Bezier, new Bounds1(0f, math.min(ts, te)));
-                a.MaxM = MathUtils.Length(curve.m_Bezier, new Bounds1(0f, math.max(ts, te)));
+                float sa = AlongOf(curve.m_Bezier, g.m_Start.m_Left.a), sb = AlongOf(curve.m_Bezier, g.m_Start.m_Right.a);
+                float ea = AlongOf(curve.m_Bezier, g.m_End.m_Left.d), eb = AlongOf(curve.m_Bezier, g.m_End.m_Right.d);
+                if (math.min(sa, sb) > math.max(ea, eb)) { float t1 = sa, t2 = sb; sa = ea; sb = eb; ea = t1; eb = t2; }
+                EntranceBox.EdgePart(sa, sb, ea, eb, out double mn, out double mx);
+                a.MinM = (float)mn;
+                a.MaxM = (float)mx;
             }
             a.Valid = a.LengthM > 0.5f;
             return a;
+        }
+
+        private static float AlongOf(Bezier4x3 c, float3 p)
+        {
+            MathUtils.Distance(c.xz, p.xz, out float t);
+            return MathUtils.Length(c, new Bounds1(0f, t));
         }
 
         /// <summary>Curve parameter at 'metres' along the curve (bisection on MathUtils.Length).</summary>

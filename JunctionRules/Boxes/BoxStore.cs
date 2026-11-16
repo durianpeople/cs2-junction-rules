@@ -7,7 +7,7 @@ namespace JunctionRules.Boxes
     /// 0.4.0-probe (JR-T-007): the one place that adds or removes a saved yellow box (our own two components, nothing
     /// else), and the hand-over between the tool and the paint system so neither names the other: the tool calls
     /// <see cref="Add"/> / <see cref="Remove"/> and the paint system listens on <see cref="Changed"/>; the paint system
-    /// publishes its entrance length here for the tool's glow. Main thread only.
+    /// publishes its shape parameters (entrance length, kerb inset, marking margin) here for the tool's hover outline. Main thread only.
     /// </summary>
     internal static class BoxStore
     {
@@ -16,6 +16,9 @@ namespace JunctionRules.Boxes
 
         /// <summary>Entrance box length along the road in metres (the paint list's "entranceLength"; default 8).</summary>
         internal static double EntranceLength = 8.0;
+        /// <summary>0.4.2: shape parameters the paint system publishes for the tool's hover outline (same shape as the paint).</summary>
+        internal static double KerbInset = 0.0;
+        internal static double MarkingMargin = JunctionRules.Core.MarkingMargin.Default;
 
         internal static bool Has(EntityManager em, Entity e, bool junction)
         {

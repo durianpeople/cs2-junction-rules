@@ -94,6 +94,11 @@ namespace JunctionRules.Core
         public int MaxLinesPerFamily = 200;
         /// <summary>0.4.0: length along the road of an entrance box (in front of a building's access), metres.</summary>
         public double EntranceLength = 8.0;
+        /// <summary>
+        /// 0.4.2: paint list "markingMargin" (metres clear of road markings and, for entrance boxes, of junction mouths).
+        /// NaN = not in the file: the Options value applies (MarkingMargin.Effective).
+        /// </summary>
+        public double MarkingMargin = double.NaN;
 
         public double EffectiveSpacing(double shortestSide)
         {
@@ -113,6 +118,7 @@ namespace JunctionRules.Core
             MitreLimit = ClampOne(MitreLimit, 1.0, 20.0, 4, nameof(MitreLimit), changed);
             StraightenTolerance = ClampOne(StraightenTolerance, 0.0, 1.0, 0.05, nameof(StraightenTolerance), changed);
             EntranceLength = ClampOne(EntranceLength, 2.0, 40.0, 8.0, nameof(EntranceLength), changed);
+            if (!double.IsNaN(MarkingMargin)) MarkingMargin = ClampOne(MarkingMargin, Core.MarkingMargin.Min, Core.MarkingMargin.Max, Core.MarkingMargin.Default, nameof(MarkingMargin), changed);
             if (MaxLinesPerFamily < 1 || MaxLinesPerFamily > 2000) { MaxLinesPerFamily = 200; changed.Add(nameof(MaxLinesPerFamily)); }
             return changed;
         }

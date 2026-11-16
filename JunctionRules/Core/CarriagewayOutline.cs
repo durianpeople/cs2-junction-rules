@@ -39,12 +39,40 @@ namespace JunctionRules.Core
         public CompositionLaneSpan(double position, double width, bool carriageway) { Position = position; Width = width; Carriageway = carriageway; }
     }
 
-    /// <summary>A marked crossing on the junction: its centre line (A to B, across the arm) and its width along the road.</summary>
+    /// <summary>
+    /// A painted marking across the road at a junction: a zebra (node crosswalk sub-lane) or, 0.4.2, a stop / give-way
+    /// line (edge secondary crossing lane). Its centre line (A to B, across the arm) and its PAINTED width along the road
+    /// (the junction-side painted edge is the centre line + Width / 2).
+    /// </summary>
     public struct CrosswalkStrip
     {
         public V2 A, B;
         public double Width;
-        public CrosswalkStrip(V2 a, V2 b, double width) { A = a; B = b; Width = width; }
+        /// <summary>0.4.2: true for a stop / give-way line, false for a zebra (notes only).</summary>
+        public bool StopLine;
+        public CrosswalkStrip(V2 a, V2 b, double width) { A = a; B = b; Width = width; StopLine = false; }
+        public CrosswalkStrip(V2 a, V2 b, double width, bool stopLine) { A = a; B = b; Width = width; StopLine = stopLine; }
+    }
+
+    /// <summary>
+    /// 0.4.2-probe (JR-T-007b, owner 16 Nov 2026): how far every box edge keeps clear of painted road markings (zebra
+    /// stripes, stop / give-way lines) and, for entrance boxes, of the junction mouth. Measured from the marking's
+    /// painted edge on the box side (centre line +- painted width / 2), never from its centre line. Options slider; the
+    /// paint list's "markingMargin" key overrides it when present (tuning).
+    /// </summary>
+    public static class MarkingMargin
+    {
+        public const float Default = 0.5f, Min = 0f, Max = 2f, Step = 0.1f;
+
+        /// <summary>The margin in force: the list file's value when it has one (not NaN), else the Options value; clamped to [Min, Max].</summary>
+        public static double Effective(double setting, double listOverride, out string source)
+        {
+            double v = setting;
+            source = "options";
+            if (!double.IsNaN(listOverride)) { v = listOverride; source = "paint-test.json markingMargin"; }
+            if (double.IsNaN(v) || double.IsInfinity(v)) { v = Default; source += " (invalid, default used)"; }
+            return Math.Max(Min, Math.Min(Max, v));
+        }
     }
 
     /// <summary>One arm as the game gives it: the two outer edges of its node slice (index 0 = the mouth, the .a end) and the inset (footway + extra) for each.</summary>
@@ -53,6 +81,17 @@ namespace JunctionRules.Core
         public List<V3> OuterA = new List<V3>();
         public List<V3> OuterB = new List<V3>();
         public double InsetA, InsetB;
+        /// <summary>
+        /// 0.4.2: the node slice's INNER curves (EdgeNodeGeometry m_Left.m_Right for side A = m_Left.m_Left, m_Right.m_Left
+        /// for side B = m_Right.m_Right), sampled at the same curve parameters as the outer ones, and each half's width
+        /// (node composition width / 2 +- middle offset). When given, the kerb is Lerp(outer, inner, inset / half): the
+        /// game lays a lateral position across a node half linearly between those two curves (the slice halves of
+        /// LaneSystem.cs 7918-7947). Null = the old sideways offset of the outer curve (roundabouts, tests).
+        /// </summary>
+        public List<V3> InnerA, InnerB;
+        public double HalfA, HalfB;
+        /// <summary>0.4.2: STOP / Give Way on this approach (CarLaneFlags.Stop / Yield on the node's car lanes from this arm).</summary>
+        public bool Yielding;
     }
 
     public sealed class CarriagewayResult
@@ -64,6 +103,8 @@ namespace JunctionRules.Core
         /// <summary>Per arm: the trimmed kerb lines that went into the merge.</summary>
         public List<ArmSlice> Kerbs = new List<ArmSlice>();
         public List<string> Notes = new List<string>();
+        /// <summary>0.4.2: the straight-sided solve (shifts per arm in INPUT order, rule), when BuildStraight made it.</summary>
+        public StraightBoxResult Straight;
     }
 
     public static class CarriagewayOutline
@@ -141,12 +182,14 @@ namespace JunctionRules.Core
         }
 
         /// <summary>
-        /// How far into the junction each arm's box starts: the far (junction-side) edge of the marked crossings on that
-        /// arm, measured square to the mouth line; 0 where there is none (the mouth is the stop / give-way line, where
-        /// the edge's lanes end). A crossing goes to the arm whose mouth segment is nearest its middle (within
-        /// CrossingAssignMax).
+        /// How far into the junction each arm's box starts: the far (junction-side) painted edge of the markings on that
+        /// arm (zebra stripes; 0.4.2 also stop / give-way lines), measured square to the mouth line, plus 'margin'
+        /// (0.4.2); 0 where no marking reaches within 'margin' of the mouth (the box then starts at the mouth, where the
+        /// edge's lanes end). Painted edge = centre line + painted width / 2. A marking goes to the arm whose mouth
+        /// segment is nearest its middle (within CrossingAssignMax). 0.3.5-0.4.0 had no margin: the box edge lay flush
+        /// on the zebra's junction-side painted edge, and stop lines were not read at all.
         /// </summary>
-        public static double[] StopDistances(IList<ArmSlice> arms, V2 centre, IList<CrosswalkStrip> crossings, List<string> notes = null)
+        public static double[] StopDistances(IList<ArmSlice> arms, V2 centre, IList<CrosswalkStrip> crossings, List<string> notes = null, double margin = 0)
         {
             var d = new double[arms.Count];
             if (crossings == null) return d;
@@ -166,7 +209,7 @@ namespace JunctionRules.Core
                 }
                 if (best < 0 || bestD > CrossingAssignMax) { ignored++; continue; }
                 double half = Math.Max(0, c.Width) * 0.5;
-                double far = Math.Max(V2.Dot(c.A - mids[best], ins[best]), V2.Dot(c.B - mids[best], ins[best])) + half;
+                double far = Math.Max(V2.Dot(c.A - mids[best], ins[best]), V2.Dot(c.B - mids[best], ins[best])) + half + Math.Max(0, margin);
                 if (far > d[best]) d[best] = far;
             }
             if (ignored > 0 && notes != null) notes.Add($"{ignored} crossing(s) not next to any arm mouth, ignored");
@@ -282,7 +325,10 @@ namespace JunctionRules.Core
         /// The whole carriageway outline: each arm's outer edges moved in by its insets (the kerb lines, following the
         /// corner curves), trimmed to the stop line / far side of the zebra, merged into one ring (BuildOutline).
         /// </summary>
-        public static CarriagewayResult Build(IList<ArmInput> arms, V2 centre, IList<CrosswalkStrip> crossings, double straightenTol)
+        public static CarriagewayResult Build(IList<ArmInput> arms, V2 centre, IList<CrosswalkStrip> crossings, double straightenTol) => Build(arms, centre, crossings, straightenTol, 0);
+
+        /// <summary>0.4.2: as Build, each arm's box edge 'margin' clear of the junction-side painted edge of its markings (MarkingMargin).</summary>
+        public static CarriagewayResult Build(IList<ArmInput> arms, V2 centre, IList<CrosswalkStrip> crossings, double straightenTol, double margin)
         {
             var res = new CarriagewayResult();
             if (arms == null || arms.Count < 2) { res.Failure = "fewer than 2 arms"; return res; }
@@ -310,20 +356,150 @@ namespace JunctionRules.Core
                 var kb = BoxPaintGeometry.OffsetToward(a.OuterB, insetB[i], a.OuterA[0].XZ);
                 kerbs.Add(new ArmSlice(ka, kb));
             }
-            res.StopDistance = StopDistances(kerbs, centre, crossings, res.Notes);
+            res.StopDistance = StopDistances(kerbs, centre, crossings, res.Notes, margin);
             for (int i = 0; i < kerbs.Count; i++)
             {
                 if (res.StopDistance[i] <= 1e-6) continue;
                 if (TrimToStopLine(kerbs[i], centre, res.StopDistance[i], out ArmSlice t)) kerbs[i] = t;
                 else
                 {
-                    res.Notes.Add($"arm {i + 1}: crossing ends {res.StopDistance[i]:0.0} m in, past the kerb lines; box starts at the mouth");
+                    res.Notes.Add($"arm {i + 1}: marking (+ margin) ends {res.StopDistance[i]:0.0} m in, past the kerb lines; box starts at the mouth");
                     res.StopDistance[i] = 0;
                 }
             }
             res.Kerbs = kerbs;
             res.Outline = BoxPaintGeometry.BuildOutline(kerbs, centre, straightenTol, out string why);
             if (res.Outline == null) res.Failure = why;
+            return res;
+        }
+            /// <summary>
+        /// 0.4.2: the kerb line of one side: Lerp(outer, inner, inset / half) point by point when the inner curve is given
+        /// with the same sample count and a half width &gt; 0; else the outer curve offset sideways by 'inset' toward 'toward'.
+        /// The lerp matters at skewed nodes (Lindbergh St x Anchor St): there the outer curves are stubs under 1 m long while
+        /// the kerb corner lies well inside the slice, between outer and inner curve, and an offset stub never met its
+        /// neighbour (0.4.0 then joined the stub ends with a straight chord over the pavement).
+        /// </summary>
+        public static List<V3> KerbLine(List<V3> outer, List<V3> inner, double half, double inset, V2 toward)
+        {
+            if (inner != null && inner.Count == outer.Count && half > 1e-6)
+            {
+                double f = Math.Max(0, Math.Min(1, inset / half));
+                var r = new List<V3>(outer.Count);
+                for (int k = 0; k < outer.Count; k++)
+                {
+                    V3 o = outer[k], q = inner[k];
+                    r.Add(new V3(o.X + (q.X - o.X) * f, o.Y + (q.Y - o.Y) * f, o.Z + (q.Z - o.Z) * f));
+                }
+                return r;
+            }
+            return BoxPaintGeometry.OffsetToward(outer, inset, toward);
+        }
+
+        /// <summary>
+        /// 0.4.2-probe (owner rulings 16 Nov 2026): the straight-sided box. Kerb lines (KerbLine) trimmed to each arm's
+        /// stop line / zebra + margin; arms sorted round the centre; the kerb chain between neighbouring arms (one arm's
+        /// kerb to the corner where it meets the next arm's kerb, then that kerb out to its mouth); then StraightBox.Solve
+        /// (mouth sides, straight joining edges, yielding mouths slid forward until the edges clear).
+        /// </summary>
+        public static CarriagewayResult BuildStraight(IList<ArmInput> arms, V2 centre, IList<CrosswalkStrip> markings, double margin, IList<V2> conflictPoints, bool signals)
+        {
+            var res = new CarriagewayResult();
+            if (arms == null || arms.Count < 2) { res.Failure = "fewer than 2 arms"; return res; }
+            if (!IsFinite(centre)) { res.Failure = "non-finite input (NaN/Inf) at the node centre"; return res; }
+            var ok = new List<CrosswalkStrip>();
+            if (markings != null)
+            {
+                foreach (var c in markings) if (IsFinite(c.A) && IsFinite(c.B) && IsFinite(c.Width)) ok.Add(c);
+                if (ok.Count < markings.Count) res.Notes.Add($"{markings.Count - ok.Count} marking(s) with non-finite geometry ignored");
+            }
+            foreach (var a in arms)
+            {
+                if (a.OuterA == null || a.OuterB == null || a.OuterA.Count < 2 || a.OuterB.Count < 2) { res.Failure = "an arm has an edge line with fewer than 2 points"; return res; }
+                if (!IsFinite(a.InsetA) || !IsFinite(a.InsetB) || !a.OuterA.TrueForAll(IsFinite) || !a.OuterB.TrueForAll(IsFinite)) { res.Failure = "non-finite input (NaN/Inf) in an arm's edge lines or insets"; return res; }
+                if ((a.InnerA != null && !a.InnerA.TrueForAll(IsFinite)) || (a.InnerB != null && !a.InnerB.TrueForAll(IsFinite))) { res.Failure = "non-finite input (NaN/Inf) in an arm's inner curves"; return res; }
+            }
+            ShareJoinedInsets(arms, JoinTolerance, out double[] insetA, out double[] insetB, res.Notes);
+            var kerbs = new List<ArmSlice>(arms.Count);
+            for (int i = 0; i < arms.Count; i++)
+            {
+                var a = arms[i];
+                kerbs.Add(new ArmSlice(KerbLine(a.OuterA, a.InnerA, a.HalfA, insetA[i], a.OuterB[0].XZ), KerbLine(a.OuterB, a.InnerB, a.HalfB, insetB[i], a.OuterA[0].XZ)));
+            }
+            res.StopDistance = StopDistances(kerbs, centre, ok, res.Notes, margin);
+            for (int i = 0; i < kerbs.Count; i++)
+            {
+                if (res.StopDistance[i] <= 1e-6) continue;
+                if (TrimToStopLine(kerbs[i], centre, res.StopDistance[i], out ArmSlice t)) kerbs[i] = t;
+                else
+                {
+                    res.Notes.Add($"arm {i + 1}: marking (+ margin) ends {res.StopDistance[i]:0.0} m in, past the kerb lines; box starts at the mouth");
+                    res.StopDistance[i] = 0;
+                }
+            }
+            res.Kerbs = kerbs;
+            // ring order (as BuildOutline): sort by mouth angle; exit = the kerb whose mouth point is counter-clockwise
+            int n = kerbs.Count;
+            var order = new List<(double ang, int idx, List<V3> entry, List<V3> exit)>();
+            for (int i = 0; i < n; i++)
+            {
+                var a = kerbs[i];
+                V2 l0 = a.LeftKerb[0].XZ - centre, r0 = a.RightKerb[0].XZ - centre;
+                V2 m = (l0 + r0) * 0.5;
+                bool leftIsExit = V2.Cross(r0, l0) > 0;
+                order.Add((Math.Atan2(m.Z, m.X), i, leftIsExit ? a.RightKerb : a.LeftKerb, leftIsExit ? a.LeftKerb : a.RightKerb));
+            }
+            order.Sort((x, y) => x.ang.CompareTo(y.ang));
+            var chains = new List<List<V3>>(n);
+            var mouths = new List<BoxMouth>(n);
+            for (int k = 0; k < n; k++)
+            {
+                var ex = order[k].exit;
+                var en = order[(k + 1) % n].entry;
+                var chain = new List<V3>();
+                bool found = false;
+                for (int s = 0; s < ex.Count - 1 && !found; s++)
+                    for (int q = 0; q < en.Count - 1 && !found; q++)
+                        if (BoxPaintGeometry.SegmentIntersect(ex[s].XZ, ex[s + 1].XZ, en[q].XZ, en[q + 1].XZ, out double t, out double u))
+                        {
+                            for (int z = 0; z <= s; z++) chain.Add(ex[z]);
+                            V2 p = ex[s].XZ + (ex[s + 1].XZ - ex[s].XZ) * t;
+                            chain.Add(V3.FromXZ(p, 0.5 * (ex[s].Y + (ex[s + 1].Y - ex[s].Y) * t + en[q].Y + (en[q + 1].Y - en[q].Y) * u)));
+                            for (int z = q; z >= 0; z--) chain.Add(en[z]);
+                            found = true;
+                        }
+                if (!found)
+                {
+                    chain.AddRange(ex);
+                    for (int z = en.Count - 1; z >= 0; z--) chain.Add(en[z]);
+                    res.Notes.Add($"kerbs of arm {order[k].idx + 1} and arm {order[(k + 1) % n].idx + 1} do not meet: joined end to end");
+                }
+                var dedup = new List<V3>();
+                foreach (var v in chain) if (dedup.Count == 0 || V2.Distance(dedup[dedup.Count - 1].XZ, v.XZ) > 1e-6) dedup.Add(v);
+                chains.Add(dedup);
+                var arm = order[k];
+                Mouth(new ArmSlice(arm.entry, arm.exit), centre, out V2 mid, out V2 inward);
+                mouths.Add(new BoxMouth
+                {
+                    Entry = arm.entry[0],
+                    Exit = arm.exit[0],
+                    Inward = inward,
+                    MaxShift = Math.Max(0, V2.Dot(centre - mid, inward)),
+                    Yielding = arms[arm.idx].Yielding,
+                    Name = $"arm {arm.idx + 1}",
+                });
+            }
+            var sb = StraightBox.Solve(mouths, chains, ok, margin, conflictPoints, signals);
+            // shifts back to input order
+            if (sb.Shift != null)
+            {
+                var sh = new double[n];
+                for (int k = 0; k < n; k++) sh[order[k].idx] = sb.Shift[k];
+                sb.Shift = sh;
+            }
+            res.Straight = sb;
+            res.Notes.AddRange(sb.Notes);
+            res.Outline = sb.Outline;
+            res.Failure = sb.Failure;
             return res;
         }
     }

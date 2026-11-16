@@ -110,6 +110,25 @@ namespace JunctionRules.Settings
         [SettingsUISection(kSection, kBoxesGroup)]
         public bool OpenBoxTool { set { BoxToolControl.Toggle(); } }
 
+        private float m_YellowBoxMarkingMargin = MarkingMargin.Default;
+
+        /// <summary>
+        /// 0.4.2-probe: how far (m) every yellow box edge keeps clear of painted road markings (zebra stripes, stop /
+        /// give-way lines), measured from the marking's painted edge. The paint list's "markingMargin" overrides it.
+        /// </summary>
+        [SettingsUISlider(min = MarkingMargin.Min, max = MarkingMargin.Max, step = MarkingMargin.Step, unit = "floatSingleFraction")]
+        [SettingsUISection(kSection, kBoxesGroup)]
+        public float YellowBoxMarkingMargin
+        {
+            get => m_YellowBoxMarkingMargin;
+            set
+            {
+                m_YellowBoxMarkingMargin = value;
+                JunctionRules.Boxes.BoxStore.MarkingMargin = MarkingMargin.Effective(value, double.NaN, out _);
+                PaintControl.ApplySettings();
+            }
+        }
+
         // ---- stage 3 probe (0.3.0-probe): yellow box paint test, draw-only, default off ----
 
         private bool m_YellowBoxPaintTest;
@@ -193,6 +212,7 @@ namespace JunctionRules.Settings
             NoPushThroughPeople = true;
             PeoplePassOn = true;
             PeoplePassSeconds = PeoplePass.DefaultSeconds;
+            YellowBoxMarkingMargin = MarkingMargin.Default;
             YellowBoxPaintTest = false;
             PaintMode = BoxPaintMode.Hatch;
             PaintLayers = PaintSettingsMigration.Default;
@@ -282,7 +302,9 @@ namespace JunctionRules.Settings
                 { m_Setting.GetBindingKeyLocaleID(JunctionRulesSettings.kToggleBoxToolAction), "Yellow box tool" },
                 { m_Setting.GetBindingMapLocaleID(), "Junction Rules" },
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.OpenBoxTool)), "Open / close the yellow box tool" },
-                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.OpenBoxTool)), "Same as the yellow box button at the top left of the screen and the shortcut. In the tool, point at a road junction or at the road in front of a building's access: what can take a box glows (yellow: click adds a box; orange: click removes it). Right click or Esc leaves the tool. Boxes are saved with the city and painted at once. Junctions: at-grade road junctions with 3 or more road arms (not highways, bridges, tunnels, elevated roads, roundabouts or level crossings). Entrances: a building's road access on an at-grade, non-highway road, away from junctions. Cars drive as before: the boxes are paint only in this version." },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.OpenBoxTool)), "Same as the yellow box button at the top left of the screen and the shortcut. In the tool, point at a road junction or at the road in front of a building's access: what can take a box shows a thin outline of the box it would get (white: click adds the box; orange: click removes it). Right click or Esc leaves the tool. Boxes are saved with the city and painted at once. Junctions: at-grade road junctions with 3 or more road arms (not highways, bridges, tunnels, elevated roads, roundabouts or level crossings). Entrances: a building's road access on an at-grade, non-highway road, away from junctions. Cars drive as before: the boxes are paint only in this version." },
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.YellowBoxMarkingMargin)), "Yellow box: gap to road markings (m)" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.YellowBoxMarkingMargin)), "How far every yellow box edge stays clear of zebra stripes and stop / give-way lines, measured from the painted edge of the marking (default 0.5 m). Entrance boxes keep the same gap from junction mouths. Boxes are redrawn at once." },
                 { m_Setting.GetOptionGroupLocaleID(JunctionRulesSettings.kPaintGroup), "Yellow box paint test (stage 3 probe)" },
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.YellowBoxPaintTest)), "Yellow box paint test" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.YellowBoxPaintTest)),
