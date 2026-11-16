@@ -146,7 +146,8 @@ namespace JunctionRules.Settings
             set
             {
                 m_YellowBoxMarkingMargin = value;
-                JunctionRules.Boxes.BoxStore.MarkingMargin = MarkingMargin.Effective(value, double.NaN, out _);
+                // JR-T-007b-r F6: a paint-test.json markingMargin keeps overriding the slider (as in the paint).
+                JunctionRules.Boxes.BoxStore.SetMarginSetting(value);
                 PaintControl.ApplySettings();
             }
         }

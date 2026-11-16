@@ -72,7 +72,8 @@ namespace JunctionRules.Tests
             Check(sys.Contains("m_Gpu.SetDiag(m_Config.Diag)") && gpu.Contains("public void SetDiag(PaintDiagParams diag)"), "a Refresh hands the new diag values to the kept GPU objects (decal layer mask, colour buffer, priority, cameras apply without a restart)");
 
             string csproj = File.ReadAllText(Path.Combine(src, "JunctionRules.csproj"));
-            Check(csproj.Contains("<Version>0.4.3</Version>") && csproj.Contains("<InformationalVersion>0.4.3-probe</InformationalVersion>"), "version 0.4.3-probe");
+            // JR-T-007b-r F7: the version lives only in the csproj (single source); the test reads it from there.
+            Check(ProjectVersion(out string ver, out string info) && info.StartsWith(ver + "-"), $"version from the csproj: {info} (Version {ver})");
 
             // 0.4.0 (JR-T-007): saved boxes are added / removed only by Boxes/BoxStore.cs, and only our own two components;
             // the paint code drops an invalid saved box through it (its sole write) and never names the tool.
@@ -88,7 +89,8 @@ namespace JunctionRules.Tests
             foreach (Match m in Regex.Matches(store, @"(\w+) c = ")) if (m.Groups[1].Value != "YellowBoxEntrance" && m.Groups[1].Value != "var") ownOnly = false;
             foreach (Match m in Regex.Matches(store, @"var c = (new )?(\w+)")) if (m.Groups[2].Value != "YellowBoxEntrance") ownOnly = false;
             Check(ownOnly && !Regex.IsMatch(store, @"DestroyEntity|CreateEntity|Updated"), "BoxStore writes only YellowBoxJunction / YellowBoxEntrance (add, key list, remove), never marks the entity Updated");
-            var calls = Regex.Matches(sys, @"BoxStore\.(\w+)\(").Cast<Match>().Select(m => m.Groups[1].Value).ToList();
+            // JR-T-007b-r F6: PublishParams / ListPath share the shape parameters and the list path (no component write)
+            var calls = Regex.Matches(sys, @"BoxStore\.(\w+)\(").Cast<Match>().Select(m => m.Groups[1].Value).Where(c => c != "PublishParams" && c != "ListPath").ToList();
             bool allowed = calls.All(c => c == "Remove" || c == "RemoveExit" || c == "AddExit" || c == "SetExits" || c == "Add");
             Check(allowed && calls.Count(c => c == "Add") == 1 && calls.Count(c => c == "AddExit") == 1 && calls.Count(c => c == "SetExits") == 1 && !sys.Contains("YellowBoxToolSystem"),
                 "paint code writes only through BoxStore: drop (Remove / RemoveExit), legacy migration (SetExits, Add = junction), re-key (AddExit); never names the tool (" + string.Join(",", calls) + ")");

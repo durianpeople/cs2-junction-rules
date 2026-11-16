@@ -252,34 +252,42 @@ section after the car went (the car then stops before that zebra; it may stand o
 lines through the game's `OverlayRenderSystem.Buffer.DrawLine`, no fill, 0.225 m wide (Traffic: feedback line width
 0.3 x 0.75). **White** = a click adds this box (Traffic's hover colour), **orange** = it has one and a click removes it
 (Traffic's warning orange 1, 0.65, 0). The outline is the exact shape the paint will use (same code, Boxes/BoxShapes.cs),
-re-solved twice a second while hovered. No outline (but a log line) when no box shape can be built there.
+solved once per hovered target and again only when the target, its box state, the kerb inset / entrance length / margin
+change or the node / edges are rebuilt (JR-T-007b-r). Where no box shape can be built there is no outline and the
+target is **not selectable** (a click would save an invisible box; one Warn line per target); a target that already
+has a box stays removable (orange) even if its shape fails now. The tool uses the paint's parameters from mod load /
+tool start on (paint list file + Options), also before any box is painted.
 
 **Marking margin.** Options > Yellow boxes > **Yellow box: gap to road markings (m)**, 0-2 m, default 0.5 m; the paint
-list key `"markingMargin"` overrides it while present. Measured from the **painted edge** of the marking on the box
+list key `"markingMargin"` overrides it while present (also when the slider moves afterwards). Measured from the **painted edge** of the marking on the box
 side: zebra = centre line + (lane width + the node lane's width offset) / 2; stop / give-way line = centre line +
 (painted width = the larger of the lane's width and its geometry size) / 2. 0.4.0-0.4.1 put the box edge flush on the
 zebra's painted edge and did not read stop lines at all. Entrance boxes keep the same gap from the junction mouths
-and from zebras / stop lines on their road. Changing the slider redraws every box at once (log `yellow boxes: marking
+and from zebras / stop lines on their road. A junction reads the stop / give-way lines on its own half of each arm only. Changing the slider redraws every box at once (log `yellow boxes: marking
 margin X m (options); boxes rebuilt`).
 
 **Straight sides (which mouth moves).** Each arm's mouth is a straight line kerb to kerb; the box's sides join
 neighbouring mouths along the kerb lines. When a side would cut over a kerb corner or come within the margin of a
 marking, a mouth slides forward along its own arm (staying parallel) until it does not:
-1. Priority arms keep their mouths; only give-way / STOP arms slide (`priority-road`).
+1. Priority arms keep their mouths; only give-way / STOP arms slide (`priority-road`). An arm is give-way / STOP when
+   its straight-through lane(s) carry the sign; an arm with no through movement (a T stem) when most of its lanes do.
+   A single Give Way turn lane on a main-road arm (Code AM-17) leaves that arm priority.
 2. Signals at the node: all arms equal.
-3. All arms equal, or the yielding arms alone cannot clear: the smallest total slide over all arms, never pushing a
-   point where two car paths cross out of the box (`fallback-equal` / `fallback-cannot-clear`). Where no slide does
-   both, that side stays as it is and the log says so.
-Per box the log has `shape rule ...; mouth shift per arm [...] m` plus the arms' sign status and conflict-point count.
+3. All arms equal (`fallback-equal`), or the yielding arms alone cannot clear (`priority-moved`: priority arms moved:
+   yielding arms alone cannot clear): the smallest total slide over all arms, never pushing a point where two car
+   paths cross out of the box. Where no slide does both, there is **no box** and a Warn line names the node and the
+   corner (owner rule: never onto the pavement or over a zebra / stop line).
+Per box the log has `shape rule <code> (<meaning>); mouth shift per arm [...] m` plus per arm its sign status and
+counts (`yield (2 lane(s), 2 yielding, through 0/0 yielding)`) and the conflict-point count.
 Measured on the live fixtures: **Moonflower x Anchor** (T, STOP on Moonflower) `priority-road`, Anchor mouths 0 m,
 Moonflower 3.58 m: a four-sided box with the Moonflower side on the Anchor north kerb line. **Lindbergh x Anchor**
-(skewed 4-way, STOP on both Anchor arms) `fallback-cannot-clear` (the Anchor arms alone cannot clear the Lindbergh SW
+(skewed 4-way, STOP on both Anchor arms) `priority-moved` (the Anchor arms alone cannot clear the Lindbergh SW
 corner), Lindbergh SW 3.83 m, NE 3.93 m, Anchor 0 m; 0.4.0's box there ran up to 2.6 m over the pavement.
 
 **Entrance boxes** use the same solver: the road's two directions are two priority mouths at the window ends (entrance
 length apart), the driveway is the yielding side with no mouth of its own (the game gives it no geometry). On a
-straight road the box is a rectangle; on a bend the mouths slide in (`fallback-cannot-clear`) until both long sides
-stay on the carriageway. 0.4.1 entrance check at Moonflower (house at the access 32 m along a 7.4-48 m edge part):
+straight road the box is a rectangle; on a bend the mouths slide in (`priority-moved`) until both long sides
+stay on the carriageway (no box, with a Warn line, when they cannot). 0.4.1 entrance check at Moonflower (house at the access 32 m along a 7.4-48 m edge part):
 the band was 28-36 m, 12 m clear of the junction; the box seen near it was the next junction's box.
 
 **Known, not in 0.4.2: where the entrance box sits.** It is still centred on the building's road access point
@@ -296,7 +304,7 @@ a convex-hull box over the pavement.
 |---|---|---|
 | S1 | Hover junctions and driveways with the tool | thin white outline exactly where the paint later lands; orange on boxed ones; no glow |
 | S2 | Box Moonflower x Anchor | four straight sides, Moonflower side on the Anchor north kerb line; log `shape rule priority-road` |
-| S3 | Box Lindbergh x Anchor | no paint on any pavement corner; log `shape rule fallback-cannot-clear` |
+| S3 | Box Lindbergh x Anchor | no paint on any pavement corner; log `shape rule priority-moved` |
 | S4 | Box a junction with zebras / stop lines, slider 0, 0.5, 2 | box edge flush / 0.5 m / 2 m short of the stripes and lines, redrawn at once |
 | S5 | Entrance box on a bend | straight-sided, on the carriageway both sides |
 | S6 | Signalled junction | log `signals`, rule `fallback-equal` |

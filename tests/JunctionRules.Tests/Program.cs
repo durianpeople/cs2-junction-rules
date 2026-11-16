@@ -62,6 +62,7 @@ namespace JunctionRules.Tests
             ("ExitTests", ExitTests),
             ("StraightBoxRuleTests", StraightBoxRuleTests),
             ("MarginHoverTests", MarginHoverTests),
+            ("ReviewFixTests", ReviewFixTests),
             ("BoxInsetTests", BoxInsetTests),
             ("BoxHatchTests", BoxHatchTests),
             ("BoxRectHeightTests", BoxRectHeightTests),

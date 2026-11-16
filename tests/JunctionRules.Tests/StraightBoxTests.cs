@@ -224,13 +224,11 @@ namespace JunctionRules.Tests
                 var free = CW.BuildStraight(arms, o, null, 0.5, null, false);
                 var cps = new List<V2> { new V2(0, 9), new V2(12, 0), new V2(-12, 0) };
                 var held = CW.BuildStraight(Synth(new double[] { 0, 90, 180 }, 8, 20, 6, 3, new[] { false, true, false }), o, null, 0.5, cps, false);
-                Check(held.Outline != null, "containment: builds");
-                if (held.Outline != null && free.Outline != null)
-                {
-                    Check(G.Contains(G.ToXZ(held.Outline), cps[0], 1e-3), "containment: conflict point (0, 9) inside the box");
-                    Check(held.Straight.Shift[1] < free.Straight.Shift[1], $"containment: the stem slides less ({held.Straight.Shift[1]:0.00} < {free.Straight.Shift[1]:0.00} m)");
-                    Check(held.Notes.Exists(s => s.Contains("still crosses the kerb")), "containment: the edge left crossing is logged");
-                }
+                // JR-T-007b-r F2: the stem may not slide past the conflict point, so an edge still crosses the kerb: no box at all.
+                Check(free.Outline != null, "containment: free stem builds");
+                Check(held.Outline == null && held.Failure != null && held.Failure.Contains("corner") && held.Failure.Contains("still crosses the kerb"), "containment: an edge that cannot clear = no box, failure names the corner (" + held.Failure + ")");
+                Check(held.Straight.FailingCorners.Count > 0, "containment: failing corner listed");
+                if (free.Outline != null) Check(held.Straight.Shift[1] < free.Straight.Shift[1], $"containment: the stem slides less ({held.Straight.Shift[1]:0.00} < {free.Straight.Shift[1]:0.00} m)");
             }
             // Margin vs a zebra on a neighbouring arm: a joining edge keeps the margin from the painted strip.
             {

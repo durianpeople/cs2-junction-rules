@@ -16,8 +16,9 @@ namespace JunctionRules.Core
     //   move; the priority road's mouths stay exactly where they are. (2) Fallback when rule 1 does not decide (all arms
     //   equal: no signs, all-way STOP or signals; or moving only the yielding arms cannot clear every edge): every arm
     //   may move, and the search takes the smallest total shift. Hard constraint in both: every vehicle conflict point
-    //   (crossing of two car paths through the node) stays inside the box. If no shift clears an edge without pushing a
-    //   conflict point out, that edge is left as it is and logged.
+    //   (crossing of two car paths through the node) stays inside the box. JR-T-007b-r (owner rule: the box never goes
+    //   onto the pavement or over a zebra / stop line): if after the fallback an edge still does not clear, or a
+    //   conflict point ends up outside, there is NO box (Failure names the corner / mouth); never a box left as it is.
     //
     // The search (Solve): every arm's shift is taken on a grid (GridStep) from 0 to its cap (the mouth line may not
     // pass the junction centre); a corner's verdict depends only on the shifts of its two arms, so the ring of arms is
@@ -49,6 +50,19 @@ namespace JunctionRules.Core
         public List<V2> Points;
         public long From, To;
         public LanePath(List<V2> points, long from, long to) { Points = points; From = from; To = to; }
+
+        /// <summary>
+        /// JR-T-007b-r (F9): the full 64-bit key of a game PathNode rebuilt from its public parts, in the game's own
+        /// layout (Game.Pathfind/PathNode.cs: owner entity index &lt;&lt; 32 | curve position * 32767 &lt;&lt; 16 | secondary bit 31 |
+        /// segment &lt;&lt; 8 | lane = GetLaneIndex()). 0.4.2 used PathNode.GetHashCode() (ulong hash = high XOR low 32 bits),
+        /// so two different lane ends could share a key.
+        /// </summary>
+        public static long Key(int ownerIndex, ushort laneIndex, float curvePos, bool secondary)
+        {
+            ulong q = (ulong)System.Math.Max(0, System.Math.Min(32767, (int)System.Math.Round(curvePos * 32767f)));
+            ulong k = ((ulong)(uint)ownerIndex << 32) | (q << 16) | laneIndex | (secondary ? 0x80000000UL : 0UL);
+            return unchecked((long)k);
+        }
     }
 
     public enum BoxShapeRule
@@ -57,7 +71,7 @@ namespace JunctionRules.Core
         PriorityRoad,
         /// <summary>All arms equal (no signs, all-way STOP, signals): smallest total shift over every arm.</summary>
         FallbackEqual,
-        /// <summary>Moving only the yielding arms could not clear every edge: smallest total shift over every arm.</summary>
+        /// <summary>Moving only the yielding arms could not clear every edge: smallest total shift over every arm (code "priority-moved").</summary>
         FallbackCannotClear,
     }
 
@@ -69,9 +83,14 @@ namespace JunctionRules.Core
         public double[] Shift;
         public BoxShapeRule Rule;
         public List<string> Notes = new List<string>();
-        /// <summary>Edges (corner index i = mouth i to mouth i+1) left crossing the kerb / marking: no shift cleared them.</summary>
+        /// <summary>Edges (corner index i = mouth i to mouth i+1) that no allowed shift clears of the kerb / a marking, or that would leave a conflict point outside; any entry = Failure, no box.</summary>
         public List<int> FailingCorners = new List<int>();
-        public string RuleText => Rule == BoxShapeRule.PriorityRoad ? "priority-road" : Rule == BoxShapeRule.FallbackEqual ? "fallback-equal" : "fallback-cannot-clear";
+        /// <summary>Stable short code of the rule, for logs and tests.</summary>
+        public string RuleCode => Rule == BoxShapeRule.PriorityRoad ? "priority-road" : Rule == BoxShapeRule.FallbackEqual ? "fallback-equal" : "priority-moved";
+        /// <summary>The rule for logs: short code plus what it means (JR-T-007b-r: no wording that reads as an error).</summary>
+        public string RuleText => Rule == BoxShapeRule.PriorityRoad ? "priority-road (only give-way / STOP arms moved)"
+            : Rule == BoxShapeRule.FallbackEqual ? "fallback-equal (all arms equal: smallest total move)"
+            : "priority-moved (priority arms moved: yielding arms alone cannot clear)";
     }
 
     public static class StraightBox
@@ -190,13 +209,22 @@ namespace JunctionRules.Core
                 res.Rule = BoxShapeRule.FallbackEqual;
             }
             res.Shift = shift;
+            // JR-T-007b-r F2: a corner that still fails after the fallback, or a conflict point pushed out, means no box.
+            var fails = new List<string>();
             for (int i = 0; i < n; i++)
             {
                 double p = CornerPenalty(ctx, i, shift[i], shift[(i + 1) % n]);
-                if (p >= PenaltyConflict) res.Notes.Add($"edge {Name(mouths, i)} - {Name(mouths, (i + 1) % n)}: no shift keeps every conflict point inside; edge left as it is");
-                else if (p >= PenaltyEdge) { res.FailingCorners.Add(i); res.Notes.Add($"edge {Name(mouths, i)} - {Name(mouths, (i + 1) % n)} still crosses the kerb or a marking margin: no allowed shift clears it (conflict points kept inside); edge left as it is"); }
+                string corner = $"corner {Name(mouths, i)} - {Name(mouths, (i + 1) % n)}";
+                if (p >= PenaltyConflict) { res.FailingCorners.Add(i); fails.Add($"{corner}: no shift keeps every conflict point inside"); }
+                else if (p >= PenaltyEdge) { res.FailingCorners.Add(i); fails.Add($"{corner} still crosses the kerb or a marking margin: no allowed shift clears it"); }
             }
-            for (int i = 0; i < n; i++) if (MouthPenalty(ctx, i, shift[i]) > 0) res.Notes.Add($"{Name(mouths, i)}: a conflict point lies outside its mouth line");
+            for (int i = 0; i < n; i++) if (MouthPenalty(ctx, i, shift[i]) > 0) fails.Add($"{Name(mouths, i)}: a conflict point lies outside its mouth line");
+            if (fails.Count > 0)
+            {
+                res.Notes.AddRange(fails);
+                res.Failure = "no box (would cover pavement / a marking or leave a conflict point outside): " + string.Join("; ", fails);
+                return res;
+            }
 
             // Polygon: Entry_i, Exit_i, ... ; a closed corner (the two ends met or passed on the chain) gives one vertex.
             var ring = new List<V3>();
@@ -219,11 +247,11 @@ namespace JunctionRules.Core
             if (!BoxPaintGeometry.IsSimple(BoxPaintGeometry.ToXZ(ring))) { res.Failure = "box crosses itself (slid mouths passed each other)"; return res; }
             if (BoxPaintGeometry.SignedArea(ring) < 0.5) { res.Failure = "box area under 0.5 m2"; return res; }
             ring = Snap(ring, cps, res.Notes);
-            res.Outline = ring;
             var xz = BoxPaintGeometry.ToXZ(ring);
             int outside = 0;
             foreach (var c in cps) if (!BoxPaintGeometry.Contains(xz, c, 1e-3)) outside++;
-            if (outside > 0) res.Notes.Add($"{outside} conflict point(s) outside the box");
+            if (outside > 0) { res.Failure = $"no box: {outside} conflict point(s) outside the box"; return res; }
+            res.Outline = ring;
             return res;
         }
 

@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using JunctionRules.Core;
 using Unity.Entities;
 
@@ -15,11 +16,61 @@ namespace JunctionRules.Boxes
         /// <summary>Raised after the tool added or removed a box (the paint system redraws at once).</summary>
         internal static event Action Changed;
 
+        /// <summary>
+        /// 0.4.2: shape parameters shared by the paint and the tool's hover outline (same shape as the paint).
+        /// JR-T-007b-r F6: published at mod load and tool start from the paint list file + Options (LoadParams), and by
+        /// the paint system at every list read (PublishParams); the Options margin setter keeps a list override (SetMarginSetting).
+        /// </summary>
+        internal static BoxShapeParams Params = new BoxShapeParams();
+        /// <summary>True once the paint system published its own list read (the tool start then keeps it, never re-reads the file).</summary>
+        internal static bool PaintPublished;
+
         /// <summary>Exit box length along the road in metres (the paint list's "entranceLength" / "exitLength"; default 8).</summary>
-        internal static double EntranceLength = 8.0;
-        /// <summary>0.4.2: shape parameters the paint system publishes for the tool's hover outline (same shape as the paint).</summary>
-        internal static double KerbInset = 0.0;
-        internal static double MarkingMargin = JunctionRules.Core.MarkingMargin.Default;
+        internal static double EntranceLength => Params.EntranceLength;
+        internal static double KerbInset => Params.KerbInset;
+        internal static double MarkingMargin => Params.MarkingMargin;
+
+        /// <summary>The paint system's list read (its m_Config) is the source from now on.</summary>
+        internal static void PublishParams(BoxShapeParams p)
+        {
+            if (p == null) return;
+            Params = p;
+            PaintPublished = true;
+        }
+
+        /// <summary>The Options slider moved: the margin follows it unless the list file overrides it.</summary>
+        internal static void SetMarginSetting(double setting) => Params.ApplySetting(setting);
+
+        /// <summary>The paint list file: &lt;user data&gt;/ModsData/JunctionRules/paint-test.json (moved here from the paint system, JR-T-007b-r).</summary>
+        internal static string ListPath()
+        {
+            string root;
+            try { root = Colossal.PSI.Environment.EnvPath.kUserDataPath; }
+            catch { root = UnityEngine.Application.persistentDataPath; }
+            return Path.Combine(Path.Combine(Path.Combine(root, "ModsData"), "JunctionRules"), PaintTestConfig.FileName);
+        }
+
+        /// <summary>
+        /// Mod load / tool start: read the paint list file (if any) and the Options margin, unless the paint system has
+        /// already published its own read. Never throws (a bad file leaves the defaults, with a warning).
+        /// </summary>
+        internal static void LoadParams(string when)
+        {
+            if (PaintPublished) return;
+            double setting = Mod.Settings != null ? Mod.Settings.YellowBoxMarkingMargin : Core.MarkingMargin.Default;
+            try
+            {
+                string path = ListPath();
+                PaintTestConfig cfg = File.Exists(path) ? PaintTestConfig.Parse(File.ReadAllText(path)) : null;
+                Params = BoxShapeParams.From(cfg, setting);
+                Mod.log.Info($"yellow boxes: shape parameters at {when}: {Params.Describe()}" + (cfg == null ? " (no paint list file)" : ""));
+            }
+            catch (Exception e)
+            {
+                Params = BoxShapeParams.From(null, setting);
+                Mod.log.Warn($"yellow boxes: shape parameters at {when}: paint list not read ({e.GetType().Name}: {e.Message}); {Params.Describe()}");
+            }
+        }
 
         /// <summary>Junction box on the node / any exit box (or a legacy 0.4.0-0.4.2 box) on the building.</summary>
         internal static bool Has(EntityManager em, Entity e, bool junction)

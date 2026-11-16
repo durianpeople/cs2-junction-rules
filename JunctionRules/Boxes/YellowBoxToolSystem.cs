@@ -45,13 +45,19 @@ namespace JunctionRules.Boxes
         private Target m_Hover;
         private string m_LastWhy;
 
-        // hover outline cache: the shape is solved once per hovered target (re-solved every kRefreshFrames while hovered)
-        private Entity m_CacheEntity;
-        private ExitKey m_CacheKey;
-        private List<(V3 A, V3 B)> m_CacheSegments;
-        private string m_CacheFailure;
-        private int m_CacheAge;
-        private const int kRefreshFrames = 30;
+        // hover outline cache (JR-T-007b-r F5, Core/HoverCache.cs): solved once per hovered target; again only when the
+        // target, its box state or the shape parameters change, or a source entity of the shape is Updated / gone.
+        private sealed class HoverShape
+        {
+            public List<(V3 A, V3 B)> Segments;
+            public string Failure;
+            public List<Entity> Sources;
+        }
+        private readonly HoverCache<HoverShape> m_Cache = new HoverCache<HoverShape>();
+        // F3: targets already warned about having no box shape (once per entity per tool session)
+        private readonly HashSet<Entity> m_NoShapeWarned = new HashSet<Entity>();
+        // exit lists are re-read every kExitListFrames frames while the tool runs (buildings grow / move their drives)
+        private const int kExitListFrames = 30;
 
         /// <summary>Junction = a node box; Exit = a box at one car exit of a building (0.4.0-0.4.2 "Entrance").</summary>
         internal enum Kind { None, Junction, Exit }
@@ -61,6 +67,8 @@ namespace JunctionRules.Boxes
             public Kind Kind;
             public Entity Entity;
             public bool Valid, HasBox;
+            /// <summary>F3: valid by the selection rules, but no box shape can be built there (not selectable).</summary>
+            public bool NoShape;
             public string Why;
             public float3 Position;
             public BoxFacts.Access Access;   // exit: the exit point on its road
@@ -69,7 +77,7 @@ namespace JunctionRules.Boxes
             public Entity FromBuilding;
         }
 
-        // exits per building, re-read every kRefreshFrames (hovering a road reads the exits of the buildings along it)
+        // exits per building, re-read every kExitListFrames frames (hovering a road reads the exits of the buildings along it)
         private readonly Dictionary<Entity, List<BoxFacts.Exit>> m_ExitCache = new Dictionary<Entity, List<BoxFacts.Exit>>();
         private int m_ExitCacheAge;
 
@@ -90,6 +98,9 @@ namespace JunctionRules.Boxes
             base.OnStartRunning();
             m_Hover = default;
             m_LastWhy = null;
+            m_Cache.Reset();
+            m_NoShapeWarned.Clear();
+            BoxStore.LoadParams("tool start");   // F6: hover uses the paint's parameters even before the paint system ran
             applyAction.shouldBeEnabled = true;
             cancelAction.shouldBeEnabled = true;
             Mod.log.Info("yellow box tool: on (left click a junction or a building's car exit to add / remove a box; right click or Esc to leave)");
@@ -99,6 +110,7 @@ namespace JunctionRules.Boxes
         protected override void OnStopRunning()
         {
             m_Hover = default;
+            m_Cache.Reset();
             base.OnStopRunning();   // the game's ResetActions disables apply / cancel again
             Mod.log.Info("yellow box tool: off");
         }
@@ -121,10 +133,24 @@ namespace JunctionRules.Boxes
                     m_ToolSystem.activeTool = m_DefaultToolSystem;
                     return inputDeps;
                 }
-                if (++m_ExitCacheAge >= kRefreshFrames) { m_ExitCacheAge = 0; m_ExitCache.Clear(); }
+                if (++m_ExitCacheAge >= kExitListFrames) { m_ExitCacheAge = 0; m_ExitCache.Clear(); }
                 m_Hover = GetRaycastResult(out Entity hitEntity, out Game.Common.RaycastHit hit) ? Resolve(hitEntity, hit) : default;
-                if (m_Hover.Kind != Kind.None && (m_Hover.Valid || m_Hover.HasBox)) Draw(m_Hover);
-                if (m_Hover.Kind != Kind.None && !m_Hover.Valid && !m_Hover.HasBox && m_Hover.Why != m_LastWhy)
+                if (m_Hover.Kind != Kind.None && (m_Hover.Valid || m_Hover.HasBox))
+                {
+                    HoverShape h = Outline(m_Hover);
+                    if (h.Segments.Count == 0 && !m_Hover.HasBox)
+                    {
+                        // F3: no shape and no box yet = not selectable (a click would save an invisible box); a target
+                        // that HAS a box stays removable even when its shape fails now.
+                        m_Hover.Valid = false;
+                        m_Hover.NoShape = true;
+                        m_Hover.Why = "no box shape can be built here: " + h.Failure;
+                        if (m_NoShapeWarned.Add(m_Hover.Entity))
+                            Mod.log.Warn($"yellow box tool: {What(m_Hover)} not selectable: {m_Hover.Why}");
+                    }
+                    else Draw(m_Hover, h.Segments);
+                }
+                if (m_Hover.Kind != Kind.None && !m_Hover.Valid && !m_Hover.HasBox && !m_Hover.NoShape && m_Hover.Why != m_LastWhy)
                 {
                     m_LastWhy = m_Hover.Why;
                     Mod.log.Info($"yellow box tool: {What(m_Hover)} not selectable: {m_Hover.Why}");
@@ -273,9 +299,8 @@ namespace JunctionRules.Boxes
         /// styleFlags, Line3.Segment, width, roundness)) with outline = fill colour, outlineWidth 0, StyleFlags 0, width
         /// BoxHover.LineWidth, roundness (1, 1). Nothing is filled.
         /// </summary>
-        private void Draw(Target t)
+        private void Draw(Target t, List<(V3 A, V3 B)> segs)
         {
-            List<(V3 A, V3 B)> segs = Outline(t);
             if (segs == null || segs.Count == 0) return;
             float[] rgba = BoxHover.Colour(t.HasBox);
             var c = new Color(rgba[0], rgba[1], rgba[2], rgba[3]);
@@ -288,21 +313,35 @@ namespace JunctionRules.Boxes
             }
         }
 
-        /// <summary>The hovered target's box outline (cached per target; solved by Boxes/BoxShapes.cs, the paint's shape code).</summary>
-        private List<(V3 A, V3 B)> Outline(Target t)
+        /// <summary>
+        /// The hovered target's box outline (solved by Boxes/BoxShapes.cs, the paint's shape code), cached per target,
+        /// box state and shape parameters (Core/HoverCache.cs); re-solved when a source entity is Updated or gone.
+        /// </summary>
+        private HoverShape Outline(Target t)
         {
-            if (t.Entity == m_CacheEntity && t.Exit.C.Key.Equals(m_CacheKey) && m_CacheSegments != null && ++m_CacheAge < kRefreshFrames) return m_CacheSegments;
-            m_CacheEntity = t.Entity;
-            m_CacheKey = t.Exit.C.Key;
-            m_CacheAge = 0;
-            BoxShapes.Shape shape = t.Kind == Kind.Junction
-                ? BoxShapes.Junction(EntityManager, t.Entity, BoxStore.KerbInset, BoxStore.MarkingMargin)
-                : BoxShapes.Entrance(EntityManager, t.Access, BoxStore.KerbInset, BoxStore.EntranceLength, BoxStore.MarkingMargin);
-            m_CacheSegments = BoxHover.Segments(shape.Outline);
-            if (shape.Outline == null && shape.Failure != m_CacheFailure)
-                Mod.log.Info($"yellow box tool: {What(t)}: no box outline to show ({shape.Failure})");
-            m_CacheFailure = shape.Outline == null ? shape.Failure : null;
-            return m_CacheSegments;
+            var key = new HoverKey(((long)t.Entity.Index << 32) | (uint)t.Entity.Version, (int)t.Kind, t.HasBox, BoxStore.KerbInset, BoxStore.EntranceLength, BoxStore.MarkingMargin, ExitSub(t));
+            return m_Cache.Get(key, SourcesChanged(m_Cache.Value, t.Entity), () =>
+            {
+                BoxShapes.Shape shape = t.Kind == Kind.Junction
+                    ? BoxShapes.Junction(EntityManager, t.Entity, BoxStore.KerbInset, BoxStore.MarkingMargin)
+                    : BoxShapes.Entrance(EntityManager, t.Access, BoxStore.KerbInset, BoxStore.EntranceLength, BoxStore.MarkingMargin);
+                var sources = new List<Entity>(shape.Sources) { t.Entity };
+                return new HoverShape { Segments = BoxHover.Segments(shape.Outline), Failure = shape.Outline == null ? shape.Failure : null, Sources = sources };
+            });
+        }
+
+        /// <summary>0.4.3: which exit of the building (its saved key packed in 40 bits); 0 for a junction.</summary>
+        private static long ExitSub(Target t) => t.Kind != Kind.Exit ? 0 : 1L + ((long)t.Exit.C.Key.Kind << 32 | (long)(ushort)t.Exit.C.Key.X10 << 16 | (ushort)t.Exit.C.Key.Z10);
+
+        /// <summary>F5: a source of the cached shape (or the target) was rebuilt this frame (Updated) or is gone.</summary>
+        private bool SourcesChanged(HoverShape cached, Entity target)
+        {
+            if (cached == null) return true;
+            EntityManager em = EntityManager;
+            if (em.Exists(target) && em.HasComponent<Updated>(target)) return true;
+            foreach (Entity e in cached.Sources)
+                if (!em.Exists(e) || em.HasComponent<Updated>(e) || em.HasComponent<Deleted>(e)) return true;
+            return false;
         }
 
         private void Toggle(Target t)
