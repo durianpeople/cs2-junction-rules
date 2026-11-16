@@ -255,6 +255,8 @@ namespace JunctionRules.Stage2
         private bool m_HasDriveHold;
         private float m_DriveHoldSpeed;
         private bool m_DriveRoomHold;
+        /// <summary>Review F4: the decision was taken at the first road lane, the vehicle could no longer stop before the sidewalk.</summary>
+        private bool m_DriveLate;
         /// <summary>Setting "Exit trace (log)": the ring (Stage2/JRStage2Bridge.cs TraceRing) handed in by S2-26 SetTrace.</summary>
         private bool m_TraceOn;
         private NativeArray<long> m_TraceRing;

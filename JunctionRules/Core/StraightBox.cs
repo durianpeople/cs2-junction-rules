@@ -110,6 +110,8 @@ namespace JunctionRules.Core
         public List<int> FailingCorners = new List<int>();
         /// <summary>0.4.7 (G5): corners (i = mouth i to mouth i+1) cut by a straight chamfer instead of a kerb-to-kerb edge, with the chamfer depth (m).</summary>
         public List<(int Corner, double Depth)> Chamfers = new List<(int, double)>();
+        /// <summary>0.4.8 review (G5 F2): conflict points left outside the box because a held mouth line lies past them (logged with the shape).</summary>
+        public int SkippedConflicts;
         /// <summary>Stable short code of the rule, for logs and tests.</summary>
         public string RuleCode => Rule == BoxShapeRule.PriorityRoad ? "priority-road" : Rule == BoxShapeRule.FallbackEqual ? "fallback-equal" : "priority-moved";
         /// <summary>The rule for logs: short code plus what it means (JR-T-007b-r: no wording that reads as an error).</summary>
@@ -191,6 +193,14 @@ namespace JunctionRules.Core
                 ctx.Dir[i] = (mouths[i].Exit.XZ - mouths[i].Entry.XZ).Normalized;
                 if (ctx.Dir[i].Length < 0.5) ctx.Dir[i] = mouths[i].Inward.Left * -1;
             }
+            // 0.4.8 review (G5 F1): a mouth held clear of a marking past its kerb lines may never be held past the junction
+            // centre (MaxShift): that box would cross itself / drop most conflict points. Refuse instead.
+            for (int i = 0; i < n; i++)
+                if (mouths[i].MinShift > Math.Max(0, mouths[i].MaxShift) + 1e-6)
+                {
+                    res.Failure = $"{Name(mouths, i)}: the marking (+ margin) ends {mouths[i].MinShift:0.0} m in, past the junction centre ({Math.Max(0, mouths[i].MaxShift):0.0} m): no box clear of it";
+                    return res;
+                }
             // Conflict points: only those inside every base mouth line count (a point already behind a stop line is not the box's business).
             // 0.4.8 (JR-T-014b): an arm held clear of a marking past its kerb lines (MinShift) has its base line there,
             // exactly as an arm trimmed to its zebra + margin has (a point between the mouth and that line is skipped too).
@@ -205,6 +215,7 @@ namespace JunctionRules.Core
                 }
             ctx.Conflicts = cps;
             if (skipped > 0) res.Notes.Add($"{skipped} conflict point(s) behind a mouth line, not held inside");
+            res.SkippedConflicts = skipped;
 
             int yielding = 0;
             foreach (var m in mouths) if (m.Yielding) yielding++;

@@ -125,6 +125,7 @@ namespace JunctionRules.Tests
             ("ExitG1RepoTests", ExitG1RepoTests),
             ("ParkingMaskTests", ParkingMaskTests),
             ("ParkingRepoTests", ParkingRepoTests),
+            ("G5bReviewTests", G5bReviewTests),
             ("G7ExitSidewalkTests", G7ExitSidewalkTests),
             ("G7RepoTests", G7RepoTests),
         };

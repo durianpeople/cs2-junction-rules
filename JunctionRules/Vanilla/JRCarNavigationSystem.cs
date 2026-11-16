@@ -1623,7 +1623,7 @@ public class JRCarNavigationSystem : GameSystemBase
 			{
 				carLaneSpeedIterator.m_JR.SetBoxes(m_JRBoxJunctionData, m_JREdgeLaneData, ref m_JRBoxEdges);
 			}
-			if (carLaneSpeedIterator.m_JR.m_ZebraRule || carLaneSpeedIterator.m_JR.m_BoxRule)
+			if (carLaneSpeedIterator.m_JR.m_ZebraRule || carLaneSpeedIterator.m_JR.m_BoxRule || carLaneSpeedIterator.m_JR.m_ExitRule)
 			{
 				carLaneSpeedIterator.m_JR.SetPath(navigationLanes);
 				if ((m_JRMode & JunctionRules.Core.Stage2Mode.Rule) == 0 && m_JRLayoutData.TryGetBuffer(entity, out DynamicBuffer<LayoutElement> jrZebraLayout))

@@ -164,5 +164,31 @@ namespace JunctionRules.Tests
                 Check(Math.Max(ia[0], ib[0]) == 3 && Math.Min(ia[0], ib[0]) == 2 && gp == 1, $"{tag}: synthetic T with a 2 m footway on one through half: the through side keeps one inset (3 m), the corner goes the game's way (pairs {gp}; arm 1 insets {ia[0]}|{ib[0]})");
             }
         }
+
+        /// <summary>0.4.8 review fixes (G5 F1 / F2): a held mouth past the junction centre is refused; skipped conflict points are named in the shape line.</summary>
+        private static void G5bReviewTests()
+        {
+            var centre = new V2(LiveFixturesG5.CrescentCentre[0], LiveFixturesG5.CrescentCentre[1]);
+            var cps = LiveConflicts(LiveFixturesG5.CrescentPaths);
+            const string tag = "Crescent x Eastgate review";
+            {
+                var arms = G5bInputs(true, out var zebras);
+                var res = CW.BuildStraight(arms, centre, zebras, 0.5, cps, false);
+                string sum = res.ShapeSummary();
+                Check(res.Outline != null && sum != null && sum.Contains("WARNING 3 conflict point(s) left outside"), $"{tag}: the added box's shape line names the 3 skipped conflict points ({sum})");
+            }
+            {
+                var arms = G5bInputs(true, out var zebras);
+                var moved = new List<CrosswalkStrip>();
+                foreach (var z in zebras)
+                {
+                    V2 mid = (z.A + z.B) * 0.5, toward = (centre - mid).Normalized;
+                    moved.Add(new CrosswalkStrip(z.A + toward * 1.5, z.B + toward * 1.5, z.Width));
+                }
+                var res = CW.BuildStraight(arms, centre, moved, 0.5, cps, false);
+                // Review G5 F1 reproduction: zebras 1.5 m further in held the W mouth 4.3 m in, past the centre (~3.5 m): accepted before.
+                Check(res.Outline == null, $"{tag}: a mouth that would be held past the junction centre is refused ({res.Failure}; shifts {(res.Straight?.Shift == null ? "-" : string.Join(", ", res.Straight.Shift))})");
+            }
+        }
     }
 }

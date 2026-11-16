@@ -120,8 +120,18 @@ namespace JunctionRules.Stage2
             if (firstRoad > 1f) return float.MaxValue;
             float spot = ExitGiveWay.ExitSpot(firstRoad, firstWalk);
             float wait = origDistance + length * (spot - start);
-            // Past the spot (front on the sidewalk) or unable to stop before it: committed, the decision it took before stands.
-            if (!ExitGiveWay.CanHold(wait, margin, VehicleUtils.GetBrakingDistance(car, currentSpeed, timeStep))) return float.MaxValue;
+            float braking = VehicleUtils.GetBrakingDistance(car, currentSpeed, timeStep);
+            // Review F4: a few cm of creep past the sidewalk spot is still held there; a vehicle that cannot be held before the
+            // sidewalk (crept further, or the drive starts on the pavement) is judged at the first road lane (the 0.4.7 spot),
+            // counted as "judged only on the sidewalk". Past both (or unable to stop): committed, its earlier decision stands.
+            bool late = false;
+            if (!ExitGiveWay.CanHold(wait + ExitGiveWay.SpotSlack, margin, braking))
+            {
+                if (!(firstWalk < firstRoad)) return float.MaxValue;
+                wait = origDistance + length * (firstRoad - start);
+                if (!ExitGiveWay.CanHold(wait + ExitGiveWay.SpotSlack, margin, braking)) return float.MaxValue;
+                late = true;
+            }
             float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, wait > 0f ? wait : 0f, safeTimeStep), speedRange);
             // Cheap for a queue on the building road: a vehicle further back than JudgeNearMetres that something else holds
             // harder does not scan yet; within it every update judges (it cannot pass the spot between two updates).
@@ -183,7 +193,10 @@ namespace JunctionRules.Stage2
                         ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes);
             }
             ExitGiveWay.Decision d = ExitGiveWay.Decide(true, priority, !busy, m_BoxRule, boxed, roomBox, roomJoin);
-            m_DriveJudged = true;
+            // Review F1: with no known joined lane (no path handed in, or the drive lane is the last navigation lane) the room
+            // tests could not run: the decision stands but it is not a FULL judgement (the proof counter must say so).
+            m_DriveJudged = hasJoin;
+            m_DriveLate = late;
             m_DriveDecision = d;
             m_DriveBoxed = boxed;
             m_DriveLane = lane;
@@ -258,7 +271,7 @@ namespace JunctionRules.Stage2
             if (!curves.TryGetComponent(connection, out Curve connCurve)) return float.MaxValue;
             NoteFrom(connection, (uint)Game.Vehicles.CarLaneFlags.Connection, roadOwner.m_Owner);
             // 0.4.4: the vehicle appears on the join lane with its body behind the join point and no arrival time of its own.
-            bool wait = ExitJoinWaits(self, connection, priority, next.m_CurvePosition.x, road, roadCurve, roadOwner, connCurve.m_Bezier.a, 0f, safeTimeStep,
+            bool wait = ExitJoinWaits(self, connection, priority, next.m_CurvePosition.x, road, roadCurve, roadOwner, connCurve.m_Bezier.a, 0f, 0f, safeTimeStep,
                 ref carLanes, ref signals, ref laneObjects, ref curves, ref moving, ref cars, ref controllers, ref prefabRefs, ref prefabCars, ref geometries,
                 ref overlapData, ref pedestrianLanes, out ExitGiveWay.Decision d);
             if (!wait)
@@ -366,15 +379,17 @@ namespace JunctionRules.Stage2
             float wait = toJoin - back - ExitAreaMargin;
             if (!ExitGiveWay.CanHoldArea(wait, VehicleUtils.GetBrakingDistance(car, currentSpeed, timeStep))) return float.MaxValue;
             float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, wait > 0f ? wait : 0f, safeTimeStep), speedRange);
-            float arrival = 0f;
+            float arrival = 0f, clear = 0f;
             if (carLanes.TryGetComponent(road, out Game.Net.CarLane roadLane))
             {
                 float drive = VehicleUtils.GetMaxDriveSpeed(car, roadLane);
                 GameMotion motion = default;
                 motion.m_Car = car;
                 arrival = ArrivalTime.Compute(ref motion, toJoin > 0f ? toJoin : 0f, currentSpeed, drive, 0f, timeStep);
+                // Review F5: the crossed lanes lie before the join point: clearing them takes at most the way to it plus the whole vehicle.
+                clear = ArrivalTime.Compute(ref motion, ExitGiveWay.ClearMetres(toJoin, 0f, OwnLength()), currentSpeed, drive, 0f, timeStep);
             }
-            bool busy = ExitJoinWaits(self, from, priority, t, road, roadCurve, roadOwner, position, arrival, safeTimeStep,
+            bool busy = ExitJoinWaits(self, from, priority, t, road, roadCurve, roadOwner, position, arrival, clear, safeTimeStep,
                 ref carLanes, ref signals, ref laneObjects, ref curves, ref moving, ref cars, ref controllers, ref prefabRefs, ref prefabCars, ref geometries,
                 ref overlapData, ref pedestrianLanes, out ExitGiveWay.Decision d);
             if (!busy)
@@ -416,7 +431,15 @@ namespace JunctionRules.Stage2
             if (!ExitJoinLane(from, priority, next, !parking, ref carLanes, ref curves, out Entity road, out Curve roadCurve, out Owner roadOwner)) return float.MaxValue;
             NoteFrom(from, (uint)fromFlags, roadOwner.m_Owner);
             float3 side = parking ? position : target;
-            bool busy = ExitJoinWaits(self, from, priority, next.m_CurvePosition.x, road, roadCurve, roadOwner, side, 0f, safeTimeStep,
+            // Review F5: the vehicle starts from standstill at the spawn point / space: clearing a crossed lane takes its whole length.
+            float clear = 0f;
+            if (carLanes.TryGetComponent(road, out Game.Net.CarLane joinLaneData))
+            {
+                GameMotion motion = default;
+                motion.m_Car = car;
+                clear = ArrivalTime.Compute(ref motion, ExitGiveWay.ClearMetres(0f, 2f * ExitCrossHalfWidth, OwnLength()), 0f, VehicleUtils.GetMaxDriveSpeed(car, joinLaneData), 0f, safeTimeStep);
+            }
+            bool busy = ExitJoinWaits(self, from, priority, next.m_CurvePosition.x, road, roadCurve, roadOwner, side, 0f, clear, safeTimeStep,
                 ref carLanes, ref signals, ref laneObjects, ref curves, ref moving, ref cars, ref controllers, ref prefabRefs, ref prefabCars, ref geometries,
                 ref overlapData, ref pedestrianLanes, out ExitGiveWay.Decision d);
             if (!busy)
@@ -475,6 +498,9 @@ namespace JunctionRules.Stage2
 
         /// <summary>The speed (m/s) the stock navigation takes as the area lane's target speed (CarNavigationSystem num3 = 11.111): its hand-over distance uses the braking distance from it.</summary>
         public const float AreaLaneSpeed = 11.111112f;
+
+        /// <summary>0.4.8: the whole vehicle's length (trailers incl., S2-21/S2-26), 4 m when unknown: only for the time to clear a crossed lane.</summary>
+        private float OwnLength() => m_VehicleLength > 0f ? m_VehicleLength : 4f;
 
         /// <summary>
         /// S2-34 (0.4.6 probe; 0.4.7 classification, Core/ExitPaths.cs): a vehicle hands over from its current lane to its next
@@ -546,7 +572,10 @@ namespace JunctionRules.Stage2
             slots.m_P = (long*)NativeArrayUnsafeUtility.GetUnsafeBufferPointerWithoutChecks(eventTable);
             slots.m_N = eventTable.Length;
             bool found = EventLookup.Last(ref slots, ExitGiveWay.EventKey(self.Index, ExitGiveWay.DriveGoKind), out uint last);
-            return EventLookup.Fresh(found, last, frame, ExitGiveWay.DriveGoWindow);
+            if (!EventLookup.Fresh(found, last, frame, ExitGiveWay.DriveGoWindow)) return false;
+            // Review F2: a Wait decided after that Go cancels it (the vehicle was told to wait and went anyway: not judged).
+            bool waited = EventLookup.Last(ref slots, ExitGiveWay.EventKey(self.Index, ExitGiveWay.ExitWaitKind), out uint lastWait);
+            return ExitGiveWay.GoStands(waited, lastWait, last);
         }
 
         private Entity OwnerOf(Entity lane) => m_OwnerData.TryGetComponent(lane, out Owner o) ? o.m_Owner : Entity.Null;
@@ -582,18 +611,21 @@ namespace JunctionRules.Stage2
                 TraceWrite(m_TraceRing, self, building, ExitTrace.Pack(ExitTrace.Event.LongHold, path, kind, drive ? m_DriveDecision : m_ExitDecision,
                     ExitTrace.ReasonDecided | TraceReasons(), drive ? m_DriveBoxed : m_ExitBoxed), frame, drive ? OwnerOf(m_DriveLane) : m_ExitRoadOwner);
             }
-            // Any exit path's Go (S2-29 drive, S2-30/32/35/36 through ExitJoinWaits or a signalled arm): read back at its hand-over.
-            if (m_ExitDecided && m_ExitDecision == ExitGiveWay.Decision.Go && !m_DriveJudged)
+            // Any exit path's Go (S2-29 drive, S2-30/32/35/36 through ExitJoinWaits or a signalled arm): read back at its hand-over;
+            // a Wait is recorded too (review F2: a Go older than the last Wait does not count).
+            if (m_ExitDecided && !m_DriveJudged)
             {
-                ExitEvent(eventTable, self, frame, ExitGiveWay.DriveGoKind);
+                ExitEvent(eventTable, self, frame, m_ExitDecision == ExitGiveWay.Decision.Go ? ExitGiveWay.DriveGoKind : ExitGiveWay.ExitWaitKind);
                 return;
             }
             if (!m_DriveJudged) return;
+            if (m_DriveLate && Counting && counters.IsCreated && ExitEvent(eventTable, self, frame, ExitGiveWay.LateJudgeKind)) Add(counters, Stage2Counters.ExitDriveLate, 1);
             if (m_DriveDecision == ExitGiveWay.Decision.Go)
             {
                 ExitEvent(eventTable, self, frame, ExitGiveWay.DriveGoKind);
                 return;
             }
+            ExitEvent(eventTable, self, frame, ExitGiveWay.ExitWaitKind);
             if (m_TraceOn && ExitEvent(eventTable, self, frame, ExitGiveWay.DriveTraceWaitKind))
             {
                 Entity building = ExitBuilding(currentLane);
@@ -704,7 +736,7 @@ namespace JunctionRules.Stage2
         /// delta = the leaving vehicle's own arrival time at the join point. True = wait (gap busy, or boxed exit with no room
         /// past the band); decision tells which.
         /// </summary>
-        private bool ExitJoinWaits(Entity self, Entity ownLane, int priority, float t, Entity road, Curve roadCurve, Owner roadOwner, float3 buildingSide, float delta, float safeTimeStep,
+        private bool ExitJoinWaits(Entity self, Entity ownLane, int priority, float t, Entity road, Curve roadCurve, Owner roadOwner, float3 buildingSide, float delta, float deltaClear, float safeTimeStep,
             ref ComponentLookup<Game.Net.CarLane> carLanes, ref ComponentLookup<LaneSignal> signals, ref BufferLookup<LaneObject> laneObjects,
             ref ComponentLookup<Curve> curves, ref ComponentLookup<Moving> moving, ref ComponentLookup<Car> cars, ref ComponentLookup<Controller> controllers,
             ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<CarData> prefabCars, ref ComponentLookup<ObjectGeometryData> geometries,
@@ -777,7 +809,8 @@ namespace JunctionRules.Stage2
                         if (ExitGiveWay.Role(false, -lateral, 0f) != ExitGiveWay.ConflictRole.Cross) continue;
                         if (++judged > ExitGiveWay.MaxConflictLanes) break;
                         float cm = tc * cc.m_Length;
-                        busy = ConflictBusy(c, cc, cm - ExitCrossHalfWidth, cm + ExitCrossHalfWidth, delta, ref reads, ref budget);
+                        // Review F5: a crossed lane is busy for the time the whole vehicle needs to CLEAR it (Core ExitGiveWay.ClearMetres).
+                        busy = ConflictBusy(c, cc, cm - ExitCrossHalfWidth, cm + ExitCrossHalfWidth, deltaClear > delta ? deltaClear : delta, ref reads, ref budget);
                     }
                 }
             }

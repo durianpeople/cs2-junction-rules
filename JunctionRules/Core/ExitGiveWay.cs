@@ -236,7 +236,19 @@ namespace JunctionRules.Core
         public const float AreaScanMin = 25f;
 
         /// <summary>Counter episodes (0.4.6): a vehicle's consecutive exit decisions (at most <see cref="Core.SafetyStopEvents.ContinueFrames"/> apart) are one event, per kind.</summary>
-        public const int EventKinds = 14;
+        public const int EventKinds = 16;
+
+        /// <summary>0.4.8 review (G7 F2): event kind of an exit's last WAIT decision (a Go older than the last Wait is no judgement).</summary>
+        public const int ExitWaitKind = 14;
+
+        /// <summary>0.4.8 review (G7 F4): event kind of "judged only on the sidewalk" (could not stop before it; counter episode).</summary>
+        public const int LateJudgeKind = 15;
+
+        /// <summary>0.4.8 review (G7 F3): metres of slack past the sidewalk spot a stopped vehicle may have crept and still be held there.</summary>
+        public const float SpotSlack = 0.3f;
+
+        /// <summary>Review F2: a recorded Go stands unless a Wait was recorded after it (frames, uint wrap safe).</summary>
+        public static bool GoStands(bool waitFound, uint lastWait, uint lastGo) => !waitFound || (int)(lastGo - lastWait) >= 0;
 
         /// <summary>0.4.8 (diagnostics): event kind of the trace's "held long" line (one per lane stay of 30 s, the game resets its lane timer).</summary>
         public const int LongHoldKind = 12;

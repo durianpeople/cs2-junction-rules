@@ -298,6 +298,17 @@ namespace JunctionRules.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int Home(int key, int length) => (int)(((uint)key * 2654435761u) % (uint)length);
 
+        /// <summary>
+        /// 0.4.8 review (G7 F3): how long a slot stays reserved for its key (frames since its last write). Exit Go / Wait
+        /// records are read back up to ExitGiveWay.DriveGoWindow later (at the hand-over), so another key may not take
+        /// their slot before that; every other kind keeps the 0.2.3 ContinueFrames.
+        /// </summary>
+        public static uint Keep(int key)
+        {
+            int kind = (key - 1) / ExitGiveWay.EventKindStride;
+            return kind == ExitGiveWay.DriveGoKind || kind == ExitGiveWay.ExitWaitKind ? ExitGiveWay.DriveGoWindow : ContinueFrames;
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static long Pack(int key, uint frame) => ((long)key << 32) | frame;
 
@@ -327,7 +338,7 @@ namespace JunctionRules.Core
                 int slot = (home + i) % n;
                 long v = slots.Read(slot);
                 int k = (int)(v >> 32);
-                if (k != 0 && frame - (uint)v <= ContinueFrames) continue;
+                if (k != 0 && frame - (uint)v <= Keep(k)) continue;
                 if (slots.CompareExchange(slot, Pack(key, frame), v)) return true;
             }
             return true;

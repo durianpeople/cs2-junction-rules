@@ -204,6 +204,7 @@ namespace JunctionRules.Core
                     s += $", mouth shifts [{string.Join(", ", sh)}] m";
                 }
                 if (Straight.Chamfers.Count > 0) s += $", {Straight.Chamfers.Count} chamfered corner(s)";
+                if (Straight.SkippedConflicts > 0) s += $", WARNING {Straight.SkippedConflicts} conflict point(s) left outside (under a marking margin past the kerb lines)";
             }
             if (GameCorners > 0) s += $", {GameCorners} corner kerb(s) as the game draws them";
             return s;

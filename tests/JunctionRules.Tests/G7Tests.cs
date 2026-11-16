@@ -107,6 +107,17 @@ namespace JunctionRules.Tests
             Check(!EventLookup.Last(ref slots, ExitGiveWay.EventKey(1235, ExitGiveWay.DriveGoKind), out _), "no Go recorded: not judged");
             Check(!EventLookup.Last(ref slots, ExitGiveWay.EventKey(1234, ExitGiveWay.SidewalkHoldKind), out _), "kinds are separate keys");
             Check(ExitGiveWay.EventKey(1 << 25, ExitGiveWay.EventKinds - 1) > 0, "the largest event key stays a positive int");
+            // Review F2: a Wait after the Go cancels it; review F3: Go / Wait slots are kept for the whole window.
+            Check(ExitGiveWay.GoStands(false, 0u, 100u) && ExitGiveWay.GoStands(true, 90u, 100u) && !ExitGiveWay.GoStands(true, 116u, 100u), "a Go stands unless a Wait came after it");
+            Check(SafetyStopEvents.Keep(ExitGiveWay.EventKey(7, ExitGiveWay.DriveGoKind) + 1) == ExitGiveWay.DriveGoWindow
+                && SafetyStopEvents.Keep(ExitGiveWay.EventKey(7, ExitGiveWay.ExitWaitKind) + 1) == ExitGiveWay.DriveGoWindow
+                && SafetyStopEvents.Keep(ExitGiveWay.EventKey(7, ExitGiveWay.SidewalkHoldKind) + 1) == SafetyStopEvents.ContinueFrames
+                && SafetyStopEvents.Keep(8) == SafetyStopEvents.ContinueFrames, "slot keep time: exit Go / Wait for the window, every other kind as before");
+            var crowded = new G7Slots { Values = new long[8] };
+            int goKey = ExitGiveWay.EventKey(42, ExitGiveWay.DriveGoKind);
+            SafetyStopEvents.Record(ref crowded, goKey, 1000u);
+            for (int i = 0; i < 14; i++) SafetyStopEvents.Record(ref crowded, ExitGiveWay.EventKey(500 + i, ExitGiveWay.SidewalkHoldKind), 1100u + (uint)i * 60u);   // up to frame 1880, inside the window
+            Check(EventLookup.Last(ref crowded, goKey, out uint kept) && kept == 1000u, "a full 8-slot table never evicts a Go younger than the window");
 
             // --- trace text ---
             long judgedFacts = ExitTrace.Pack(ExitTrace.Event.EnterDrive, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, ExitGiveWay.Decision.Go, ExitTrace.ReasonDecided, true);
@@ -144,7 +155,7 @@ namespace JunctionRules.Tests
             deltas[Stage2Counters.ExitDriveEntries] = 12;
             deltas[Stage2Counters.ExitDriveUnjudged] = 0;
             string line = Stage2Counters.Format(2, deltas, 2, 2, 2, 2);
-            Check(line.Contains("exits held before the sidewalk 7 (no room on the lane it joins 3)") && line.Contains("driveway exits crossing the sidewalk 12, of them without a full judgement 0 (must be 0); standing on the road after leaving a driveway (5 s+) 0"),
+            Check(line.Contains("exits held before the sidewalk 7 (no room on the lane it joins 3)") && line.Contains("driveway exits crossing the sidewalk 12, of them without a full judgement 0 (must be 0); standing on the road after leaving a driveway (5 s+) 0; judged only on the sidewalk (could not stop before it) 0"),
                 "timing line: the sidewalk proof counters");
         }
 
@@ -163,6 +174,10 @@ namespace JunctionRules.Tests
             Check(body.Contains("ExitGiveWay.MustJudge(hold, currentMax, wait)") && !body.Contains("if (!(hold < currentMax)) return float.MaxValue;"), "S2-29 no longer skips a vehicle creeping under a lower limit");
             Check(body.Contains("ExitGiveWay.ClearMetres(") && body.Contains("o.m_Other == joinNav.m_Lane"), "crossed lanes use the clear time, the joined lane the reach time");
             Check(body.IndexOf("ExitGiveWay.CanHold(", StringComparison.Ordinal) < body.IndexOf("ConflictBusy(", StringComparison.Ordinal), "the decision is taken only while it can still stop before the spot");
+            Check(body.Contains("wait + ExitGiveWay.SpotSlack") && body.Contains("wait = origDistance + length * (firstRoad - start);") && body.Contains("m_DriveJudged = hasJoin;"),
+                "review F4/F1: slack at the spot, fallback judgement at the first road lane, no full judgement without the joined lane");
+            Check(nav.Contains("m_ZebraRule || carLaneSpeedIterator.m_JR.m_BoxRule || carLaneSpeedIterator.m_JR.m_ExitRule)"), "review F1: the path and vehicle length are handed in with only the exit rule on");
+            Check(glue.Contains("deltaClear > delta ? deltaClear : delta"), "review F5: lot / spawn / parking / building-road exits use the clear time on crossed lanes");
             Check(wj.Contains("elements.m_SidewalkZebra = m_ExitRule") && wj.Contains("(m_SidewalkZebra || ZebraSections.IsZebra("), "zebra sections: a driveway's sidewalk is a Z (people, ZC merge, room past)");
             Check(it.Contains("ref m_LaneOverlapData, ref m_PedestrianLaneData);\n\t\t\tif (jrExitHold < m_MaxSpeed)"), "S2-29 hands the overlap and pedestrian lookups");
             Check(nav.Contains("ExitHandOver(m_JRCounters, m_JRSafetyEvents, entity") && nav.Contains("m_JR.NoteExit(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane, num2, currentLane.m_Duration"),

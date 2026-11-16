@@ -202,7 +202,9 @@ namespace JunctionRules.Core
         public const int ExitStuckOnRoad = FeedingScans + 48;
         /// <summary>JR-T-014c (G9): car-steps in which a vehicle turning INTO a building stood before the box (entrance / two-way drive) because there was no room for its whole length past the box on its way in.</summary>
         public const int EntranceHeldEntering = FeedingScans + 49;
-        public const int Count = FeedingScans + 50;
+        /// <summary>0.4.8 review (G7 F4): driveway exits judged only at the first road lane (could not stop before the sidewalk; episodes).</summary>
+        public const int ExitDriveLate = FeedingScans + 50;
+        public const int Count = FeedingScans + 51;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -350,7 +352,8 @@ namespace JunctionRules.Core
                          " (no room on the lane it joins " + deltas[ExitHeldRoom].ToString(ci) + ")" +
                          "; driveway exits crossing the sidewalk " + deltas[ExitDriveEntries].ToString(ci) +
                          ", of them without a full judgement " + deltas[ExitDriveUnjudged].ToString(ci) + " (must be 0)" +
-                         "; standing on the road after leaving a driveway (5 s+) " + deltas[ExitStuckOnRoad].ToString(ci)
+                         "; standing on the road after leaving a driveway (5 s+) " + deltas[ExitStuckOnRoad].ToString(ci) +
+                         "; judged only on the sidewalk (could not stop before it) " + deltas[ExitDriveLate].ToString(ci)
                        : "") +
                    "; " + points;
         }

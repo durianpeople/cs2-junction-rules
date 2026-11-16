@@ -65,6 +65,8 @@ namespace JunctionRules.Boxes
             public string Notes;
             /// <summary>0.4.8 (JR-T-014b): junction only: the solved shape in one line (BoxShapes.Shape.Summary), logged when a box is added.</summary>
             public string Summary;
+            /// <summary>0.4.8 review (G5 F6): the entity this hover shape was solved for (the click logs its Summary only for the same target).</summary>
+            public Entity Target;
             /// <summary>JR-T-014c (G10): the target's own box outline (the arrow starts on it); null for a junction.</summary>
             public List<V3> Ring;
         }
@@ -424,7 +426,7 @@ namespace JunctionRules.Boxes
                     shape.Outline, t.Kind == Kind.Exit && t.Access.Edge != Entity.Null ? SortedKeys.KeyOf(t.Access.Edge.Index, t.Access.Edge.Version) : 0, shape.Carriageways);
                 var segs = new List<(V3 A, V3 B)>();
                 foreach (List<V3> ring in MergedBoxes.HoverRings(self)) segs.AddRange(BoxHover.Segments(ring));
-                return new HoverShape { Segments = segs, Failure = null, Sources = sources, Notes = string.Join("; ", shape.Notes), Summary = shape.Summary, Ring = t.Kind == Kind.Exit ? shape.Outline : null };
+                return new HoverShape { Segments = segs, Failure = null, Sources = sources, Notes = string.Join("; ", shape.Notes), Summary = shape.Summary, Target = t.Entity, Ring = t.Kind == Kind.Exit ? shape.Outline : null };
             });
         }
 
@@ -492,8 +494,10 @@ namespace JunctionRules.Boxes
             string where = t.Kind == Kind.Junction ? "junction " + What(t) : $"{What(t)} (source: {t.Exit.C.Source})"
                 + (t.Entrance ? (add ? "; the building's entrances are boxed with it" : "; removed ALL the building's boxes (entrances come with the building)") : "");
             // 0.4.8 (JR-T-014b): an added junction box names its solved shape (the hover's, cached: no second solve)
-            string shape = add && t.Kind == Kind.Junction ? m_Cache.Value?.Summary : null;
-            Mod.log.Info($"yellow box tool: {(add ? "box added on" : "box removed from")} {where} at {t.Position}" + (!add && !t.Valid ? " (target no longer valid: " + t.Why + ")" : "") + (shape != null ? "; " + shape : ""));
+            string shape = add && t.Kind == Kind.Junction && m_Cache.Value != null && m_Cache.Value.Target == t.Entity ? m_Cache.Value.Summary : null;
+            // Review G5 F2: a box that leaves conflict points outside is logged as a warning (the owner sees it in the log).
+            if (shape != null && shape.Contains("WARNING")) Mod.log.Warn($"yellow box tool: box added on {where} at {t.Position}; {shape}");
+            else Mod.log.Info($"yellow box tool: {(add ? "box added on" : "box removed from")} {where} at {t.Position}" + (!add && !t.Valid ? " (target no longer valid: " + t.Why + ")" : "") + (shape != null ? "; " + shape : ""));
         }
     }
 }
