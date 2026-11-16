@@ -103,6 +103,37 @@ namespace JunctionRules.Core
             return true;
         }
 
+        /// <summary>
+        /// 0.4.7 (JR-T-013c, G5): where a refused (or toggled) target is and what meets there, for the tool's log lines:
+        /// "at (x, z), arms: 1 Name (prefab, width m), ...". The arm numbers are the shape solver's ("corner arm 3 - arm 1"
+        /// in a failure names arms 3 and 1 of this list): BoxShapes.ArmEdges gives them in the solver's order.
+        /// </summary>
+        public static string Describe(V3 position, IList<ArmLabel> arms)
+        {
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            var sb = new System.Text.StringBuilder();
+            sb.Append("at (").Append(position.X.ToString("0.00", ci)).Append(", ").Append(position.Z.ToString("0.00", ci)).Append("), arms: ");
+            if (arms == null || arms.Count == 0) return sb.Append("none").ToString();
+            for (int i = 0; i < arms.Count; i++)
+            {
+                if (i > 0) sb.Append(", ");
+                var a = arms[i];
+                sb.Append(i + 1).Append(' ').Append(string.IsNullOrEmpty(a.Name) ? "unnamed" : a.Name)
+                  .Append(" (").Append(string.IsNullOrEmpty(a.Prefab) ? "?" : a.Prefab).Append(", ").Append(a.Width.ToString("0.0", ci)).Append(" m)");
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>0.4.7 (G5): an exit target for the log: "at (x, z) on Name (prefab, width m)"; no road = "at (x, z), no road".</summary>
+        public static string DescribeExit(V3 position, ArmLabel? road)
+        {
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            string at = "at (" + position.X.ToString("0.00", ci) + ", " + position.Z.ToString("0.00", ci) + ")";
+            if (road == null) return at + ", no road";
+            var a = road.Value;
+            return at + " on " + (string.IsNullOrEmpty(a.Name) ? "unnamed" : a.Name) + " (" + (string.IsNullOrEmpty(a.Prefab) ? "?" : a.Prefab) + ", " + a.Width.ToString("0.0", ci) + " m)";
+        }
+
         /// <summary>0.4.3: true when the node is a building access junction (a building's own road meets a public road).</summary>
         public static bool IsBuildingAccessJunction(JunctionFacts f) => f.BuildingRoadArms > 0 && f.PublicRoadArms > 0 && !f.MixedOwners && f.OtherOwnedRoadArms == 0;
 
@@ -144,4 +175,12 @@ namespace JunctionRules.Core
     }
 
     public enum ToggleAction { None, Add, Remove }
+
+    /// <summary>0.4.7 (JR-T-013c, G5): one road arm of a node for the tool's log lines: street name (null = unnamed), road prefab, composition width.</summary>
+    public readonly struct ArmLabel
+    {
+        public readonly string Name, Prefab;
+        public readonly float Width;
+        public ArmLabel(string name, string prefab, float width) { Name = name; Prefab = prefab; Width = width; }
+    }
 }

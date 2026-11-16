@@ -61,6 +61,8 @@ namespace JunctionRules.Tests
             ("StraightBoxLiveTests", StraightBoxLiveTests),
             ("ExitTests", ExitTests),
             ("StraightBoxRuleTests", StraightBoxRuleTests),
+            ("G5Tests", G5Tests),
+            ("G5MergeTests", G5MergeTests),
             ("MarginHoverTests", MarginHoverTests),
             ("ReviewFixTests", ReviewFixTests),
             ("BoxInsetTests", BoxInsetTests),

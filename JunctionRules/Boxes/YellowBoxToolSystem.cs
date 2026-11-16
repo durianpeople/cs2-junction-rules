@@ -42,6 +42,8 @@ namespace JunctionRules.Boxes
         public override string toolID => kToolID;
 
         private OverlayRenderSystem m_Overlay;
+        private Game.UI.NameSystem m_Names;
+        private PrefabSystem m_Prefabs;
         private Target m_Hover;
         private string m_LastWhy;
 
@@ -52,6 +54,8 @@ namespace JunctionRules.Boxes
             public List<(V3 A, V3 B)> Segments;
             public string Failure;
             public List<Entity> Sources;
+            /// <summary>0.4.7 (G5): the solver's notes (footways, arms yield / priority, conflict points, shifts), logged with a no-shape refusal.</summary>
+            public string Notes;
         }
         private readonly HoverCache<HoverShape> m_Cache = new HoverCache<HoverShape>();
         // F3: targets already warned about having no box shape (once per entity per tool session)
@@ -90,6 +94,8 @@ namespace JunctionRules.Boxes
         {
             base.OnCreate();
             m_Overlay = World.GetOrCreateSystemManaged<OverlayRenderSystem>();
+            m_Names = World.GetOrCreateSystemManaged<Game.UI.NameSystem>();
+            m_Prefabs = World.GetOrCreateSystemManaged<PrefabSystem>();
         }
 
         [Preserve]
@@ -146,7 +152,7 @@ namespace JunctionRules.Boxes
                         m_Hover.NoShape = true;
                         m_Hover.Why = "no box shape can be built here: " + h.Failure;
                         if (m_NoShapeWarned.Add((m_Hover.Entity, ExitSub(m_Hover))))   // review F5: once per exit, not per building
-                            Mod.log.Warn($"yellow box tool: {What(m_Hover)} not selectable: {m_Hover.Why}");
+                            Mod.log.Warn($"yellow box tool: {What(m_Hover)} not selectable: {m_Hover.Why}" + (string.IsNullOrEmpty(h.Notes) ? "" : $"; notes: {h.Notes}"));
                     }
                     else Draw(m_Hover, h.Segments);
                 }
@@ -285,10 +291,25 @@ namespace JunctionRules.Boxes
             return t;
         }
 
-        private static string What(Target t)
+        /// <summary>
+        /// The target for log lines. 0.4.7 (JR-T-013c, G5): with its position and what meets there (junction: every road
+        /// arm's street name, prefab and width, numbered as the shape failure numbers them; exit: its road), so a refusal
+        /// can be found again without the game (0.4.6 logged only "node Entity(551713:1)").
+        /// </summary>
+        private string What(Target t)
         {
-            if (t.Kind == Kind.Junction) return t.FromBuilding != Entity.Null ? $"node {t.Entity} (where building {t.FromBuilding}'s own road meets the public road)" : $"node {t.Entity}";
-            return $"building {t.Entity} exit {t.Exit.C.Key} [{t.Exit.C.Kind}]";
+            EntityManager em = EntityManager;
+            V3 pos = new V3(t.Position.x, t.Position.y, t.Position.z);
+            if (t.Kind == Kind.Junction)
+            {
+                var labels = new List<ArmLabel>();
+                foreach (Entity e in BoxShapes.ArmEdges(em, t.Entity)) labels.Add(BoxShapes.Label(em, e, m_Names, m_Prefabs));
+                string where = BoxSelection.Describe(pos, labels);
+                return t.FromBuilding != Entity.Null ? $"node {t.Entity} {where} (where building {t.FromBuilding}'s own road meets the public road)" : $"node {t.Entity} {where}";
+            }
+            Entity road = t.Access.Edge;
+            ArmLabel? rl = road != Entity.Null && em.Exists(road) ? BoxShapes.Label(em, road, m_Names, m_Prefabs) : (ArmLabel?)null;
+            return $"building {t.Entity} exit {t.Exit.C.Key} [{t.Exit.C.Kind}] {BoxSelection.DescribeExit(pos, rl)}";
         }
 
         // ------------------------------------------------------------------ hover outline and click
@@ -332,13 +353,13 @@ namespace JunctionRules.Boxes
                     ? BoxShapes.Junction(EntityManager, t.Entity, BoxStore.KerbInset, BoxStore.MarkingMargin)
                     : BoxShapes.Entrance(EntityManager, t.Access, BoxStore.KerbInset, BoxStore.EntranceLength, BoxStore.MarkingMargin, side);
                 var sources = new List<Entity>(shape.Sources) { t.Entity };
-                if (shape.Outline == null) return new HoverShape { Segments = BoxHover.Segments(null), Failure = shape.Failure, Sources = sources };
+                if (shape.Outline == null) return new HoverShape { Segments = BoxHover.Segments(null), Failure = shape.Failure, Sources = sources, Notes = string.Join("; ", shape.Notes) };
                 // 0.4.4 (JR-T-011): the merged outline of the group the target belongs to (has a box) or would join (adding)
                 var self = new BoxMergeInput(BoxMergeInput.EntityKey(t.Entity.Index, t.Entity.Version), ExitSub(t), t.Kind == Kind.Exit ? BoxMergeKind.Exit : BoxMergeKind.Junction,
                     shape.Outline, t.Kind == Kind.Exit && t.Access.Edge != Entity.Null ? SortedKeys.KeyOf(t.Access.Edge.Index, t.Access.Edge.Version) : 0, shape.Carriageways);
                 var segs = new List<(V3 A, V3 B)>();
                 foreach (List<V3> ring in MergedBoxes.HoverRings(self)) segs.AddRange(BoxHover.Segments(ring));
-                return new HoverShape { Segments = segs, Failure = null, Sources = sources };
+                return new HoverShape { Segments = segs, Failure = null, Sources = sources, Notes = string.Join("; ", shape.Notes) };
             });
         }
 

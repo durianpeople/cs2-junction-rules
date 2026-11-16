@@ -40,6 +40,52 @@ namespace JunctionRules.Boxes
         // ------------------------------------------------------------------ junction
 
         /// <summary>
+        /// 0.4.7 (JR-T-013c, G5): the node's road arms in the order Junction() numbers them ("arm 1" = first): its
+        /// ConnectedEdge entries that exist, are roads (Game.Net.Road), start or end at the node and carry the node-end
+        /// geometry. Same filter as the arm loop of Junction(), which uses this list.
+        /// </summary>
+        internal static List<Entity> ArmEdges(EntityManager em, Entity node)
+        {
+            var r = new List<Entity>();
+            if (!em.Exists(node) || !em.HasBuffer<ConnectedEdge>(node)) return r;
+            DynamicBuffer<ConnectedEdge> connected = em.GetBuffer<ConnectedEdge>(node, true);
+            for (int i = 0; i < connected.Length; i++)
+            {
+                Entity e = connected[i].m_Edge;
+                if (!em.Exists(e) || !em.HasComponent<Edge>(e) || !em.HasComponent<Game.Net.Road>(e)) continue;
+                Edge edge = em.GetComponentData<Edge>(e);
+                bool isStart = edge.m_Start == node, isEnd = edge.m_End == node;
+                if (!isStart && !isEnd) continue;
+                if (isStart ? !em.HasComponent<StartNodeGeometry>(e) : !em.HasComponent<EndNodeGeometry>(e)) continue;
+                r.Add(e);
+            }
+            return r;
+        }
+
+        /// <summary>0.4.7 (G5): street name (the edge's Aggregated street, NameSystem label; null when none), road prefab name and edge composition width of one road edge, for log lines.</summary>
+        internal static ArmLabel Label(EntityManager em, Entity edge, Game.UI.NameSystem names, PrefabSystem prefabs)
+        {
+            string name = null, prefab = null;
+            float width = 0f;
+            try
+            {
+                if (names != null && em.HasComponent<Aggregated>(edge))
+                {
+                    Entity agg = em.GetComponentData<Aggregated>(edge).m_Aggregate;
+                    if (agg != Entity.Null && em.Exists(agg)) name = names.GetRenderedLabelName(agg);
+                }
+                if (prefabs != null && em.HasComponent<PrefabRef>(edge)) prefab = prefabs.GetPrefabName(em.GetComponentData<PrefabRef>(edge).m_Prefab);
+                if (em.HasComponent<Composition>(edge))
+                {
+                    Entity comp = em.GetComponentData<Composition>(edge).m_Edge;
+                    if (em.HasComponent<NetCompositionData>(comp)) width = em.GetComponentData<NetCompositionData>(comp).m_Width;
+                }
+            }
+            catch (Exception) { /* a label is diagnostics only */ }
+            return new ArmLabel(name, prefab, width);
+        }
+
+        /// <summary>
         /// The junction box of a node: arms from its connected road edges (node slice outer + inner curves, footway
         /// insets), markings (zebras on the node, stop / give-way lines on the arms), the yield flags of the node's car
         /// lanes per arm, signals, and the car-path conflict points; then CarriagewayOutline.BuildStraight.
@@ -55,19 +101,19 @@ namespace JunctionRules.Boxes
             var armEdges = new List<Entity>();
             var kerbNotes = new List<string>();
             DynamicBuffer<ConnectedEdge> connected = em.GetBuffer<ConnectedEdge>(node, true);
-            var edges = new List<Entity>(connected.Length);
-            for (int i = 0; i < connected.Length; i++) edges.Add(connected[i].m_Edge);
-            foreach (Entity e in edges)
+            for (int i = 0; i < connected.Length; i++)
             {
+                Entity e = connected[i].m_Edge;
                 if (!em.Exists(e) || !em.HasComponent<Edge>(e)) continue;
                 s.Sources.Add(e);
-                if (!em.HasComponent<Game.Net.Road>(e)) { AddOnce(s.Notes, "non-road edge(s) (path) at the node skipped as arms"); continue; }
+                if (!em.HasComponent<Game.Net.Road>(e)) AddOnce(s.Notes, "non-road edge(s) (path) at the node skipped as arms");
+            }
+            // 0.4.7 (G5): the arms through ArmEdges, so the log's arm list numbers them as the failure text does
+            foreach (Entity e in ArmEdges(em, node))
+            {
                 Edge edge = em.GetComponentData<Edge>(e);
-                bool isStart = edge.m_Start == node, isEnd = edge.m_End == node;
-                if (!isStart && !isEnd) continue;
-                EdgeNodeGeometry g;
-                if (isStart) { if (!em.HasComponent<StartNodeGeometry>(e)) continue; g = em.GetComponentData<StartNodeGeometry>(e).m_Geometry; }
-                else { if (!em.HasComponent<EndNodeGeometry>(e)) continue; g = em.GetComponentData<EndNodeGeometry>(e).m_Geometry; }
+                bool isStart = edge.m_Start == node;
+                EdgeNodeGeometry g = isStart ? em.GetComponentData<StartNodeGeometry>(e).m_Geometry : em.GetComponentData<EndNodeGeometry>(e).m_Geometry;
                 // Outer curves m_Left.m_Left / m_Right.m_Right; inner curves m_Left.m_Right / m_Right.m_Left (the halves meet
                 // at the middle). Index 0 = the .a end = the mouth.
                 var arm = new ArmInput { OuterA = Sample(g.m_Left.m_Left), OuterB = Sample(g.m_Right.m_Right) };
