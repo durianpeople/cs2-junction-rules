@@ -52,6 +52,14 @@ game's own measure: a moving car ahead counts its braking distance; **room margi
 the whole vehicle cannot wait between two zebras (Z C Z), or between Cs and a zebra (a bus), they are one decision
 before the first. Carries 0.4.0 and 0.3.6.
 
+0.4.8-probe (JR-T-014: G7, G5, G9, G10, G11; PROBE-STAGE4-BOXTOOL.md section 18): vehicles leaving a building take
+the whole decision **before the sidewalk** (people on the pavement, near-lane gap incl. a vehicle standing next to the
+exit, clear time for lorries, far-lane gap, room for the whole vehicle on the lane it joins / past the box); boxes at
+building **entrances** too (cars turning in wait on the road unless they fit in); hover arrow from a box to its
+building access, no boxes at lot-front fallbacks; Crescent x Eastgate boxable (game-drawn corner kerbs); people give
+way at **unmarked** crossings (setting, default on). Diagnostics (timing log, compact exit trace, entrance box log)
+are on by default in this probe.
+
 0.4.7-probe (JR-T-011 #17 + JR-T-013 gaps G1-G6; PROBE-STAGE4-BOXTOOL.md sections 16 and 17): yellow boxes that
 **overlap or touch are drawn as one box** (one border, one hatch; each box still saved on its own) and the hover shows
 the merged outline; an exit box on a **divided road** covers only the building's side, kerb to median; driving follows
@@ -134,7 +142,7 @@ PROBE-STAGE3-PAINT.md section 10.
 - **Vehicles leaving buildings give way** (0.4.4, lot exits 0.4.5, judged earlier 0.4.6): on (default) or off (= 0.4.3). "Cars coming out of ANY building
   must give way, and when that building exit is a yellow box, must ALSO obey the yellow box rules." Timing log:
   building exits: waits (turning across, spawn/gate), go decisions, emergency passthroughs, cap hits, hand-overs to the road (lot, gate, other); since 0.4.6 counted per vehicle, not per car-step.
-- **Exit trace (log)** (0.4.7, debug, default off): one line when a vehicle starts waiting at a building / parking
+- **Exit trace (log)** (0.4.7, debug; 0.4.8 probe: default ON and compact, switched on once on first load): one line when a vehicle starts waiting at a building / parking
   exit and one when it joins the road (decision, path kind, boxed), at most 20 lines a second. Needs Vehicles leaving
   buildings give way. 0.4.7 timing log adds hand-overs by path (spawn point, building parking, kerbside parking,
   building road, drive), hand-overs not judged, cap hits by kind, and "right-turn waits for exit room" (G3).

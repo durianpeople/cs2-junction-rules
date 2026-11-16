@@ -1,4 +1,15 @@
-# Probe kit: Junction Rules 0.4.7-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits; vehicles leaving buildings give way; merged boxes; median; markings hidden; gaps G1-G6)
+# Probe kit: Junction Rules 0.4.8-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits and entrances; vehicles leaving buildings give way before the sidewalk; merged boxes; median; markings hidden; gaps G1-G11)
+
+**0.4.8-probe (JR-T-014: G7, G5 again, G9, G10, G11), what changed since 0.4.7 (section 18):** G7 vehicles leaving a
+building now take the WHOLE decision **before the sidewalk** (owner rule: the pavement an exit crosses is a zebra):
+people on the pavement, the near-lane gap (a road vehicle standing right next to the exit has priority; a lorry needs
+the time to CLEAR the lanes it crosses), the far-lane gap and **room for its whole length on the lane it joins** (past
+the box at a boxed exit); G5 Crescent St x Eastgate Lane boxable (corner kerbs drawn as the game draws them); G9
+boxed buildings get boxes at their **entrances** too and cars turning in wait on the road unless they fit into the
+building; G10 hover arrow from the box to the building access, no boxes at lot-front fallbacks; G11 people give way at
+**unmarked** crossings (section 18.5). **Diagnostics are ON by default** in this probe (timing log, compact exit trace,
+entrance box log): nothing to switch on. Driving changes only while Car driving is the Junction Rules copy.
+
 
 **0.4.7-probe (JR-T-013m: #17 + gaps G1-G6), what changed since 0.4.6:** (1) #17 (JR-T-011, built on 0.4.3 as an
 uninstalled "0.4.4"): boxes that overlap or touch are **drawn as one box** (one border, one hatch; each box still saved
@@ -57,7 +68,7 @@ differences). Also: the T-junction through-side kerb fix (section 6) and the ent
 0.3.6 (JR-T-008, people pass a car blocking their crossing; merged from 784ba28) and everything before it
 (PROBE-STAGE3-PAINT.md).
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.4.7-probe/` (JR-T-013m merge, branch jr-t-013; managed build only until main does the Burst build, see its `STALE.md`; the block below refuses on the `0000...` placeholder sums and while `STALE.md` exists). 0.4.6-probe (installed 16 Nov, `.staged/0.4.6-probe`, Burst from 021d502, sums in commit 8bf6cf2) is the rollback; never write into `.staged/0.4.6-probe`. Never install the old `.staged/0.4.4-probe` (the paused JR-T-011 managed build). While `.staged/0.4.7-probe` holds a `STALE.md` it is a managed
+Build to install: `~/Code/cs2-junction-rules/.staged/0.4.8-probe/` (JR-T-014 merge, branch jr-t-014; managed build only until main does the Burst build, see its `STALE.md`; the block below refuses on the `0000...` placeholder sums and while `STALE.md` exists). 0.4.7-probe (installed 17 Nov, `.staged/0.4.7-probe`, Burst from cd6a1eb, sums in commit 3854a23) is the rollback; never write into `.staged/0.4.7-probe`. Never install the old `.staged/0.4.4-probe` (the paused JR-T-011 managed build). While `.staged/0.4.8-probe` holds a `STALE.md` it is a managed
 build only: main does the Burst build in `STALE.md` (game closed, at the owner's quit), then puts the five sums into the
 install block below. Until then the block refuses (placeholder sums `0000...`).
 
@@ -70,27 +81,27 @@ copy does not run; the boxes stay in the save).
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.4.7-probe || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.4.8-probe || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-5b0ac1b5cf35291151bc9b0b206c22e95088a8d2807ac77d599bd46afb9e5617  JunctionRules.dll
-564b79ea0e3f050ce0f3f61405451a7c46bf76da4920a9019a805aa7d113df97  JunctionRules.pdb
-9e8f8a397f70bbeb121ef7224981278773595c1fe2ce7e31de01d4c4df2b65bf  JunctionRules.mjs
-5692154422f211d67dfad17a213fab9985528f2f452512ea0860373e00d9f046  JunctionRules_win_x86_64.dll
-24631b15b924c6bf126978f90a789ba6c97918e6d9b03eeb726b3572ad5a5a09  JunctionRules_win_x86_64.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.mjs
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
   fi
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules.mjs JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
-  echo "installed 0.4.7-probe"
+  echo "installed 0.4.8-probe"
 )
 ```
 
-Rollback: to 0.4.6 (JR-T-012 fix 2, Burst from 021d502, installed 16 Nov; no merged boxes, no G1-G6): the same block with `.staged/0.4.6-probe` and its sums (commit 8bf6cf2). To 0.4.5 (JR-T-012 lot-exit build, Burst from 9639e71, installed 16 Nov): the same block with `.staged/0.4.5-probe` and its sums (commit bb676cd). To 0.4.4 (JR-T-012 first build, Burst from ba75f0b, installed 16 Nov): the same block with `.staged/0.4.4-probe-jr012` and its sums (commit 853ea2b). To 0.4.3 (installed 16 Nov, Burst from a14445d): the same block with `.staged/0.4.3-probe` and its sums (commit 1441805). To 0.4.2 (the JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
+Rollback: to 0.4.7 (JR-T-013m, Burst from cd6a1eb, installed 17 Nov; no G7 sidewalk rule, no entrance boxes): the same block with `.staged/0.4.7-probe` and its sums (commit 3854a23). To 0.4.6: the same block with `.staged/0.4.6-probe` and its sums (commit 8bf6cf2). To 0.4.5 (JR-T-012 lot-exit build, Burst from 9639e71, installed 16 Nov): the same block with `.staged/0.4.5-probe` and its sums (commit bb676cd). To 0.4.4 (JR-T-012 first build, Burst from ba75f0b, installed 16 Nov): the same block with `.staged/0.4.4-probe-jr012` and its sums (commit 853ea2b). To 0.4.3 (installed 16 Nov, Burst from a14445d): the same block with `.staged/0.4.3-probe` and its sums (commit 1441805). To 0.4.2 (the JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
 its loader, so exit boxes fall back to one entrance box per building): the same block with `.staged/0.4.2-probe` and
 its sums (full sums in commit c781df0). To 0.4.1 (boxes kept, box driving rule gone): the same block with `.staged/0.4.1-probe` and its sums
 (dll af5b1322..., pdb db04729f..., mjs 9e8f8a39..., win dll 5acf0104..., win pdb d5762071...; full sums in the 0.4.1 commit 07cc519)
@@ -912,3 +923,98 @@ again`: send that log.
 | G6-6 | Save (manual and an autosave), then load the save **without the mod** (on a copy, as section 7) | both save log lines appear; kerbside parking under the old boxes intact, cars park there as in 0.4.6, no error, no lane shown full |
 | G6-7 | Upgrade / replace a boxed road (or let Traffic / RoadBuilder rewrite its lanes) | the box is rebuilt (paint log) and the parking block comes back (no-parking log line); no parked car moved by the mod |
 | G6-8 | Next to a boxed junction with kerbside parking on the joining road: edit the NEXT junction along that road (a sign or a lane connection) | log `... a road update next to a box removed the block from a parking lane; putting it back` and the `ON` line; the box slots stay closed (no new car parks there) |
+
+## 18. 0.4.8: exits decide before the sidewalk (G7), entrance boxes (G9), hover arrow (G10), Crescent x Eastgate (G5), unmarked crossings (G11) (JR-T-014)
+
+Driving changes act only while Car driving is the Junction Rules copy. **Diagnostics are on by default**: the first
+load of 0.4.8 switches **Log navigation timing** and **Exit trace (log)** on once (log line `settings: 0.4.8 probe
+diagnostics switched on once ...`); you may switch them off again. The exit trace is now **compact**: every NOTABLE
+event, 6 sampled normal events and one summary line a minute. Expected log size: ~100-140 KB per 10 minutes of play
+(timing lines ~2 KB each every 1024 frames ≈ 90 KB, compact exit trace ≤ ~25 KB, entrance box log ≤ 35 KB cap,
+unmarked-crossing log see 18.5), more while you use the box tool (hover / refusal lines as before).
+
+### 18.1 G7: vehicles leaving buildings decide BEFORE THE SIDEWALK
+
+**What went wrong in 0.4.7 (Alderwood Street, south lots, left-hand traffic: near lane westbound, far lane
+eastbound).** Lorries from the south driveways (the warehouse at the middle box, Kapine 48 Alderwood St at the right
+box) turned right across the westbound lane into a STOPPED eastbound queue and stood across the road, in front of a
+westbound lorry. Live read 07:2x: a delivery truck stood at the middle box at (-1982.3, 274.4) heading 17°, nose at
+the stopped eastbound queue, body across the westbound lane, two more trucks queued behind it in the drive; the timing
+line showed `entrance band holds: leaving driveway 128` (car-steps) unchanged for ~15 minutes. Causes:
+1. The driveway rule (S2-29) waited before the first ROAD lane and never asked whether there was room on the lane it
+   joins. The only room test was the 0.4.3 box band hold on the joined (far) lane, i.e. with the lorry already
+   across the near lane.
+2. A road vehicle standing before the exit never counted as traffic (a jam far back must not block an exit for ever),
+   so the westbound lorry, held just before the box band, was ignored and the exit pulled out in front of it.
+3. The exit was judged only while its own hold was the tightest limit; a vehicle creeping under another limit reached
+   its spot without a decision.
+4. The time a lorry needs was the time to REACH the near lane, not to CLEAR it with its whole length.
+5. "hand-overs not judged" in 0.4.7 equalled "building road" in almost every window: a counting artefact (the
+   hand-over update has the front past the stop point, so no decision in that very update), not unjudged exits.
+
+**Now (owner rule 17 Nov: the sidewalk is a zebra Z, directly followed by the road lanes).** A vehicle leaving by a
+driveway stops **before the pavement** (inside the lot / drive) and goes only when ALL are clear: people on the
+pavement (the zebra rule: cars never push through people, people pass after 2 s), every lane it crosses (for the time
+its whole length needs to clear it; any road vehicle within 10 m of the exit counts even when standing), the lane it
+joins, and room for its whole length on that lane (a moving queue counts its braking distance as room; at a boxed exit:
+room past the box). Then it crosses the pavement and the road in one go. Lot exits stop before the sidewalk line;
+spawn points / gates / parking / building roads also need room on the lane they join and use the clear time. No
+starvation safeguard (owner): an exit onto a road that never clears waits.
+
+**Counters (timing line, end):** `exits held before the sidewalk N (no room on the lane it joins M)`; `driveway exits
+crossing the sidewalk E, of them without a full judgement U (must be 0)`; `standing on the road after leaving a
+driveway (5 s+) S` (the G7 failure itself; expected 0 or close); `judged only on the sidewalk (could not stop before
+it) L` (expected small); `hand-overs not judged` should now be 0 or close.
+
+**Trace lines (on by default):** `exit trace: NOTABLE crosses the sidewalk ... NOT judged before the sidewalk`,
+`exit trace: NOTABLE stands on the road after leaving (driveway lane, 5 s+) vehicle V building B ...`,
+`exit trace: NOTABLE held 25 s+ at the exit ... decision wait (no room on the lane it joins)` (or `wait (gap)`,
+`wait (box: no room past)`), `exit trace: NOTABLE joins road ...` (a hand-over with no judgement), a few sampled
+`waits` / `crosses the sidewalk ... go (full judgement before the sidewalk)` lines, and once a minute
+`exit trace (compact) last 60 s: N exit events, notable K (all logged), normal sample 6 of M`.
+
+| # | Do | Expect |
+|---|---|---|
+| G7-1 | Alderwood St, south lots (middle and right boxes), eastbound queue standing | lorries wait in the lot BEFORE the pavement; none noses into the road; westbound traffic flows past |
+| G7-2 | Same, eastbound queue moving with room | a lorry turns right only when the westbound lane is clear for its whole length and there is room east |
+| G7-3 | A westbound vehicle standing next to the exit (held before the box) | the exit waits for it |
+| G7-4 | Timing line | `without a full judgement 0`; `standing on the road after leaving a driveway` 0 or close; `exits held before the sidewalk` > 0 at busy times |
+| G7-5 | Any NOTABLE `stands on the road` or `NOT judged` line | send the log + a screenshot of that spot |
+| G7-6 | Pedestrians on the pavement at a busy driveway | the vehicle stops before the pavement, people pass first |
+
+Unproven / watch: lot exits stop before the sidewalk line but people on that sidewalk are not checked for lot exits
+(area lanes never meet the game's pedestrian check; no lot exits in Bevy Valley's 0.4.7 logs: `lot 0`); a driveway
+lane that starts on the pavement is judged at the first road lane (`judged only on the sidewalk`); two-way alley lanes
+as the joined lane are scanned along their curve (inherited); exits wait longer on busy roads (owner: no safeguard).
+
+### 18.2 G5: Crescent Street x Eastgate Lane boxable
+
+Where footway widths differ at a corner (Crescent 5 m, Alley 1 m), the box now follows the corner kerb the way the
+game draws it (the 0.4.7 "one kerb" took the 5 m footway on the Alley side, i.e. the Alley's centre line), and a mouth
+whose zebra (+ 0.5 m margin) reaches past its kerb lines is held clear of it. Both apply only when the 0.4.7 shape is
+refused, so every existing box keeps its shape. A mouth that would have to be held past the junction centre is
+refused. Log on add: `box added on junction ...; box shape: 6-sided straight box, 65.0 m2, rule priority-road, mouth
+shifts [...] m, 4 corner kerb(s) as the game draws them, WARNING 3 conflict point(s) left outside (under a marking
+margin past the kerb lines)` (logged as WARN: three conflict points lie under the Crescent W zebra margin; no box can
+hold them without covering the zebra). Check: the box takes, straight sides, off the pavement at all four Alley
+corners, ~0.5 m short of the Crescent W zebra. Node 258813 (old gap list) not re-checked.
+
+### 18.3 G9: boxes at building ENTRANCES; cars turning in
+
+A boxed building now also gets a box at every car entrance (derived on load, never saved: the save is unchanged; an
+entrance next to a boxed exit merges into one box). A car turning INTO the building waits on the road before the box
+unless its whole length (trailers incl.) fits on the way in (moving cars ahead count their braking distance); a UK
+right-turner with room may wait at its spot in the box; through traffic unchanged. Log: `entrance box (building X,
+entrance Entrance@(..), derived): ...`; for old saves `lot-front fallback not drawn ...; key kept as the building's box
+marker`; timing line `entrance box entries held (entrance full) N`; always-on compact entrance log (`entrance box log
+(always on) ...`, per minute `entrance boxes (last 60 s): ...`, up to 5 samples and 10 notable `entrance box: vehicle
+... held before the box 30 s / entered the box without room and stands in it / stands in the box 30 s` lines; at most
+160 lines per 10 minutes). Check: Alderwood Street entrance boxes; a lorry turning into a full yard waits on the road.
+Note: rolling back to 0.4.7 after saving with 0.4.8 draws marker keys as lot-front boxes again (0.4.7 behaviour).
+
+### 18.4 G10: hover arrow; no boxes at lot-front fallbacks
+
+Hovering a building box with Ctrl+Y draws an arrow (white add / orange remove) from the box on the kerb to the
+building's access: head at the box = exit, at the building = entrance, both = two-way. Boxes go only at REAL car
+accesses; the lot-front fallback is never a target. The confusing 17 Nov hover (box with no visible driveway on road
+312580) was a real two-way access ("Invisible Road Path - 2xTwoway") of the police station or clinic, not a fallback.
