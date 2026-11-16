@@ -465,3 +465,36 @@ Deadlock notes (report, no safeguard by brief):
 - Emergency vehicles are held by boxes like everyone else (no exemption in this probe): watch for an ambulance or fire
   engine waiting at a box line behind a standing exit queue and report it.
 - Z O: a car waiting at O blocks the zebra for nobody, but cars behind it wait before the zebra (O occupied) until it goes.
+
+## 14. 0.4.3: the box driving rule at car exits (JR-T-007c + JR-T-010 merged)
+
+**What changed for driving.** 0.4.2 (installed) put one driving band per boxed building at Building.m_RoadEdge +
+m_CurvePosition (the lot-front middle), read inside the job. 0.4.3 reads the saved exit keys instead: on the main
+thread, every boxed exit of every boxed building is matched to the building's current exits the same way the paint
+does (kind + position in the building frame, 2 m) and becomes its own band at that exit's road and position
+(Boxes/BoxFacts.cs `BoxedExitBands`, Core/ExitBands.cs). A 0.4.0-0.4.2 box not yet migrated by the paint drives at the
+exit nearest its old box centre (the same choice the migration makes). An exit through the building's own access
+road is a junction box on that node and drives as a junction box (stop line, room past, right-turn exception). The
+list is rebuilt when a box is added / removed / migrated / re-keyed, when the number of boxed buildings changes and
+every 64 simulation steps (a drive re-wired to a rebuilt road); the log says `yellow boxes (driving): N boxed car
+exit(s) on M building(s) handed to the box rule` each time it changes. At most **63 boxed exits** city-wide are
+obeyed; more gives a Warn line with the count (report it). Junction boxes have no limit.
+
+Per exit band (same rules as section 13, now per exit): main-road vehicles do not enter that exit's band without room
+past it; vehicles leaving at that exit need room past its band on their lane; vehicles turning in are not held. A
+building with two boxed exits on one road has two separate bands (a car passing both checks each one); a car leaving at
+one exit is not held by the building's other exit box.
+
+| # | Do | Expect |
+|---|---|---|
+| D1 | Load the city (0.4.2 entrance boxes) | log `migrated` lines (section 12 X3), then one `yellow boxes (driving): N boxed car exit(s)` line; N = boxed exits (junction-migrated ones not counted) |
+| D2 | Watch a boxed house drive (Capper Street) with a queue on the road | queue stops short of the band centred on the **drive** (not the lot middle); a car leaving the drive waits for room |
+| D3 | Box a second gate of a car park / depot (X2) | the driving line count goes up by one; each gate keeps its own band clear |
+| D4 | Remove one exit box of a two-box building | its band goes (line count down by one); the other gate still kept clear |
+| D5 | Lindbergh x Anchor (junction box, section 13) | as 0.4.2: no vehicle stops inside; timing log `box entries held`, `right-turn waits` |
+| D6 | A boxed exit on a bend | band centred on the drive; the painted box (section 12 X7) covers the drive |
+| D7 | Timing log on | counters as 0.4.2: `box entries held N, right-turn waits N`, entrance band holds (main / leaving) |
+
+Risks to watch: the job now carries the exit list by value (1 KB per car step, 0.4.2: 128 bytes): compare the
+navigation timing with 0.4.2 (timing log) and report a clear slowdown; a building whose drive moved more than 2 m
+since the box was placed has no band until the paint re-keys or drops it (log `without an exit now`).
