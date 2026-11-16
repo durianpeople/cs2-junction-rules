@@ -252,6 +252,19 @@ namespace JunctionRules.Settings
         [SettingsUISection(kSection, kDebugGroup)]
         public bool SkipCodeHashCheck { get; set; }
 
+        /// <summary>
+        /// JR-T-013b (G4): starts the watch-one-junction log at the junction the camera looks at (any junction, boxed or
+        /// not). Default off: nothing is watched until this is pressed; not saved (a load clears it).
+        /// </summary>
+        [SettingsUIButton]
+        [SettingsUISection(kSection, kDebugGroup)]
+        public bool WatchCameraJunction { set { WatchHandoff.PickRequested = true; } }
+
+        /// <summary>JR-T-013b (G4): stops the watch-one-junction log.</summary>
+        [SettingsUIButton]
+        [SettingsUISection(kSection, kDebugGroup)]
+        public bool WatchStop { set { WatchHandoff.StopRequested = true; } }
+
         public override void SetDefaults()
         {
             CarDriving = CarDrivingMode.GameOwn;
@@ -404,6 +417,11 @@ namespace JunctionRules.Settings
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.SkipCodeHashCheck)), "Skip code hash check (probe aid)" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.SkipCodeHashCheck)), "Only if the mod log says the game version matches but the code hash does not: lets the copy run anyway. The game version must still match. Read at game start: restart the game after changing it." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.WatchCameraJunction)), "Watch the junction at camera centre (log)" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.WatchCameraJunction)), "Debug: picks the junction the camera looks at (the nearest junction node, one with 3 or more road arms, within 8 m of the screen centre line, nearest to the camera; boxed or not) and writes every car standing there to the mod log: the car, what the game says it waits for (the vehicle or the kind of wait), the lane it is on and which rule holds it (a Junction Rules rule or the game's own). At most one line per car and reason every 512 steps and 20 lines per 256 steps; the rest is counted. Only while the Junction Rules copy drives. Nothing in the city changes. Off until pressed; a load stops it." },
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.WatchStop)), "Stop watching the junction" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.WatchStop)), "Stops the junction watch log." },
             };
         }
 

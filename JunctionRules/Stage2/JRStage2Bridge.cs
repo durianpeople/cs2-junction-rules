@@ -33,7 +33,60 @@ namespace JunctionRules.Stage2
             if (!s_SafetyEvents.IsCreated) s_SafetyEvents = new NativeArray<long>(SafetyEventSlots, Allocator.Persistent, NativeArrayOptions.ClearMemory);
             AppliedMode = Stage2Handoff.Requested;
             Steps++;
+            UpdateWatch();
             return AppliedMode;
+        }
+
+        // ---- JR-T-013b (G4): watch one junction (Core/JunctionWatch.cs) ----
+        private static NativeArray<long> s_Watch;
+        private static int s_WatchVersion;
+        private static long s_WatchRead;
+        private static readonly WatchLimiter s_WatchLimiter = new WatchLimiter();
+        private static readonly System.Collections.Generic.List<(long Car, long Blocker, long Lane, long Packed)> s_WatchEvents =
+            new System.Collections.Generic.List<(long Car, long Blocker, long Lane, long Packed)>();
+
+        private static readonly System.Func<int, long> s_ReadWatch = ReadWatch;
+
+        private static unsafe long ReadWatch(int i) =>
+            System.Threading.Interlocked.Read(ref ((long*)NativeArrayUnsafeUtility.GetUnsafeBufferPointerWithoutChecks(s_Watch))[i]);
+
+        /// <summary>The shared watch array (always created, so the job struct never holds an unallocated container).</summary>
+        public static NativeArray<long> Watch => s_Watch;
+
+        /// <summary>
+        /// Main thread, each copy step before the job is scheduled: logs the events the jobs wrote since the last step
+        /// (rate-limited), then hands the watched node (Core WatchHandoff) to slot 0. A changed node resets the ring.
+        /// A job of the previous step may still be writing: an event without its stamp is read at the next step.
+        /// </summary>
+        private static unsafe void UpdateWatch()
+        {
+            if (!s_Watch.IsCreated) s_Watch = new NativeArray<long>(JunctionWatch.Length, Allocator.Persistent, NativeArrayOptions.ClearMemory);
+            long* p = (long*)NativeArrayUnsafeUtility.GetUnsafeBufferPointerWithoutChecks(s_Watch);
+            uint frame = (uint)Steps;
+            if (p[0] != 0)
+            {
+                s_WatchEvents.Clear();
+                long cursor = System.Threading.Interlocked.Read(ref p[1]);
+                JunctionWatch.Drain(s_ReadWatch, ref s_WatchRead, cursor, s_WatchEvents, out int dropped);
+                string summary = s_WatchLimiter.Tick(frame);
+                if (summary != null) Mod.log.Info("watch junction " + JunctionWatch.EntityText(p[0]) + ": " + summary);
+                if (dropped > 0) Mod.log.Info("watch junction " + JunctionWatch.EntityText(p[0]) + ": " + dropped + " hold event(s) overwritten before they were read");
+                foreach (var e in s_WatchEvents)
+                {
+                    JunctionWatch.Unpack(e.Packed, out int rule, out _, out _, out _);
+                    if (s_WatchLimiter.Allow(e.Car, rule, e.Blocker, frame))
+                        Mod.log.Info("watch junction " + JunctionWatch.EntityText(p[0]) + ": " + JunctionWatch.Line(e.Car, e.Blocker, e.Lane, e.Packed));
+                }
+            }
+            if (s_WatchVersion != WatchHandoff.Version)
+            {
+                s_WatchVersion = WatchHandoff.Version;
+                // The jobs of the last step finished before this OnUpdate schedules a new one only if the game completed
+                // them; a late write of the old node lands in the cleared ring and is read as one more line: harmless.
+                p[0] = WatchHandoff.Node;
+                s_WatchRead = System.Threading.Interlocked.Read(ref p[1]);
+                s_WatchLimiter.Reset();
+            }
         }
 
         public static NativeArray<long> Counters => s_Counters;
@@ -80,6 +133,9 @@ namespace JunctionRules.Stage2
             s_Counters = default;
             if (s_SafetyEvents.IsCreated) s_SafetyEvents.Dispose();
             s_SafetyEvents = default;
+            if (s_Watch.IsCreated) s_Watch.Dispose();
+            s_Watch = default;
+            s_WatchVersion = -1;
         }
     }
 }

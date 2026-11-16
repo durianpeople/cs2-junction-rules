@@ -135,5 +135,36 @@ namespace JunctionRules.Stage2
             }
             return result;
         }
+
+        /// <summary>
+        /// JR-T-013b (G3, block S2-35 in CheckOverlappingLanes after BeginLane / BeginZebras, only with m_BoxRule): the UK
+        /// right-turn exception re-runs the box room test at the turn spot. BoxHold tests the exit room only at the stop line
+        /// (a car in the box is Inside there), so a turner that entered with room crossed the oncoming lane on the first
+        /// gap even when its exit had filled meanwhile, and stood across the oncoming lane (straight traffic then waited
+        /// for it: the owner's G3). Now, while the turn spot is its next spot and it can stop before it, it stays at the
+        /// spot (before the first oncoming conflict) until its exit has room. The room scan reads only its own path (rest of
+        /// this lane from its front, then its exit lanes), never the oncoming lanes, so the hold waits only on the exit
+        /// queue: no new wait on oncoming traffic. Returns the speed limit (clamped) or float.MaxValue.
+        /// </summary>
+        public float BoxTurnRoomHold(Entity lane, float length, bool inverse, CarData car, float safeTimeStep, Bounds1 speedRange, float currentMax, Entity self,
+            ref ComponentLookup<Game.Net.CarLane> carLanes, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves,
+            ref ComponentLookup<Moving> moving, ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs,
+            ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars,
+            ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
+        {
+            if (!RuleOn || !m_BoxLane || !m_LaneActive || m_LaneEntity != lane || !m_BoxLookups) return float.MaxValue;
+            int turn = m_BoxTurnIndex;
+            if (turn < 0 || turn >= m_Stretch.Spots.Count) return float.MaxValue;
+            float spot = m_Stretch.Spots[turn];
+            if (!BoxDriving.TurnSpotRoomCheck(turn, m_Stretch.Next, m_Stretch.Spots.Count, m_Stretch.CanStopBefore(spot))) return float.MaxValue;
+            float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, m_Stretch.Wait(spot), safeTimeStep), speedRange);
+            if (!(hold < currentMax)) return float.MaxValue;
+            if (!m_OwnerData.TryGetComponent(lane, out Owner owner)) return float.MaxValue;
+            bool room = HasRoomPast(lane, 1f, inverse, length, math.max(0f, m_Stretch.CurveX), owner.m_Owner, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
+                ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes);
+            if (room) return float.MaxValue;
+            if (Counting) Min(ref m_HasBoxTurnRoom, ref m_BoxTurnRoomSpeed, hold);
+            return hold;
+        }
     }
 }

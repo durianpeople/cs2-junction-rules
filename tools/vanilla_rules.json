@@ -246,6 +246,12 @@
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
         "reason": "0.4.6 (JR-T-012 fix 2, probe counters only): in the target loop, right before the lane switch: with the debug counters on, a hand-over from a building lane (area lane, Connection lane, other building-owned lane) to a public road lane is counted by kind. No driving effect."
+      },
+      "S2-35": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "JR-T-013b (G3): CheckOverlappingLanes, after S2-25 and before S2-29, only with the setting 'Cars obey yellow boxes': BoxTurnRoomHold re-runs the box exit-room test (HasRoomPast, own path only) for a turner whose next spot is its UK right-turn spot inside the box; no room = stop at the turn spot (GetMaxBrakingSpeed, blocker Entity.Null, type Continuing), clear of the oncoming lane."
       }
     }
   }

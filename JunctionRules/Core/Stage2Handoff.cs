@@ -152,7 +152,9 @@ namespace JunctionRules.Core
         public const int ExitJoinConnection = FeedingScans + 32;
         /// <summary>0.4.6 (probe): ... from any other building-owned lane to a public road lane (expected 0: a driveway goes through its SideConnection lane; a nonzero count is an ungated way out of a building).</summary>
         public const int ExitJoinOther = FeedingScans + 33;
-        public const int Count = FeedingScans + 34;
+        /// <summary>JR-T-013b (G3): car-steps in which a car turning across oncoming traffic stood at its turn spot inside a box because its exit had no room (room test re-run at the turn spot).</summary>
+        public const int BoxTurnRoomWaits = FeedingScans + 34;
+        public const int Count = FeedingScans + 35;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -281,6 +283,8 @@ namespace JunctionRules.Core
                          ", gate " + deltas[ExitJoinConnection].ToString(ci) +
                          ", other " + deltas[ExitJoinOther].ToString(ci)
                        : "") +
+                   // JR-T-013b (G3): newest counter, at the end of the text (before the points).
+                   (boxMask >= 2 ? "; right-turn waits for exit room " + deltas[BoxTurnRoomWaits].ToString(ci) : "") +
                    "; " + points;
         }
     }

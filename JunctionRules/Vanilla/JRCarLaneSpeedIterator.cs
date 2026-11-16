@@ -6,7 +6,7 @@
 // tools/vanilla_rules.json (and DEVIATIONS.md) and run `python3 tools/vanilla_copy.py generate`.
 // Changes applied: R-01, R-02, R-03, D-01 (see DEVIATIONS.md). Logic is otherwise the game's, unchanged.
 // Exception: hand-written code only inside '// JR-STAGE2 BEGIN <id>' ... '// JR-STAGE2 END' blocks
-// (S2-01, S2-02, S2-03, S2-04, S2-05, S2-06, S2-07, S2-08, S2-08b, S2-09, S2-10, S2-11, S2-11b, S2-12, S2-13, S2-25, S2-27, S2-28, S2-28b, S2-29; see DEVIATIONS.md). `check` proves everything outside them is the above.
+// (S2-01, S2-02, S2-03, S2-04, S2-05, S2-06, S2-07, S2-08, S2-08b, S2-09, S2-10, S2-11, S2-11b, S2-12, S2-13, S2-25, S2-27, S2-28, S2-28b, S2-29, S2-35; see DEVIATIONS.md). `check` proves everything outside them is the above.
 // ==== end of header; the code below is the game's, changed only as listed in DEVIATIONS.md ====
 
 using System;
@@ -1253,6 +1253,18 @@ public struct JRCarLaneSpeedIterator
 			if (jrZebraHold < m_MaxSpeed)
 			{
 				m_MaxSpeed = jrZebraHold;
+				m_Blocker = Entity.Null;
+				m_BlockerType = BlockerType.Continuing;
+			}
+		}
+		// JR-STAGE2 END
+		// JR-STAGE2 BEGIN S2-35: JR-T-013b (G3) yellow box, UK right-turn exception: a turner at its turn spot inside the box stays there (clear of the oncoming lane) while its exit has no room
+		if (m_JR.m_BoxRule)
+		{
+			float jrTurnRoomHold = m_JR.BoxTurnRoomHold(lane, length, inverse, m_PrefabCar, m_SafeTimeStep, m_SpeedRange, m_MaxSpeed, m_Entity, ref m_CarLaneData, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabObjectGeometryData, ref m_PrefabCarData, ref m_LaneOverlapData, ref m_PedestrianLaneData);
+			if (jrTurnRoomHold < m_MaxSpeed)
+			{
+				m_MaxSpeed = jrTurnRoomHold;
 				m_Blocker = Entity.Null;
 				m_BlockerType = BlockerType.Continuing;
 			}

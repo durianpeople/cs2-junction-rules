@@ -36,6 +36,8 @@ namespace JunctionRules.Systems
         private int m_BoxEdgeAge;
         private int m_BoxStoreVersion = -1;
         private int m_LastDropped;
+        /// <summary>JR-T-013b (G4): road nodes for the watch-one-junction pick.</summary>
+        private Unity.Entities.EntityQuery m_WatchNodes;
         private bool m_ProbesOn;
         private bool m_ProbesApplied;
 
@@ -103,6 +105,7 @@ namespace JunctionRules.Systems
             // 0.4.2: the saved yellow boxes (0.4.0 components), only to tell the copy which kinds exist.
             m_JunctionBoxes = GetEntityQuery(Unity.Entities.ComponentType.ReadOnly<JunctionRules.Boxes.YellowBoxJunction>());
             m_EntranceBoxes = GetEntityQuery(Unity.Entities.ComponentType.ReadOnly<JunctionRules.Boxes.YellowBoxEntrance>());
+            m_WatchNodes = GetEntityQuery(JunctionWatchPick.NodeQueryDesc());
             m_EntranceBuildings = GetEntityQuery(Unity.Entities.ComponentType.ReadOnly<JunctionRules.Boxes.YellowBoxEntrance>(),
                 Unity.Entities.ComponentType.ReadOnly<Game.Buildings.Building>());
             // Nothing of the copy here: it may not be registered yet (see the class summary). Until the first update,
@@ -161,10 +164,12 @@ namespace JunctionRules.Systems
             if (note != null) Mod.log.Info(note);
 
             if (m_Copy == null) return;
+            UpdateWatch();
             bool probes = Mod.Settings != null && Mod.Settings.DebugTiming;
             // Stage 2: publish the junction gap rule for this step (the copy's OnUpdate, later in this step, takes it by
             // value into its job). Counters run only with the timing log on.
-            string ruleNote = m_GapRule.Step(Mod.Settings != null ? Mod.Settings.GapRule : JunctionGapRule.Stock, probes, out int stage2Mode,
+            // JR-T-013b (G4): a watched junction needs the per-car results the counters use (count bit), timing log or not.
+            string ruleNote = m_GapRule.Step(Mod.Settings != null ? Mod.Settings.GapRule : JunctionGapRule.Stock, probes || WatchHandoff.Node != 0, out int stage2Mode,
                 Mod.Settings != null ? Mod.Settings.WaitingSpot : JunctionWaitingSpot.BeforeFirstCrossing,
                 Mod.Settings == null || Mod.Settings.TurnAcrossGivesWay, LeftHandTraffic(),
                 Mod.Settings == null || Mod.Settings.NoPushThroughPeople,
@@ -189,6 +194,34 @@ namespace JunctionRules.Systems
                 m_Copy.CopyProbe.Enabled = probes;
                 Mod.log.Info($"navigation timing log {(probes ? "on" : "off")}");
             }
+        }
+
+        /// <summary>
+        /// JR-T-013b (G4): the settings buttons "Watch the junction at the camera centre" / "Stop watching" (handled here,
+        /// on the main thread, in the next update). Read-only pick; the node goes to Core WatchHandoff for the copy.
+        /// </summary>
+        private void UpdateWatch()
+        {
+            if (WatchHandoff.StopRequested)
+            {
+                WatchHandoff.StopRequested = false;
+                if (WatchHandoff.Node != 0) Mod.log.Info("watch junction: stopped watching " + JunctionWatch.EntityText(WatchHandoff.Node));
+                WatchHandoff.Clear();
+            }
+            if (!WatchHandoff.PickRequested) return;
+            WatchHandoff.PickRequested = false;
+            long node = JunctionWatchPick.PickAtCamera(EntityManager, m_WatchNodes, out string text);
+            if (node == 0) { Mod.log.Info("watch junction: " + text + "; nothing watched" + (WatchHandoff.Node != 0 ? " (still watching " + JunctionWatch.EntityText(WatchHandoff.Node) + ")" : "")); return; }
+            WatchHandoff.Set(node);
+            Mod.log.Info("watch junction: watching " + text + "; every standing car there is logged (rate-limited) while the Junction Rules copy drives");
+        }
+
+        /// <summary>JR-T-013b (G4): a watched node never outlives its city (entity ids are per session).</summary>
+        [Preserve]
+        protected override void OnGameLoaded(Colossal.Serialization.Entities.Context serializationContext)
+        {
+            base.OnGameLoaded(serializationContext);
+            WatchHandoff.Clear();
         }
 
         /// <summary>0.2.4: the game's own traffic side (CityConfigurationSystem.leftHandTraffic, as LaneOverlapSystem reads it).</summary>

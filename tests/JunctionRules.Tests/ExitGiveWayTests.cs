@@ -211,7 +211,7 @@ namespace JunctionRules.Tests
                 "timing line: exit waits, go decisions, emergency passthroughs");
             Check(!Stage2Counters.Format(1, d, 0, 0, 0, 1).Contains("building exits:") && Stage2Counters.Format(1, d, 0, 0, 0, 1).Contains("give way off"), "setting off: no exit counters, says off");
             Check(!Stage2Counters.Format(1, d).Contains("leaving buildings"), "0.4.3 callers (no exit mask): unchanged text");
-            Check(Stage2Counters.ExitCapHits == Stage2Counters.Count - 4 && Stage2Counters.ExitJoinArea == Stage2Counters.ExitCapHits + 1 && Stage2Counters.ExitJoinOther == Stage2Counters.Count - 1 && Stage2Counters.ExitHeld == Stage2Counters.EntranceHeldLeaving + 1, "exit counters appended after the 0.4.3 ones");
+            Check(Stage2Counters.ExitCapHits == Stage2Counters.ExitJoinOther - 3 && Stage2Counters.ExitJoinArea == Stage2Counters.ExitCapHits + 1 && Stage2Counters.ExitJoinOther == Stage2Counters.BoxTurnRoomWaits - 1 && Stage2Counters.ExitHeld == Stage2Counters.EntranceHeldLeaving + 1, "exit counters appended after the 0.4.3 ones");
         }
 
         private static void ExitRepoTests()
