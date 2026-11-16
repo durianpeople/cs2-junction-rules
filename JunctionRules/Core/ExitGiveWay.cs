@@ -250,6 +250,14 @@ namespace JunctionRules.Core
         /// <summary>0.4.8 review (G7 F3): metres of slack past the sidewalk spot a stopped vehicle may have crept and still be held there.</summary>
         public const float SpotSlack = 0.3f;
 
+        /// <summary>
+        /// 0.4.8 (G7, owner 17 Nov: an exit straight ACROSS the road into an opposite access): the vehicle uses the lane it
+        /// "joins" for less than its own length (+ 2 m) before leaving it again (into the opposite driveway / a junction lane):
+        /// it crosses that lane rather than merging, so the lane is busy for the time to CLEAR it with the whole vehicle.
+        /// spanOnJoin = metres of its path on the joined lane (-1 = unknown: it stays on the lane, a merge).
+        /// </summary>
+        public static bool CrossesThrough(float spanOnJoin, float ownLength) => spanOnJoin >= 0f && spanOnJoin < ownLength + 2f;
+
         /// <summary>Review F2: a recorded Go stands unless a Wait was recorded after it (frames, uint wrap safe).</summary>
         public static bool GoStands(bool waitFound, uint lastWait, uint lastGo) => !waitFound || (int)(lastGo - lastWait) >= 0;
 

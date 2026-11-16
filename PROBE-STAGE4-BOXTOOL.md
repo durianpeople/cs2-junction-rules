@@ -987,8 +987,12 @@ it) L` (expected small); `hand-overs not judged` should now be 0 or close.
 | G7-4 | Timing line | `without a full judgement 0`; `standing on the road after leaving a driveway` 0 or close; `exits held before the sidewalk` > 0 at busy times |
 | G7-5 | Any NOTABLE `stands on the road` or `NOT judged` line | send the log + a screenshot of that spot |
 | G7-6 | Pedestrians on the pavement at a busy driveway | the vehicle stops before the pavement, people pass first |
+| G7-7 | An exit straight ACROSS the road into an opposite access (e.g. the Ordinateur van, No. 48 -> No. 58 if 58's access is opposite) | both lanes judged as crossed (clear time); a far-lane queue car standing on or within 10 m of the crossing point holds it in the lot; no room in the opposite driveway = waits in the lot |
 
-Unproven / watch: lot exits stop before the sidewalk line but people on that sidewalk are not checked for lot exits
+Unproven / watch: the 17 Nov 07:32 van (Ordinateur, Returning to 58 Alderwood St, empty) in the middle box was not
+read live (game closed): even numbers 48 / 58 suggest the same (south) side, i.e. a right-out into the stopped eastbound
+queue, which G7-1 covers; a far-lane car held before a box band also holds a crossing exit (road traffic first: a
+kept-clear gap does not let exits cut through it while the car beside it waits; owner may want that relaxed); lot exits stop before the sidewalk line but people on that sidewalk are not checked for lot exits
 (area lanes never meet the game's pedestrian check; no lot exits in Bevy Valley's 0.4.7 logs: `lot 0`); a driveway
 lane that starts on the pavement is judged at the first road lane (`judged only on the sidewalk`); two-way alley lanes
 as the joined lane are scanned along their curve (inherited); exits wait longer on busy roads (owner: no safeguard).

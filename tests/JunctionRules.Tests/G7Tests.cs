@@ -85,6 +85,15 @@ namespace JunctionRules.Tests
             Check(!ExitGiveWay.VehicleBlocks(gap, false, v, G7Braking(v), carClear), "the same car is no reason for a car to wait");
             Check(ExitGiveWay.ClearMetres(-2f, 3.5f, 4f) == 7.5f && ExitGiveWay.ClearMetres(1f, -1f, -1f) == 1f, "ClearMetres: negative parts count as 0");
 
+            // --- straight across into an opposite access (owner 17 Nov, Ordinateur van): the far lane is crossed, not merged ---
+            Check(ExitGiveWay.CrossesThrough(3.5f, 5.5f) && !ExitGiveWay.CrossesThrough(40f, 5.5f) && !ExitGiveWay.CrossesThrough(-1f, 5.5f),
+                "a few metres on the far lane before the opposite driveway = a crossing; staying on it = a merge; unknown = merge");
+            Check(ExitGiveWay.VehicleBlocks(0f, true, 0f, 0f, 1f) && ExitGiveWay.VehicleBlocks(4f, false, 0f, 0f, 1f),
+                "a stationary far-lane queue car standing on the crossing point (or right before it) blocks: the van waits in the lot");
+            RoomScan into = RoomScan.Begin(5.5f, RoomScan.DefaultMargin);
+            into.Add(3.5f, 4.5f, 0f);   // a car standing 3.5 m into the opposite driveway past the far lane
+            Check(into.Blocked, "no room in the opposite driveway for the whole van: wait in the lot (room scan reads the path past the far lane)");
+
             // --- judged on every update near the spot (0.4.7 hold < currentMax hole) ---
             Check(ExitGiveWay.MustJudge(3f, 1f, 5f), "creeping under a lower limit 5 m before the spot: judged");
             Check(ExitGiveWay.MustJudge(1f, 3f, 40f), "exit hold binding: judged (0.4.7)");
@@ -175,7 +184,7 @@ namespace JunctionRules.Tests
             string body = dh > 0 && dhEnd > dh ? glue.Substring(dh, dhEnd - dh) : "";
             Check(body.Contains("ExitGiveWay.ExitSpot(firstRoad, firstWalk)") && body.Contains("ExitSidewalk(overlaps[i]"), "S2-29 waits before the sidewalk");
             Check(body.Contains("ExitGiveWay.MustJudge(hold, currentMax, wait)") && !body.Contains("if (!(hold < currentMax)) return float.MaxValue;"), "S2-29 no longer skips a vehicle creeping under a lower limit");
-            Check(body.Contains("ExitGiveWay.ClearMetres(") && body.Contains("o.m_Other == joinNav.m_Lane"), "crossed lanes use the clear time, the joined lane the reach time");
+            Check(body.Contains("ExitGiveWay.ClearMetres(") && body.Contains("o.m_Other == joinNav.m_Lane && !across") && body.Contains("ExitGiveWay.CrossesThrough("), "crossed lanes use the clear time, the joined lane the reach time unless the path only crosses it (opposite access)");
             Check(body.IndexOf("ExitGiveWay.CanHold(", StringComparison.Ordinal) < body.IndexOf("ConflictBusy(", StringComparison.Ordinal), "the decision is taken only while it can still stop before the spot");
             Check(body.Contains("wait + ExitGiveWay.SpotSlack") && body.Contains("wait = origDistance + length * (firstRoad - start);") && body.Contains("m_DriveJudged = hasJoin;"),
                 "review F4/F1: slack at the spot, fallback judgement at the first road lane, no full judgement without the joined lane");

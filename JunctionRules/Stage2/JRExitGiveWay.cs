@@ -162,6 +162,10 @@ namespace JunctionRules.Stage2
             GameMotion motion = default;
             motion.m_Car = car;
             float ownLength = m_VehicleLength > 0f ? m_VehicleLength : 4f;
+            // Straight across into an opposite access: the joined lane is only crossed (clear time, Core CrossesThrough).
+            bool across = false;
+            if (hasJoin && PathLaneAfter(joinNav.m_Lane, out _) && curves.TryGetComponent(joinNav.m_Lane, out Curve joinSpanCurve))
+                across = ExitGiveWay.CrossesThrough(math.abs(joinNav.m_CurvePosition.y - joinNav.m_CurvePosition.x) * joinSpanCurve.m_Length, ownLength);
             bool busy = false;
             int judged = 0;
             for (int i = 0; i < overlaps.Length && !busy && !budget.m_CapHit; i++)
@@ -175,7 +179,7 @@ namespace JunctionRules.Stage2
                 float oS = math.min(a, b) * otherCurve.m_Length, oE = math.max(a, b) * otherCurve.m_Length;
                 // The leaving vehicle's own time: to reach the lane it joins, to CLEAR a lane it crosses (whole length).
                 float toConflict = origDistance + margin + length * (s - start);
-                bool merge = hasJoin && o.m_Other == joinNav.m_Lane;
+                bool merge = hasJoin && o.m_Other == joinNav.m_Lane && !across;
                 float dist = merge ? toConflict : ExitGiveWay.ClearMetres(toConflict, length * (e - s), ownLength);
                 float delta = ArrivalTime.Compute(ref motion, dist, currentSpeed, drive, 0f, timeStep);
                 busy = ConflictBusy(o.m_Other, otherCurve, oS, oE, delta, ref reads, ref budget);
