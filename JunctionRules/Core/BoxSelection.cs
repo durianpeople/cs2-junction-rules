@@ -17,11 +17,23 @@ namespace JunctionRules.Core
     // - Roundabout / level crossing: node composition general flags Roundabout / LevelCrossing (or the node slice's
     //   m_MiddleRadius > 0 for a roundabout).
     // - Owned: the node or building has Game.Common.Owner (part of another object's sub-net or a building extension).
+    // - 0.4.3 (JR-T-007c, owner ruling 3): a building's own access road meeting a public road. Every arm edge and the node
+    //   are read for Game.Common.Owner; an owner chain (Owner -> Owner, at most 4 steps, e.g. a ServiceUpgrade building
+    //   owned by its main building) that ends at a Game.Buildings.Building makes the arm / node "the building's own"
+    //   (prefab sub-nets get Owner = the building: GenerateEdgesSystem.cs 1190-1194 adds the Owner of the creation
+    //   definition; the building lists them in its Game.Net.SubNet buffer). Public = no Owner. A node with at least one
+    //   public road arm and at least one road arm of ONE building (and, when the node itself is owned, owned by that same
+    //   building) is a "building access junction": selectable like any junction (3+ road arms). A node whose road arms
+    //   are ALL owned (inside a parking lot / site) stays excluded, so do nodes owned by a non-building (an asset's own
+    //   network) or by two different buildings.
     // - Entrance access point: Building.m_RoadEdge + m_CurvePosition = the point on that road edge's centre curve nearest
     //   the middle of the lot's front (BuildingUtils.CalculateFrontPosition: lot depth * 4 m forward of the building
     //   position; RoadConnectionSystem.cs 455-458, 505-509; the curve position is MathUtils.Distance(curve.m_Bezier.xz,
     //   front.xz, out t), lines 371-385). The game skips road sides with a Raised / Lowered composition flag
-    //   (lines 375-381) and never picks elevated / tunnel edges (358-361).
+    //   (lines 375-381) and never picks elevated / tunnel edges (358-361). 0.4.3 (JR-T-007c): that point is only the
+    //   FALLBACK exit now; the real car exits come from the building's sub-nets and spawn locations (Core/BuildingExit.cs).
+    //   A building with its own sub-net roads gets m_RoadEdge = its OWN road (RoadConnectionSystem.cs 461-486 checks the
+    //   building's SubNet edges first), which is why such a fallback is ruled out (RoadOwned).
 
     /// <summary>What the tool / paint system read about a node.</summary>
     public struct JunctionFacts
@@ -36,9 +48,19 @@ namespace JunctionRules.Core
         public bool Roundabout;
         public bool LevelCrossing;
         public bool Owned;
+        /// <summary>0.4.3: the node's owner chain ends at a building (Owned and NodeOwnerBuilding).</summary>
+        public bool NodeOwnerIsBuilding;
+        /// <summary>0.4.3: road arms with no Owner (public roads).</summary>
+        public int PublicRoadArms;
+        /// <summary>0.4.3: road arms whose owner chain ends at a building (that building's own access road).</summary>
+        public int BuildingRoadArms;
+        /// <summary>0.4.3: road arms owned by something that is not a building (an asset's own net).</summary>
+        public int OtherOwnedRoadArms;
+        /// <summary>0.4.3: the owned arms (and an owned node) do not all belong to the same building.</summary>
+        public bool MixedOwners;
     }
 
-    /// <summary>What the tool / paint system read about a building's road access.</summary>
+    /// <summary>What the tool / paint system read about one building car exit (0.4.0-0.4.2: the building's road access).</summary>
     public struct EntranceFacts
     {
         public bool Exists;          // entity exists, not Deleted, not Temp
@@ -50,7 +72,7 @@ namespace JunctionRules.Core
         public bool RoadHighway;
         public bool RoadElevatedOrTunnel;
         public bool OnRoad;          // prefab CanBeOnRoad / CanBeOnRoadArea without CanBeRoadSide: stands on the road itself
-        public bool AccessInsideEdge; // the access point lies on the edge's own part, between its two node slices
+        public bool AccessInsideEdge; // the exit point lies on the edge's own part, between its two node slices
     }
 
     public static class BoxSelection
@@ -63,7 +85,14 @@ namespace JunctionRules.Core
         {
             if (!f.Exists) { why = "gone"; return false; }
             if (!f.IsRoadNode) { why = "not a road node (path, track or other network)"; return false; }
-            if (f.Owned) { why = "part of a building's or asset's own network"; return false; }
+            if (f.Owned || f.BuildingRoadArms > 0 || f.OtherOwnedRoadArms > 0)
+            {
+                // 0.4.3 (owner ruling 3): a building's own access road meeting a public road is a real junction.
+                if (f.Owned && !f.NodeOwnerIsBuilding) { why = "part of an asset's own network"; return false; }
+                if (f.OtherOwnedRoadArms > 0) { why = "an asset's own road meets here"; return false; }
+                if (f.PublicRoadArms == 0) { why = "inside a building's own network (all its roads belong to the building)"; return false; }
+                if (f.MixedOwners) { why = "roads of two different buildings meet here"; return false; }
+            }
             if (f.RoadArms <= 1) { why = f.RoadArms == 1 ? "dead end" : "no road arms"; return false; }
             if (f.RoadArms == 2) { why = f.PathArms > 0 ? "a path joining a road, not a junction" : "a mid-road node, not a junction"; return false; }
             if (f.AnyHighwayArm) { why = "highway"; return false; }
@@ -74,19 +103,25 @@ namespace JunctionRules.Core
             return true;
         }
 
-        /// <summary>True when a building's access may take an entrance box; otherwise 'why' says what rules it out.</summary>
+        /// <summary>0.4.3: true when the node is a building access junction (a building's own road meets a public road).</summary>
+        public static bool IsBuildingAccessJunction(JunctionFacts f) => f.BuildingRoadArms > 0 && f.PublicRoadArms > 0 && !f.MixedOwners && f.OtherOwnedRoadArms == 0;
+
+        /// <summary>True when a building car exit may take an exit box; otherwise 'why' says what rules it out.</summary>
+        public static bool ExitOk(EntranceFacts f, out string why) => EntranceOk(f, out why);
+
+        /// <summary>Same as ExitOk (0.4.0 name, kept for the tests and the save-side code).</summary>
         public static bool EntranceOk(EntranceFacts f, out string why)
         {
             if (!f.Exists) { why = "gone"; return false; }
             if (!f.IsBuilding) { why = "not a building"; return false; }
             if (f.Owned) { why = "part of another building (pick the main building)"; return false; }
-            if (!f.HasRoadEdge) { why = "no road access"; return false; }
-            if (!f.RoadIsRoad) { why = "access is not on a road"; return false; }
-            if (f.RoadOwned) { why = "access is on a road inside a building's own site"; return false; }
+            if (!f.HasRoadEdge) { why = "no car exit and no road access"; return false; }
+            if (!f.RoadIsRoad) { why = "exit is not on a road"; return false; }
+            if (f.RoadOwned) { why = "exit is on a road inside a building's own site (box the junction where that road meets the public road)"; return false; }
             if (f.OnRoad) { why = "stands on the road itself"; return false; }
-            if (f.RoadHighway) { why = "access on a highway"; return false; }
-            if (f.RoadElevatedOrTunnel) { why = "access road not at ground level"; return false; }
-            if (!f.AccessInsideEdge) { why = "access is inside a junction (box that junction instead)"; return false; }
+            if (f.RoadHighway) { why = "exit on a highway"; return false; }
+            if (f.RoadElevatedOrTunnel) { why = "exit road not at ground level"; return false; }
+            if (!f.AccessInsideEdge) { why = "exit is inside a junction (box that junction instead)"; return false; }
             why = null;
             return true;
         }

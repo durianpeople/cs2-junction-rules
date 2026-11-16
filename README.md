@@ -43,6 +43,11 @@ game's own measure: a moving car ahead counts its braking distance; **room margi
 the whole vehicle cannot wait between two zebras (Z C Z), or between Cs and a zebra (a bus), they are one decision
 before the first. Carries 0.4.0 and 0.3.6.
 
+0.4.3-probe (JR-T-007c; PROBE-STAGE4-BOXTOOL.md section 12): building boxes sit at each **car exit** (driveway,
+car park / depot gate; fallback the road access), **one box per exit**; a service building's own access road meeting a
+public road is a selectable junction (building arm yields unless signed). Old entrance boxes migrate to the nearest
+exit on load. Paint and tool only: cars drive as in 0.4.2.
+
 0.4.2-probe (JR-T-007b; PROBE-STAGE4-BOXTOOL.md section 11): **straight-sided yellow boxes** (junction and
 entrance): mouths slide forward along their arm until the straight sides stay on the carriageway; priority arms keep
 their mouths, give-way / STOP arms slide, signals = all equal (Core/StraightBox.cs). Boxes keep **0.5 m from the

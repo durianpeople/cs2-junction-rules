@@ -1,11 +1,12 @@
 using Colossal.Serialization.Entities;
 using JunctionRules.Core;
+using Unity.Collections;
 using Unity.Entities;
 
 namespace JunctionRules.Boxes
 {
     // 0.4.0-probe (JR-T-007): a saved yellow box = one of these components on the game's own entity (junction: the
-    // Game.Net.Node; entrance: the Game.Buildings.Building). Saved with the city through the game's component serializer
+    // Game.Net.Node; exit boxes: the Game.Buildings.Building). Saved with the city through the game's component serializer
     // (mod types join it after TypeManager.InitializeAdditionalTypes + SerializerSystem.SetDirty, Game.Modding/
     // ModManager.cs 147-151). Byte layout and versioning: Core/BoxRecord.cs.
     //
@@ -44,24 +45,53 @@ namespace JunctionRules.Boxes
         }
     }
 
-    /// <summary>A yellow box on the carriageway in front of this building's road access.</summary>
+    /// <summary>
+    /// Yellow boxes on the carriageway at this building's car EXITS (0.4.3-probe, JR-T-007c; 0.4.0-0.4.2: one box at the
+    /// building's road access). One key per boxed exit (Core/BuildingExit.cs ExitKey: kind + position in the building's
+    /// frame), at most ExitRules.MaxBoxesPerBuilding. The type name stays "YellowBoxEntrance" (renaming it would orphan
+    /// every 0.4.0-0.4.2 box in existing saves: the serializer finds the type by this name). Record: Core/BuildingExit.cs
+    /// ExitRecord (version 2); a version 1 record (0.4.0-0.4.2) loads with no keys = a legacy box, which the paint system
+    /// migrates to the building's nearest exit on load (Paint/YellowBoxPaintSystem.cs MigrateLegacy).
+    /// </summary>
     [FormerlySerializedAs("JunctionRules.Boxes.YellowBoxEntrance, JunctionRules")]
     public struct YellowBoxEntrance : IComponentData, IQueryTypeParameter, ISerializable
     {
         public byte m_Flags;
+        /// <summary>Boxed exits; empty = a 0.4.0-0.4.2 box not migrated yet.</summary>
+        public FixedList64Bytes<ExitKey> m_Exits;
+
+        public bool Legacy => m_Exits.Length == 0;
+
+        public bool Has(ExitKey k)
+        {
+            for (int i = 0; i < m_Exits.Length; i++) if (m_Exits[i].Equals(k)) return true;
+            return false;
+        }
 
         public void Serialize<TWriter>(TWriter writer) where TWriter : IWriter
         {
             var sink = new WriterSink<TWriter> { m_Writer = writer };
-            new BoxRecord((BoxRecordFlags)m_Flags).Encode(ref sink);
+            var keys = new FixedKeys { m_List = m_Exits };
+            ExitRecord.Encode(ref sink, (BoxRecordFlags)m_Flags, ref keys);
         }
 
         public void Deserialize<TReader>(TReader reader) where TReader : IReader
         {
             var source = new ReaderSource<TReader> { m_Reader = reader };
-            BoxRecord.Decode(ref source, out BoxRecord r, out _);
-            m_Flags = (byte)r.Flags;
+            var keys = new FixedKeys();
+            ExitRecord.Decode(ref source, ref keys, out BoxRecordFlags flags, out _);
+            m_Flags = (byte)flags;
+            m_Exits = keys.m_List;
         }
+    }
+
+    /// <summary>FixedList as the record's key source / sink (no allocation; extra keys beyond the capacity are dropped).</summary>
+    internal struct FixedKeys : IExitKeySink, IExitKeySource
+    {
+        public FixedList64Bytes<ExitKey> m_List;
+        public void Add(ExitKey key) { if (m_List.Length < m_List.Capacity) m_List.Add(key); }
+        public int Count => m_List.Length;
+        public ExitKey Get(int i) => m_List[i];
     }
 
     /// <summary>IWriter as a byte sink. The game's writers keep their buffer in native containers, so a copy writes on.</summary>

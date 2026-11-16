@@ -118,6 +118,8 @@ namespace JunctionRules.Core
             public double Margin;
             public IList<V2> Conflicts;
             public V2[] Mid, Dir;
+            /// <summary>0.4.3 (JR-T-007c, review F1): shift cost = sum of squares (a slide splits between mouths) instead of the plain sum.</summary>
+            public bool Squared;
         }
 
         /// <summary>
@@ -126,12 +128,12 @@ namespace JunctionRules.Core
         /// driveway): the mouths given then all count as priority road. signals: all arms equal.
         /// </summary>
         public static StraightBoxResult Solve(IList<BoxMouth> mouths, IList<List<V3>> chains, IList<CrosswalkStrip> markings, double margin,
-            IList<V2> conflictPoints, bool signals, bool extraYielding = false)
+            IList<V2> conflictPoints, bool signals, bool extraYielding = false, bool squaredShiftCost = false)
         {
             var res = new StraightBoxResult();
             int n = mouths?.Count ?? 0;
             if (n < 2 || chains == null || chains.Count != n) { res.Failure = "fewer than 2 mouths or chain count mismatch"; return res; }
-            var ctx = new Ctx { M = mouths, C = new Chain[n], Markings = markings ?? new List<CrosswalkStrip>(), Margin = Math.Max(0, margin), Mid = new V2[n], Dir = new V2[n] };
+            var ctx = new Ctx { M = mouths, C = new Chain[n], Markings = markings ?? new List<CrosswalkStrip>(), Margin = Math.Max(0, margin), Mid = new V2[n], Dir = new V2[n], Squared = squaredShiftCost };
             for (int i = 0; i < n; i++)
             {
                 var ch = chains[i];
@@ -251,7 +253,7 @@ namespace JunctionRules.Core
             for (int i = 0; i < n; i++)
             {
                 node[i] = new double[grid[i].Length];
-                for (int a = 0; a < grid[i].Length; a++) node[i][a] = grid[i][a] + MouthPenalty(ctx, i, grid[i][a]);
+                for (int a = 0; a < grid[i].Length; a++) node[i][a] = (ctx.Squared ? grid[i][a] * grid[i][a] : grid[i][a]) + MouthPenalty(ctx, i, grid[i][a]);
             }
             var corner = new double[n][,];
             for (int i = 0; i < n; i++)

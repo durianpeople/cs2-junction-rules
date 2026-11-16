@@ -5,8 +5,8 @@
     <LangVersion>10.0</LangVersion>
     <AssemblyName>JunctionRules</AssemblyName>
     <RootNamespace>JunctionRules</RootNamespace>
-    <Version>0.4.2</Version>
-    <InformationalVersion>0.4.2-probe</InformationalVersion>
+    <Version>0.4.3</Version>
+    <InformationalVersion>0.4.3-probe</InformationalVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <Nullable>disable</Nullable>

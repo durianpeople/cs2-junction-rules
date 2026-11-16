@@ -139,6 +139,7 @@ namespace JunctionRules.Core
                 g.MitreLimit = NumOr(p, "mitreLimit", g.MitreLimit);
                 g.StraightenTolerance = NumOr(p, "straightenTolerance", g.StraightenTolerance);
                 g.EntranceLength = NumOr(p, "entranceLength", g.EntranceLength);
+                g.EntranceLength = NumOr(p, "exitLength", g.EntranceLength);   // 0.4.3: "exit" alias; the key stays entranceLength
                 if (p.ContainsKey("markingMargin"))
                 {
                     g.MarkingMargin = NumOr(p, "markingMargin", double.NaN);

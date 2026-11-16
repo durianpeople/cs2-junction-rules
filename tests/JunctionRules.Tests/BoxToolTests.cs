@@ -135,7 +135,7 @@ namespace JunctionRules.Tests
             var e = Good(); e.Owned = true;
             Check(!BoxSelection.EntranceOk(e, out why) && why.Contains("main building"), "entrance: extension / sub-building excluded");
             e = Good(); e.HasRoadEdge = false;
-            Check(!BoxSelection.EntranceOk(e, out why) && why == "no road access", "entrance: no road access excluded");
+            Check(!BoxSelection.EntranceOk(e, out why) && why == "no car exit and no road access", "exit: no car exit and no road access excluded");
             e = Good(); e.RoadIsRoad = false;
             Check(!BoxSelection.EntranceOk(e, out _), "entrance: access on a path excluded");
             e = Good(); e.RoadHighway = true;

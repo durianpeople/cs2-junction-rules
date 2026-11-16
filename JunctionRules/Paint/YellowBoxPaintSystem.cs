@@ -49,6 +49,8 @@ namespace JunctionRules.Paint
             public PaintTestJunction Entry;
             public Entity Node = Entity.Null;
             public Entity Building = Entity.Null;
+            /// <summary>0.4.3: SavedEntrance = one boxed car exit of Building (Core/BuildingExit.cs ExitKey).</summary>
+            public ExitKey Key;
             public bool Dropped;
             public V3 LastPos;
             public readonly List<Entity> Edges = new List<Entity>();
@@ -281,7 +283,7 @@ namespace JunctionRules.Paint
             // 0.4.0: saved boxes in this city? (two empty-query checks, once per load)
             int j = m_InCity ? m_SavedJunctionQuery.CalculateEntityCount() : 0, en = m_InCity ? m_SavedEntranceQuery.CalculateEntityCount() : 0;
             s_SavedPresent = j + en > 0;
-            if (m_InCity) Mod.log.Info($"yellow boxes: {j} junction box(es) and {en} entrance box(es) saved in this city");
+            if (m_InCity) Mod.log.Info($"yellow boxes: {j} junction box(es) and {en} building(s) with exit boxes saved in this city");
             ApplySettings();
         }
 
@@ -553,22 +555,81 @@ namespace JunctionRules.Paint
             }
         }
 
-        /// <summary>0.4.0: the saved boxes (tool): every node with YellowBoxJunction, every building with YellowBoxEntrance.</summary>
+        /// <summary>
+        /// 0.4.0: the saved boxes (tool): every node with YellowBoxJunction; 0.4.3: one box per boxed exit of every building
+        /// with YellowBoxEntrance. A 0.4.0-0.4.2 building box (no exit keys) is migrated first (MigrateLegacy).
+        /// </summary>
         private void ResolveSaved()
         {
-            NativeArray<Entity> j = m_SavedJunctionQuery.ToEntityArray(Allocator.Temp);
             NativeArray<Entity> e = m_SavedEntranceQuery.ToEntityArray(Allocator.Temp);
             try
             {
+                EntityManager em = EntityManager;
+                for (int i = 0; i < e.Length; i++)
+                {
+                    if (!em.Exists(e[i]) || !em.HasComponent<YellowBoxEntrance>(e[i])) continue;
+                    if (em.GetComponentData<YellowBoxEntrance>(e[i]).Legacy) MigrateLegacy(e[i]);
+                    if (!em.HasComponent<YellowBoxEntrance>(e[i])) continue;
+                    YellowBoxEntrance c = em.GetComponentData<YellowBoxEntrance>(e[i]);
+                    for (int k = 0; k < c.m_Exits.Length; k++)
+                        m_Boxes.Add(new Box { Kind = BoxKind.SavedEntrance, Building = e[i], Key = c.m_Exits[k], Label = $"saved exit box (building {e[i]}, exit {c.m_Exits[k]})" });
+                }
+            }
+            finally
+            {
+                e.Dispose();
+            }
+            // junctions after the migration: a legacy box on a building whose exit is its own access road moved onto that node
+            NativeArray<Entity> j = m_SavedJunctionQuery.ToEntityArray(Allocator.Temp);
+            try
+            {
                 for (int i = 0; i < j.Length; i++) m_Boxes.Add(new Box { Kind = BoxKind.SavedJunction, Node = j[i], Label = "saved junction box (node " + j[i] + ")" });
-                for (int i = 0; i < e.Length; i++) m_Boxes.Add(new Box { Kind = BoxKind.SavedEntrance, Building = e[i], Label = "saved entrance box (building " + e[i] + ")" });
-                s_SavedPresent = j.Length + e.Length > 0;
             }
             finally
             {
                 j.Dispose();
-                e.Dispose();
             }
+            bool any = false;
+            foreach (Box b in m_Boxes) any |= b.Kind != BoxKind.ListJunction;
+            s_SavedPresent = any;
+        }
+
+        /// <summary>
+        /// 0.4.3 (owner ruling 2): a 0.4.0-0.4.2 building box (one box at the lot-front middle, no exit key) moves to the
+        /// building's exit nearest the old box centre (Building.m_RoadEdge at m_CurvePosition; Core/BuildingExit.cs
+        /// ExitRules.Migrate): a driveway / spawn-location / fallback exit gets the key; an exit through the building's own
+        /// access road becomes a junction box on that node (the old box component goes). No exit and no road access at
+        /// all: the old box is dropped. Every case logs one line. Only our own components are written.
+        /// </summary>
+        private void MigrateLegacy(Entity building)
+        {
+            EntityManager em = EntityManager;
+            var notes = new List<string>();
+            List<BoxFacts.Exit> exits = BoxFacts.Exits(em, building, notes);
+            V2 old = default;
+            Game.Buildings.Building bd = em.GetComponentData<Game.Buildings.Building>(building);
+            BoxFacts.Access a = em.Exists(bd.m_RoadEdge) ? BoxFacts.AccessOf(em, bd.m_RoadEdge, bd.m_CurvePosition) : default;
+            if (a.Valid) old = new V2(a.Point.x, a.Point.z);
+            else { BoxFacts.GetFrame(em, building, out old, out _); }
+            var cands = new List<ExitCandidate>(exits.Count);
+            foreach (var x in exits) cands.Add(x.C);
+            int i = ExitRules.Migrate(old, cands, out string why);
+            if (i < 0)
+            {
+                BoxStore.Remove(em, building, false, notify: false);
+                Mod.log.Info($"yellow boxes: 0.4.0-0.4.2 box on building {building} DROPPED on load: {why}");
+                return;
+            }
+            BoxFacts.Exit ex = exits[i];
+            if (ex.IsJunction)
+            {
+                BoxStore.Remove(em, building, false, notify: false);
+                BoxStore.Add(em, ex.Node, notify: false);
+                Mod.log.Info($"yellow boxes: 0.4.0-0.4.2 box on building {building} migrated to a JUNCTION box on node {ex.Node} ({why})");
+                return;
+            }
+            BoxStore.SetExits(em, building, ex.C.Key);
+            Mod.log.Info($"yellow boxes: 0.4.0-0.4.2 box on building {building} migrated to exit {ex.C.Key} ({why})" + (notes.Count > 0 ? "; notes: " + string.Join("; ", notes) : ""));
         }
 
         /// <summary>
@@ -583,7 +644,9 @@ namespace JunctionRules.Paint
             Entity e = b.Kind == BoxKind.SavedJunction ? b.Node : b.Building;
             if (e != Entity.Null && em.Exists(e))
             {
-                BoxStore.Remove(em, e, b.Kind == BoxKind.SavedJunction, notify: false);   // the one writer (Boxes/BoxStore.cs)
+                // the one writer (Boxes/BoxStore.cs); 0.4.3: a building loses only this exit's box
+                if (b.Kind == BoxKind.SavedJunction) BoxStore.Remove(em, e, true, notify: false);
+                else BoxStore.RemoveExit(em, e, b.Key, notify: false);
             }
             Mod.log.Info($"yellow boxes: {b.Label}: box dropped ({why})");
         }
@@ -719,14 +782,35 @@ namespace JunctionRules.Paint
         }
 
         /// <summary>
-        /// Entrance box (0.4.2: Boxes/BoxShapes.Entrance -> Core/EntranceBox.BuildStraight, the junction solver with the
-        /// road's two directions as priority mouths EntranceLength apart, the driveway as the yielding arm).
+        /// Exit box (0.4.3, JR-T-007c: at the building's CAR EXIT, BoxFacts.Exits; the saved key finds its exit again,
+        /// Core/BuildingExit.cs ExitRules.Match). Shape: Boxes/BoxShapes.Entrance -> Core/EntranceBox.BuildStraight, the
+        /// junction solver with the road's two directions as priority mouths EntranceLength apart, centred on the exit (the
+        /// yielding arm's mouth centre). The exit that is gone (drive removed, building replaced by another prefab) drops
+        /// this key only, logged.
         /// </summary>
         private void RebuildEntrance(Box b)
         {
             EntityManager em = EntityManager;
             m_Tracked.Add(b.Building);
-            EntranceFacts f = BoxFacts.Entrance(em, b.Building, out BoxFacts.Access a);
+            var exitNotes = new List<string>();
+            List<BoxFacts.Exit> exits = BoxFacts.Exits(em, b.Building, exitNotes);
+            if (!BoxFacts.FindExit(exits, b.Key, out BoxFacts.Exit exit))
+            {
+                var have = new List<string>();
+                foreach (var x in exits) have.Add(x.C.Key.ToString());
+                DropSaved(b, $"exit {b.Key} not found any more (building exits now: {(have.Count == 0 ? "none" : string.Join(", ", have))})");
+                return;
+            }
+            if (!exit.C.Key.Equals(b.Key))
+            {
+                // same exit, read under another kind / a few cm off (e.g. a fallback key once the drive shows): re-key it
+                BoxStore.RemoveExit(em, b.Building, b.Key, notify: false);
+                BoxStore.AddExit(em, b.Building, exit.C.Key, notify: false);
+                Mod.log.Info($"yellow boxes: {b.Label}: re-keyed to {exit.C.Key}");
+                b.Key = exit.C.Key;
+            }
+            if (exit.Node != Entity.Null) { b.Edges.Add(exit.Node); m_Tracked.Add(exit.Node); }
+            EntranceFacts f = BoxFacts.ExitFacts(em, b.Building, exit, out BoxFacts.Access a);
             if (a.Edge != Entity.Null) { b.Edges.Add(a.Edge); m_Tracked.Add(a.Edge); }
             if (a.Edge != Entity.Null && em.Exists(a.Edge) && em.HasComponent<Edge>(a.Edge))
             {
@@ -735,7 +819,7 @@ namespace JunctionRules.Paint
                 b.Edges.Add(ed.m_Start); b.Edges.Add(ed.m_End);
                 m_Tracked.Add(ed.m_Start); m_Tracked.Add(ed.m_End);
             }
-            if (!BoxSelection.EntranceOk(f, out string why)) { DropSaved(b, "building access no longer valid: " + why); return; }
+            if (!BoxSelection.ExitOk(f, out string why)) { DropSaved(b, "building exit no longer valid: " + why); return; }
             BoxShapes.Shape shape = BoxShapes.Entrance(em, a, m_Config.Geometry.KerbInset, m_Config.Geometry.EntranceLength, CurrentMargin);
             b.LastPos = shape.Position;
             if (shape.Outline == null) { Mod.log.Info($"yellow boxes: {b.Label}: not painted: {shape.Failure}" + (shape.Notes.Count > 0 ? "; notes: " + string.Join("; ", shape.Notes) : "")); return; }
@@ -743,10 +827,10 @@ namespace JunctionRules.Paint
             if (!res.Ok) { Mod.log.Warn($"yellow boxes: {b.Label}: no box: {res.Failure}"); return; }
             var notes = new List<string>(shape.Notes);
             notes.AddRange(res.Warnings);
+            notes.AddRange(exitNotes);
             b.Tris = ToTriangles(res, m_Config.Render, m_Config.Diag, out b.Bounds);
-            Mod.log.Info($"yellow boxes: {b.Label}: access on edge {a.Edge} at {b.LastPos}, box {shape.To - shape.From:0.0} m x kerb to kerb, outline {res.Outline.Count} pts, triangles {b.Tris.Length}" + (notes.Count > 0 ? "; notes: " + string.Join("; ", notes) : ""));
+            Mod.log.Info($"yellow boxes: {b.Label}: exit source {exit.C.Source}; box on edge {a.Edge} at {b.LastPos}, {shape.To - shape.From:0.0} m x kerb to kerb, outline {res.Outline.Count} pts, triangles {b.Tris.Length}" + (notes.Count > 0 ? "; notes: " + string.Join("; ", notes) : ""));
         }
-
 
         /// <summary>Pieces -> the game's AreaTriangleData layout (Game.Rendering.AreaTriangleData), one per triangle.</summary>
         private static AreaTriangleData[] ToTriangles(BoxPaintResult res, PaintRenderParams rp, PaintDiagParams diag, out Bounds3 bounds)

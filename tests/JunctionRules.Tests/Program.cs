@@ -59,6 +59,7 @@ namespace JunctionRules.Tests
             ("Tech9RepoTests", Tech9RepoTests),
             ("BoxOutlineTests", BoxOutlineTests),
             ("StraightBoxLiveTests", StraightBoxLiveTests),
+            ("ExitTests", ExitTests),
             ("StraightBoxRuleTests", StraightBoxRuleTests),
             ("MarginHoverTests", MarginHoverTests),
             ("BoxInsetTests", BoxInsetTests),

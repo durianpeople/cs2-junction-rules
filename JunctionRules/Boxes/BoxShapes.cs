@@ -12,7 +12,7 @@ using Unity.Mathematics;
 namespace JunctionRules.Boxes
 {
     /// <summary>
-    /// 0.4.2-probe (JR-T-007b): the box OUTLINE of a junction node or a building entrance, read from the game (read-only)
+    /// 0.4.2-probe (JR-T-007b): the box OUTLINE of a junction node or a building exit (0.4.3: car exit, was 'entrance'), read from the game (read-only)
     /// and solved by the game-independent Core (CarriagewayOutline.BuildStraight / EntranceBox.BuildStraight, both on
     /// StraightBox.Solve). One shape for the paint (Paint/YellowBoxPaintSystem.cs) and the tool's hover outline
     /// (YellowBoxToolSystem.cs). Moved here from the paint system (FootwayWidths, EdgeLeftEnd, MarkedCrossings, Sample);
@@ -30,7 +30,7 @@ namespace JunctionRules.Boxes
             /// <summary>The edges (and nodes) the shape was read from: a change to any of them needs a rebuild.</summary>
             public List<Entity> Sources = new List<Entity>();
             public V3 Position;
-            /// <summary>Entrance only: window along the edge (metres) and the edge's own part.</summary>
+            /// <summary>Exit box only: window along the edge (metres) and the edge's own part.</summary>
             public double From, To;
         }
 
@@ -99,6 +99,17 @@ namespace JunctionRules.Boxes
             int zebras = markings.Count, stopLines = 0;
             foreach (Entity e in armEdges) stopLines += StopLines(em, e, markings);
             ReadLanes(em, node, arms, out bool signals, out List<LanePath> paths);
+            // 0.4.3 (owner ruling 3): a building's own access road arm yields unless the signs say otherwise
+            var signed = new List<bool>(arms.Count);
+            var own = new List<bool>(arms.Count);
+            for (int k = 0; k < arms.Count; k++) { signed.Add(arms[k].Yielding); own.Add(BoxFacts.IsBuildingRoad(em, armEdges[k])); }
+            if (own.Contains(true))
+            {
+                bool[] y = ExitRules.ArmYield(signed, own, signals);
+                bool changed = false;
+                for (int k = 0; k < arms.Count; k++) { changed |= arms[k].Yielding != y[k]; arms[k].Yielding = y[k]; }
+                s.Notes.Add(changed ? "building access junction: the building's own road arm yields (no signs, no signals)" : "building access junction: arms as signed" + (signals ? " (signals: all equal)" : ""));
+            }
             var conflicts = StraightBox.ConflictPoints(paths);
             var centre = new V2(np.x, np.z);
             CarriagewayResult cw = CarriagewayOutline.BuildStraight(arms, centre, markings, margin, conflicts, signals);
@@ -163,10 +174,12 @@ namespace JunctionRules.Boxes
             }
         }
 
-        // ------------------------------------------------------------------ entrance
+        // ------------------------------------------------------------------ exit (0.4.0-0.4.2: "entrance")
 
         /// <summary>
-        /// The entrance box: the window along the edge (EntranceLength centred on the access, from the edge part's
+        /// The exit box (0.4.3, owner ruling 4: the exit point is the yielding arm's mouth centre, so the box is centred on
+        /// the building's CAR EXIT on the road, BoxFacts.Exits, not on the lot middle): the window along the edge
+        /// (EntranceLength centred on the exit point, from the edge part's
         /// nearer mouth corners, margin clear of mouths and markings), then EntranceBox.BuildStraight (road mouths =
         /// priority, the driveway = the yielding arm without a mouth of its own).
         /// </summary>
@@ -174,7 +187,7 @@ namespace JunctionRules.Boxes
         {
             var s = new Shape();
             Entity e = a.Edge;
-            if (e == Entity.Null || !em.Exists(e) || !em.HasComponent<Edge>(e) || !em.HasComponent<Curve>(e) || !em.HasComponent<Composition>(e)) { s.Failure = "no road at the access"; return s; }
+            if (e == Entity.Null || !em.Exists(e) || !em.HasComponent<Edge>(e) || !em.HasComponent<Curve>(e) || !em.HasComponent<Composition>(e)) { s.Failure = "no road at the exit"; return s; }
             Edge ed = em.GetComponentData<Edge>(e);
             s.Sources.Add(e); s.Sources.Add(ed.m_Start); s.Sources.Add(ed.m_End);
             s.Position = new V3(a.Point.x, a.Point.y, a.Point.z);
@@ -217,8 +230,8 @@ namespace JunctionRules.Boxes
                 float3 p = MathUtils.Position(curve, t);
                 centre.Add(new V3(p.x, p.y, p.z));
             }
-            StraightBoxResult r = EntranceBox.BuildStraight(centre, half, gl, gr, markings, margin);
-            s.Notes.Add($"access {a.AlongM:0.0} m along, edge part {a.MinM:0.0}..{a.MaxM:0.0} m, window {from:0.0}..{to:0.0} m (entrance length {length:0.0} m, margin {margin:0.0} m, {spans.Count} marking(s) on the road)");
+            StraightBoxResult r = EntranceBox.BuildStraight(centre, half, gl, gr, markings, margin, new V2(a.Point.x, a.Point.z));   // 0.4.3: the exit stays inside (review F1)
+            s.Notes.Add($"exit {a.AlongM:0.0} m along, edge part {a.MinM:0.0}..{a.MaxM:0.0} m, window {from:0.0}..{to:0.0} m (exit box length {length:0.0} m, margin {margin:0.0} m, {spans.Count} marking(s) on the road)");
             s.Notes.Add($"footways {(known ? $"{footL:0.00}|{footR:0.00}{src}" : "unknown")}{(kerbInset != 0 ? $" +{kerbInset} m kerbInset" : "")}");
             if (r.Shift != null) s.Notes.Add($"shape rule {r.RuleText}; road mouth shifts [{r.Shift[0]:0.00}, {r.Shift[1]:0.00}] m");
             s.Notes.AddRange(r.Notes);

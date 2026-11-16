@@ -3,6 +3,8 @@ using System.Collections.Generic;
 
 namespace JunctionRules.Core
 {
+    // 0.4.3-probe (JR-T-007c): this is the box at a building's CAR EXIT ('access' below = the exit point on the road,
+    // Core/BuildingExit.cs; 0.4.0-0.4.2 used the lot-front middle, now only the fallback). Class name kept.
     // 0.4.0-probe (JR-T-007): the yellow box in front of a building's access (UK style: the carriageway in front of the
     // driveway mouth kept clear, kerb to kerb). Shape: a band across the whole carriageway, from the kerb line on one
     // side to the kerb line on the other, 'length' metres along the road, centred on the building's access point
@@ -61,7 +63,7 @@ namespace JunctionRules.Core
             double lo = min + margin, hi = max - margin;
             from = Math.Max(lo, access - length * 0.5);
             to = Math.Min(hi, access + length * 0.5);
-            if (access < lo - 1e-9 || access > hi + 1e-9) { why = $"access {access:0.0} m is within {margin:0.0} m of a junction mouth (edge part {min:0.0}..{max:0.0} m)"; return false; }
+            if (access < lo - 1e-9 || access > hi + 1e-9) { why = $"exit {access:0.0} m is within {margin:0.0} m of a junction mouth (edge part {min:0.0}..{max:0.0} m)"; return false; }
             if (markings != null)
             {
                 foreach (AlongSpan m in markings)
@@ -69,7 +71,7 @@ namespace JunctionRules.Core
                     if (!CarriagewayOutline.IsFinite(m.From) || !CarriagewayOutline.IsFinite(m.To)) continue;
                     double a = Math.Min(m.From, m.To) - margin, b = Math.Max(m.From, m.To) + margin;
                     if (b <= from || a >= to) continue;
-                    if (access >= a && access <= b) { why = $"access {access:0.0} m is on or within {margin:0.0} m of a road marking ({m.From:0.0}..{m.To:0.0} m)"; return false; }
+                    if (access >= a && access <= b) { why = $"exit {access:0.0} m is on or within {margin:0.0} m of a road marking ({m.From:0.0}..{m.To:0.0} m)"; return false; }
                     if ((m.From + m.To) * 0.5 >= access) to = Math.Min(to, a); else from = Math.Max(from, b);
                 }
             }
@@ -111,6 +113,15 @@ namespace JunctionRules.Core
         /// kerb (inner side of a bend): then the fallback slides them toward each other (smallest total shift).
         /// </summary>
         public static StraightBoxResult BuildStraight(IList<V3> centre, double halfWidth, double footLeft, double footRight, IList<CrosswalkStrip> markings, double margin)
+            => BuildStraight(centre, halfWidth, footLeft, footRight, markings, margin, null);
+
+        /// <summary>
+        /// 0.4.3 (JR-T-007c; review F1 of 0.4.2): with the exit point (on the road centre curve, x / z) held inside the box
+        /// as a hard conflict point, and a sum-of-squares shift cost, so on a bend the fallback slides BOTH road mouths a
+        /// little instead of one a lot (0.4.2: R 30 m, 8 m window: one mouth slid 3.58 m, the box shrank to ~4.4 m and the
+        /// access could end up outside it). Null exit = 0.4.2 behaviour except for the squared cost.
+        /// </summary>
+        public static StraightBoxResult BuildStraight(IList<V3> centre, double halfWidth, double footLeft, double footRight, IList<CrosswalkStrip> markings, double margin, V2? exitPoint)
         {
             var fail = new StraightBoxResult();
             if (centre == null || centre.Count < 2) { fail.Failure = "fewer than 2 centre points"; return fail; }
@@ -144,7 +155,8 @@ namespace JunctionRules.Core
                 mouths[1].Entry = left[last]; mouths[1].Exit = right[last];
                 chains = new List<List<V3>> { left, revRight };
             }
-            return StraightBox.Solve(mouths, chains, markings, margin, null, false, extraYielding: true);
+            var hold = exitPoint.HasValue && CarriagewayOutline.IsFinite(exitPoint.Value) ? new List<V2> { exitPoint.Value } : null;
+            return StraightBox.Solve(mouths, chains, markings, margin, hold, false, extraYielding: true, squaredShiftCost: true);
         }
 
         /// <summary>Nearest point of the polyline to p: metres along (from 'along') and the distance off the line.</summary>

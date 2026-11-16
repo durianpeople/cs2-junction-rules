@@ -72,16 +72,26 @@ namespace JunctionRules.Tests
             Check(sys.Contains("m_Gpu.SetDiag(m_Config.Diag)") && gpu.Contains("public void SetDiag(PaintDiagParams diag)"), "a Refresh hands the new diag values to the kept GPU objects (decal layer mask, colour buffer, priority, cameras apply without a restart)");
 
             string csproj = File.ReadAllText(Path.Combine(src, "JunctionRules.csproj"));
-            Check(csproj.Contains("<Version>0.4.2</Version>") && csproj.Contains("<InformationalVersion>0.4.2-probe</InformationalVersion>"), "version 0.4.2-probe");
+            Check(csproj.Contains("<Version>0.4.3</Version>") && csproj.Contains("<InformationalVersion>0.4.3-probe</InformationalVersion>"), "version 0.4.3-probe");
 
             // 0.4.0 (JR-T-007): saved boxes are added / removed only by Boxes/BoxStore.cs, and only our own two components;
             // the paint code drops an invalid saved box through it (its sole write) and never names the tool.
             string store = StripComments(File.ReadAllText(Path.Combine(src, "Boxes", "BoxStore.cs")));
-            var storeWrites = Regex.Matches(store, @"\b(AddComponentData|AddComponent|RemoveComponent|SetComponentData)\b(<\w+>)?\(\s*e\s*,\s*new (\w+)|\bRemoveComponent<(\w+)>");
-            bool ownOnly = storeWrites.Count == 4;
-            foreach (Match m in storeWrites) { string t = m.Groups[3].Success ? m.Groups[3].Value : m.Groups[4].Value; if (t != "YellowBoxJunction" && t != "YellowBoxEntrance") ownOnly = false; }
-            Check(ownOnly && !Regex.IsMatch(store, @"SetComponentData|DestroyEntity|CreateEntity|Updated"), "BoxStore writes only YellowBoxJunction / YellowBoxEntrance (add + remove), never marks the entity Updated");
-            Check(Regex.Matches(sys, @"BoxStore\.Remove\(").Count == 1 && !sys.Contains("BoxStore.Add(") && !sys.Contains("YellowBoxToolSystem"), "paint code: one BoxStore.Remove (drop an invalid saved box), no add, never names the tool");
+            // 0.4.3 (JR-T-007c): exit keys live in YellowBoxEntrance, so the store also sets that component (its key list).
+            var storeWrites = Regex.Matches(store, @"\b(AddComponentData|SetComponentData)\(\s*\w+\s*,\s*(new (\w+)\(|(\w+)\))|\bRemoveComponent<(\w+)>");
+            bool ownOnly = storeWrites.Count >= 4;
+            foreach (Match m in storeWrites)
+            {
+                string t = m.Groups[3].Success ? m.Groups[3].Value : m.Groups[5].Success ? m.Groups[5].Value : m.Groups[4].Value == "c" ? "YellowBoxEntrance" : m.Groups[4].Value;
+                if (t != "YellowBoxJunction" && t != "YellowBoxEntrance") ownOnly = false;
+            }
+            foreach (Match m in Regex.Matches(store, @"(\w+) c = ")) if (m.Groups[1].Value != "YellowBoxEntrance" && m.Groups[1].Value != "var") ownOnly = false;
+            foreach (Match m in Regex.Matches(store, @"var c = (new )?(\w+)")) if (m.Groups[2].Value != "YellowBoxEntrance") ownOnly = false;
+            Check(ownOnly && !Regex.IsMatch(store, @"DestroyEntity|CreateEntity|Updated"), "BoxStore writes only YellowBoxJunction / YellowBoxEntrance (add, key list, remove), never marks the entity Updated");
+            var calls = Regex.Matches(sys, @"BoxStore\.(\w+)\(").Cast<Match>().Select(m => m.Groups[1].Value).ToList();
+            bool allowed = calls.All(c => c == "Remove" || c == "RemoveExit" || c == "AddExit" || c == "SetExits" || c == "Add");
+            Check(allowed && calls.Count(c => c == "Add") == 1 && calls.Count(c => c == "AddExit") == 1 && calls.Count(c => c == "SetExits") == 1 && !sys.Contains("YellowBoxToolSystem"),
+                "paint code writes only through BoxStore: drop (Remove / RemoveExit), legacy migration (SetExits, Add = junction), re-key (AddExit); never names the tool (" + string.Join(",", calls) + ")");
             foreach (string f in Directory.GetFiles(Path.Combine(src, "Boxes"), "*.cs").Where(f => !f.EndsWith("BoxStore.cs")))
                 Check(!Regex.IsMatch(StripComments(File.ReadAllText(f)), @"\b(AddComponentData|AddComponent|RemoveComponent)\b"), "Boxes/" + Path.GetFileName(f) + " writes components only through BoxStore");
             // 0.3.4 (JR-T-003d): the edge noise handed to the shader comes from the clamped config (wobble size never 0).

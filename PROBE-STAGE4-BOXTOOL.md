@@ -1,4 +1,11 @@
-# Probe kit: Junction Rules 0.4.2-probe (stage 4, yellow box selection tool; cars never stop on a zebra; straight-sided boxes)
+# Probe kit: Junction Rules 0.4.3-probe (stage 4, yellow box selection tool; cars never stop on a zebra; straight-sided boxes; boxes at car exits)
+
+**0.4.3-probe (JR-T-007c), what changed since 0.4.2:** building boxes sit at each building's **car exit** (the drawn
+driveway, car park / depot gate), not the lot-front middle; a building with several exits gets **one box per exit**;
+where a service building's own access road meets a public road, that node is a **junction** box (building road
+yields unless signed). UI and log say "exit" instead of "entrance". Saved boxes from 0.4.0-0.4.2 move to the nearest
+exit on load (or are dropped with a log line). Paint and tool only: cars drive exactly as in 0.4.2.
+`docs/vanilla_copy_check_0.4.3.txt`: 0 unexplained differences. Section 12. Carries 0.4.2 (below) and everything before.
 
 **0.4.2-probe (JR-T-007b), what changed since 0.4.1:** box shapes and the tool's hover look only (section 11). Every
 yellow box (junction and entrance) is now **straight-sided**: each arm's mouth line slides forward along its own arm,
@@ -23,7 +30,7 @@ differences). Also: the T-junction through-side kerb fix (section 6) and the ent
 0.3.6 (JR-T-008, people pass a car blocking their crossing; merged from 784ba28) and everything before it
 (PROBE-STAGE3-PAINT.md).
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.4.2-probe/`. 0.4.1-probe was Burst-built from bf4a26b and installed by main on 16 Nov (its sums are in git at 07cc519). While `.staged/0.4.2-probe` holds a `STALE.md` it is a managed
+Build to install: `~/Code/cs2-junction-rules/.staged/0.4.3-probe/`. 0.4.2-probe (jr-t-010 line) is installed live by main (code 59e731f, sums c781df0); never write into `.staged/0.4.2-probe`. While `.staged/0.4.3-probe` holds a `STALE.md` it is a managed
 build only: main does the Burst build in `STALE.md` (game closed, at the owner's quit), then puts the five sums into the
 install block below. Until then the block refuses (placeholder sums `0000...`).
 
@@ -36,7 +43,7 @@ copy does not run; the boxes stay in the save).
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.4.2-probe || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.4.3-probe || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
@@ -52,7 +59,7 @@ SUMS
   fi
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules.mjs JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
-  echo "installed 0.4.2-probe"
+  echo "installed 0.4.3-probe"
 )
 ```
 
@@ -294,3 +301,55 @@ a convex-hull box over the pavement.
 | S5 | Entrance box on a bend | straight-sided, on the carriageway both sides |
 | S6 | Signalled junction | log `signals`, rule `fallback-equal` |
 
+## 12. 0.4.3: boxes at car exits; one box per exit; service access junctions (JR-T-007c)
+
+**Where the box goes (owner ruling 16 Nov).** Every building box sits on the building's actual **car exit**, found from
+game data in this order (Core/BuildingExit.cs, Boxes/BoxFacts.cs `Exits`; the log names the source per exit):
+1. **Driveway**: an end node of the building's own sub-net car lane (prefab SubNet, e.g. "Invisible Car Path") that the
+   game joined to the middle of a public road (GenerateEdgesSystem.cs 1240-1261 / 1846-1897 add `ConnectedNode(node, t)`
+   to the road; ReferencesSystem.cs 773-780 lists the road in the node's ConnectedEdge; LaneSystem.cs 2146-2216 builds
+   the car lanes from it). The box centre is the road point at that `t`, on the carriageway.
+2. **Spawn location**: a car / cargo / parking spawn location of the building connected to a public road lane
+   (SpawnLocationConnectionSystem.cs 398-448, 590-615). Dropped when within 3 m of a driveway on the same road.
+3. **Junction**: the building's own access road ends on a node of a public road: boxed as a junction (below).
+4. **Fallback**: none of the above: Building.m_RoadEdge + m_CurvePosition (the lot-front middle, as 0.4.0-0.4.2),
+   logged as `fallback`.
+Extensions (InstalledUpgrade) are read with their main building. Capper Street house (UK Medium Detached 14): the
+exit is the driveway at the lot's right edge, 9.7 m from the old box centre.
+
+**One box per exit.** Hovering a building or the road in front of an exit outlines the exit nearest the cursor; each
+exit is added / removed on its own. Saved per exit (kind + position in the building frame to 0.1 m), at most 10 per
+building.
+
+**Service building access junctions.** A node where a building's own access road meets a public road (same building
+for every owned arm, at least one public arm, 3+ road arms) is a normal selectable junction, boxed with the junction
+mouth algorithm. Without signals and without any STOP / Give Way on the arms, the building road arm is treated as
+yielding (log `building access junction: the building's own road arm yields`); signs and signals stand as set. Still excluded: nodes whose
+road arms all belong to the building (inside a car park / depot), nodes of non-building assets, and nodes where two
+buildings' roads meet. Bulldozing: a box lives as a component on the building (exits) or on the node (junctions);
+deleting the building deletes its exit boxes; deleting the access road deletes or changes the node and its box is
+dropped (log line); if an exit moves the box follows its key within 2 m, else it is dropped with a log line. No orphans.
+
+**Save.** Exit boxes keep the component name `YellowBoxEntrance` (renaming it would orphan old saves); record
+version 2 = [2][length][flags][count][kind, x, z per exit]. 0.4.0-0.4.2 boxes (version 1, no exits) move on load to the
+exit nearest the old box centre (log `migrated`), or onto the junction node if that is the nearest exit, or are
+dropped when the building has no exit (log `DROPPED`). A 0.4.2 build reading a 0.4.3 save reads the flags and skips the
+rest by length; the game without the mod skips the whole block.
+
+**Bends (F1).** The exit point is held inside the box, and the slide that keeps the long sides on the carriageway is
+shared between both road mouths (sum-of-squares cost), so an exit off the window middle stays inside.
+
+| # | Do | Expect |
+|---|---|---|
+| X1 | Hover the Capper Street house (or its drive) | outline centred on the drawn driveway at the lot's right edge, not the lot middle |
+| X2 | Hover a car park or depot with two gates | each gate outlines on its own; two clicks = two boxes |
+| X3 | Load a save with 0.4.2 entrance boxes | log `migrated ... nearest of N exit(s)` per box; boxes on the drives; none left at lot middles |
+| X4 | Hover where a depot / hospital access road meets a public road (if one exists) | junction outline; log names the building road arm as yielding |
+| X5 | Hover inside a car park | no outline; log `inside a building's own network` |
+| X6 | Building with no drive (log `fallback`) | box at the lot-front middle as before |
+| X7 | Exit box on a bend | drive inside the box, both long sides on the carriageway |
+| X8 | Bulldoze a boxed house / its access road | box goes with it; log line; nothing left painted |
+
+Live note 16 Nov (read-only): every service building checked (bus depots, road maintenance, hospital, police, fire,
+car parks) joins its roads mid-road (driveways), none with an access road ending on a public node, so X4 may have no
+site in Bevy Valley today.
