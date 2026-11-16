@@ -94,6 +94,35 @@ namespace JunctionRules.Tests
             into.Add(3.5f, 4.5f, 0f);   // a car standing 3.5 m into the opposite driveway past the far lane
             Check(into.Blocked, "no room in the opposite driveway for the whole van: wait in the lot (room scan reads the path past the far lane)");
 
+            // --- live 17 Nov 07:36 (main's track, van 380864 leaving 40 Alderwood St by its sub-net driveway, edge 557049):
+            // standing in the lot (front ~267.4, sidewalk 266.25-269.25, westbound lane from 269.25), then 1.87 -> 4.64 m/s
+            // across the westbound lane in front of a westbound truck at 11.2 m/s, no trace line. Stock starts every update with
+            // m_MaxSpeed = speedRange.max = v + accel * dt (CarNavigationSystem 1503/1543, VehicleUtils.CalculateSpeedRange);
+            // 0.4.7 S2-29 scanned only when its hold (braking speed to the spot) was below that: a van pulling away from rest
+            // never satisfied it before it could no longer stop. Kinematics: accel 3, braking 8 m/s^2, dt 4/15 s, spot 0.95 m ahead.
+            {
+                float sv = 0f, w = 0.95f, a = 3f, br = 8f, dt = 4f / 15f;
+                int oldScans = 0, newScans = 0, holdable = 0;
+                for (int i = 0; i < 20 && w > -2f; i++)
+                {
+                    float braking = sv * sv / (2f * br);
+                    bool canHold = ExitGiveWay.CanHold(w, 0.9f, braking);
+                    float hold = (float)Math.Sqrt(2f * br * Math.Max(0f, w));
+                    float currentMax = sv + a * dt;
+                    if (canHold)
+                    {
+                        holdable++;
+                        if (hold < currentMax) oldScans++;
+                        if (ExitGiveWay.MustJudge(hold, currentMax, w)) newScans++;
+                    }
+                    float nv = Math.Min(currentMax, 13.9f);
+                    w -= 0.5f * (sv + nv) * dt;
+                    sv = nv;
+                }
+                Check(holdable > 0 && oldScans == 0, $"0.4.7 gate: the van pulling away from rest was never judged while it could still stop ({holdable} holdable updates, {oldScans} scans) - the Alderwood van");
+                Check(newScans == holdable, $"0.4.8: judged on every update while it can still stop ({newScans}/{holdable})");
+            }
+
             // --- judged on every update near the spot (0.4.7 hold < currentMax hole) ---
             Check(ExitGiveWay.MustJudge(3f, 1f, 5f), "creeping under a lower limit 5 m before the spot: judged");
             Check(ExitGiveWay.MustJudge(1f, 3f, 40f), "exit hold binding: judged (0.4.7)");

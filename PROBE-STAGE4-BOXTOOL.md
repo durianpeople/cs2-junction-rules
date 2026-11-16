@@ -948,8 +948,13 @@ line showed `entrance band holds: leaving driveway 128` (car-steps) unchanged fo
    across the near lane.
 2. A road vehicle standing before the exit never counted as traffic (a jam far back must not block an exit for ever),
    so the westbound lorry, held just before the box band, was ignored and the exit pulled out in front of it.
-3. The exit was judged only while its own hold was the tightest limit; a vehicle creeping under another limit reached
-   its spot without a decision.
+3. ROOT CAUSE seen live (07:36, van 380864 leaving 40 Alderwood St by its sub-net driveway onto edge 557049, tracked
+   by main): the exit was judged only while its own hold was the tightest limit. The game starts every update with the
+   limit = current speed + one step of acceleration, so a vehicle pulling away from a stop a metre or two before its
+   spot is NEVER judged (its hold, the braking speed to the spot, is always higher) until it can no longer stop: the van
+   went 0 -> 1.9 -> 4.6 m/s across the westbound lane in front of a lorry at 11.2 m/s. 0.4.8 judges every update within
+   12 m of the spot. (The driveway is the sub-net node joined to the road's middle: the game's SideConnection drive lane,
+   the path S2-29 handles; no other hidden path.)
 4. The time a lorry needs was the time to REACH the near lane, not to CLEAR it with its whole length.
 5. The 0.4.7 exit trace could not show any of this: a driveway decision is never written (drive lines say `building
    none ... judged before the hand-over ... boxed no`; the boxed flag was only set by the other exit paths, box
