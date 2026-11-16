@@ -194,5 +194,95 @@ namespace JunctionRules.Tests
                 Check(r0.Outline != null, $"F1 R={R}: old overload still builds");
             }
         }
+
+        /// <summary>Arc centre line of radius R from angle 0, 'len' m long (centre (0, R)), 'n' segments.</summary>
+        private static List<V3> Arc(double R, double len, int n = 16)
+        {
+            var c = new List<V3>();
+            for (int i = 0; i <= n; i++) { double a = (i / (double)n) * (len / R); c.Add(new V3(R * Math.Sin(a), 0, R - R * Math.Cos(a))); }
+            return c;
+        }
+
+        private static V2 OnArc(double R, double along, double offsetOut) { double a = along / R, r = R + offsetOut; return new V2(r * Math.Sin(a), R - r * Math.Cos(a)); }
+
+        private static double SegDist(V2 p, V2 a, V2 b)
+        {
+            V2 d = b - a;
+            double l2 = V2.Dot(d, d);
+            double t = l2 > 1e-12 ? Math.Max(0, Math.Min(1, V2.Dot(p - a, d) / l2)) : 0;
+            return V2.Distance(p, a + d * t);
+        }
+
+        /// <summary>
+        /// 0.4.3 (review finding on 007c, bend): an exit box on a bend keeps the exit point inside, shares the slide
+        /// between both road mouths, stays straight-sided (4 corners, every side a straight chord on the carriageway) and
+        /// keeps the marking margin. Tight (R 20 / 30 m) and medium (R 60 / 100 m) bends; exit on the centre curve (as
+        /// BoxShapes passes it), off-centre toward either window end, and on the inner / outer half.
+        /// </summary>
+        private static void BendExitTests()
+        {
+            const double half = 8, foot = 3, margin = 0.5, window = 8;   // carriageway 5 m each side of the centre line
+            foreach (double R in new[] { 20.0, 30.0, 60.0, 100.0 })
+            {
+                string bend = R <= 30 ? "tight" : "medium";
+                var c = Arc(R, window);
+                var ctr = new V2(0, R);
+                foreach (double along in new[] { 4.0, 2.2, 5.8 })
+                    foreach (double off in new[] { 0.0, -3.5, 3.5 })
+                    {
+                        V2 exit = OnArc(R, along, off);
+                        string tag = $"{bend} bend R={R}, exit {along:0.0} m along, {off:+0.0;-0.0;0} m off the centre";
+                        var r = EntranceBox.BuildStraight(c, half, foot, foot, null, margin, exit);
+                        Check(r.Outline != null, $"{tag}: box built " + r.Failure);
+                        if (r.Outline == null) continue;
+                        var xz = BoxPaintGeometry.ToXZ(r.Outline);
+                        Check(BoxPaintGeometry.Contains(xz, exit, 1e-3), $"{tag}: exit point inside the box (shifts {r.Shift[0]:0.00} | {r.Shift[1]:0.00})");
+                        Check(r.Outline.Count == 4, $"{tag}: straight-sided, 4 corners ({r.Outline.Count})");
+                        double worst = 0;
+                        foreach (var sg in BoxHover.Segments(r.Outline))
+                            for (int k = 0; k <= 40; k++)
+                            {
+                                double rad = V2.Distance(sg.A.XZ + (sg.B.XZ - sg.A.XZ) * (k / 40.0), ctr);
+                                worst = Math.Max(worst, Math.Max((R - 5) - rad, rad - (R + 5)));
+                            }
+                        Check(worst <= StraightBox.KerbTolerance + 0.005, $"{tag}: every straight side on the carriageway (worst {worst:0.000} m over)");
+                        double s0 = r.Shift[0], s1 = r.Shift[1];
+                        if (R <= 30 && along == 4.0 && off == 0.0) Check(s0 + s1 > 0.3 && s0 > 0 && s1 > 0, $"{tag}: the tight bend forces a slide, shared ({s0:0.00} | {s1:0.00})");
+                        // shared slide: when the bend forces a slide of more than 0.3 m, neither mouth carries it alone
+                        // unless the exit pins that mouth's side (exit near the other end)
+                        if (s0 + s1 > 0.3 && Math.Abs(along - window / 2) < 0.5)
+                            Check(s0 > 0 && s1 > 0 && Math.Abs(s0 - s1) < 0.5 * (s0 + s1), $"{tag}: centred exit: slide shared by both mouths ({s0:0.00} | {s1:0.00})");
+                        if (s0 + s1 > 0.3)
+                        {
+                            // the mouth nearer the exit never slides past it
+                            double startPast = s0 - along, endPast = s1 - (window - along);
+                            Check(startPast < 0 && endPast < 0, $"{tag}: neither mouth slid past the exit ({s0:0.00} | {s1:0.00})");
+                        }
+                    }
+            }
+
+            // Marking margin on a bend: a stop line across the road 0.3 m past the window end (painted 0.3 m wide). The
+            // box keeps 'margin' clear of its painted edge, the exit stays inside.
+            foreach (double R in new[] { 25.0, 60.0 })
+            {
+                var c = Arc(R, window);
+                double lineAlong = window + 0.3;
+                var strip = new CrosswalkStrip(OnArc(R, lineAlong, -5), OnArc(R, lineAlong, 5), 0.3, true);
+                V2 exit = OnArc(R, 6.0, 0);
+                var r = EntranceBox.BuildStraight(c, half, foot, foot, new List<CrosswalkStrip> { strip }, margin, exit);
+                Check(r.Outline != null, $"bend R={R} with a stop line 0.3 m past the window: box built " + r.Failure);
+                if (r.Outline == null) continue;
+                var xz = BoxPaintGeometry.ToXZ(r.Outline);
+                Check(BoxPaintGeometry.Contains(xz, exit, 1e-3), $"bend R={R} with a stop line: exit still inside");
+                double minD = double.MaxValue;
+                for (int k = 0; k < xz.Count; k++)
+                {
+                    V2 a = xz[k], b = xz[(k + 1) % xz.Count];
+                    for (int q = 0; q <= 40; q++) minD = Math.Min(minD, SegDist(a + (b - a) * (q / 40.0), strip.A, strip.B));
+                }
+                double clear = minD - strip.Width / 2;
+                Check(clear >= margin - 0.02, $"bend R={R}: box edge {clear:0.00} m clear of the stop line's painted edge (margin {margin} m)");
+            }
+        }
     }
 }
