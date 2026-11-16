@@ -180,6 +180,24 @@
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
         "reason": "OnDestroy: frees the counter array."
+      },
+      "S2-25": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "0.4.1 (JR-T-009): CheckOverlappingLanes, after S2-04, only with the setting 'Cars never stop on a zebra': a node lane with zebras gets the zebra sections as its waiting spots (Core/ZebraSections.cs) and the car is held before the next zebra section while there is no room for the whole vehicle past it (Core RoomScan)."
+      },
+      "S2-26": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
+        },
+        "reason": "0.4.1 (JR-T-009): UpdateNavigationTarget, after S2-21, only with the zebra setting: hands the car's navigation lanes to its iterator for the room-past scan; whole vehicle length (trailers incl.) also with the stock gap rule."
+      },
+      "S2-27": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "0.4.1 (JR-T-009): after S2-08b, counters only: a zebra entry held for people."
       }
     }
   }

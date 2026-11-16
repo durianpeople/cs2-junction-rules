@@ -287,7 +287,7 @@ namespace JunctionRules.Tests
             string core = File.ReadAllText(Path.Combine(root, "JunctionRules", "Core", "StretchRule.cs"));
             string code = System.Text.RegularExpressions.Regex.Replace(core, @"//.*", "");
             Check(!System.Text.RegularExpressions.Regex.IsMatch(code, @"\bnew\s+\w"), "stretch rule code has no 'new' (no managed allocation)");
-            Check(Stage2Counters.SafetyStops == 4 && Stage2Counters.SafetyStopEvents == 5 && Stage2Counters.Count == 24 + 2 * PointBuckets.Count, "0.2.4 counters (0.2.3 set + four feeding-scan + two turn counters) + 0.3.2 four crossing counters + 0.3.3 three");
+            Check(Stage2Counters.SafetyStops == 4 && Stage2Counters.SafetyStopEvents == 5 && Stage2Counters.Count == 28 + 2 * PointBuckets.Count, "0.2.4 counters (0.2.3 set + four feeding-scan + two turn counters) + 0.3.2 four crossing counters + 0.3.3 three + 0.4.1 four zebra counters");
             Check(Stage2Counters.IsBinding(true, 1f, 1f) && !Stage2Counters.IsBinding(true, 2f, 1f) && !Stage2Counters.IsBinding(false, 0f, 1f), "safety counter counts braking or standing on the stop");
         }
     }
