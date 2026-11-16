@@ -43,15 +43,16 @@ namespace JunctionRules.Core
         public string Step(JunctionGapRule rule, bool counting, out int mode, JunctionWaitingSpot spot = JunctionWaitingSpot.BeforeFirstCrossing,
             bool turnGivesWay = false, bool leftHandTraffic = false, bool noPushPeople = false, bool zebraClear = false,
             float zebraMargin = RoomScan.DefaultMargin, bool boxObey = false, bool boxTurnWait = true, bool anyJunctionBox = false,
-            bool anyEntranceBox = false, float entranceLength = 8f, bool exitGiveWay = false)
+            bool anyEntranceBox = false, float entranceLength = 8f, bool exitGiveWay = false, bool unmarkedGiveWay = false)
         {
             // 0.4.2 (JR-T-010): the yellow box bits (traffic side from the same leftHandTraffic the turn rule reads).
             int boxBits = Stage2Mode.BoxBits(boxObey, boxTurnWait, leftHandTraffic, anyJunctionBox, anyEntranceBox, entranceLength);
-            mode = Stage2Mode.For(rule, counting, spot, turnGivesWay, leftHandTraffic, noPushPeople, zebraClear, zebraMargin, boxBits, exitGiveWay);
+            mode = Stage2Mode.For(rule, counting, spot, turnGivesWay, leftHandTraffic, noPushPeople, zebraClear, zebraMargin, boxBits, exitGiveWay, unmarkedGiveWay);
             if (m_Has && mode == m_Mode) return null;
             bool first = !m_Has;
             bool ruleChanged = !first && ((mode ^ m_Mode) & (Stage2Mode.Rule | Stage2Mode.AtLine | Stage2Mode.TurnGivesWay | Stage2Mode.LeftHandTraffic | Stage2Mode.NoPushPeople | Stage2Mode.ZebraClear | Stage2Mode.ZebraMarginMask
-                | Stage2Mode.BoxObey | Stage2Mode.BoxTurnWait | Stage2Mode.BoxLeftHand | Stage2Mode.BoxEntranceMask | Stage2Mode.ExitGiveWay)) != 0;
+                | Stage2Mode.BoxObey | Stage2Mode.BoxTurnWait | Stage2Mode.BoxLeftHand | Stage2Mode.BoxEntranceMask | Stage2Mode.ExitGiveWay
+                | Stage2Mode.UnmarkedGiveWay)) != 0;
             bool boxesChanged = !first && ((mode ^ m_Mode) & (Stage2Mode.BoxJunctions | Stage2Mode.BoxEntrances)) != 0;
             m_Has = true;
             int old = m_Mode;

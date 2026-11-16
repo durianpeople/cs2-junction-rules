@@ -126,6 +126,16 @@ namespace JunctionRules.Settings
         [SettingsUISection(kSection, kDrivingGroup)]
         public bool ExitGiveWay { get; set; }
 
+        // JR-T-014d (G11) BEGIN
+        /// <summary>
+        /// 0.4.8 (JR-T-014d, owner rule G11 17 Nov 2026): people crossing where there is no zebra (unmarked crossings) have
+        /// no right of way. They wait at the kerb until approaching cars leave a safe gap (Systems/UnmarkedCrossingSystem.cs);
+        /// cars do not hold for them, but never drive into a person already on the carriageway. Default on; off = 0.4.7.
+        /// </summary>
+        [SettingsUISection(kSection, kDrivingGroup)]
+        public bool PeopleGiveWayUnmarked { get; set; }
+        // JR-T-014d (G11) END
+
         /// <summary>Read-only: what runs now and the version gate result.</summary>
         [SettingsUISection(kSection, kDrivingGroup)]
         public string Status => StatusText();
@@ -334,6 +344,7 @@ namespace JunctionRules.Settings
             ZebraNonBlocking = true;
             ZebraRoomMargin = RoomScan.DefaultMargin;
             ExitGiveWay = true;
+            PeopleGiveWayUnmarked = true; // JR-T-014d (G11)
             BoxObey = true;
             HideMarkingsUnderBoxes = false;
             BoxTurnWait = true;
@@ -429,6 +440,12 @@ namespace JunctionRules.Settings
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.ExitGiveWay)), "Vehicles leaving buildings give way" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.ExitGiveWay)),
                     "\"Cars coming out of ANY building must give way, and when that building exit is a yellow box, must ALSO obey the yellow box rules.\" On (default): a car, van, truck or bus leaving any building (a drive, a car park or a depot gate) waits at the exit until every road lane it crosses or merges into is clear: no vehicle on that lane, in the junction before it or on the road before that junction would reach the exit before it is out of the way, judged from the approaching vehicles' speed as with the Whole junction gap rule (a vehicle stopped by a red light, or by amber when it can stop, does not count). This works at every exit, boxed or not. At an exit you gave a yellow box, the car must also have room past the box (Cars obey yellow boxes): both must hold. Vehicles on the road are not held for it (apart from the yellow box rules). On-duty emergency vehicles leave as in the game. There is no time limit: an exit onto a road that never clears waits until it does. Off: the 0.4.3 behaviour. Works with either junction gap rule, only while Car driving is the Junction Rules copy. Changes take effect at the next simulation step." },
+
+                // JR-T-014d (G11) BEGIN
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.PeopleGiveWayUnmarked)), "People give way at unmarked crossings" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.PeopleGiveWayUnmarked)),
+                    "On (default): people crossing a road where there is no zebra and no signal (an unmarked crossing) have no right of way. They wait at the kerb until the approaching cars leave a safe gap: no car on the lanes they cross, or about to turn into them, would reach them before they are across plus one second, judged from the cars' speed and braking distance. Cars do not stop for people waiting at or walking up to an unmarked crossing, but a car always stops for a person already on the road. Zebras and signal crossings work as before. Off: the 0.4.7 behaviour (cars give way to people at unmarked crossings as at zebras). Only while Car driving is the Junction Rules copy. Changes take effect at the next simulation step." },
+                // JR-T-014d (G11) END
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.Status)), "Status" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.Status)), "What runs now, the result of the version check made at game start, and whether the copy can run (set up at the first simulation step). Reopen the options page to refresh." },

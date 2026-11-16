@@ -98,7 +98,7 @@ namespace JunctionRules.Tests
             string block = it.Substring(s35, it.IndexOf("JR-STAGE2 END", s35, StringComparison.Ordinal) - s35);
             Check(block.Contains("if (m_JR.m_BoxRule)") && block.Contains("m_JR.BoxTurnRoomHold(") && block.Contains("m_Blocker = Entity.Null;") && block.Contains("m_BlockerType = BlockerType.Continuing;"),
                 "S2-37 gated by the box setting, sets no blocker vehicle");
-            Check(it.Substring(0, 2000).Contains("S2-29, S2-37; see DEVIATIONS.md"), "iterator header lists S2-37");
+            Check(it.Substring(0, 2000).Contains("S2-29, S2-37") /* JR-T-014d: S2-50 ids follow */, "iterator header lists S2-37");
             string rules = File.ReadAllText(Path.Combine(root, "tools", "vanilla_rules.json"));
             string dev = File.ReadAllText(Path.Combine(root, "DEVIATIONS.md"));
             Check(rules.Contains("\"S2-37\"") && dev.Contains("| S2-37 |"), "S2-37 declared in vanilla_rules.json and DEVIATIONS.md");

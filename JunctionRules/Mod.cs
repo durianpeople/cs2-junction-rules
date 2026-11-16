@@ -95,6 +95,21 @@ namespace JunctionRules
                     log.Error(e, "registering the people-pass system failed; people wait for standing cars as in the game");
                 }
             }
+            // JR-T-014d (G11) BEGIN: people give way at unmarked crossings (person side, own system after the game's
+            // HumanNavigationSystem, no game code copied); its always-on diagnostics drain runs in the same system.
+            log.Info("settings (G11): people give way at unmarked crossings " + (Settings.PeopleGiveWayUnmarked ? "on" : "off"));
+            if (Gate.CopyAllowed)
+            {
+                try
+                {
+                    updateSystem.UpdateAfter<UnmarkedCrossingSystem, HumanNavigationSystem>(SystemUpdatePhase.GameSimulation);
+                }
+                catch (Exception e)
+                {
+                    log.Error(e, "registering the unmarked-crossing system failed; people cross unmarked crossings as in 0.4.7");
+                }
+            }
+            // JR-T-014d (G11) END
             // The switch runs ahead of the game's car navigation in every step, with or without the copy. Registered
             // last, after CopyRegistered is final: UpdateBefore creates the switch (runs its OnCreate) right here. The
             // switch does not depend on that order (it gets the copy lazily in its first update, see

@@ -269,6 +269,15 @@ namespace JunctionRules.Stage2
         /// <summary>This car-step the iterator checked a lane of the watched node (BeginLane).</summary>
         private bool m_WatchSeen;
 
+        // JR-T-014d (G11) BEGIN: people give way at unmarked crossings (methods in Stage2/JRUnmarkedCrossing.cs)
+        /// <summary>Setting "People give way at unmarked crossings" (Stage2Mode.UnmarkedGiveWay, stripped from m_Mode in Create).</summary>
+        public bool m_UnmarkedRule;
+        /// <summary>This car-step already counted a "not held for people" (always-on counter, once per car-step).</summary>
+        private bool m_UnmarkedSkipCounted;
+        /// <summary>This car-step already counted / recorded a safety-floor brake for a person already crossing.</summary>
+        private bool m_UnmarkedFloorCounted;
+        // JR-T-014d (G11) END
+
         public bool RuleOn
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -309,6 +318,8 @@ namespace JunctionRules.Stage2
             j.m_BoxTurnIndex = -1;
             // 0.4.4: and the exit give-way rule.
             j.m_ExitRule = (mode & Stage2Mode.ExitGiveWay) != 0;
+            // JR-T-014d (G11): and people give way at unmarked crossings.
+            j.m_UnmarkedRule = (mode & Stage2Mode.UnmarkedGiveWay) != 0;
             mode &= ~Stage2Mode.Stripped;
             j.m_Mode = mode;
             j.m_VehicleLength = vehicleLength;

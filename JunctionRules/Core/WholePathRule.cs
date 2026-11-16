@@ -75,9 +75,17 @@ namespace JunctionRules.Core
         /// rule; stripped from the job's stage 2 mode like <see cref="BoxObey"/>.
         /// </summary>
         public const int ExitGiveWay = 1 << 30;
+        // JR-T-014d (G11) BEGIN
+        /// <summary>
+        /// JR-T-014d (G11, owner rule 17 Nov 2026): setting "People give way at unmarked crossings" (Core/UnmarkedCrossing.cs),
+        /// independent of the gap rule; stripped from the job's stage 2 mode like <see cref="ExitGiveWay"/>. Bit 7 (the last free
+        /// bit below the zebra margin).
+        /// </summary>
+        public const int UnmarkedGiveWay = 1 << 7;
+        // JR-T-014d (G11) END
         /// <summary>Every bit the job side strips from the stage 2 mode (settings that are not part of the 0.2.x rule).</summary>
         public const int Stripped = NoPushPeople | ZebraClear | ZebraMarginMask | BoxObey | BoxTurnWait | BoxLeftHand | BoxJunctions | BoxEntrances | BoxEntranceMask
-            | ExitGiveWay;
+            | ExitGiveWay | UnmarkedGiveWay;
 
         /// <summary>0.4.2: the room margin bits alone (shared by the zebra and the yellow box rules).</summary>
         public static int MarginBits(float marginMetres)
@@ -115,14 +123,16 @@ namespace JunctionRules.Core
         /// </summary>
         public static int For(JunctionGapRule rule, bool counting, JunctionWaitingSpot spot = JunctionWaitingSpot.BeforeFirstCrossing,
             bool turnGivesWay = false, bool leftHandTraffic = false, bool noPushPeople = false, bool zebraClear = false,
-            float zebraMargin = RoomScan.DefaultMargin, int boxBits = 0, bool exitGiveWay = false) =>
+            float zebraMargin = RoomScan.DefaultMargin, int boxBits = 0, bool exitGiveWay = false, bool unmarkedGiveWay = false) =>
             (rule == JunctionGapRule.WholeJunction
                 ? Rule | (spot == JunctionWaitingSpot.StopLine ? AtLine : 0) | (turnGivesWay ? TurnGivesWay | (leftHandTraffic ? LeftHandTraffic : 0) : 0)
                 : 0) | (counting ? Count : 0) | (noPushPeople ? NoPushPeople : 0) | ZebraBits(zebraClear, zebraMargin)
             // 0.4.2: the yellow box bits (BoxBits); the shared room margin also when only the box rule is on.
             | ((boxBits & BoxObey) != 0 ? boxBits | MarginBits(zebraMargin) : 0)
             // 0.4.4: vehicles leaving buildings give way.
-            | (exitGiveWay ? ExitGiveWay : 0);
+            | (exitGiveWay ? ExitGiveWay : 0)
+            // JR-T-014d (G11): people give way at unmarked crossings.
+            | (unmarkedGiveWay ? UnmarkedGiveWay : 0);
 
         public static string RuleName(int mode) =>
             ((mode & Rule) == 0 ? "stock"
@@ -134,7 +144,8 @@ namespace JunctionRules.Core
                 + " m, entrance band " + BoxEntranceLength(mode).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " m; "
                 + ((mode & BoxTurnWait) != 0 ? "turning across oncoming may wait in the box, " + ((mode & BoxLeftHand) != 0 ? "left" : "right") + "-hand traffic" : "no waiting in the box")
                 + ")" : "")
-            + ((mode & ExitGiveWay) != 0 ? "; vehicles leaving buildings give way" : "");
+            + ((mode & ExitGiveWay) != 0 ? "; vehicles leaving buildings give way" : "")
+            + ((mode & UnmarkedGiveWay) != 0 ? "; people give way at unmarked crossings" : "");
     }
 
     /// <summary>

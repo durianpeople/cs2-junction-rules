@@ -6,7 +6,7 @@
 // tools/vanilla_rules.json (and DEVIATIONS.md) and run `python3 tools/vanilla_copy.py generate`.
 // Changes applied: R-01, R-02, R-03, D-01 (see DEVIATIONS.md). Logic is otherwise the game's, unchanged.
 // Exception: hand-written code only inside '// JR-STAGE2 BEGIN <id>' ... '// JR-STAGE2 END' blocks
-// (S2-01, S2-02, S2-03, S2-04, S2-05, S2-06, S2-07, S2-08, S2-08b, S2-09, S2-10, S2-11, S2-11b, S2-12, S2-13, S2-25, S2-27, S2-28, S2-28b, S2-29, S2-37; see DEVIATIONS.md). `check` proves everything outside them is the above.
+// (S2-01, S2-02, S2-03, S2-04, S2-05, S2-06, S2-07, S2-08, S2-08b, S2-09, S2-10, S2-11, S2-11b, S2-12, S2-13, S2-25, S2-27, S2-28, S2-28b, S2-29, S2-37, S2-50, S2-50b; see DEVIATIONS.md). `check` proves everything outside them is the above.
 // ==== end of header; the code below is the game's, changed only as listed in DEVIATIONS.md ====
 
 using System;
@@ -1464,6 +1464,16 @@ public struct JRCarLaneSpeedIterator
 				}
 				if (m_CreatureData.HasComponent(laneObject.m_LaneObject))
 				{
+					// JR-STAGE2 BEGIN S2-50: JR-T-014d (G11) unmarked crossing: no give-way to a person at / approaching it (counted against the game's check); a person already on its carriageway: the game's check at the crossing (safety floor)
+					int jrUnmarked = m_JR.m_UnmarkedRule ? m_JR.UnmarkedPerson(lane, m_Lane, laneObject.m_LaneObject, m_Curve, ref m_PedestrianLaneData, ref m_LaneSignalData, ref m_CarLaneData, ref m_LaneOverlapData, ref m_TransformData, ref m_MovingData) : 0;
+					if (jrUnmarked == JunctionRules.Core.UnmarkedCrossing.Skip)
+					{
+						if (m_JR.UnmarkedNeedsCounterfactual) { float jrUMax = m_MaxSpeed; Entity jrUBlocker = m_Blocker; BlockerType jrUType = m_BlockerType; CheckPedestrian(overlapLine, laneObject.m_LaneObject, laneObject.m_CurvePosition.y, num5, giveSpace, inverse); m_JR.AfterUnmarkedSkip(jrUMax, m_MaxSpeed); m_MaxSpeed = jrUMax; m_Blocker = jrUBlocker; m_BlockerType = jrUType; }
+						continue;
+					}
+					bool jrUScope = jrInScope; float jrUFloorMax = m_MaxSpeed;
+					if (jrUnmarked == JunctionRules.Core.UnmarkedCrossing.Floor) jrInScope = false;
+					// JR-STAGE2 END
 					// JR-STAGE2 BEGIN S2-08: pedestrian on a crossing of the path: wait at the spot before commit; 0.3.2: never push through people (the game's check runs against an open limit)
 					float jrPedNum5 = num5;
 					num5 = m_JR.PedestrianDistance(jrInScope, num5);
@@ -1477,6 +1487,9 @@ public struct JRCarLaneSpeedIterator
 					// JR-STAGE2 END
 					// JR-STAGE2 BEGIN S2-27: 0.4.1 counters only: a zebra entry held for people
 					if (jrInScope) m_JR.AfterPedestrian(jrPedMax, m_MaxSpeed);
+					// JR-STAGE2 END
+					// JR-STAGE2 BEGIN S2-50b: JR-T-014d (G11) safety floor diagnostics (a car braked for a person already crossing unmarked); scope restored for the next lane object
+					if (jrUnmarked == JunctionRules.Core.UnmarkedCrossing.Floor) { m_JR.AfterUnmarkedFloor(jrUFloorMax, m_MaxSpeed, m_CurrentSpeed, m_Entity, laneObject.m_LaneObject, ref m_TransformData); jrInScope = jrUScope; }
 					// JR-STAGE2 END
 					continue;
 				}

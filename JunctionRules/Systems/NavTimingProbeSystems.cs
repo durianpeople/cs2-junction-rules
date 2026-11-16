@@ -222,9 +222,22 @@ namespace JunctionRules.Systems
         private readonly long[] m_Totals = new long[Stage2Counters.Count];
         private readonly long[] m_Start = new long[Stage2Counters.Count];
         private bool m_HasStart;
+        // JR-T-014d (G11) BEGIN: unmarked-crossing counters (always on, Systems/UnmarkedTrace.cs) at the window start.
+        private long m_UStartNotHeld, m_UStartPeople, m_UStartFloor;
+        private bool m_UHasStart;
+        // JR-T-014d (G11) END
 
         protected override void OpenWindow()
         {
+            // JR-T-014d (G11) BEGIN
+            m_UHasStart = UnmarkedTrace.Ready;
+            if (m_UHasStart)
+            {
+                m_UStartNotHeld = UnmarkedTrace.Read(UnmarkedTraceLayout.CarStepsNotHeld);
+                m_UStartPeople = UnmarkedTrace.Read(UnmarkedTraceLayout.PeopleHeld);
+                m_UStartFloor = UnmarkedTrace.Read(UnmarkedTraceLayout.FloorStops);
+            }
+            // JR-T-014d (G11) END
             m_RuleMask = 0;
             m_PushMask = 0;
             m_ZebraMask = 0;
@@ -254,6 +267,12 @@ namespace JunctionRules.Systems
                 for (int i = 0; i < deltas.Length; i++) deltas[i] = m_Totals[i] - m_Start[i];
             }
             string suffix = Stage2Counters.Format(m_RuleMask, deltas, m_PushMask, m_ZebraMask, m_BoxMask, m_ExitMask);
+            // JR-T-014d (G11) BEGIN
+            bool jrU = m_UHasStart && UnmarkedTrace.Ready;
+            suffix += UnmarkedCrossingCounts.Format(jrU ? UnmarkedTrace.Read(UnmarkedTraceLayout.CarStepsNotHeld) - m_UStartNotHeld : -1,
+                jrU ? UnmarkedTrace.Read(UnmarkedTraceLayout.PeopleHeld) - m_UStartPeople : -1,
+                jrU ? UnmarkedTrace.Read(UnmarkedTraceLayout.FloorStops) - m_UStartFloor : -1);
+            // JR-T-014d (G11) END
             OpenWindow();
             return suffix;
         }
