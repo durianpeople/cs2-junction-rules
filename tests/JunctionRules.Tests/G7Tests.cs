@@ -128,6 +128,7 @@ namespace JunctionRules.Tests
             Check(tu.Contains("NOT judged before the sidewalk"), "trace: an unjudged one names itself");
             long roomWait = ExitTrace.Pack(ExitTrace.Event.Wait, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, ExitGiveWay.Decision.WaitRoom, ExitTrace.ReasonDecided, false);
             Check(ExitTrace.Format(1, 0, roomWait, 0).Contains("wait (no room on the lane it joins)"), "trace: the room wait");
+            Check(ExitTrace.Format(1, 0, stuck0(), 0, ExitTrace.PackPoint(-1983.2f, 266.4f)).Contains(" at (-1983.2, 266.4)") && ExitTrace.PointText(0) == "", "trace: the exit position is named (0 = none)");
 
             // --- compact trace (0.4.8, on by default) ---
             Check(ExitTrace.Notable(unjudgedFacts) && !ExitTrace.Notable(judgedFacts) && !ExitTrace.Notable(roomWait), "notable: a sidewalk crossing without a judgement; a judged one and a normal wait are only sampled");
@@ -158,6 +159,8 @@ namespace JunctionRules.Tests
             Check(line.Contains("exits held before the sidewalk 7 (no room on the lane it joins 3)") && line.Contains("driveway exits crossing the sidewalk 12, of them without a full judgement 0 (must be 0); standing on the road after leaving a driveway (5 s+) 0; judged only on the sidewalk (could not stop before it) 0"),
                 "timing line: the sidewalk proof counters");
         }
+
+        private static long stuck0() => ExitTrace.Pack(ExitTrace.Event.StuckOnRoad, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, ExitGiveWay.Decision.Go, ExitTrace.ReasonDecided, false);
 
         private static void G7RepoTests()
         {

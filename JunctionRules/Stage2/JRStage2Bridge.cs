@@ -86,12 +86,12 @@ namespace JunctionRules.Stage2
         private static double s_TraceNow;
         private static readonly TraceSampler s_TraceSampler = new TraceSampler();
         private static readonly System.Func<int, long> s_ReadTrace = ReadTrace;
-        private static readonly System.Action<long, long, long, long> s_EmitTrace = EmitTrace;
+        private static readonly System.Action<long, long, long, long, long> s_EmitTrace = EmitTrace;
 
-        private static void EmitTrace(long v, long b, long f, long fr)
+        private static void EmitTrace(long v, long b, long f, long fr, long pt)
         {
             // 0.4.8 (owner: diagnostics on by default, compact): notable records always (rate limit), normal ones sampled.
-            if (s_TraceSampler.Allow(ExitTrace.Notable(f), s_TraceNow) && s_TraceLimiter.Allow(s_TraceNow)) Mod.log.Info(ExitTrace.Format(v, b, f, fr));
+            if (s_TraceSampler.Allow(ExitTrace.Notable(f), s_TraceNow) && s_TraceLimiter.Allow(s_TraceNow)) Mod.log.Info(ExitTrace.Format(v, b, f, fr, pt));
         }
 
         private static unsafe long ReadTrace(int i)

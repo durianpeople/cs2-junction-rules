@@ -1679,7 +1679,7 @@ public class JRCarNavigationSystem : GameSystemBase
 						blocker.m_Type = BlockerType.Crossing;
 					}
 					laneIterator.m_JR.TraceWait(m_JRSafetyEvents, entity, m_SimulationFrame);
-					laneIterator.m_JR.NoteExit(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane, num2, currentLane.m_Duration, ref laneIterator.m_CarLaneData);
+					laneIterator.m_JR.NoteExit(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane, num2, currentLane.m_Duration, ref laneIterator.m_CarLaneData, ref laneIterator.m_CurveData);
 					// this branch never reaches the counters of S2-22 (goto IL_0a0a)
 					if ((m_JRMode & JunctionRules.Core.Stage2Mode.Count) != 0)
 					{
@@ -1762,7 +1762,7 @@ public class JRCarNavigationSystem : GameSystemBase
 					}
 					// 0.4.7: the exit trace's first-wait line
 					laneIterator.m_JR.TraceWait(m_JRSafetyEvents, entity, m_SimulationFrame);
-					laneIterator.m_JR.NoteExit(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane, num2, currentLane.m_Duration, ref laneIterator.m_CarLaneData);
+					laneIterator.m_JR.NoteExit(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane, num2, currentLane.m_Duration, ref laneIterator.m_CarLaneData, ref laneIterator.m_CurveData);
 					// 0.4.6: this branch never reaches the counters below (goto IL_0a0a), so the lot exit's own counters were lost in 0.4.5
 					if ((m_JRMode & JunctionRules.Core.Stage2Mode.Count) != 0)
 					{
@@ -1813,7 +1813,7 @@ public class JRCarNavigationSystem : GameSystemBase
 			// 0.4.8 (G7): an exit's Go judgement (read back at its hand-over / drive entry) and the driveway trace "waits" line
 			if ((m_JRMode & JunctionRules.Core.Stage2Mode.Count) != 0 || m_JRExitTraceOn)
 			{
-				laneIterator.m_JR.NoteExit(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane, num2, currentLane.m_Duration, ref laneIterator.m_CarLaneData);
+				laneIterator.m_JR.NoteExit(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane, num2, currentLane.m_Duration, ref laneIterator.m_CarLaneData, ref laneIterator.m_CurveData);
 			}
 			// JR-STAGE2 END
 			if (laneIterator.m_TempBuffer.IsCreated)

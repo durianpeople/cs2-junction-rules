@@ -184,7 +184,7 @@ namespace JunctionRules.Core
     /// </summary>
     public static class ExitTrace
     {
-        public const int Words = 5;
+        public const int Words = 6;   // 0.4.8: + [5] exit point (x, z) as two floats
         public const int Slots = 256;
         /// <summary>Ring length: one head counter + the slots.</summary>
         public const int RingLength = 1 + Slots * Words;
@@ -250,8 +250,18 @@ namespace JunctionRules.Core
 
         public static long PackEntity(int index, int version) => (uint)index | ((long)version << 32);
 
+        /// <summary>0.4.8: an exit point (world x, z) in one word (two float bit patterns); 0 = none.</summary>
+        public static long PackPoint(float x, float z) => (long)(uint)System.BitConverter.SingleToInt32Bits(x) | ((long)(uint)System.BitConverter.SingleToInt32Bits(z) << 32);
+
+        public static string PointText(long point)
+        {
+            if (point == 0) return "";
+            float x = System.BitConverter.Int32BitsToSingle((int)(uint)point), z = System.BitConverter.Int32BitsToSingle((int)(point >> 32));
+            return " at (" + x.ToString("0.0", CultureInfo.InvariantCulture) + ", " + z.ToString("0.0", CultureInfo.InvariantCulture) + ")";
+        }
+
         /// <summary>One log line (main thread).</summary>
-        public static string Format(long vehicle, long building, long facts, long frameRoad)
+        public static string Format(long vehicle, long building, long facts, long frameRoad, long point = 0)
         {
             Unpack(facts, out Event e, out ExitPaths.Path path, out ExitPaths.LaneKind kind, out ExitGiveWay.Decision decision, out int reasons, out bool boxed);
             CultureInfo ci = CultureInfo.InvariantCulture;
@@ -271,7 +281,7 @@ namespace JunctionRules.Core
             if (e == Event.EnterDrive && (reasons & ReasonDecided) == 0) what = "NOTABLE crosses the sidewalk";
             if (e == Event.HandOver && (reasons & (ReasonDecided | ReasonEmergency)) == 0 && path != ExitPaths.Path.Drive) what = "NOTABLE joins road";
             return "exit trace: " + what + " vehicle " + Ent(vehicle) + " building " + bld
-                   + " path " + ExitPaths.Name(path) + " (" + ExitPaths.Name(kind) + ")"
+                   + " path " + ExitPaths.Name(path) + " (" + ExitPaths.Name(kind) + ")" + PointText(point)
                    + " road owner " + ((int)(frameRoad >> 32)).ToString(ci) + ((reasons & ReasonNodeJoin) != 0 ? " (junction)" : "")
                    + " decision " + decided + " boxed " + (boxed ? "yes" : "no") + " frame " + ((uint)frameRoad).ToString(ci);
         }
@@ -374,7 +384,11 @@ namespace JunctionRules.Core
         /// Reads every finished record up to head. read(i) = the ring value at i. emit(vehicle, building, facts, frameRoad).
         /// Returns the number of records emitted.
         /// </summary>
-        public int Drain(long head, System.Func<int, long> read, System.Action<long, long, long, long> emit)
+        public int Drain(long head, System.Func<int, long> read, System.Action<long, long, long, long> emit) =>
+            Drain(head, read, (v, bl, f, fr, pt) => emit(v, bl, f, fr));
+
+        /// <summary>0.4.8: as above with the record's exit point word ([5], <see cref="ExitTrace.PackPoint"/>).</summary>
+        public int Drain(long head, System.Func<int, long> read, System.Action<long, long, long, long, long> emit)
         {
             int n = 0;
             if (head - (m_Next - 1) > ExitTrace.Slots)
@@ -389,9 +403,9 @@ namespace JunctionRules.Core
                 long stamp = read(b);
                 if (stamp < m_Next) break;               // still being written: next step
                 if (stamp > m_Next) { Lost++; m_Next++; continue; }   // overwritten by a newer record
-                long v = read(b + 1), bl = read(b + 2), f = read(b + 3), fr = read(b + 4);
+                long v = read(b + 1), bl = read(b + 2), f = read(b + 3), fr = read(b + 4), pt = read(b + 5);
                 if (read(b) != m_Next) { Lost++; m_Next++; continue; }
-                emit(v, bl, f, fr);
+                emit(v, bl, f, fr, pt);
                 n++;
                 m_Next++;
             }

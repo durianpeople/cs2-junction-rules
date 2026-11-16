@@ -144,6 +144,7 @@ namespace JunctionRules.Stage2
                 if (laneConditions.TryGetComponent(lane, out LaneCondition condition)) VehicleUtils.ModifyDriveSpeed(ref drive, condition);
             }
             bool hasJoin = PathLaneAfter(lane, out CarNavigationLane joinNav);
+            if (curves.TryGetComponent(lane, out Curve driveCurve)) m_ExitPoint = driveCurve.m_Bezier.a.xz;   // trace: the exit (lot boundary)
             ExitReads reads = default;
             reads.m_Self = self;
             reads.m_OwnLane = lane;
@@ -519,7 +520,7 @@ namespace JunctionRules.Stage2
             // judgement (S2-29) taken while it could still stop before the sidewalk: this update's, or a recent one (NoteDrive).
             if (carLanes.TryGetComponent(next.m_Lane, out Game.Net.CarLane nextLane) && ExitGiveWay.IsDrivewayExitLane((uint)nextLane.m_Flags))
             {
-                DriveEntry(counters, eventTable, self, frame, from, next.m_Lane, count);
+                DriveEntry(counters, eventTable, self, frame, from, next.m_Lane, count, ref curves);
                 return;
             }
             if (!ExitJoinLane(from, 0, next, false, ref carLanes, ref curves, out _, out _, out Owner roadOwner)) return;
@@ -542,12 +543,12 @@ namespace JunctionRules.Stage2
             if (m_TraceOn)
             {
                 ExitPaths.LaneKind kind = ExitPaths.Kind((uint)fromFlags, isCar, side);
-                TraceWrite(m_TraceRing, self, building, ExitTrace.Pack(ExitTrace.Event.HandOver, path, kind, m_ExitDecision, TraceReasons(), m_ExitBoxed), frame, roadOwner.m_Owner);
+                TraceWrite(m_TraceRing, self, building, ExitTrace.Pack(ExitTrace.Event.HandOver, path, kind, m_ExitDecision, TraceReasons(), m_ExitBoxed), frame, roadOwner.m_Owner, HandOverPoint(from, path, next, ref curves));
             }
         }
 
         /// <summary>0.4.8 (G7): a vehicle enters a drive's leaving lane: counted, and "without a full judgement" when it has no fresh Go.</summary>
-        private unsafe void DriveEntry(NativeArray<long> counters, NativeArray<long> eventTable, Entity self, uint frame, Entity from, Entity drive, bool count)
+        private unsafe void DriveEntry(NativeArray<long> counters, NativeArray<long> eventTable, Entity self, uint frame, Entity from, Entity drive, bool count, ref ComponentLookup<Curve> curves)
         {
             if (m_ExitEmergency) return;   // on-duty emergency: stock, never judged (counted as emergency passthroughs)
             bool judged = (m_DriveJudged && m_DriveLane == drive && m_DriveDecision == ExitGiveWay.Decision.Go) || FreshGo(eventTable, self, frame);
@@ -560,7 +561,7 @@ namespace JunctionRules.Stage2
             {
                 Entity building = ExitBuilding(from);
                 int reasons = judged ? ExitTrace.ReasonDecided : 0;
-                TraceWrite(m_TraceRing, self, building, ExitTrace.Pack(ExitTrace.Event.EnterDrive, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, ExitGiveWay.Decision.Go, reasons, m_DriveBoxed), frame, OwnerOf(drive));
+                TraceWrite(m_TraceRing, self, building, ExitTrace.Pack(ExitTrace.Event.EnterDrive, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, ExitGiveWay.Decision.Go, reasons, m_DriveBoxed), frame, OwnerOf(drive), LaneStart(drive, ref curves));
             }
         }
 
@@ -578,6 +579,16 @@ namespace JunctionRules.Stage2
             return ExitGiveWay.GoStands(waited, lastWait, last);
         }
 
+        /// <summary>0.4.8 trace: a lane's start point (x, z) (a drive lane starts at the lot boundary: the exit's position).</summary>
+        private static float2 LaneStart(Entity lane, ref ComponentLookup<Curve> curves) => curves.TryGetComponent(lane, out Curve c) ? c.m_Bezier.a.xz : default;
+
+        /// <summary>0.4.8 trace: where a hand-over happens: a drive lane's start (the exit), else the join point on the road lane.</summary>
+        private static float2 HandOverPoint(Entity from, ExitPaths.Path path, CarNavigationLane next, ref ComponentLookup<Curve> curves)
+        {
+            if (path == ExitPaths.Path.Drive) return LaneStart(from, ref curves);
+            return curves.TryGetComponent(next.m_Lane, out Curve c) ? MathUtils.Position(c.m_Bezier, next.m_CurvePosition.x).xz : default;
+        }
+
         private Entity OwnerOf(Entity lane) => m_OwnerData.TryGetComponent(lane, out Owner o) ? o.m_Owner : Entity.Null;
 
         /// <summary>
@@ -586,7 +597,7 @@ namespace JunctionRules.Stage2
         /// for a driveway exit held before the sidewalk (once per wait episode).
         /// </summary>
         public void NoteExit(NativeArray<long> counters, NativeArray<long> eventTable, Entity self, uint frame, Entity currentLane, float speed, float laneSeconds,
-            ref ComponentLookup<Game.Net.CarLane> carLanes)
+            ref ComponentLookup<Game.Net.CarLane> carLanes, ref ComponentLookup<Curve> curves)
         {
             if (!m_ExitRule) return;
             // 0.4.8 diagnostics (on by default): a vehicle standing on a driveway's leaving lane = past the sidewalk, on / across
@@ -597,7 +608,7 @@ namespace JunctionRules.Stage2
             {
                 if (Counting && counters.IsCreated) Add(counters, Stage2Counters.ExitStuckOnRoad, 1);
                 if (m_TraceOn) TraceWrite(m_TraceRing, self, ExitBuilding(currentLane), ExitTrace.Pack(ExitTrace.Event.StuckOnRoad, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane,
-                    ExitGiveWay.Decision.Go, ExitTrace.ReasonDecided, false), frame, OwnerOf(currentLane));
+                    ExitGiveWay.Decision.Go, ExitTrace.ReasonDecided, false), frame, OwnerOf(currentLane), LaneStart(currentLane, ref curves));
             }
             bool held = m_HasDriveHold || m_ExitWaiting || m_HasExitHold || m_HasExitBox;
             if (m_TraceOn && held && standing && laneSeconds >= ExitTrace.LongHoldSeconds && ExitEvent(eventTable, self, frame, ExitGiveWay.LongHoldKind))
@@ -609,7 +620,7 @@ namespace JunctionRules.Stage2
                 ExitPaths.Path path = drive ? ExitPaths.Path.Drive : ExitPaths.Classify(m_ExitFromFlags, building != Entity.Null, isCar, false);
                 ExitPaths.LaneKind kind = drive ? ExitPaths.LaneKind.DriveLane : ExitPaths.Kind(m_ExitFromFlags, isCar, false);
                 TraceWrite(m_TraceRing, self, building, ExitTrace.Pack(ExitTrace.Event.LongHold, path, kind, drive ? m_DriveDecision : m_ExitDecision,
-                    ExitTrace.ReasonDecided | TraceReasons(), drive ? m_DriveBoxed : m_ExitBoxed), frame, drive ? OwnerOf(m_DriveLane) : m_ExitRoadOwner);
+                    ExitTrace.ReasonDecided | TraceReasons(), drive ? m_DriveBoxed : m_ExitBoxed), frame, drive ? OwnerOf(m_DriveLane) : m_ExitRoadOwner, m_ExitPoint);
             }
             // Any exit path's Go (S2-29 drive, S2-30/32/35/36 through ExitJoinWaits or a signalled arm): read back at its hand-over;
             // a Wait is recorded too (review F2: a Go older than the last Wait does not count).
@@ -630,7 +641,7 @@ namespace JunctionRules.Stage2
             {
                 Entity building = ExitBuilding(currentLane);
                 TraceWrite(m_TraceRing, self, building, ExitTrace.Pack(ExitTrace.Event.Wait, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, m_DriveDecision,
-                    ExitTrace.ReasonDecided | TraceReasons(), m_DriveBoxed), frame, OwnerOf(m_DriveLane));
+                    ExitTrace.ReasonDecided | TraceReasons(), m_DriveBoxed), frame, OwnerOf(m_DriveLane), m_ExitPoint);
             }
         }
 
@@ -668,7 +679,7 @@ namespace JunctionRules.Stage2
             bool isCar = m_ExitFrom != Entity.Null && m_LaneData.HasComponent(m_ExitFrom) && (m_ExitFromFlags & (uint)NotRoadLane) == 0;
             ExitPaths.Path path = ExitPaths.Classify(m_ExitFromFlags, building != Entity.Null, isCar, false);
             ExitPaths.LaneKind kind = ExitPaths.Kind(m_ExitFromFlags, isCar, false);
-            TraceWrite(m_TraceRing, self, building, ExitTrace.Pack(ExitTrace.Event.Wait, path, kind, m_ExitDecision, TraceReasons(), m_ExitBoxed), frame, m_ExitRoadOwner);
+            TraceWrite(m_TraceRing, self, building, ExitTrace.Pack(ExitTrace.Event.Wait, path, kind, m_ExitDecision, TraceReasons(), m_ExitBoxed), frame, m_ExitRoadOwner, m_ExitPoint);
         }
 
         /// <summary>0.4.7 (S2-26): the exit trace is on; ring = Stage2/JRStage2Bridge.cs TraceRing.</summary>
@@ -684,7 +695,7 @@ namespace JunctionRules.Stage2
             | (m_ExitEmergency ? ExitTrace.ReasonEmergency : 0) | (m_ExitNodeJoin ? ExitTrace.ReasonNodeJoin : 0) | (m_ExitSignalArm ? ExitTrace.ReasonSignal : 0);
 
         /// <summary>One trace record (Core ExitTrace layout): the stamp is cleared first and written last, so the main-thread reader never takes a half-written record.</summary>
-        private static unsafe void TraceWrite(NativeArray<long> ring, Entity self, Entity building, long facts, uint frame, Entity roadOwner)
+        private static unsafe void TraceWrite(NativeArray<long> ring, Entity self, Entity building, long facts, uint frame, Entity roadOwner, float2 point)
         {
             if (!ring.IsCreated || ring.Length < ExitTrace.RingLength) return;
             long* p = (long*)NativeArrayUnsafeUtility.GetUnsafeBufferPointerWithoutChecks(ring);
@@ -695,6 +706,7 @@ namespace JunctionRules.Stage2
             p[b + 2] = building == Entity.Null ? 0L : ExitTrace.PackEntity(building.Index, building.Version);
             p[b + 3] = facts;
             p[b + 4] = (long)frame | ((long)roadOwner.Index << 32);
+            p[b + 5] = ExitTrace.PackPoint(point.x, point.y);
             Interlocked.Exchange(ref p[b], seq);
         }
 
@@ -757,6 +769,7 @@ namespace JunctionRules.Stage2
             reads.m_Geometries = geometries;
             ExitBudget budget = default;
             float joinM = t * roadCurve.m_Length;
+            m_ExitPoint = MathUtils.Position(roadCurve.m_Bezier, t).xz;   // trace: the join point
             float ownLength = m_VehicleLength > 0f ? m_VehicleLength : 4f;
             // The road lane it joins: it appears there with its body behind the join point (it drives on from there).
             bool busy = ConflictBusy(road, roadCurve, joinM - ownLength, joinM + 1f, delta, ref reads, ref budget);

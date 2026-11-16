@@ -257,6 +257,8 @@ namespace JunctionRules.Stage2
         private bool m_DriveRoomHold;
         /// <summary>Review F4: the decision was taken at the first road lane, the vehicle could no longer stop before the sidewalk.</summary>
         private bool m_DriveLate;
+        /// <summary>0.4.8 trace: the exit's position (drive lane start / join point) of this update's decision.</summary>
+        private float2 m_ExitPoint;
         /// <summary>Setting "Exit trace (log)": the ring (Stage2/JRStage2Bridge.cs TraceRing) handed in by S2-26 SetTrace.</summary>
         private bool m_TraceOn;
         private NativeArray<long> m_TraceRing;
