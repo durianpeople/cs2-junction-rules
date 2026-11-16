@@ -70,6 +70,19 @@ namespace JunctionRules.Core
         /// before it. <see cref="ZebraLayout.ExtraIndex"/> tells where it went (-1 = left out).
         /// </summary>
         public static bool Build<T>(ref T list, bool sections, bool atLine, float laneLength, float margin, float vehicleLength, float extraSpot, out ZebraLayout layout)
+            where T : struct, IPathElements => Build(ref list, sections, atLine, laneLength, margin, vehicleLength, extraSpot, -1f, out layout);
+
+        /// <summary>
+        /// 0.4.2 (owner refinement of the 0.4.1 sections, 16 Nov 2026): as above; with <paramref name="sections"/> and
+        /// <paramref name="gapMargin"/> &gt;= 0 (the room margin) a zebra followed by a gap O big enough for the whole
+        /// vehicle plus the stop margin plus <paramref name="gapMargin"/> before the first vehicle point C after it (Z O C C)
+        /// gets a waiting spot at O (the start of that C, a section without a zebra): the car crosses Z when Z is clear of
+        /// people and O is free (room past Z), waits at O, and the Cs are decided at O (the normal whole-junction decision).
+        /// A section therefore ends at the next WAITING SPOT (a point where the whole vehicle stands clear of every zebra
+        /// behind it), which is not always the next zebra. No such gap (Z C C): the 0.4.1 layout. Only right after a zebra:
+        /// 0.2.3 has no other mid-junction waiting spots. <paramref name="gapMargin"/> &lt; 0 = off (the 0.4.1 layout).
+        /// </summary>
+        public static bool Build<T>(ref T list, bool sections, bool atLine, float laneLength, float margin, float vehicleLength, float extraSpot, float gapMargin, out ZebraLayout layout)
             where T : struct, IPathElements
         {
             layout = default;
@@ -92,18 +105,31 @@ namespace JunctionRules.Core
                 {
                     spots.Add(zs);
                     layout.SetZebra(0, zs);
-                    continue;
-                }
-                float prev = PreviousEnd(ref list, sections, zs);
-                if (CrossingPoint.Fits(laneLength, zs, prev, margin, vehicleLength) && spots.Add(zs))
-                {
-                    layout.SetZebra(spots.Count - 1, zs);
                 }
                 else
                 {
-                    // Detail 2 / ZCZ: no room to wait before this zebra clear of what lies behind: one decision with the section before.
-                    layout.SetZebra(spots.Count - 1, zs);
-                    layout.Merged++;
+                    float prev = PreviousEnd(ref list, sections, zs);
+                    if (CrossingPoint.Fits(laneLength, zs, prev, margin, vehicleLength) && spots.Add(zs))
+                    {
+                        layout.SetZebra(spots.Count - 1, zs);
+                    }
+                    else
+                    {
+                        // Detail 2 / ZCZ: no room to wait before this zebra clear of what lies behind: one decision with the section before.
+                        layout.SetZebra(spots.Count - 1, zs);
+                        layout.Merged++;
+                    }
+                }
+                // 0.4.2 Z O C: a waiting gap after this zebra, before the next zebra.
+                if (sections && gapMargin >= 0f)
+                {
+                    float o = NextPointAfter(ref list, zs);
+                    float nextZebra = j + 1 < z.Count ? z.Start(j + 1) : 2f;
+                    if (o < 1f && o < nextZebra - WholePathRule.SpotEpsilon && o > spots[spots.Count - 1] + WholePathRule.SpotEpsilon
+                        && CrossingPoint.Fits(laneLength, o, PreviousEnd(ref list, true, o), margin + gapMargin, vehicleLength) && spots.Add(o))
+                    {
+                        layout.Gaps++;
+                    }
                 }
             }
             // The stop-line variant first (0.4.2: before the extra spot goes in; section membership is the same either way).
@@ -127,6 +153,18 @@ namespace JunctionRules.Core
             layout.Spots = spots;
             layout.LastEnd = layout.SectionEnd(spots.Count - 1);
             return true;
+        }
+
+        /// <summary>0.4.2: start of the first vehicle point (not a zebra) that starts after <paramref name="u"/>; 2 = none.</summary>
+        public static float NextPointAfter<T>(ref T list, float u) where T : struct, IPathElements
+        {
+            float next = 2f;
+            for (int i = 0; i < list.Count; i++)
+            {
+                list.Get(i, out int kind, out float s, out _);
+                if ((kind & SpotPoint) != 0 && (kind & Zebra) == 0 && s > u + WholePathRule.SpotEpsilon && s < next) next = s;
+            }
+            return next;
         }
 
         /// <summary>
@@ -180,7 +218,9 @@ namespace JunctionRules.Core
             if (next < 0 || next >= layout.Spots.Count) return 0;
             int merged = 0;
             float prev = layout.Spots[next];
-            while (next + 1 < layout.Spots.Count && layout.HasZebra(next + 1))
+            // 0.4.2: every following spot, not only zebra ones (a Z O gap spot or the box turn spot the car cannot stop at
+            // any more is decided at the earlier spot too). 0.4.1 layouts had no other spots after the first.
+            while (next + 1 < layout.Spots.Count)
             {
                 float s = layout.Spots[next + 1];
                 if (!(braking > laneLength * (s - prev))) break;
@@ -247,6 +287,8 @@ namespace JunctionRules.Core
         public int Merged;
         /// <summary>0.4.2: index of the extra (yellow box turn) spot in <see cref="Spots"/>, -1 = none.</summary>
         public int ExtraIndex;
+        /// <summary>0.4.2: Z O waiting gaps (sections without a zebra right after one).</summary>
+        public int Gaps;
         /// <summary>0.4.1 (JR-T-009-r): zebra sections merged this car-step because the car cannot stop before them (<see cref="ZebraSections.MergeUnstoppable"/>).</summary>
         public int EarlyMerged;
         /// <summary>Bit k: section k holds a zebra.</summary>

@@ -521,7 +521,9 @@ namespace JunctionRules.Stage2
             elements.m_Pedestrian = pedestrianLanes;
             bool atLine = RuleOn && ((m_Mode & Stage2Mode.AtLine) != 0 || m_BoxLane);
             // 0.4.2: a boxed junction lane: stop-line decision and the turner's spot in the box, where the zebra rule allows it.
-            if (!ZebraSections.Build(ref elements, RuleOn, atLine, length, margin, m_VehicleLength, m_BoxLane ? m_BoxTurnSpot : 2f, out ZebraLayout layout)) return float.MaxValue;
+            // Z O gaps (a waiting spot right after a zebra, owner refinement) everywhere but inside a box (the box decides at the line).
+            if (!ZebraSections.Build(ref elements, RuleOn, atLine, length, margin, m_VehicleLength, m_BoxLane ? m_BoxTurnSpot : 2f, m_BoxLane ? -1f : m_RoomMargin,
+                    out ZebraLayout layout)) return float.MaxValue;
             if (m_BoxLane) m_BoxTurnIndex = layout.ExtraIndex;
             m_ZebraStarts = default;
             for (int i = 0; i < overlaps.Length; i++)

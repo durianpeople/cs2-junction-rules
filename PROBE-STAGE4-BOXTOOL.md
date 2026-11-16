@@ -278,11 +278,33 @@ Checks (copy on; timing log on; gap rule as named):
 | Y8 | Boxed entrance, main road queue standing past it | Main-road cars stop before the band, the driveway stays open |
 | Y9 | Same, vehicle leaving the driveway into a standing queue | Waits in the driveway until the target lane has room past the band |
 | Y10 | **Cars obey yellow boxes** off, then on (no restart) | Off: 0.4.1 behaviour (vehicles may stop in the box); log says "obey yellow boxes switched in this window" |
+| Y11 | A zebra with a car-length gap before the first crossing traffic (Z O C C), Whole junction | Car crosses the zebra once it is clear of people and the gap is free, waits in the gap for the crossing traffic; never on the zebra |
+| Y12 | Same, gap occupied by a waiting car | The next car waits before the zebra |
+| Y13 | Z13 (section 10) again | "lane objects out of curve order" may stay above 0: from 0.4.2 it is a diagnostic only (the scan reads lanes in curve order) |
 
 Timing log (copy's line): `; obey yellow boxes on|off|switched in this window` and, while on, `; box entries held N,
 right-turn waits N; entrance band holds: main road N, leaving driveway N` (car-steps standing held at a box line, a
 turner waiting at its turn spot inside a box, cars held before an entrance band, cars held in a driveway). The switch
 line also names the boxes the rule sees (`yellow boxes present: junctions yes|no, entrances yes|no`).
+
+**Zebra sections refined (0.4.2, owner 16 Nov; applies with "Cars never stop on a zebra" too, not only at boxes).** A
+section ends at the next WAITING SPOT, the next point where the whole vehicle (+ stop margin + room margin) stands
+clear of every zebra behind it, which is not always the next zebra. Z O C C: when the gap O after a zebra holds the
+whole vehicle before the first crossing point C, the car enters the zebra once it is clear of people and O is free
+(room past the zebra up to O), then waits at O; the Cs are decided at O with the normal Whole junction decision. No
+such gap (Z C C): as 0.4.1, the Cs decided before the zebra. Only right after a zebra: 0.2.3 has no other
+mid-junction waiting spots, and a car too fast to stop at O decides the Cs before the zebra (as the JR-T-009-r early
+decision). Whole junction only (with Stock there are no C sections). Inside a yellow box there is no O spot (the box
+decides at the line); a gap BEFORE a box (a mid-block zebra, then the road up to the box) works the same way: the car
+crosses the zebra into the free gap and the box rule applies at the box line.
+
+**Lane objects out of curve order (live 0.4.1: 2 then 4 per window), cause:** the game keeps each lane's LaneObject
+buffer sorted by the objects' TARGET curve position (`m_CurvePosition.y`; NetUtils.AddLaneObject / UpdateLaneObject),
+not by where they are (`.x`), so a car whose target lies short of the lane end (stopping) sits in the buffer before a
+car behind it that drives on. 0.4.1 read the buffer in storage order and could therefore judge "no room" wrongly (a
+near car read after a far one). 0.4.2 reads each lane in curve order (Core ScanOrder; cost one pass per vehicle read,
+the scan stops after a few vehicles, and it now also stops once the next vehicle is past the window). The counter
+stays as a diagnostic.
 
 Deadlock notes (report, no safeguard by brief):
 - Gridlock moves to the box entry: if the exit never clears, vehicles stand at the line indefinitely (by design).
@@ -291,3 +313,4 @@ Deadlock notes (report, no safeguard by brief):
 - A boxed entrance in front of a queue that never clears keeps the driveway vehicle waiting (it never joins).
 - Vehicles from another arm already in the box are not counted against the exit (only the own path ahead).
 - An unknown rest of the path (destination, parking, end of the read lanes) counts as free, as in section 10.
+- Z O: a car waiting at O blocks the zebra for nobody, but cars behind it wait before the zebra (O occupied) until it goes.

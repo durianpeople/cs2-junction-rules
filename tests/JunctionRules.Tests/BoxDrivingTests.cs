@@ -209,5 +209,103 @@ namespace JunctionRules.Tests
             string dev = File.ReadAllText(Path.Combine(root, "DEVIATIONS.md"));
             Check(dev.Contains("S2-28") && dev.Contains("0.4.2"), "DEVIATIONS lists the box blocks");
         }
+
+        /// <summary>Keys stored in a given order (float.MaxValue = skipped entry).</summary>
+        private struct TKeys : IOrderKeys
+        {
+            public float[] K;
+            public int Count => K.Length;
+            public float Key(int i) => K[i];
+        }
+
+        /// <summary>Feeds (rear, length) vehicles into a RoomScan in key order (ScanOrder) or in storage order.</summary>
+        private static bool FeedRoom(bool ordered, float need, params (float Rear, float Len)[] v)
+        {
+            var r = RoomScan.Begin(need, 1f);
+            var keys = new TKeys { K = new float[v.Length] };
+            for (int i = 0; i < v.Length; i++) keys.K[i] = v[i].Rear;
+            if (!ordered)
+            {
+                foreach (var x in v) r.Add(x.Rear, x.Len, 0f);
+                return r.HasRoom;
+            }
+            float last = float.MinValue; int li = -1;
+            for (int g = 0; g < v.Length; g++)
+            {
+                int j = ScanOrder.Next(ref keys, last, li);
+                if (j < 0) break;
+                last = keys.Key(j); li = j;
+                r.Add(v[j].Rear, v[j].Len, 0f);
+            }
+            return r.HasRoom;
+        }
+
+        private static void ScanOrderTests()
+        {
+            var k = new TKeys { K = new[] { 0.5f, 0.2f, 0.9f, float.MaxValue, 0.2f } };
+            int a = ScanOrder.Next(ref k, float.MinValue, -1);
+            int b = ScanOrder.Next(ref k, k.Key(a), a);
+            int c = ScanOrder.Next(ref k, k.Key(b), b);
+            int d = ScanOrder.Next(ref k, k.Key(c), c);
+            int e = ScanOrder.Next(ref k, k.Key(d), d);
+            Check(a == 1 && b == 4 && c == 0 && d == 2 && e == -1, "ScanOrder: ascending key, ties by index, skipped entries left out (" + a + b + c + d + e + ")");
+            Check(!ScanOrder.InOrder(ref k), "buffer out of order detected (probe counter)");
+            var sorted = new TKeys { K = new[] { 0.1f, float.MaxValue, 0.1f, 0.4f } };
+            Check(ScanOrder.InOrder(ref sorted), "sorted buffer (skips ignored)");
+            var empty = new TKeys { K = new float[0] };
+            Check(ScanOrder.Next(ref empty, float.MinValue, -1) == -1 && ScanOrder.InOrder(ref empty), "empty buffer");
+            // The live 0.4.1 case: the game sorts LaneObject by target position (.y); a car stopping short sits first.
+            // Buffer [car at 14 m, car at 8 m]: read in buffer order the near car looks 'behind' the far one (false hold).
+            Check(!FeedRoom(false, BCar, (14f, BCar), (8f, BCar)), "buffer order: false 'no room' (the 0.4.1 risk)");
+            Check(FeedRoom(true, BCar, (14f, BCar), (8f, BCar)), "curve order: room (8 m and 14 - 5.5 m both fit 5.5 m)");
+            Check(!FeedRoom(true, BCar, (14f, BCar), (3f, BCar)), "curve order still holds for a near standing car");
+            string job = File.ReadAllText(Path.Combine(RepoRoot(), "JunctionRules", "Stage2", "JRWholeJunction.cs"));
+            Check(job.Contains("ScanOrder.Next(ref keys, lastKey, lastIndex)") && !job.Contains("objects[inverse ? objects.Length - 1 - jj : jj]"), "ScanLane reads lane objects in curve order, not buffer order");
+        }
+
+        private static ZebraLayout GBuild(float vehicle, float gapMargin, params (int, float, float)[] items)
+        {
+            var list = new ZElems { Items = items };
+            Check(ZebraSections.Build(ref list, true, false, ZLane, M, vehicle, 2f, gapMargin, out ZebraLayout l), "layout built");
+            return l;
+        }
+
+        private static void ZebraGapTests()
+        {
+            // Lane 30 m, car 4.5 m, stop margin 0.9 m, room margin 1 m: a gap needs 6.4 m between the zebra and the C.
+            var zocc = GBuild(BCar, 1f, Zb(0f, 0.1f), Cv(0.4f, 0.45f), Cv(0.5f, 0.55f));
+            Check(zocc.Spots.Count == 2 && zocc.Spots[0] == 0f && Near(zocc.Spots[1], 0.4f) && zocc.HasZebra(0) && !zocc.HasZebra(1) && zocc.Gaps == 1,
+                "ZOCC: waiting spot O at the first C after the zebra");
+            Check(Near(zocc.SectionEnd(0), 0.1f) && zocc.Spots.StretchOf(0.4f) == 1 && zocc.Spots.StretchOf(0.5f) == 1, "ZOCC: Z's section is the zebra alone (room past Z = O free); the Cs are decided at O");
+            var zcc = GBuild(BCar, 1f, Zb(0f, 0.1f), Cv(0.15f, 0.2f), Cv(0.5f, 0.55f));
+            var zcc0 = GBuild(BCar, -1f, Zb(0f, 0.1f), Cv(0.15f, 0.2f), Cv(0.5f, 0.55f));
+            Check(zcc.Spots.Count == 1 && zcc.Gaps == 0 && Near(zcc.LastEnd, zcc0.LastEnd) && zcc.Spots.StretchOf(0.5f) == 0, "ZCC (no gap): unchanged 0.4.1 layout, the Cs decided before Z");
+            var off = GBuild(BCar, -1f, Zb(0f, 0.1f), Cv(0.4f, 0.45f), Cv(0.5f, 0.55f));
+            Check(off.Spots.Count == 1 && off.Gaps == 0, "gap margin off (< 0): the 0.4.1 layout");
+            var bus = GBuild(BBus, 1f, Zb(0f, 0.1f), Cv(0.4f, 0.45f), Cv(0.5f, 0.55f));
+            Check(bus.Spots.Count == 1 && bus.Gaps == 0, "bus: 9 m gap does not take 12 m + margins, decided before Z");
+            var m3 = GBuild(BCar, 3f, Zb(0f, 0.1f), Cv(0.3f, 0.35f));
+            Check(m3.Gaps == 0 && GBuild(BCar, 0f, Zb(0f, 0.1f), Cv(0.3f, 0.35f)).Gaps == 1, "the room margin counts in the gap (6 m: margin 0 fits, 3 m does not)");
+            // ZOCZ: the later zebra fits after the C: its own section; it does not: merged into O (decided at O).
+            var zocz = GBuild(BCar, 1f, Zb(0f, 0.1f), Cv(0.4f, 0.45f), Zb(0.8f, 0.9f));
+            Check(zocz.Spots.Count == 3 && Near(zocz.Spots[1], 0.4f) && !zocz.HasZebra(1) && zocz.HasZebra(2) && Near(zocz.Spots[2], 0.8f), "ZOCZ: Z | O C | Z");
+            var zoczTight = GBuild(BCar, 1f, Zb(0f, 0.1f), Cv(0.4f, 0.45f), Zb(0.5f, 0.6f));
+            Check(zoczTight.Spots.Count == 2 && zoczTight.HasZebra(1) && Near(zoczTight.FirstZebra(1), 0.5f) && zoczTight.Merged == 1, "ZOCZ with the second zebra close: decided at O (C + Z2 + room past Z2)");
+            var zz = GBuild(BCar, 1f, Zb(0f, 0.1f), Zb(0.5f, 0.6f));
+            Check(zz.Gaps == 0 && zz.Spots.Count == 2, "Z Z without a C: no gap spot (zebra spots only)");
+            // O occupied by another car: no room past Z, the car waits before Z.
+            var free = RoomScan.Begin(BCar, 1f);
+            Check(free.HasRoom && free.Done((0.4f - 0.1f) * ZLane), "O free: room found inside the gap (scan ends there)");
+            var occ = RoomScan.Begin(BCar, 1f); occ.Add(2f, BCar, 0f);
+            Check(!occ.HasRoom, "O occupied (a car standing 2 m past Z): no room, wait before Z");
+            // Can no longer stop at O: O merges into Z (the Cs decided before Z), as JR-T-009-r.
+            var early = zocc;
+            Check(ZebraSections.MergeUnstoppable(ref early, 0, 15f, ZLane) == 1 && early.Spots.Count == 1 && early.Spots.StretchOf(0.4f) == 0, "car too fast to stop at O: Cs decided before Z");
+            var slow = zocc;
+            Check(ZebraSections.MergeUnstoppable(ref slow, 0, 5f, ZLane) == 0 && slow.Spots.Count == 2, "slow car keeps O");
+            // Room section: before Z it is Z's (room past Z = O free); at O no zebra follows: none (0.2.3: no exit-room check).
+            string job = File.ReadAllText(Path.Combine(RepoRoot(), "JunctionRules", "Stage2", "JRWholeJunction.cs"));
+            Check(job.Contains("m_BoxLane ? -1f : m_RoomMargin"), "job: gaps on, except inside a box (the box decides at the line)");
+        }
     }
 }
