@@ -30,6 +30,13 @@ namespace JunctionRules.Boxes
     ///   each hovered and toggled on its own: pointing at the building picks the exit nearest the cursor, pointing at the
     ///   road picks the exit on that road nearest the cursor, and the outline sits at the exit (the drive), not the lot
     ///   middle. An exit through the building's own access road is that junction node (junction box).
+    /// - JR-T-014c (G9 / G10, owner 17 Nov 2026): building targets are its real car ACCESSES: exits and entrances
+    ///   (BoxFacts.Accesses; Core/BuildingAccess.cs). Never the lot-front fallback: a building with no real car access is not
+    ///   selectable (a saved fallback key on it is offered for removal only). An entrance box comes with the building
+    ///   (derived, never saved): clicking a white entrance boxes the building (saves the lot-front marker key when no exit is
+    ///   boxed); clicking an orange one removes ALL the building's boxes. The hover draws an ARROW from the box mouth on the
+    ///   kerb to the access (Core AccessArrow): head at the box = exit, at the building = entrance, both = two-way; dashed =
+    ///   the lot-front fallback.
     /// - Left click (the game's Apply action): toggles the box component on the node / building (Boxes/BoxComponents.cs),
     ///   then asks the paint system to redraw at once.
     /// - Right click (the game's Cancel action) or Esc: back to the game's default tool.
@@ -56,6 +63,8 @@ namespace JunctionRules.Boxes
             public List<Entity> Sources;
             /// <summary>0.4.7 (G5): the solver's notes (footways, arms yield / priority, conflict points, shifts), logged with a no-shape refusal.</summary>
             public string Notes;
+            /// <summary>JR-T-014c (G10): the target's own box outline (the arrow starts on it); null for a junction.</summary>
+            public List<V3> Ring;
         }
         private readonly HoverCache<HoverShape> m_Cache = new HoverCache<HoverShape>();
         // F3: targets already warned about having no box shape (once per entity per tool session)
@@ -79,10 +88,26 @@ namespace JunctionRules.Boxes
             public BoxFacts.Exit Exit;       // exit: which exit (key = the saved name)
             /// <summary>Junction reached from a building (its own access road meets the public road here).</summary>
             public Entity FromBuilding;
+            /// <summary>JR-T-014c (G9 / G10): the target is an entrance (derived box) / a saved lot-front fallback (remove only).</summary>
+            public bool Entrance, Fallback;
+        }
+
+        /// <summary>JR-T-014c: one building's accesses (BoxFacts.Accesses), cached with the exit lists.</summary>
+        private sealed class AccessList
+        {
+            public List<BoxFacts.Exit> Exits, Entrances;
+            public BoxFacts.Exit FallbackExit;
+            public bool HasFallback;
+            /// <summary>Exits then entrances: every real access (G10 targets).</summary>
+            public IEnumerable<BoxFacts.Exit> All()
+            {
+                foreach (var x in Exits) yield return x;
+                foreach (var x in Entrances) yield return x;
+            }
         }
 
         // exits per building, re-read every kExitListFrames frames (hovering a road reads the exits of the buildings along it)
-        private readonly Dictionary<Entity, List<BoxFacts.Exit>> m_ExitCache = new Dictionary<Entity, List<BoxFacts.Exit>>();
+        private readonly Dictionary<Entity, AccessList> m_ExitCache = new Dictionary<Entity, AccessList>();
         private int m_ExitCacheAge;
 
         public override PrefabBase GetPrefab() => null;
@@ -154,7 +179,7 @@ namespace JunctionRules.Boxes
                         if (m_NoShapeWarned.Add((m_Hover.Entity, ExitSub(m_Hover))))   // review F5: once per exit, not per building
                             Mod.log.Warn($"yellow box tool: {What(m_Hover)} not selectable: {m_Hover.Why}" + (string.IsNullOrEmpty(h.Notes) ? "" : $"; notes: {h.Notes}"));
                     }
-                    else Draw(m_Hover, h.Segments);
+                    else Draw(m_Hover, h.Segments, h.Ring);
                 }
                 if (m_Hover.Kind != Kind.None && !m_Hover.Valid && !m_Hover.HasBox && !m_Hover.NoShape && m_Hover.Why != m_LastWhy)
                 {
@@ -214,10 +239,11 @@ namespace JunctionRules.Boxes
             return t;
         }
 
-        private List<BoxFacts.Exit> ExitsOf(Entity building)
+        private AccessList ExitsOf(Entity building)
         {
             if (m_ExitCache.TryGetValue(building, out var list)) return list;
-            list = BoxFacts.Exits(EntityManager, building, null);
+            list = new AccessList();
+            BoxFacts.Accesses(EntityManager, building, null, out list.Exits, out list.Entrances, out list.FallbackExit, out list.HasFallback);
             m_ExitCache[building] = list;
             return list;
         }
@@ -247,7 +273,7 @@ namespace JunctionRules.Boxes
             float bestD = float.MaxValue;
             foreach (Entity b in buildings)
             {
-                foreach (BoxFacts.Exit x in ExitsOf(b))
+                foreach (BoxFacts.Exit x in ExitsOf(b).All())
                 {
                     if (x.IsJunction || x.Road != edge) continue;
                     float d = math.distance(new float2((float)x.C.World.X, (float)x.C.World.Z), hitPos.xz);
@@ -260,8 +286,21 @@ namespace JunctionRules.Boxes
         /// <summary>Pointing at a building: its exit nearest the cursor (several exits = several targets, owner ruling 2).</summary>
         private Target NearestExitOfBuilding(Entity building, float3 hitPos)
         {
-            List<BoxFacts.Exit> exits = ExitsOf(building);
-            if (exits.Count == 0) return new Target { Kind = Kind.Exit, Entity = building, Why = "no car exit and no road access", Position = hitPos };
+            AccessList acc = ExitsOf(building);
+            var exits = new List<BoxFacts.Exit>(acc.All());
+            if (exits.Count == 0)
+            {
+                // JR-T-014c (G10): no real access = not selectable; a saved lot-front fallback key there is offered for removal
+                AccessRules.Targets(null, null, out string why);
+                if (acc.HasFallback && HasFallbackKey(building))
+                {
+                    Target f = ExitTarget(building, acc.FallbackExit);
+                    f.Valid = false;
+                    f.Why = why;
+                    return f;
+                }
+                return new Target { Kind = Kind.Exit, Entity = building, Why = why, Position = hitPos };
+            }
             int best = 0;
             float bestD = float.MaxValue;
             for (int i = 0; i < exits.Count; i++)
@@ -282,13 +321,24 @@ namespace JunctionRules.Boxes
         private Target ExitTarget(Entity building, BoxFacts.Exit exit)
         {
             EntityManager em = EntityManager;
-            var t = new Target { Kind = Kind.Exit, Entity = building, Exit = exit };
+            var t = new Target { Kind = Kind.Exit, Entity = building, Exit = exit, Entrance = exit.IsEntrance, Fallback = exit.IsFallback };
             t.Valid = BoxSelection.ExitOk(BoxFacts.ExitFacts(em, building, exit, out BoxFacts.Access a), out t.Why);
-            t.HasBox = BoxStore.HasExit(em, building, exit.C.Key);
+            // JR-T-014c (G9): an entrance is boxed with its building (any saved key); a fallback has a box when a Fallback key is saved
+            t.HasBox = exit.IsEntrance ? BoxStore.Has(em, building, false) : exit.IsFallback ? HasFallbackKey(building) : BoxStore.HasExit(em, building, exit.C.Key);
             t.Access = a;
             if (a.Valid) t.Position = a.Point;
             else if (em.HasComponent<Game.Objects.Transform>(building)) t.Position = em.GetComponentData<Game.Objects.Transform>(building).m_Position;
             return t;
+        }
+
+        /// <summary>JR-T-014c (G10): the building's component holds a lot-front Fallback key (marker / old fallback box).</summary>
+        private bool HasFallbackKey(Entity building)
+        {
+            EntityManager em = EntityManager;
+            if (!BoxStore.Has(em, building, false)) return false;
+            YellowBoxEntrance c = em.GetComponentData<YellowBoxEntrance>(building);
+            for (int i = 0; i < c.m_Exits.Length; i++) if (c.m_Exits[i].ExitKind == ExitKind.Fallback) return true;
+            return false;
         }
 
         /// <summary>
@@ -309,7 +359,8 @@ namespace JunctionRules.Boxes
             }
             Entity road = t.Access.Edge;
             ArmLabel? rl = road != Entity.Null && em.Exists(road) ? BoxShapes.Label(em, road, m_Names, m_Prefabs) : (ArmLabel?)null;
-            return $"building {t.Entity} exit {t.Exit.C.Key} [{t.Exit.C.Kind}] {BoxSelection.DescribeExit(pos, rl)}";
+            string role = t.Entrance ? "entrance" : t.Fallback ? "lot-front fallback" : (t.Exit.Way == AccessWay.Both ? "two-way access" : "exit");
+            return $"building {t.Entity} {role} {t.Exit.C.Key} [{t.Exit.C.Kind}] {BoxSelection.DescribeExit(pos, rl)}";
         }
 
         // ------------------------------------------------------------------ hover outline and click
@@ -320,7 +371,7 @@ namespace JunctionRules.Boxes
         /// styleFlags, Line3.Segment, width, roundness)) with outline = fill colour, outlineWidth 0, StyleFlags 0, width
         /// BoxHover.LineWidth, roundness (1, 1). Nothing is filled.
         /// </summary>
-        private void Draw(Target t, List<(V3 A, V3 B)> segs)
+        private void Draw(Target t, List<(V3 A, V3 B)> segs, List<V3> ring)
         {
             if (segs == null || segs.Count == 0) return;
             float[] rgba = BoxHover.Colour(t.HasBox);
@@ -331,6 +382,18 @@ namespace JunctionRules.Boxes
             {
                 var line = new Line3.Segment(new float3((float)a.X, (float)a.Y, (float)a.Z), new float3((float)b.X, (float)b.Y, (float)b.Z));
                 buffer.DrawLine(c, c, 0f, (OverlayRenderSystem.StyleFlags)0, line, BoxHover.LineWidth, new float2(1f, 1f));
+            }
+            // JR-T-014c (G10): the arrow from the box mouth on the kerb to the building access, same colour and line path
+            if (t.Kind == Kind.Exit && ring != null && t.Exit.HasInner)
+            {
+                float3 p = t.Exit.Inner;
+                AccessArrow arrow = AccessArrow.Build(ring, new V3(p.x, p.y, p.z), t.Exit.Way, t.Fallback);
+                if (arrow == null) return;
+                foreach (var (a, b) in arrow.Segments)
+                {
+                    var line = new Line3.Segment(new float3((float)a.X, (float)a.Y, (float)a.Z), new float3((float)b.X, (float)b.Y, (float)b.Z));
+                    buffer.DrawLine(c, c, 0f, (OverlayRenderSystem.StyleFlags)0, line, BoxHover.LineWidth, new float2(1f, 1f));
+                }
             }
         }
 
@@ -359,7 +422,7 @@ namespace JunctionRules.Boxes
                     shape.Outline, t.Kind == Kind.Exit && t.Access.Edge != Entity.Null ? SortedKeys.KeyOf(t.Access.Edge.Index, t.Access.Edge.Version) : 0, shape.Carriageways);
                 var segs = new List<(V3 A, V3 B)>();
                 foreach (List<V3> ring in MergedBoxes.HoverRings(self)) segs.AddRange(BoxHover.Segments(ring));
-                return new HoverShape { Segments = segs, Failure = null, Sources = sources, Notes = string.Join("; ", shape.Notes) };
+                return new HoverShape { Segments = segs, Failure = null, Sources = sources, Notes = string.Join("; ", shape.Notes), Ring = t.Kind == Kind.Exit ? shape.Outline : null };
             });
         }
 
@@ -392,6 +455,28 @@ namespace JunctionRules.Boxes
                 if (add) BoxStore.Add(em, t.Entity);
                 else BoxStore.Remove(em, t.Entity, true);
             }
+            else if (t.Entrance || t.Fallback)
+            {
+                // JR-T-014c (G9 / G10): entrances come with the building (derived); a fallback is a marker only
+                if (add)
+                {
+                    // not boxed yet (else HasBox): save the lot-front marker key, an existing record kind, never drawn
+                    AccessList acc = ExitsOf(t.Entity);
+                    if (!acc.HasFallback || !BoxStore.AddExit(em, t.Entity, acc.FallbackExit.C.Key))
+                    {
+                        Mod.log.Info($"yellow box tool: {What(t)}: the building has no road edge for its marker key; nothing changed");
+                        return;
+                    }
+                }
+                else if (t.Entrance) BoxStore.Remove(em, t.Entity, false);   // all the building's boxes (its entrances are boxed with it)
+                else
+                {
+                    YellowBoxEntrance c = em.GetComponentData<YellowBoxEntrance>(t.Entity);
+                    var keys = new List<ExitKey>();
+                    for (int i = 0; i < c.m_Exits.Length; i++) if (c.m_Exits[i].ExitKind == ExitKind.Fallback) keys.Add(c.m_Exits[i]);
+                    foreach (ExitKey k in keys) BoxStore.RemoveExit(em, t.Entity, k);
+                }
+            }
             else if (add)
             {
                 if (!BoxStore.AddExit(em, t.Entity, t.Exit.C.Key))
@@ -402,7 +487,8 @@ namespace JunctionRules.Boxes
             }
             else BoxStore.RemoveExit(em, t.Entity, t.Exit.C.Key);
             m_ExitCache.Clear();
-            string where = t.Kind == Kind.Junction ? "junction " + What(t) : $"{What(t)} (source: {t.Exit.C.Source})";
+            string where = t.Kind == Kind.Junction ? "junction " + What(t) : $"{What(t)} (source: {t.Exit.C.Source})"
+                + (t.Entrance ? (add ? "; the building's entrances are boxed with it" : "; removed ALL the building's boxes (entrances come with the building)") : "");
             Mod.log.Info($"yellow box tool: {(add ? "box added on" : "box removed from")} {where} at {t.Position}" + (!add && !t.Valid ? " (target no longer valid: " + t.Why + ")" : ""));
         }
     }

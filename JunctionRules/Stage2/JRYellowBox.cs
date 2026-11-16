@@ -155,6 +155,15 @@ namespace JunctionRules.Stage2
             {
                 float b0 = merged[m].x, b1 = merged[m].y;
                 BoxDriving.EntranceRole role = BoxDriving.Role(start, end, b0, b1, out float entry);
+                if (role == BoxDriving.EntranceRole.Entering)
+                {
+                    // JR-T-014c (G9): turning INTO the building inside this band: held before the band while its way in is full.
+                    float enterHold = EnteringHold(lane, edgeOwner.m_Owner, start, b0, laneLength, wait0, margin, car, currentSpeed, timeStep, safeTimeStep, speedRange,
+                        currentMax < result ? currentMax : result, self, ref braking, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs,
+                        ref geometries, ref prefabCars);
+                    if (enterHold < result) result = enterHold;
+                    continue;
+                }
                 if (role != BoxDriving.EntranceRole.Main && role != BoxDriving.EntranceRole.Leaving) continue;
                 bool inBand = m_FirstLane && start >= b0 - WholePathRule.SpotEpsilon;
                 float wait = wait0 + laneLength * (entry - start);
@@ -177,6 +186,52 @@ namespace JunctionRules.Stage2
                 }
             }
             return result;
+        }
+
+        /// <summary>
+        /// JR-T-014c (G9, owner 17 Nov 2026): a vehicle whose path leaves the road lane inside an exit / entrance band into a
+        /// building (BoxDriving.EntranceRole.Entering; 0.4.2-0.4.7 exempt) does not enter the band unless there is room for its
+        /// whole length (trailers included, m_VehicleLength) plus the room margin on its way in: the path lanes after this
+        /// road lane (the drive's connection lane, the drive / building lanes; up to MaxRoomLanes), read by the same RoomScan as
+        /// boxes and zebras (moving vehicles credit their braking distance, standing ones do not; the unknown rest and a path
+        /// that ends inside the building count as free). A lane change inside the band is not an entry (BoxDriving
+        /// .EnteringApplies). A car turning across oncoming traffic that has room enters and waits for the oncoming gap
+        /// inside the box at the game's own give-way of its connection lane (the UK in-box spot): only oncoming traffic stops
+        /// it there. Returns the speed limit or float.MaxValue.
+        /// </summary>
+        private float EnteringHold(Entity lane, Entity road, float start, float b0, float laneLength, float wait0, float margin, CarData car, float currentSpeed,
+            float timeStep, float safeTimeStep, Bounds1 speedRange, float currentMax, Entity self, ref float braking, ref ComponentLookup<Game.Net.CarLane> carLanes,
+            ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves, ref ComponentLookup<Moving> moving, ref ComponentLookup<Controller> controllers,
+            ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars)
+        {
+            int next = NextPathIndex(lane);
+            bool hasNext = next >= 0 && next < m_Path.Length;
+            // A lane change stays on an EDGE lane of the same road. The drive's way in starts on an edge CONNECTION lane, which
+            // the game also owns by the road edge but builds as a NodeLane, not an EdgeLane (LaneSystem.cs 645-653 owner = the
+            // edge; CreateCarEdgeConnections adds NodeLane): so only an EdgeLane of this road counts as staying on it.
+            Entity nextLane = hasNext ? m_Path[next].m_Lane : Entity.Null;
+            bool sameRoad = hasNext && m_EdgeLaneData.HasComponent(nextLane) && m_OwnerData.TryGetComponent(nextLane, out Owner nextOwner) && nextOwner.m_Owner == road;
+            if (!BoxDriving.EnteringApplies(hasNext, sameRoad)) return float.MaxValue;
+            float entry = BoxDriving.EnteringEntry(start, b0);
+            bool inBand = m_FirstLane && start >= b0 - WholePathRule.SpotEpsilon;
+            float wait = wait0 + laneLength * (entry - start);
+            if (braking < 0f) braking = VehicleUtils.GetBrakingDistance(car, currentSpeed, timeStep);
+            BoxDriving.Approach a = BoxDriving.Classify(inBand, wait, margin, braking);
+            if (a != BoxDriving.Approach.Check) return float.MaxValue;
+            float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, wait, safeTimeStep), speedRange);
+            if (!(hold < currentMax)) return float.MaxValue;
+            bool room = HasRoomInto(next, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars);
+            if (!BoxDriving.EnteringHolds(a, room)) return float.MaxValue;
+            if (Counting) Min(ref m_HasEntranceEntering, ref m_EntranceEnteringSpeed, hold);
+            return hold;
+        }
+
+        /// <summary>JR-T-014c: index in the car's navigation lanes of the lane after 'lane' (-1 = no path / not on it).</summary>
+        private int NextPathIndex(Entity lane)
+        {
+            if (!m_HasPath) return -1;
+            for (int i = 0; i < m_Path.Length; i++) if (m_Path[i].m_Lane == lane) return i + 1;
+            return lane == m_CurrentLane || lane == m_CurrentLane2 ? 0 : -1;
         }
 
         /// <summary>
