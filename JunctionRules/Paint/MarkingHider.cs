@@ -100,8 +100,8 @@ namespace JunctionRules.Paint
             foreach (var kv in wantLanes)
             {
                 if (m_Lanes.TryGetValue(kv.Key, out var have) && MarkingMask.SameRanges(have, kv.Value) && em.HasBuffer<CutRange>(kv.Key)) continue;
+                m_Lanes[kv.Key] = kv.Value;   // tracked BEFORE the write: a failure half way still leaves it in Clear / StripForSave's reach
                 CutLane(em, kv.Key, kv.Value);
-                m_Lanes[kv.Key] = kv.Value;
             }
 
             // objects
@@ -121,8 +121,8 @@ namespace JunctionRules.Paint
             }
             foreach (Entity o in wantObjects)
             {
+                m_Objects.Add(o);   // tracked before the write (see lanes)
                 if (!em.HasComponent<Hidden>(o)) Hide(em, o);
-                m_Objects.Add(o);
             }
             ForeignLanes = foreignLanes;
             ForeignObjects = foreignObjects;

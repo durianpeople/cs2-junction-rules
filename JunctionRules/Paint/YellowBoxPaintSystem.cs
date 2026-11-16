@@ -500,6 +500,7 @@ namespace JunctionRules.Paint
 
         private void LoadList()
         {
+            m_GroupCache.Clear();   // review: cached group triangles hold the old list's geometry / render / diag values
             string path = ListPath();
             if (!File.Exists(path))
             {
