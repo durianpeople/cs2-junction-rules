@@ -125,4 +125,9 @@
     <Message Importance="high" Text="JunctionRules deployed to $(ModDeployPath)" />
   </Target>
 
+  <!-- 0.4.0-probe: the UI module (toolbar button of the yellow box tool) lands next to the dll in every build output
+       (also with -o), so the staged folder carries it. -->
+  <ItemGroup>
+    <None Include="UI/JunctionRules.mjs" Link="JunctionRules.mjs" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

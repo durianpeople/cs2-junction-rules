@@ -35,6 +35,14 @@ oncoming straight, and the straight car no longer waits for the turner's reserva
 Analysis, per-case behaviour and owner rulings: `docs/STAGE2-ANALYSIS.md`;
 code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 
+Stage 4 probe (0.4.0-probe, JR-T-007; PROBE-STAGE4-BOXTOOL.md): the **yellow box tool** (toolbar button top left,
+Ctrl+Y, rebindable; Options > Yellow boxes). Click an at-grade road junction (3+ road arms; not highways, bridges,
+tunnels, elevated roads, roundabouts, level crossings, assets' own nodes) or a building's road access to add / remove a
+box; it is painted at once and saved with the city as a component on the node / building (Boxes/BoxComponents.cs,
+Core/BoxRecord.cs; a save loads cleanly without the mod, the box is skipped). Entrance box: kerb to kerb across the
+road, 8 m along it at the access. Bulldozing the node / building drops the box; an in-place node update keeps it.
+Paint only: no yellow-box driving rule yet. Also fixes the T-junction through-side kerb (one kerb, one inset).
+
 Stage 3 probe (0.3.0-probe, 0.3.1-probe): a **yellow box paint test**, visual only and default off. With **Yellow box paint test** on,
 the mod draws a UK yellow box (TSRGD diagram 1043; TSM chapter 5 dimensions: 200 mm border, 150 mm diagonals, 2 m /
 2.5 m spacing) on the junctions in `ModsData/JunctionRules/paint-test.json`, with the game's own surface shader and its
@@ -74,6 +82,8 @@ PROBE-STAGE3-PAINT.md section 10.
 - **Yellow box paint test** (stage 3 probe): off (default) or on; **what to draw** (Box / Plain fill / Outline only);
   **paint onto** (Roads (default) / Roads + Other / Everything but vehicles); buttons Refresh test list, Add junction at
   camera centre, Log paint cost now; Paint test status. See PROBE-STAGE3-PAINT.md.
+- **Yellow boxes** (0.4.0): **Yellow box tool shortcut** (default Ctrl+Y) and **Open / close the yellow box tool**.
+  Saved boxes are painted with the paint test's mode and layer settings whether or not the paint test is on.
 - **Status**: what runs now, the version check result, and whether the copy can run.
 - **Log navigation timing** (debug): one line per 1024 simulation frames with the navigation job timing of the pair
   that ran; the copy's line also names the junction gap rule and the stage 2 counters (0.2.3: whole-path decisions,
