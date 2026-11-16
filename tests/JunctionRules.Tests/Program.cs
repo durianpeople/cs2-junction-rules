@@ -106,6 +106,7 @@ namespace JunctionRules.Tests
             ("BoxMergeTests", BoxMergeTests),
             ("MedianSplitTests", MedianSplitTests),
             ("BoxMergeRepoTests", BoxMergeRepoTests),
+            ("ExitBandMergeTests", ExitBandMergeTests),
             ("ExitLayoutTests", ExitLayoutTests),
             ("ExitGapTests", ExitGapTests),
             ("ExitDecisionTests", ExitDecisionTests),

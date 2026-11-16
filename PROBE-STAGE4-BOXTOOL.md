@@ -655,7 +655,9 @@ the box should be about 8 m across (kerb at 9 m to median at 1 m).
 **Driving follows the paint.** Bands on one lane that overlap or touch are one interval for the hold (a car is held
 once before the whole group, never let into one exit's band and then held inside the next). A band that ends within
 2.5 m of the lane end where the car's next lane belongs to a boxed junction also needs room past that junction box
-(the paint joins the two).
+(the paint joins the two). 0.4.7: a car LEAVING a driveway inside a band (S2-30 / S2-32 / S2-35 / S2-36) reads the
+same band set: only bands on its side of a median, touching bands as one (it waits for room past the whole merged box,
+not just its own exit's band), and room past a boxed junction the band runs into.
 
 | # | Do | Expect |
 |---|---|---|
@@ -719,7 +721,8 @@ road lane with no gap or box check. The same branch also carried building parkin
 and a building's own road meeting a public junction. Now:
 - **S2-35** (spawn point, building parking, kerbside parking): the vehicle waits at its spawn point (hidden) or in its
   space, with the same decision as every exit: gap on the lane it joins and every lane it crosses, then room past the
-  band at a boxed exit. Kerbside parking is included (owner rule: a building exit is a yielding arm).
+  band at a boxed exit (the merged band on its side of the road, as cars driving along it: section 16.1). Kerbside
+  parking is included (owner rule: a building exit is a yielding arm).
 - **S2-36** (building road): a vehicle on a building's own road stops 1 m before the public junction and decides the
   same way; a signalled arm follows its signal.
 - **S2-33**: every held exit vehicle stays on its lane (the game cannot hand it to the road while it waits).

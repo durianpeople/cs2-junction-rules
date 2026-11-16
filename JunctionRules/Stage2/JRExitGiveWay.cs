@@ -543,6 +543,7 @@ namespace JunctionRules.Stage2
             Entity joinOwner = roadOwner.m_Owner;
             bool nodeJoin = !m_ExitEdgeData.HasComponent(joinOwner);
             m_ExitNodeJoin = nodeJoin;
+            m_ExitSignalArm = false;   // review F2: no stale "signalled arm" reason from an earlier decision of this vehicle
             if (!busy && nodeJoin)
             {
                 // 0.4.7: a junction lane (a lot / building road meeting the public road at a node). The lateral rule below is
@@ -640,7 +641,8 @@ namespace JunctionRules.Stage2
 
         /// <summary>
         /// 0.4.3 band rule for a connection exit: the join point t lies in a boxed exit's band on the road lane and there is
-        /// no room for the whole vehicle past the band (the same HasRoomPast as S2-28, entering the band at t).
+        /// no room for the whole vehicle past the band (the same HasRoomPast as S2-28, entering the band at t). 0.4.7: the
+        /// band set is BoxHold's (own carriageway only, touching bands merged, junction join at the lane end).
         /// </summary>
         private unsafe bool ExitBandBlocks(Entity road, float length, float t, Entity self, float safeTimeStep, out bool boxed,
             ref ComponentLookup<Game.Net.CarLane> carLanes, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves,
@@ -657,13 +659,34 @@ namespace JunctionRules.Stage2
             long edgeKey = bands->Key(first);
             float span = edgeLane.m_EdgeDelta.y - edgeLane.m_EdgeDelta.x;
             if (math.abs(span) < 1e-4f) return false;
+            // 0.4.7 (JR-T-013g, review F1): the same band set as S2-28 BoxHold (JRYellowBox.cs): only the bands of this lane's
+            // carriageway (#17 median), and bands that overlap or touch on this lane are ONE band (#17 merged boxes).
+            int carriageway = carLanes.TryGetComponent(road, out Game.Net.CarLane roadCarLane) ? roadCarLane.m_CarriagewayGroup : 0;
+            float touch = ExitBands.TouchMetres / length;
+            FixedList128Bytes<float2> merged = default;
             for (int i = first; i < bands->Count && bands->Key(i) == edgeKey; i++)
             {
+                if (!MedianSplit.InMask(bands->Mask(i), carriageway)) continue;
                 float access = (bands->T(i) - edgeLane.m_EdgeDelta.x) / span;
-                if (!BoxDriving.Band(access, length, m_BoxEntranceLength, false, out float b0, out float b1)) continue;
+                if (!BoxDriving.Band(access, length, m_BoxEntranceLength, false, out float nb0, out float nb1)) continue;
+                int last = merged.Length - 1;
+                if (last >= 0 && ExitBands.Touch(merged[last].x, merged[last].y, nb0, nb1, touch))
+                {
+                    merged[last] = math.float2(math.min(merged[last].x, nb0), math.max(merged[last].y, nb1));
+                    continue;
+                }
+                if (merged.Length >= merged.Capacity) break;
+                merged.Add(math.float2(nb0, nb1));
+            }
+            for (int m = 0; m < merged.Length; m++)
+            {
+                float b0 = merged[m].x, b1 = merged[m].y;
                 if (t < b0 - WholePathRule.SpotEpsilon || t > b1 + WholePathRule.SpotEpsilon) continue;
                 boxed = true;
-                bool room = HasRoomPast(road, b1, false, length, t, Entity.Null, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
+                // As BoxHold: a merged band reaching the lane end where the leaving car's path enters a boxed junction is one
+                // box with it, so room is needed past the junction box (its lanes count as inside the box).
+                Entity joined = (1f - b1) * length <= ExitBands.JunctionJoinMetres ? NextBoxedJunction(road) : Entity.Null;
+                bool room = HasRoomPast(road, b1, false, length, t, joined, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
                     ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes);
                 if (!room) return true;
             }
