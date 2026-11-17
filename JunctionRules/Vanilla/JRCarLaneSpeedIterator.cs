@@ -1474,8 +1474,8 @@ public struct JRCarLaneSpeedIterator
 					bool jrUScope = jrInScope; float jrUFloorMax = m_MaxSpeed;
 					if (jrUnmarked == JunctionRules.Core.UnmarkedCrossing.Floor) jrInScope = false;
 					// JR-STAGE2 END
-					// JR-STAGE2 BEGIN S2-53: 0.4.11 (G23, owner) a person who is not crossing (standing in the waiting area at the crossing's end, or standing at a red walk signal) never holds the car; the G11 floor (already on an unmarked crossing) keeps the game's check
-					if (m_JR.m_NoPushPeople && m_JR.PersonNotCrossing(m_Lane, laneObject.m_LaneObject, laneObject.m_CurvePosition.x, m_Curve.m_Length, ref m_MovingData, ref m_LaneSignalData) && jrUnmarked != JunctionRules.Core.UnmarkedCrossing.Floor)
+					// JR-STAGE2 BEGIN S2-53: 0.4.11 (G23, owner) a person who is not crossing (standing in the waiting area within 1 m of a pedestrian lane's end, where the game keeps people waiting for a walk signal) never holds the car; the G11 floor (already on an unmarked crossing) keeps the game's check
+					if (m_JR.m_NoPushPeople && m_JR.PersonNotCrossing(m_Lane, laneObject.m_LaneObject, laneObject.m_CurvePosition.x, m_Curve.m_Length, ref m_MovingData, ref m_LaneSignalData, jrUnmarked == JunctionRules.Core.UnmarkedCrossing.Floor))
 					{
 						continue;
 					}

@@ -1350,12 +1350,16 @@ namespace JunctionRules.Stage2
         /// counter of the next NoPushPedestrian call.
         /// </summary>
         public bool PersonNotCrossing(Entity crossing, Entity person, float personPos, float crossingLength, ref ComponentLookup<Moving> movingData,
-            ref ComponentLookup<LaneSignal> signals)
+            ref ComponentLookup<LaneSignal> signals, bool unmarkedFloor)
         {
+            // Final review F4: the G11 floor (a person already on an unmarked crossing) keeps the game's check: never skipped, not counted.
+            if (unmarkedFloor) { m_PersonWaitingNow = false; return false; }
             bool hasMoving = movingData.TryGetComponent(person, out Moving moving);
             bool standing = CrossingPush.Pedestrian(false, hasMoving, hasMoving ? math.lengthsq(moving.m_Velocity) : 0f) == CrossingPush.PushReason.Standing;
-            bool red = signals.TryGetComponent(crossing, out LaneSignal sig) && (sig.m_Signal == LaneSignalType.Stop || sig.m_Signal == LaneSignalType.SafeStop);
-            bool notCrossing = CrossingPush.NotCrossing(standing, CrossingPush.InWaitZone(personPos, crossingLength), red);
+            // Final review F1: no "red walk signal anywhere on the crossing" term: a person waiting for a red walk signal stays on the
+            // PREVIOUS lane (HumanNavigationSystem 779-796 / 1160-1171; ReferencesSystem 128-130 registers the lane object on it) at its
+            // end, i.e. in the waiting zone; a person standing out on a signalled crossing is crossing (never pushed through).
+            bool notCrossing = CrossingPush.NotCrossing(standing, CrossingPush.InWaitZone(personPos, crossingLength), false);
             m_PersonWaitingNow = notCrossing;
             if (notCrossing && Counting) m_PeopleWaitingSkipped = true;
             return notCrossing;

@@ -51,6 +51,10 @@ namespace JunctionRules.Tests
             Check(CrossingPush.InWaitZone(0.0f, len) && CrossingPush.InWaitZone(0.05f, len) && CrossingPush.InWaitZone(0.1f, len) && CrossingPush.InWaitZone(0.95f, len),
                 "0-1 m from either end of the crossing: the waiting area");
             Check(!CrossingPush.InWaitZone(0.12f, len) && !CrossingPush.InWaitZone(0.5f, len), "beyond 1 m: on the crossing");
+            Check(!CrossingPush.InWaitZone(0.5f, 2f) && CrossingPush.InWaitZone(0.2f, 2f) && !CrossingPush.InWaitZone(0.3f, 2f), "final review F3: a 2 m lane: the waiting area is its first / last 0.5 m, never the whole lane");
+            string wjs = File.ReadAllText(Path.Combine(RepoRoot(), "JunctionRules", "Stage2", "JRWholeJunction.cs"));
+            Check(wjs.Contains("bool notCrossing = CrossingPush.NotCrossing(standing, CrossingPush.InWaitZone(personPos, crossingLength), false);") && wjs.Contains("if (unmarkedFloor) { m_PersonWaitingNow = false; return false; }"),
+                "final review F1 / F4: no red-walk-anywhere skip (a person standing out on a signalled crossing still holds the car); the G11 floor is neither skipped nor counted");
             Check(CrossingPush.NotCrossing(true, true, false), "standing just off the kerb (the owner's case): not crossing, never holds the car");
             Check(CrossingPush.NotCrossing(true, false, true), "standing at a red walk signal, anywhere: not crossing (cars with green go)");
             Check(!CrossingPush.NotCrossing(false, true, false) && !CrossingPush.NotCrossing(false, false, true), "walking (stepping off, or late on red): crossing, the game brakes for them");
@@ -79,7 +83,7 @@ namespace JunctionRules.Tests
             string wj = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRWholeJunction.cs"));
             Check(wj.Contains("bool inPath = CrossingPush.PersonInPath(personPos, carRange.x, carRange.y, crossingLength);") && wj.Contains("CrossingPush.PedestrianSpeedInPath(true, reason, inPath, stock, fullStop)"), "NoPushPedestrian full-stops only people on the way");
             string ex = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRExitGiveWay.cs"));
-            Check(copy.Contains("if (m_JR.m_NoPushPeople && m_JR.PersonNotCrossing(m_Lane, laneObject.m_LaneObject, laneObject.m_CurvePosition.x, m_Curve.m_Length, ref m_MovingData, ref m_LaneSignalData) && jrUnmarked != JunctionRules.Core.UnmarkedCrossing.Floor)"),
+            Check(copy.Contains("if (m_JR.m_NoPushPeople && m_JR.PersonNotCrossing(m_Lane, laneObject.m_LaneObject, laneObject.m_CurvePosition.x, m_Curve.m_Length, ref m_MovingData, ref m_LaneSignalData, jrUnmarked == JunctionRules.Core.UnmarkedCrossing.Floor))"),
                 "S2-53: waiting people skipped before the game's pedestrian check; the G11 floor never skipped");
             int s53 = copy.IndexOf("JR-STAGE2 BEGIN S2-53", StringComparison.Ordinal), s08 = copy.IndexOf("JR-STAGE2 BEGIN S2-08:", StringComparison.Ordinal), s50 = copy.IndexOf("JR-STAGE2 BEGIN S2-50:", StringComparison.Ordinal);
             Check(s50 > 0 && s53 > s50 && s08 > s53, "S2-53 sits after S2-50 (G11) and before S2-08 (zebra / no-push)");

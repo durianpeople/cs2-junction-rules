@@ -82,26 +82,30 @@ namespace JunctionRules.Core
 
         /// <summary>
         /// 0.4.11 (G23, owner after watching it: "it was blocked by a pedestrian that waits a bit outside the kerb"): the
-        /// waiting area at each end of a crossing, metres along the crossing from its end. The game's waiting spot for a red
-        /// walk signal is the crossing lane's own end point (HumanNavigationSystem 1160-1171: WaitSignal, target =
-        /// CalculateTargetPos(crossing, its start, lane position) = the crossing's end offset SIDEWAYS along the kerb by the
-        /// person's lane position, CreatureUtils.GetLaneOffset), and the crossing ends where its pedestrian lane meets the
-        /// pavement, so a waiting person stands on that end with up to a body radius (~0.3-0.5 m) in front of it plus the
-        /// approach tolerance of the move system: 1 m covers it, and no-one is "crossing" before stepping 1 m off the end.
+        /// waiting area at each end of a pedestrian lane the car's path overlaps, metres along that lane from its end. A person
+        /// waiting for a red walk signal keeps the PREVIOUS lane (pavement / corner lane) as its current lane, standing at its
+        /// end with the WaitSignal flag, its target the crossing's start point offset sideways along the kerb
+        /// (HumanNavigationSystem 779-796 / 1160-1171: CalculateTargetPos(crossing, its start, lane position)); the lane object
+        /// sits in that previous lane's buffer (ReferencesSystem 128-130). That end lies on the kerb line, and the body
+        /// (radius ~0.3-0.5 m) plus the move system's approach tolerance spill up to about 1 m past it into the road: the
+        /// first metre from a lane end is the waiting area. Measured along the lane holding the person (the overlapped lane).
+        /// Final review F3: capped at a quarter of the lane, so a short lane is never wholly "waiting area".
         /// </summary>
         public const float WaitZoneMetres = 1f;
 
         /// <summary>0.4.11 (G23): the person's position on the crossing lies within the waiting area at either end.</summary>
         public static bool InWaitZone(float personPos, float laneLength)
         {
+            float zone = WaitZoneMetres < laneLength * 0.25f ? WaitZoneMetres : laneLength * 0.25f;
             float p = personPos * laneLength;
-            return p <= WaitZoneMetres || p >= laneLength - WaitZoneMetres;
+            return p <= zone || p >= laneLength - zone;
         }
 
         /// <summary>
-        /// 0.4.11 (G23, owner): a person is NOT crossing when standing (the game's "standing" test, speed^2 &lt; 0.01) AND either
-        /// in the waiting area at a crossing's end, or on a crossing whose walk signal is red / amber (people facing a red walk
-        /// signal never block cars that have green). People walking are crossing (the game brakes for them); a person standing
+        /// 0.4.11 (G23, owner): a person is NOT crossing when standing (the game's "standing" test, speed^2 &lt; 0.01) AND in the
+        /// waiting area at a lane end (people facing a red walk signal wait there: they never block cars that have green).
+        /// walkSignalRed is kept for the tests; the job passes false (final review F1: a person standing OUT on a signalled
+        /// crossing is crossing, never pushed through). People walking are crossing (the game brakes for them); a person standing
         /// on the car's way further out on the crossing is crossing (stopped mid-crossing: never pushed through).
         /// </summary>
         public static bool NotCrossing(bool standing, bool inWaitZone, bool walkSignalRed) => standing && (inWaitZone || walkSignalRed);

@@ -596,6 +596,7 @@ namespace JunctionRules.Core
             if (first.Outline == null && gamePairs == 0 && held == 0) return first;
             string why = first.Outline != null ? $"the 0.4.7 shape would cover a zebra / stop / give-way line past the kerb lines on {held} arm(s) (G24: never on one; {zebraHeld} of them zebra arm(s))" : $"the 0.4.7 shape was refused ({first.Failure})";
             CarriagewayResult game = null;
+            string holdFailure = null;
             if (gamePairs > 0)
             {
                 game = Straight(arms, centre, ok, margin, conflictPoints, signals, true, true, res.Notes, out _, out _, out _);
@@ -609,6 +610,7 @@ namespace JunctionRules.Core
             if (held > 0)
             {
                 CarriagewayResult hold = Straight(arms, centre, ok, margin, conflictPoints, signals, false, true, res.Notes, out _, out _, out _);
+                holdFailure = hold.Failure;
                 if (hold.Outline != null)
                 {
                     hold.Notes.Add($"built with {held} mouth(s) held clear of a marking past the kerb lines (priority arms too: never on a zebra / stop / give-way line); {why}");
@@ -625,7 +627,7 @@ namespace JunctionRules.Core
                     return refused;
                 }
             }
-            first.Notes.Add($"the 0.4.8 way ({gamePairs} corner kerb(s) as the game draws them, {held} mouth(s) held clear of a marking) tried too, also refused: {game?.Failure}");
+            first.Notes.Add($"the 0.4.8 way ({gamePairs} corner kerb(s) as the game draws them, {held} mouth(s) held clear of a marking) tried too, also refused: {game?.Failure ?? holdFailure}");
             return first;
         }
 

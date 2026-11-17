@@ -119,15 +119,18 @@ namespace JunctionRules.Stage2
                     // 0.4.10 probes (not counted at the right-turn spot, AddCounts): standing on the box's lanes, and a nose in the
                     // box (front bumper past the stop line, rear still before it). 0.4.11 (G22): a car standing in the box under
                     // the same-exit-lane exception is counted apart (allowed by the owner rule).
+                    bool sameExitChecked = false, sameExitOk = false;
                     if (inBox)
                     {
-                        if (SameExitAdmits(lane, owner.m_Owner, laneLength, inverse, start, self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes, ref moving)) m_BoxSameExitStanding = true;
+                        sameExitChecked = true;
+                        sameExitOk = SameExitAdmits(lane, owner.m_Owner, laneLength, inverse, start, self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes, ref moving);
+                        if (sameExitOk) m_BoxSameExitStanding = true;
                         else m_BoxStoodInside = true;
                     }
                     float fl = BoxDriving.FrontToLine(wait, margin);
                     // Review 3 F3: a car admitted by the G22 exception is counted apart, never as a nose in the box.
                     if (BoxDriving.NoseIn(fl, m_VehicleLength) && !m_BoxSameExitStanding
-                        && !SameExitAdmits(lane, owner.m_Owner, laneLength, inverse, start, self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes, ref moving))
+                        && !(sameExitChecked ? sameExitOk : SameExitAdmits(lane, owner.m_Owner, laneLength, inverse, start, self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes, ref moving)))
                     { m_BoxNose = true; m_BoxStoodInside = true; }
                 }
                 BoxDriving.Approach a = BoxDriving.Classify(inBox, wait, margin, VehicleUtils.GetBrakingDistance(car, currentSpeed, timeStep));

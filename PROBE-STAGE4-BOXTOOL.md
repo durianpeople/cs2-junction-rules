@@ -1797,13 +1797,15 @@ skipped), the zebra sections (room past the exit zebra), the G22 logic (not a yi
 
 **Owner follow-up (he watched it): "it was blocked by a pedestrian that waits a bit outside the kerb".** The first cut
 above was not enough: a person waiting just off the kerb stands INSIDE a hugging left turn's range on the crossing. Why
-they stand there: the game's waiting spot for a red walk signal is the crossing lane's own end point
-(`HumanNavigationSystem` 1160-1171: WaitSignal, target = CalculateTargetPos(crossing, its start, lane position) = that end
-offset sideways along the kerb), and the crossing ends where its lane meets the pavement, so waiting bodies (radius
-~0.3-0.5 m) spill up to about 1 m past it. **Rule now (new copy block S2-53, before the game's pedestrian check, with "Cars
-never push through people"):** cars hold only for people CROSSING. A person STANDING within 1 m of either end of the
-crossing (`CrossingPush.WaitZoneMetres`), or standing on a crossing whose walk signal is red / amber, is not crossing and is
-skipped: the car does not brake for them at all. People walking (also stepping off, or late on red), and people standing
+they stand there: a person waiting for a red walk signal keeps the PREVIOUS lane (pavement / corner lane) as its lane,
+standing at its end with the WaitSignal flag, its target the crossing's start offset sideways along the kerb
+(`HumanNavigationSystem` 779-796 / 1160-1171; `ReferencesSystem` 128-130 puts the lane object on that lane). That end lies
+on the kerb line, so waiting bodies (radius ~0.3-0.5 m) spill up to about 1 m into the road, where a hugging turn's path
+overlaps that lane. **Rule now (new copy block S2-53, before the game's pedestrian check, with "Cars
+never push through people"):** cars hold only for people CROSSING. A person STANDING within 1 m (at most a quarter of the lane)
+of either end of the overlapped pedestrian lane (`CrossingPush.WaitZoneMetres`) is not crossing and is skipped: the car does
+not brake for them at all. (Final review: no separate "red walk signal anywhere on the crossing" rule: it would also skip a
+person standing out on a signalled crossing; the people waiting for a red walk signal are in the waiting area anyway.) People walking (also stepping off, or late on red), and people standing
 on the car's way further out on the crossing (stopped mid-crossing, zebras) keep the game's check and the 0.3.2 full stop.
 Kept: zebras (never pushed through people on them), people pass a blocking car after 2 s, G11 unmarked rule (its safety
 floor is never skipped). Counters: `people waiting at a crossing (kerb / red walk signal) not braked for` and the guard
@@ -1914,3 +1916,13 @@ across the lane it crosses, until the exit queue moves; with traffic on that lan
 exists to prevent that). Options: (a) keep stock; (b) drop the stock room check at unboxed junctions everywhere;
 (c) drop it only where the junction lane crosses nothing that is moving or approaching (the whole-junction projection
 says "clear"), so the turner never sits across live traffic.
+
+### 21.13 Final review (Sonnet) fixes
+
+- G23: no "red walk signal anywhere on the crossing" skip (it would also skip a person standing OUT on a signalled
+  crossing); people waiting for a walk signal stand on the previous lane at its end, inside the 1 m waiting area anyway.
+  Waiting area capped at a quarter of the lane (a short lane is never wholly "waiting"). The G11 floor is neither skipped
+  nor counted (guard counter cannot fire falsely). Comments / PROBE / DEVIATIONS now cite where the waiting person really
+  is (HumanNavigationSystem 779-796 / 1160-1171, ReferencesSystem 128-130).
+- G24: the "also refused" note keeps the held-mouth failure when the junction has no game corners.
+- G22: the same-exit check is not repeated for the nose probe.
