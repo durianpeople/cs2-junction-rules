@@ -148,6 +148,7 @@ namespace JunctionRules.Tests
             ("G22Tests", G22Tests),
             ("G22RepoTests", G22RepoTests),
             ("G23Tests", G23Tests),
+            ("G23WaitingTests", G23WaitingTests),
             ("G23RepoTests", G23RepoTests),
             ("BoxWindowUnitTests", BoxWindowUnitTests),
             ("BoxScenarioTests", BoxScenarioTests),

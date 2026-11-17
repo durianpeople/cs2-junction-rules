@@ -257,7 +257,11 @@ namespace JunctionRules.Core
         public const int PeopleBesideCrossingCreep = FeedingScans + 68;
         /// <summary>0.4.11 (G23, owner: vehicles stopped at a red signal never count as approaching traffic): car-steps in which a building exit / entry gap scan did not count a vehicle standing in a queue held by a red light as present.</summary>
         public const int RedQueueNotPresent = FeedingScans + 69;
-        public const int Count = FeedingScans + 70;
+        /// <summary>0.4.11 (G23, owner): car-steps in which a person waiting at a crossing (standing in the 1 m waiting area at its end, or at a red walk signal) was not braked for.</summary>
+        public const int PeopleWaitingNotCrossing = FeedingScans + 70;
+        /// <summary>0.4.11 (G23, owner guard, MUST be 0): car-steps in which a car stood held for a person waiting at the kerb (not crossing).</summary>
+        public const int HeldForWaitingPerson = FeedingScans + 71;
+        public const int Count = FeedingScans + 72;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -429,7 +433,10 @@ namespace JunctionRules.Core
                        + "; standing with the front bumper past a box line (nose in the box) " + deltas[BoxNosePast].ToString(ci) + " (must be 0)"
                        + "; standing inside a box (not at the right-turn spot) " + deltas[BoxStoodInside].ToString(ci) : "") +
                    // 0.4.11 (G23)
-                   (exitMask >= 2 || deltas[PeopleBesideCrossingCreep] > 0 ? "; people beside a crossing passed at the game's creep (not on the car's way) " + deltas[PeopleBesideCrossingCreep].ToString(ci) : "") +
+                   (exitMask >= 2 || deltas[PeopleBesideCrossingCreep] > 0 || deltas[HeldForWaitingPerson] > 0
+                       ? "; people beside a crossing passed at the game's creep (not on the car's way) " + deltas[PeopleBesideCrossingCreep].ToString(ci) +
+                         "; people waiting at a crossing (kerb / red walk signal) not braked for " + deltas[PeopleWaitingNotCrossing].ToString(ci) +
+                         "; car held for a person waiting at the kerb (not crossing) " + deltas[HeldForWaitingPerson].ToString(ci) + " (must be 0)" : "") +
                    (exitMask >= 2 ? "; standing vehicles queued at a red not counted as present " + deltas[RedQueueNotPresent].ToString(ci) : "") +
                    // 0.4.11 (G22): the owner's same-exit-lane exception.
                    (boxMask >= 2 ? "; entered a box under the same-exit-lane exception " + deltas[BoxSameExitEntries].ToString(ci)

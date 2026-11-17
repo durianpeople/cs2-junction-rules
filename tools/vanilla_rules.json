@@ -277,6 +277,12 @@
         },
         "reason": "JR-T-014d (G11): right after S2-27, diagnostics only: AfterUnmarkedFloor counts / records a car braked for a person already on the carriageway of an unmarked crossing; restores jrInScope for the next lane object."
       },
+      "S2-53": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "0.4.11 (JR-T-017, G23, owner live 17 Nov: a car on green held by a person waiting just off the kerb): CheckOverlappingLanes, creature branch, right after S2-50 and before S2-08, only with 'Cars never push through people': a person who is not crossing (standing within 1 m of the crossing's end, the game's own waiting spot for a red walk signal, HumanNavigationSystem 1160-1171; or standing on a crossing whose walk signal is red / amber) is skipped (continue), so the game's pedestrian check never brakes for them; people walking, and people standing on the car's way further out on the crossing, keep the game's check (and the 0.3.2 full stop). The G11 safety floor (already on an unmarked crossing) is never skipped."
+      },
       "S2-51": {
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1

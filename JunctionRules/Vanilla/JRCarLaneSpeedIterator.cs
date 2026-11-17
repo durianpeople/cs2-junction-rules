@@ -6,7 +6,7 @@
 // tools/vanilla_rules.json (and DEVIATIONS.md) and run `python3 tools/vanilla_copy.py generate`.
 // Changes applied: R-01, R-02, R-03, D-01 (see DEVIATIONS.md). Logic is otherwise the game's, unchanged.
 // Exception: hand-written code only inside '// JR-STAGE2 BEGIN <id>' ... '// JR-STAGE2 END' blocks
-// (S2-01, S2-02, S2-03, S2-04, S2-05, S2-06, S2-07, S2-08, S2-08b, S2-09, S2-10, S2-11, S2-11b, S2-12, S2-13, S2-25, S2-27, S2-28, S2-28b, S2-29, S2-37, S2-50, S2-50b; see DEVIATIONS.md). `check` proves everything outside them is the above.
+// (S2-01, S2-02, S2-03, S2-04, S2-05, S2-06, S2-07, S2-08, S2-08b, S2-09, S2-10, S2-11, S2-11b, S2-12, S2-13, S2-25, S2-27, S2-28, S2-28b, S2-29, S2-37, S2-50, S2-50b, S2-53; see DEVIATIONS.md). `check` proves everything outside them is the above.
 // ==== end of header; the code below is the game's, changed only as listed in DEVIATIONS.md ====
 
 using System;
@@ -1473,6 +1473,12 @@ public struct JRCarLaneSpeedIterator
 					}
 					bool jrUScope = jrInScope; float jrUFloorMax = m_MaxSpeed;
 					if (jrUnmarked == JunctionRules.Core.UnmarkedCrossing.Floor) jrInScope = false;
+					// JR-STAGE2 END
+					// JR-STAGE2 BEGIN S2-53: 0.4.11 (G23, owner) a person who is not crossing (standing in the waiting area at the crossing's end, or standing at a red walk signal) never holds the car; the G11 floor (already on an unmarked crossing) keeps the game's check
+					if (m_JR.m_NoPushPeople && m_JR.PersonNotCrossing(m_Lane, laneObject.m_LaneObject, laneObject.m_CurvePosition.x, m_Curve.m_Length, ref m_MovingData, ref m_LaneSignalData) && jrUnmarked != JunctionRules.Core.UnmarkedCrossing.Floor)
+					{
+						continue;
+					}
 					// JR-STAGE2 END
 					// JR-STAGE2 BEGIN S2-08: pedestrian on a crossing of the path: wait at the spot before commit; 0.3.2: never push through people (the game's check runs against an open limit)
 					float jrPedNum5 = num5;

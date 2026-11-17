@@ -1795,9 +1795,30 @@ before (they may still pass the conflict before their stop line). Counter: `stan
 present`. Ruled out for this car (from code): the box room test (exit empty), the arrival projection (red-held feeders
 skipped), the zebra sections (room past the exit zebra), the G22 logic (not a yielding arm: signalled).
 
+**Owner follow-up (he watched it): "it was blocked by a pedestrian that waits a bit outside the kerb".** The first cut
+above was not enough: a person waiting just off the kerb stands INSIDE a hugging left turn's range on the crossing. Why
+they stand there: the game's waiting spot for a red walk signal is the crossing lane's own end point
+(`HumanNavigationSystem` 1160-1171: WaitSignal, target = CalculateTargetPos(crossing, its start, lane position) = that end
+offset sideways along the kerb), and the crossing ends where its lane meets the pavement, so waiting bodies (radius
+~0.3-0.5 m) spill up to about 1 m past it. **Rule now (new copy block S2-53, before the game's pedestrian check, with "Cars
+never push through people"):** cars hold only for people CROSSING. A person STANDING within 1 m of either end of the
+crossing (`CrossingPush.WaitZoneMetres`), or standing on a crossing whose walk signal is red / amber, is not crossing and is
+skipped: the car does not brake for them at all. People walking (also stepping off, or late on red), and people standing
+on the car's way further out on the crossing (stopped mid-crossing, zebras) keep the game's check and the 0.3.2 full stop.
+Kept: zebras (never pushed through people on them), people pass a blocking car after 2 s, G11 unmarked rule (its safety
+floor is never skipped). Counters: `people waiting at a crossing (kerb / red walk signal) not braked for` and the guard
+`car held for a person waiting at the kerb (not crossing)`, **must be 0**.
+
+**Watch button:** picks the junction node nearest the camera's aim point (where the centre line reaches each node's
+height) within 25 m (was: within 8 m of the centre line; the owner's off-centre camera found none). Watch lines now end
+with the blocker: `[person at (x, z), speed v m/s / not moving, on lane L at p, WAITING for a walk signal]` or
+`[vehicle at (x, z), speed v]`.
+
 | # | Do | Expect |
 |---|---|---|
-| 23-1 | Crescent x Eastgate, south arm left turn on green with people waiting at the corner | the car goes on green, slowing past the waiting people |
+| 23-1 | Crescent x Eastgate, south arm left turn on green with people waiting at the corner (also just off the kerb) | the car goes on green without stopping for them |
+| 23-1b | Timing line | `car held for a person waiting at the kerb (not crossing) 0` |
+| 23-1c | Watch button with the camera roughly over a junction | it finds the node; lines show who blocks and where |
 | 23-2 | Same with a person stepping onto the crossing in front of it | it stops (never pushed through) |
 | 23-3 | Timing line | `people beside a crossing passed at the game's creep` > 0 where corners are busy |
 

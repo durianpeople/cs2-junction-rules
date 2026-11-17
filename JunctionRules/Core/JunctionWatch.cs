@@ -83,6 +83,45 @@ namespace JunctionRules.Core
             }
         }
 
+        /// <summary>0.4.11 (G23): the watch pick radius around the camera's aim point (m).</summary>
+        public const double PivotRadius = 25.0;
+
+        /// <summary>
+        /// 0.4.11 (G23, owner: "pick the nearest node to the camera pivot within ~25 m"): the camera orbits a pivot on the
+        /// ground, which the centre line of the view meets. For each node: the point where the centre line reaches the
+        /// node's height, horizontal distance from the node to it; the nearest within <paramref name="radius"/> wins (-1 =
+        /// none). A line that never comes down to the node's height (looking up / level) uses the closest approach instead.
+        /// </summary>
+        public static int PickNearPivot(V3 origin, V3 dir, List<V3> nodes, double radius, out double distance)
+        {
+            int best = -1;
+            distance = double.MaxValue;
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                V3 n = nodes[i];
+                double d;
+                if (dir.Y < -1e-6 && origin.Y > n.Y)
+                {
+                    double t = (n.Y - origin.Y) / dir.Y;
+                    double hx = origin.X + dir.X * t, hz = origin.Z + dir.Z * t;
+                    d = System.Math.Sqrt((hx - n.X) * (hx - n.X) + (hz - n.Z) * (hz - n.Z));
+                }
+                else
+                {
+                    double len = System.Math.Sqrt(dir.X * dir.X + dir.Y * dir.Y + dir.Z * dir.Z);
+                    if (!(len > 0)) continue;
+                    double ux = dir.X / len, uy = dir.Y / len, uz = dir.Z / len;
+                    double vx = n.X - origin.X, vy = n.Y - origin.Y, vz = n.Z - origin.Z;
+                    double along = vx * ux + vy * uy + vz * uz;
+                    if (along < 0) continue;
+                    double px = vx - along * ux, py = vy - along * uy, pz = vz - along * uz;
+                    d = System.Math.Sqrt(px * px + py * py + pz * pz);
+                }
+                if (d <= radius && d < distance) { distance = d; best = i; }
+            }
+            return best;
+        }
+
         /// <summary>Entity (index, version) as one long; 0 = Entity.Null (index 0 is never a live entity).</summary>
         public static long Key(int index, int version) => index <= 0 ? 0L : ((long)index << 32) | (uint)version;
 

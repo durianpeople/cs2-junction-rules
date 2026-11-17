@@ -89,6 +89,32 @@ namespace JunctionRules.Core
             return p >= lo && p <= hi;
         }
 
+        /// <summary>
+        /// 0.4.11 (G23, owner after watching it: "it was blocked by a pedestrian that waits a bit outside the kerb"): the
+        /// waiting area at each end of a crossing, metres along the crossing from its end. The game's waiting spot for a red
+        /// walk signal is the crossing lane's own end point (HumanNavigationSystem 1160-1171: WaitSignal, target =
+        /// CalculateTargetPos(crossing, its start, lane position) = the crossing's end offset SIDEWAYS along the kerb by the
+        /// person's lane position, CreatureUtils.GetLaneOffset), and the crossing ends where its pedestrian lane meets the
+        /// pavement, so a waiting person stands on that end with up to a body radius (~0.3-0.5 m) in front of it plus the
+        /// approach tolerance of the move system: 1 m covers it, and no-one is "crossing" before stepping 1 m off the end.
+        /// </summary>
+        public const float WaitZoneMetres = 1f;
+
+        /// <summary>0.4.11 (G23): the person's position on the crossing lies within the waiting area at either end.</summary>
+        public static bool InWaitZone(float personPos, float laneLength)
+        {
+            float p = personPos * laneLength;
+            return p <= WaitZoneMetres || p >= laneLength - WaitZoneMetres;
+        }
+
+        /// <summary>
+        /// 0.4.11 (G23, owner): a person is NOT crossing when standing (the game's "standing" test, speed^2 &lt; 0.01) AND either
+        /// in the waiting area at a crossing's end, or on a crossing whose walk signal is red / amber (people facing a red walk
+        /// signal never block cars that have green). People walking are crossing (the game brakes for them); a person standing
+        /// on the car's way further out on the crossing is crossing (stopped mid-crossing: never pushed through).
+        /// </summary>
+        public static bool NotCrossing(bool standing, bool inWaitZone, bool walkSignalRed) => standing && (inWaitZone || walkSignalRed);
+
         /// <summary>0.4.11 (G23): metres either side of the car's range on the crossing within which a standing person counts as on its way.</summary>
         public const float InPathToleranceMetres = 0.5f;
 

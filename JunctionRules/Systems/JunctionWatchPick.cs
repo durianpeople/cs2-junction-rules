@@ -8,13 +8,13 @@ using UnityEngine;
 namespace JunctionRules.Systems
 {
     /// <summary>
-    /// JR-T-013b (G4): picks the junction to watch (main thread, read-only), the same pick as the paint test's "Add
-    /// junction at camera centre": road nodes with 3 or more road arms within 8 m of the camera's centre line, nearest
-    /// to the camera. Boxed or not. Called by CarDrivingSwitchSystem on the settings button; never names copy types.
+    /// JR-T-013b (G4): picks the junction to watch (main thread, read-only). 0.4.11 (G23, owner: the 8 m line pick missed an
+    /// off-centre camera): the road node with 3 or more road arms nearest to the camera PIVOT (where the centre line meets
+    /// each node's height), within 25 m (Core JunctionWatch.PickNearPivot). Boxed or not. Called by CarDrivingSwitchSystem on the settings button; never names copy types.
     /// </summary>
     internal static class JunctionWatchPick
     {
-        public const double Radius = 8.0;
+        public const double Radius = JunctionWatch.PivotRadius;
 
         /// <summary>The query the switch system builds in OnCreate: road nodes (not deleted / temp).</summary>
         public static EntityQueryDesc NodeQueryDesc() => new EntityQueryDesc
@@ -46,10 +46,11 @@ namespace JunctionRules.Systems
                     pos.Add(new V3(p.x, p.y, p.z));
                     which.Add(i);
                 }
-                int k = PaintTestConfig.PickAlongRay(new V3(ray.origin.x, ray.origin.y, ray.origin.z), new V3(ray.direction.x, ray.direction.y, ray.direction.z), pos, Radius);
-                if (k < 0) { text = "no junction node (3 or more road arms) within 8 m of the camera centre line"; return 0; }
+                int k = JunctionWatch.PickNearPivot(new V3(ray.origin.x, ray.origin.y, ray.origin.z), new V3(ray.direction.x, ray.direction.y, ray.direction.z), pos, Radius, out double dist);
+                if (k < 0) { text = "no junction node (3 or more road arms) within 25 m of the camera's aim point"; return 0; }
                 Entity e = ents[which[k]];
                 text = "node " + JunctionWatch.EntityText(JunctionWatch.Key(e.Index, e.Version)) + " at " + pos[k]
+                       + " (" + dist.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " m from the camera's aim point)"
                        + (em.HasComponent<JunctionRules.Boxes.YellowBoxJunction>(e) ? " (boxed)" : " (no box)");
                 return JunctionWatch.Key(e.Index, e.Version);
             }

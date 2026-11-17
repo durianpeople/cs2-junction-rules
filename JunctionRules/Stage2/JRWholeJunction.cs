@@ -302,6 +302,11 @@ namespace JunctionRules.Stage2
         private float m_EntryGapSpeed;
         /// <summary>G21 review 2 F3: the boxed way in BeginLane left out this car-step (BeginZebras leaves it out too).</summary>
         private Entity m_SkippedWayIn;
+        /// <summary>G23 (owner): the last person S2-53 classified (true = waiting, not crossing); skipped persons never reach S2-08b,
+        /// so a true here at S2-08b means the G11 floor kept the check (guard counter).</summary>
+        private bool m_PersonWaitingNow;
+        /// <summary>G23 (counting): a waiting person was skipped this car-step; the guard: held for a waiting person (must be 0).</summary>
+        private bool m_PeopleWaitingSkipped, m_HeldForWaitingPerson;
         /// <summary>G23 (counting): this car-step a standing person beside (not on) the car's way over a crossing got the game's creep, not a full stop.</summary>
         private bool m_PeopleBesideCreep;
         /// <summary>G23 (counting): a gap scan did not count a vehicle standing in a queue held by a red light as present.</summary>
@@ -1318,6 +1323,8 @@ namespace JunctionRules.Stage2
                 bool inPath = CrossingPush.PersonInPath(personPos, carRange.x, carRange.y, crossingLength);
                 result = CrossingPush.PedestrianSpeedInPath(true, reason, inPath, stock, fullStop);
                 if (Counting && reason != CrossingPush.PushReason.None && !inPath) m_PeopleBesideCreep = true;
+                // G23 guard (must stay 0): held (below the creep speed) for a person classified as waiting, not crossing.
+                if (Counting && m_PersonWaitingNow && result < CrossingPush.CreepSpeed && result < savedMax) m_HeldForWaitingPerson = true;
                 if (Counting && result < stock && result < savedMax)
                 {
                     if (reason == CrossingPush.PushReason.Timer) m_RefusedTimer = true;
@@ -1333,6 +1340,25 @@ namespace JunctionRules.Stage2
                 blocker = obj;
                 blockerType = BlockerType.Temporary;
             }
+        }
+
+        /// <summary>
+        /// 0.4.11 (G23, block S2-53, only with m_NoPushPeople): the person <paramref name="person"/> on the pedestrian lane
+        /// <paramref name="crossing"/> (position <paramref name="personPos"/>, game offset) is not crossing (Core
+        /// CrossingPush.NotCrossing): standing in the waiting area at its end or at a red / amber walk signal. Such a person
+        /// never holds the car (the caller skips the game's pedestrian check). Remembers the classification for the guard
+        /// counter of the next NoPushPedestrian call.
+        /// </summary>
+        public bool PersonNotCrossing(Entity crossing, Entity person, float personPos, float crossingLength, ref ComponentLookup<Moving> movingData,
+            ref ComponentLookup<LaneSignal> signals)
+        {
+            bool hasMoving = movingData.TryGetComponent(person, out Moving moving);
+            bool standing = CrossingPush.Pedestrian(false, hasMoving, hasMoving ? math.lengthsq(moving.m_Velocity) : 0f) == CrossingPush.PushReason.Standing;
+            bool red = signals.TryGetComponent(crossing, out LaneSignal sig) && (sig.m_Signal == LaneSignalType.Stop || sig.m_Signal == LaneSignalType.SafeStop);
+            bool notCrossing = CrossingPush.NotCrossing(standing, CrossingPush.InWaitZone(personPos, crossingLength), red);
+            m_PersonWaitingNow = notCrossing;
+            if (notCrossing && Counting) m_PeopleWaitingSkipped = true;
+            return notCrossing;
         }
 
         /// <summary>
@@ -1747,6 +1773,8 @@ namespace JunctionRules.Stage2
             if (m_EntryWholePathSkipped) Add(counters, Stage2Counters.EntryBoxedWayWholePathSkipped, 1);
             if (m_EntryKeptClear) Add(counters, Stage2Counters.EntryKeptClear, 1);
             if (m_PeopleBesideCreep) Add(counters, Stage2Counters.PeopleBesideCrossingCreep, 1);   // 0.4.11 (G23)
+            if (m_PeopleWaitingSkipped) Add(counters, Stage2Counters.PeopleWaitingNotCrossing, 1);
+            if (m_HeldForWaitingPerson && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.HeldForWaitingPerson, 1);
             if (m_RedQueueIgnored) Add(counters, Stage2Counters.RedQueueNotPresent, 1);   // 0.4.11 (G23)
             // 0.4.11 (G22): entries under the same-exit-lane exception (one per vehicle episode), standing in a box under it (car-steps)
             if (m_BoxSameExitEntry && ExitEvent(eventTable, entity, frame, ExitGiveWay.SameExitEntryKind)) Add(counters, Stage2Counters.BoxSameExitEntries, 1);

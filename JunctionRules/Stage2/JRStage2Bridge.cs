@@ -113,6 +113,42 @@ namespace JunctionRules.Stage2
         private static unsafe long ReadWatch(int i) =>
             System.Threading.Interlocked.Read(ref ((long*)NativeArrayUnsafeUtility.GetUnsafeBufferPointerWithoutChecks(s_Watch))[i]);
 
+        /// <summary>
+        /// 0.4.11 (G23, owner: "log who/what blocks"): main thread, only for a logged watch line: what the blocker is and where
+        /// (a person: position, lane, walking speed, waiting for a walk signal; a vehicle: position, speed). Read-only; empty
+        /// when the entity is gone or the world is not there.
+        /// </summary>
+        private static string BlockerDetail(long key)
+        {
+            try
+            {
+                if (key == 0) return "";
+                Unity.Entities.World world = Unity.Entities.World.DefaultGameObjectInjectionWorld;
+                if (world == null || !world.IsCreated) return "";
+                Unity.Entities.EntityManager em = world.EntityManager;
+                var e = new Unity.Entities.Entity { Index = JunctionWatch.KeyIndex(key), Version = JunctionWatch.KeyVersion(key) };
+                if (!em.Exists(e)) return " [blocker gone]";
+                var ci = System.Globalization.CultureInfo.InvariantCulture;
+                string pos = "";
+                if (em.HasComponent<Game.Objects.Transform>(e))
+                {
+                    var t = em.GetComponentData<Game.Objects.Transform>(e).m_Position;
+                    pos = " at (" + t.x.ToString("0.0", ci) + ", " + t.z.ToString("0.0", ci) + ")";
+                }
+                string speed = em.HasComponent<Game.Objects.Moving>(e)
+                    ? ", speed " + Unity.Mathematics.math.length(em.GetComponentData<Game.Objects.Moving>(e).m_Velocity).ToString("0.0", ci) + " m/s" : ", not moving";
+                if (em.HasComponent<Game.Creatures.HumanCurrentLane>(e))
+                {
+                    var hl = em.GetComponentData<Game.Creatures.HumanCurrentLane>(e);
+                    bool waits = (hl.m_Flags & Game.Creatures.CreatureLaneFlags.WaitSignal) != 0;
+                    return " [person" + pos + speed + ", on lane " + JunctionWatch.EntityText(JunctionWatch.Key(hl.m_Lane.Index, hl.m_Lane.Version)) + " at "
+                           + hl.m_CurvePosition.x.ToString("0.00", ci) + (waits ? ", WAITING for a walk signal" : "") + "]";
+                }
+                return " [" + (em.HasComponent<Game.Vehicles.Car>(e) ? "vehicle" : "object") + pos + speed + "]";
+            }
+            catch (System.Exception) { return ""; }
+        }
+
         /// <summary>The shared watch array (always created, so the job struct never holds an unallocated container).</summary>
         public static NativeArray<long> Watch => s_Watch;
 
@@ -138,7 +174,7 @@ namespace JunctionRules.Stage2
                 {
                     JunctionWatch.Unpack(e.Packed, out int rule, out _, out _, out _);
                     if (s_WatchLimiter.Allow(e.Car, rule, e.Blocker, frame))
-                        Mod.log.Info("watch junction " + JunctionWatch.EntityText(p[0]) + ": " + JunctionWatch.Line(e.Car, e.Blocker, e.Lane, e.Packed));
+                        Mod.log.Info("watch junction " + JunctionWatch.EntityText(p[0]) + ": " + JunctionWatch.Line(e.Car, e.Blocker, e.Lane, e.Packed) + BlockerDetail(e.Blocker));
                 }
             }
             if (s_WatchVersion != WatchHandoff.Version)
