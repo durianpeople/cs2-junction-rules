@@ -1533,3 +1533,22 @@ heavy jams):
   then caught before the line. The game's amber is kept: stop if you safely can.
 - Everything drains.
 
+
+### 20.9 Owner: merge = one real box
+
+Boxes that merge (gap under 6 m, same road and side of a median, no marking or mouth margin in the way) are BUILT as one
+box. Every member gets the single outline of the joint window, from the first box's start to the last box's end, kerb to
+kerb, built by the same straight-box code as any exit box (Paint/YellowBoxPaintSystem.JointBoxes -> BoxShapes.Entrance
+over the joint window -> EntranceBox.BuildStraight). BoxMerge keeps identical rings once: one border, one continuous
+hatch, no strip of plain road, no inner border. Driving uses exactly that window (the gap road is box: Boxes/DrivingBands
+-> ExitBoxWindows.Assemble -> LaneWindow on each lane). The kerb inset, marking margin, median side and zebra / mouth
+margins apply to the merged outline as to any box; a marking in the gap keeps the boxes apart (logged per pair, 20.4).
+
+Tests (MergedOutlineTests), on the live road (16 m, 3 m footways), for No. 40 Alderwood (34.7..42.7 + 45.5..53.5 ->
+34.7..53.5) and the Alderbrook pair (110.0..118.0 + 119.3..127.3 -> 110.0..127.3):
+- a single straight-sided polygon (4 corners at the kerbs and at the first start / last end);
+- the gap is covered kerb to kerb;
+- area = joint length x carriageway;
+- drawn as one ring;
+- the old separate outlines left the gap uncovered;
+- a marking in the gap still keeps them apart.

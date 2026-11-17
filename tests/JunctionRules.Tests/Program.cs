@@ -145,6 +145,7 @@ namespace JunctionRules.Tests
             ("BoxWindowUnitTests", BoxWindowUnitTests),
             ("BoxScenarioTests", BoxScenarioTests),
             ("ChainTests", ChainTests),
+            ("MergedOutlineTests", MergedOutlineTests),
         };
 
         private static int Main(string[] args)
