@@ -133,6 +133,10 @@ namespace JunctionRules.Tests
             ("G5bReviewTests", G5bReviewTests),
             ("G7ExitSidewalkTests", G7ExitSidewalkTests),
             ("G7RepoTests", G7RepoTests),
+            ("G15LoopTests", G15LoopTests),
+            ("G12CrossingTests", G12CrossingTests),
+            ("G14JointBoxTests", G14JointBoxTests),
+            ("JrT015RepoTests", JrT015RepoTests),
         };
 
         private static int Main(string[] args)

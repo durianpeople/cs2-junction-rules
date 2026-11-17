@@ -180,9 +180,14 @@ namespace JunctionRules.Core
         /// 0.4.9 (G12): a vehicle whose front is past its sidewalk spot with a Go that still stands is COMMITTED: it is not
         /// judged again at the first road lane (0.4.8 did, so a Go'd lorry could be stopped ON the pavement, front at the
         /// kerb, by traffic that appeared while it crossed; live: 380901 at No. 40, pivot at the drive start, front at the
-        /// kerb). The game's own physical checks (vehicles on its lanes, reservations) still apply.
+        /// kerb). The game's own physical checks (vehicles on its lanes, reservations) still apply. Only while it is moving
+        /// (<see cref="CommitMovingSpeed"/>): stopped on the pavement, it is judged again at the first road lane.
         /// </summary>
-        public static bool Committed(bool pastSidewalkSpot, bool goStands) => pastSidewalkSpot && goStands;
+        public static bool Committed(bool pastSidewalkSpot, bool goStands, bool moving) => pastSidewalkSpot && goStands && moving;
+
+        /// <summary>0.4.9 (G12): a committed vehicle must still be moving (m/s): one that came to a stop on the pavement (people on it, the
+        /// vehicle ahead) is judged again at the road lane before it moves on (its Go is up to 16 s old by then).</summary>
+        public const float CommitMovingSpeed = 0.5f;
 
         /// <summary>
         /// 0.4.8 (G7): a road vehicle whose front is this close (m) before a conflict blocks the exit whatever its speed: it

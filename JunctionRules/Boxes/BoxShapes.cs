@@ -275,7 +275,15 @@ namespace JunctionRules.Boxes
         /// position): on a divided road (Core/MedianSplit) the box runs from that side's kerb to the median only. Null =
         /// kerb to kerb (0.4.3).
         /// </summary>
-        internal static Shape Entrance(EntityManager em, BoxFacts.Access a, double kerbInset, double length, double margin, V2? side)
+        internal static Shape Entrance(EntityManager em, BoxFacts.Access a, double kerbInset, double length, double margin, V2? side) =>
+            Entrance(em, a, kerbInset, length, margin, side, double.NaN, double.NaN);
+
+        /// <summary>
+        /// 0.4.9 (G14): as above over a JOINT window [jointFrom, jointTo] (metres along the edge) of several boxes on this edge
+        /// (Core/ExitBoxWindows): the box's own window must still be valid, and the joint one must keep the margins
+        /// (Core EntranceBox.WindowFits), else Failure is set and the caller keeps the boxes apart. NaN = the box's own window.
+        /// </summary>
+        internal static Shape Entrance(EntityManager em, BoxFacts.Access a, double kerbInset, double length, double margin, V2? side, double jointFrom, double jointTo)
         {
             var s = new Shape();
             Entity e = a.Edge;
@@ -327,6 +335,12 @@ namespace JunctionRules.Boxes
             var spans = new List<AlongSpan>();
             foreach (var m in markings) if (EntranceBox.StripAlong(cl, al, m, half, out AlongSpan sp)) spans.Add(sp);
             if (!EntranceBox.Window(a.AlongM, length, a.MinM, a.MaxM, margin, spans, out double from, out double to, out string why)) { s.Failure = why; return s; }
+            if (!double.IsNaN(jointFrom) && !double.IsNaN(jointTo))
+            {
+                if (!EntranceBox.WindowFits(jointFrom, jointTo, a.MinM, a.MaxM, margin, spans, out string jointWhy)) { s.Failure = "joint box: " + jointWhy; return s; }
+                from = jointFrom;
+                to = jointTo;
+            }
             s.From = from; s.To = to;
             int n = Math.Max(2, (int)Math.Ceiling(to - from) + 1);
             var centre = new List<V3>(n);

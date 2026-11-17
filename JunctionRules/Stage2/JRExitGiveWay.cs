@@ -141,7 +141,7 @@ namespace JunctionRules.Stage2
                 m_DriveGoStood = goStands;
                 m_DriveLane = lane;
                 if (curves.TryGetComponent(lane, out Curve passCurve)) m_ExitPoint = passCurve.m_Bezier.a.xz;
-                if (ExitGiveWay.Committed(true, goStands)) return float.MaxValue;
+                if (ExitGiveWay.Committed(true, goStands, currentSpeed >= ExitGiveWay.CommitMovingSpeed)) return float.MaxValue;
                 if (!(firstWalk < firstRoad)) return float.MaxValue;
                 wait = origDistance + length * (firstRoad - start);
                 if (!ExitGiveWay.CanHold(wait + ExitGiveWay.SpotSlack, margin, braking)) return float.MaxValue;

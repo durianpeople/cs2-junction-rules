@@ -144,7 +144,7 @@ namespace JunctionRules.Core
                     if (rings[j] == null || !MayJoin(boxes[i], boxes[j])) continue;
                     double reach = Math.Max(prm.SnapTolerance, (boxes[i].Kind != boxes[j].Kind ? prm.JoinGap : 0)) + 1e-6;
                     if (!BoxesNear(bounds[i], bounds[j], reach)) continue;
-                    if (Touch(rings[i], rings[j])) { Union(parent, i, j); continue; }
+                    if (SameRing(rings[i], rings[j]) || Touch(rings[i], rings[j])) { Union(parent, i, j); continue; }   // 0.4.9 (G14): a joint box's members
                     if (boxes[i].Kind != boxes[j].Kind)
                     {
                         int ji = boxes[i].Kind == BoxMergeKind.Junction ? i : j, ei = ji == i ? j : i;
@@ -173,7 +173,15 @@ namespace JunctionRules.Core
                 }
                 var polys = new List<List<V3>>();
                 double maxArea = 0, sum = 0;
-                foreach (int m in g.Members) { polys.Add(rings[m]); double a = BoxPaintGeometry.SignedArea(rings[m]); maxArea = Math.Max(maxArea, a); sum += a; }
+                foreach (int m in g.Members)
+                {
+                    // 0.4.9 (G14): members built as one joint box (Core/ExitBoxWindows) carry the same ring: keep it once (the
+                    // union of coincident rings is degenerate; 0.4.8 drew an exit and an entrance box ~0.5 m apart as two outlines).
+                    bool same = false;
+                    foreach (List<V3> p in polys) if (SameRing(p, rings[m])) { same = true; break; }
+                    if (same) continue;
+                    polys.Add(rings[m]); double a = BoxPaintGeometry.SignedArea(rings[m]); maxArea = Math.Max(maxArea, a); sum += a;
+                }
                 foreach (var b in bridges)
                 {
                     if (Find(parent, b.a) != Find(parent, g.Members[0])) continue;
@@ -181,7 +189,8 @@ namespace JunctionRules.Core
                     sum += BoxPaintGeometry.SignedArea(b.quad);
                     g.Bridges++;
                 }
-                List<List<V3>> u = UnionRings(polys, out string why);
+                string why = null;
+                List<List<V3>> u = polys.Count == 1 && g.Bridges == 0 ? new List<List<V3>> { new List<V3>(polys[0]) } : UnionRings(polys, out why);
                 if (u != null)
                 {
                     double ua = 0;
@@ -209,6 +218,22 @@ namespace JunctionRules.Core
                 result.Add(g);
             }
             return result;
+        }
+
+        /// <summary>0.4.9 (G14): two rings with the same vertices in the same order (within 1 mm; any starting vertex).</summary>
+        public static bool SameRing(List<V3> a, List<V3> b)
+        {
+            if (a == null || b == null || a.Count != b.Count || a.Count == 0) return false;
+            const double tol = 1e-3;
+            int n = a.Count;
+            for (int shift = 0; shift < n; shift++)
+            {
+                if (V2.Distance(a[0].XZ, b[shift].XZ) > tol) continue;
+                bool all = true;
+                for (int i = 1; i < n && all; i++) all = V2.Distance(a[i].XZ, b[(i + shift) % n].XZ) <= tol;
+                if (all) return true;
+            }
+            return false;
         }
 
         /// <summary>The group (index into 'groups') holding input (key, sub); -1 when none.</summary>

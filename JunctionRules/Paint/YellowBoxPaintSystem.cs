@@ -64,6 +64,11 @@ namespace JunctionRules.Paint
             public uint Carriageways = MedianSplit.AllCarriageways;
             /// <summary>JR-T-014c (G9): a box at a car ENTRANCE of a boxed building, derived at resolve time (Key kind Entrance, never saved).</summary>
             public bool Derived;
+            /// <summary>0.4.9 (G14): exit / entrance box built: its window along the edge (m), access and building side, for the joint-box pass (Regroup).</summary>
+            public bool HasWindow;
+            public double WinFrom, WinTo;
+            public BoxFacts.Access Access;
+            public V2 BuildingPos;
         }
 
         /// <summary>0.4.4 (JR-T-011): one drawn group (one or more boxes merged): its triangles, cached by geometry signature.</summary>
@@ -920,6 +925,7 @@ namespace JunctionRules.Paint
         private void RebuildEntrance(Box b)
         {
             EntityManager em = EntityManager;
+            b.HasWindow = false;
             m_Tracked.Add(b.Building);
             var exitNotes = new List<string>();
             BoxFacts.Accesses(em, b.Building, exitNotes, out List<BoxFacts.Exit> exits, out List<BoxFacts.Exit> entrances, out _, out _);
@@ -990,6 +996,11 @@ namespace JunctionRules.Paint
             b.Outline = shape.Outline;
             b.EdgeKey = SortedKeys.KeyOf(a.Edge.Index, a.Edge.Version);
             b.Carriageways = shape.Carriageways;
+            b.HasWindow = true;
+            b.WinFrom = shape.From;
+            b.WinTo = shape.To;
+            b.Access = a;
+            b.BuildingPos = buildingPos;
             Mod.log.Info($"yellow boxes: {b.Label}: exit source {exit.C.Source}; box on edge {a.Edge} at {b.LastPos}, {shape.To - shape.From:0.0} m x {(shape.Divided ? "kerb to median" : "kerb to kerb")}, outline {shape.Outline.Count} pts" + (notes.Count > 0 ? "; notes: " + string.Join("; ", notes) : ""));
         }
 
@@ -1008,6 +1019,7 @@ namespace JunctionRules.Paint
             var inputs = new List<BoxMergeInput>();
             var inputBoxes = new List<Box>();   // inputBoxes[i] made inputs[i] (MergedBoxGroup.Members index both)
             var drawn = new List<DrawnGroup>();
+            Dictionary<Box, List<V3>> joint = JointBoxes();   // 0.4.9 (G14)
             foreach (Box b in m_Boxes)
             {
                 if (b.Tris.Length > 0) { drawn.Add(new DrawnGroup { Tris = b.Tris, Bounds = b.Bounds }); continue; }   // diag test squares
@@ -1016,7 +1028,8 @@ namespace JunctionRules.Paint
                 bool exitBox = b.Kind == BoxKind.SavedEntrance;
                 Entity e = exitBox ? b.Building : b.Node;
                 long sub = exitBox ? BoxMergeInput.ExitSub(b.Key) : (b.Kind == BoxKind.ListJunction ? -1 : 0);
-                inputs.Add(new BoxMergeInput(BoxMergeInput.EntityKey(e.Index, e.Version), sub, exitBox ? BoxMergeKind.Exit : BoxMergeKind.Junction, b.Outline,
+                List<V3> outline = joint.TryGetValue(b, out List<V3> jo) ? jo : b.Outline;
+                inputs.Add(new BoxMergeInput(BoxMergeInput.EntityKey(e.Index, e.Version), sub, exitBox ? BoxMergeKind.Exit : BoxMergeKind.Junction, outline,
                     exitBox ? b.EdgeKey : 0, exitBox ? b.Carriageways : MedianSplit.AllCarriageways));
             }
             BoxMergeParams prm = BoxMergeParams.ForMargin(CurrentMargin);
@@ -1049,6 +1062,50 @@ namespace JunctionRules.Paint
             if (merged > 0 || groups.Count != inputs.Count)
                 Mod.log.Info($"yellow boxes: {inputs.Count} box(es) drawn as {groups.Count} ({merged} merged group(s), {reused} reused) in {ticks * 1000.0 / Stopwatch.Frequency:0.000} ms");
         }
+
+        /// <summary>
+        /// 0.4.9 (G14, owner 17 Nov 2026: near-touching boxes must be one box): exit / entrance boxes on the same road edge and
+        /// carriageways whose windows overlap or are less than ExitBands.MergeGapMetres apart (Core/ExitBoxWindows) get ONE
+        /// box built over their joint window (Boxes/BoxShapes.Entrance with the joint window, from the first box's access):
+        /// every member gets that same outline, so BoxMerge groups them as identical rings (one box, one outline, one hatch;
+        /// hover and the tool still find every member). A joint window over a road marking or into a mouth margin is refused
+        /// (Core EntranceBox.WindowFits) and those boxes stay as they were (logged once). Draw-time only: nothing saved.
+        /// </summary>
+        private Dictionary<Box, List<V3>> JointBoxes()
+        {
+            var result = new Dictionary<Box, List<V3>>();
+            var boxes = new List<Box>();
+            var windows = new List<ExitWindow>();
+            foreach (Box b in m_Boxes)
+            {
+                if (b.Kind != BoxKind.SavedEntrance || b.Dropped || b.Outline == null || !b.HasWindow || b.Tris.Length > 0) continue;
+                boxes.Add(b);
+                windows.Add(new ExitWindow(b.EdgeKey, b.Carriageways, b.WinFrom, b.WinTo));
+            }
+            if (boxes.Count < 2) return result;
+            EntityManager em = EntityManager;
+            foreach (var chain in ExitBoxWindows.Chains(windows, ExitBands.MergeGapMetres))
+            {
+                Box first = boxes[chain.Members[0]];
+                BoxShapes.Shape shape = BoxShapes.Entrance(em, first.Access, m_Config.Geometry.KerbInset, m_Config.Geometry.EntranceLength, CurrentMargin, first.BuildingPos,
+                    chain.From, chain.To);
+                var labels = new List<string>();
+                foreach (int m in chain.Members) labels.Add(boxes[m].Label);
+                string sig = first.EdgeKey + "|" + chain.From.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + "|" + chain.To.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + "|" + (shape.Outline != null);
+                bool log = m_JointLogged.Add(sig);
+                if (shape.Outline == null)
+                {
+                    if (log) Mod.log.Info($"yellow boxes: {chain.Members.Count} boxes within {ExitBands.MergeGapMetres:0.0} m on edge {first.Access.Edge} kept apart: {shape.Failure} ({string.Join("; ", labels)})");
+                    continue;
+                }
+                foreach (int m in chain.Members) result[boxes[m]] = new List<V3>(shape.Outline);
+                if (log) Mod.log.Info($"yellow boxes: {chain.Members.Count} boxes within {ExitBands.MergeGapMetres:0.0} m on edge {first.Access.Edge} built as ONE box, window {chain.From:0.0}..{chain.To:0.0} m ({string.Join("; ", labels)})");
+            }
+            return result;
+        }
+
+        /// <summary>0.4.9 (G14): joint boxes already logged (signature), so a re-group does not repeat the line.</summary>
+        private readonly HashSet<string> m_JointLogged = new HashSet<string>();
 
         private string Signature(MergedBoxGroup g)
         {

@@ -80,6 +80,33 @@ namespace JunctionRules.Core
         }
 
         /// <summary>
+        /// 0.4.9 (G14): a joint window of several boxes on one edge (Core/ExitBoxWindows) may be used when it keeps 'margin'
+        /// clear of both mouths ([min, max] = the edge's own part) and of every painted marking, exactly as each box's own
+        /// window does (<see cref="Window(double,double,double,double,double,IList{AlongSpan},out double,out double,out string)"/>):
+        /// a marking in the gap between two boxes keeps them apart.
+        /// </summary>
+        public static bool WindowFits(double from, double to, double min, double max, double margin, IList<AlongSpan> markings, out string why)
+        {
+            why = null;
+            margin = Math.Max(0, margin);
+            const double eps = 1e-6;
+            if (!(to - from >= 1.0)) { why = "joint window shorter than 1 m"; return false; }
+            if (from < min + margin - eps || to > max - margin + eps) { why = $"joint window {from:0.0}..{to:0.0} m reaches within {margin:0.0} m of a junction mouth (edge part {min:0.0}..{max:0.0} m)"; return false; }
+            if (markings != null)
+            {
+                foreach (AlongSpan m in markings)
+                {
+                    if (!CarriagewayOutline.IsFinite(m.From) || !CarriagewayOutline.IsFinite(m.To)) continue;
+                    double a = Math.Min(m.From, m.To) - margin, b = Math.Max(m.From, m.To) + margin;
+                    if (b <= from + eps || a >= to - eps) continue;
+                    why = $"a road marking ({m.From:0.0}..{m.To:0.0} m) lies in the joint window {from:0.0}..{to:0.0} m";
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        /// <summary>
         /// 0.4.2: where a painted marking lies along the road: its four painted corners (centre line A-B, +- painted
         /// width / 2 square to it) projected onto the centre polyline (XZ points with their metres along the curve).
         /// False when the marking's middle lies more than 'maxLateral' metres from the centre line (not on this road).
