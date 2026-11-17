@@ -1,4 +1,13 @@
-# Probe kit: Junction Rules 0.4.9-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits and entrances; vehicles leaving buildings give way before the sidewalk; merged boxes; median; markings hidden; gaps G1-G15)
+# Probe kit: Junction Rules 0.4.10-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits and entrances; vehicles leaving buildings give way before the sidewalk; merged boxes; median; markings hidden; gaps G1-G19)
+
+**0.4.10-probe (JR-T-016: 0.4.9 live gaps G18, G19), what changed since 0.4.9 (section 20):** cars no longer stop
+inside a painted exit / entrance box: the driving rule now uses exactly the painted box (0.4.3-0.4.9 placed the driven
+box metres away from the paint: up to 12-13 m at Alderbrook Street, because the road's lanes are measured from mouth to
+mouth and the box position was measured from node to node). Boxes built as one box are driven as that one box. Every
+yellow box (junction, exit, entrance; through traffic, vehicles leaving a building, the right-turner's re-check at its
+in-box spot) now needs room that is **free now** past the box for the whole vehicle: a creeping queue no longer counts
+as room. New timing counter at the end of the line. `docs/vanilla_copy_check_0.4.10.txt`: 0 unexplained differences (no
+change to the copied game code). Carries 0.4.9 and everything before.
 
 **0.4.9-probe (JR-T-015: 0.4.8 live gaps G12-G15), what changed since 0.4.8 (section 19):** G16 boxes stay yellow in snow; G17 holds name the vehicle they wait for, so No Vehicle Despawn and the cs2 deadlock finder see loops through Junction Rules holds. G15 the Alderwood
 deadlock (No. 40: a van waiting to turn in stood in No. 40's own exit box and the exit waited for it) cannot form: a
@@ -93,27 +102,27 @@ copy does not run; the boxes stay in the save).
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.4.9-probe || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.4.10-probe || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-cf74c32cfad33f609047ba2cd2bbe3b29097dd4fdfc14f775869f5368c6a6925  JunctionRules.dll
-b200ce6b356695a435c931cd1da8166dd73818c59a769ee414fd4ebcb4178ebf  JunctionRules.pdb
-9e8f8a397f70bbeb121ef7224981278773595c1fe2ce7e31de01d4c4df2b65bf  JunctionRules.mjs
-b2d18ddcf1b886edd082a85373371e26bd7c6dc0f8d915f814745a43b0eb9b8c  JunctionRules_win_x86_64.dll
-1c39bab0fdbf1b88179d9ff9c62c20db2a696c7fb0ac44d008a53c26eb754641  JunctionRules_win_x86_64.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.mjs
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
   fi
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules.mjs JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
-  echo "installed 0.4.9-probe"
+  echo "installed 0.4.10-probe"
 )
 ```
 
-Rollback: to 0.4.8 (JR-T-014, Burst from 8fca058, installed 17 Nov 07:5x; G12-G15 not fixed): the same block with `.staged/0.4.8-probe` and its sums (commit 242618d: dll 106bd828..., pdb 01c5735e..., mjs 9e8f8a39..., win dll d3178e58..., win pdb 8b27cc25...). To 0.4.7 (JR-T-013m, Burst from cd6a1eb, installed 17 Nov; no G7 sidewalk rule, no entrance boxes): the same block with `.staged/0.4.7-probe` and its sums (commit 3854a23). To 0.4.6: the same block with `.staged/0.4.6-probe` and its sums (commit 8bf6cf2). To 0.4.5 (JR-T-012 lot-exit build, Burst from 9639e71, installed 16 Nov): the same block with `.staged/0.4.5-probe` and its sums (commit bb676cd). To 0.4.4 (JR-T-012 first build, Burst from ba75f0b, installed 16 Nov): the same block with `.staged/0.4.4-probe-jr012` and its sums (commit 853ea2b). To 0.4.3 (installed 16 Nov, Burst from a14445d): the same block with `.staged/0.4.3-probe` and its sums (commit 1441805). To 0.4.2 (the JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
+Rollback: to 0.4.9 (JR-T-015, Burst from e6c7dd9, installed 17 Nov ~midday; G18 / G19 not fixed): the same block with `.staged/0.4.9-probe` and its sums (commit 84a78fe: dll cf74c32c..., pdb b200ce6b..., mjs 9e8f8a39..., win dll b2d18ddc..., win pdb 1c39bab0...). To 0.4.8 (JR-T-014, Burst from 8fca058, installed 17 Nov 07:5x; G12-G15 not fixed): the same block with `.staged/0.4.8-probe` and its sums (commit 242618d: dll 106bd828..., pdb 01c5735e..., mjs 9e8f8a39..., win dll d3178e58..., win pdb 8b27cc25...). To 0.4.7 (JR-T-013m, Burst from cd6a1eb, installed 17 Nov; no G7 sidewalk rule, no entrance boxes): the same block with `.staged/0.4.7-probe` and its sums (commit 3854a23). To 0.4.6: the same block with `.staged/0.4.6-probe` and its sums (commit 8bf6cf2). To 0.4.5 (JR-T-012 lot-exit build, Burst from 9639e71, installed 16 Nov): the same block with `.staged/0.4.5-probe` and its sums (commit bb676cd). To 0.4.4 (JR-T-012 first build, Burst from ba75f0b, installed 16 Nov): the same block with `.staged/0.4.4-probe-jr012` and its sums (commit 853ea2b). To 0.4.3 (installed 16 Nov, Burst from a14445d): the same block with `.staged/0.4.3-probe` and its sums (commit 1441805). To 0.4.2 (the JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
 its loader, so exit boxes fall back to one entrance box per building): the same block with `.staged/0.4.2-probe` and
 its sums (full sums in commit c781df0). To 0.4.1 (boxes kept, box driving rule gone): the same block with `.staged/0.4.1-probe` and its sums
 (dll af5b1322..., pdb db04729f..., mjs 9e8f8a39..., win dll 5acf0104..., win pdb d5762071...; full sums in the 0.4.1 commit 07cc519)
@@ -1280,3 +1289,92 @@ which game check held the sedan; the JR-side causes found in the code are all ch
 keep-clear space, near boxes are one band, Go'd exits are never re-held on the pavement); the counters show the rest.
 (o) None of this has run in game yet; everything above is proven from code, the decompile, the shader disassembly, the
 logs and the tests (2753).
+
+## 20. 0.4.10: the 0.4.9 live gaps G18 and G19 (JR-T-016)
+
+Driving changes act only while Car driving is the Junction Rules copy. Evidence: 0.4.9 log 09:50:00 (box lines 11-43),
+main's live tracks (hatchback 909920 `hatch.txt`, sedan 909747 / truck 380975 / car 910952 `sedan.txt`, frames
+36625355-36629298), owner shots 4570fced / ec08fecc (G18) and 413c538d (G19), read-only `cs2_junction_lanes` at the
+Alderbrook Street south junction (lane 984373/6 starts at (-1898.21, 281.27)), decompile 2026-11-13.
+
+### 20.1 G18 and G19: the driven box was not where the box is painted (one cause)
+
+0.4.3-0.4.9 told the driving rule only WHERE an exit is on the road (the edge curve position t of the exit) and the job
+laid the 8 m box length around t mapped straight onto each lane: `(t - EdgeLane.m_EdgeDelta.x) / (delta.y - delta.x)`
+(JRYellowBox BoxHold and JRExitGiveWay ExitBandBlocks, 0.4.9). But the game does not build a road's lanes over its
+whole curve: it builds them over the road's CUT geometry, from one junction mouth to the other (LaneSystem
+CreateEdgeLanes 2652 / 2661-2662: the combined segment, or EdgeGeometry m_Start with delta (0, 0.5) and m_End with
+(0.5, 1); CreateEdgeLane 4101-4105: lane curve = Lerp(segment left, segment right)). The curve t runs from node centre to
+node centre. So the driven box slid towards the middle of the road, by more the further the box is from the middle.
+Alderbrook Street (edge 984373: curve 192.1 m, lanes on its part 7.2..175.3 m; the south junction mouth is 17 m from
+the node centre):
+
+| Box | Painted (z) | Driven by 0.4.9 (z, northbound lane) |
+|---|---|---|
+| 843726 exit (164.6 m along) | 288.0 .. 296.0 | 301.3 .. 309.3 (13 m north, no overlap at all) |
+| 193433 exit + 843726 entrance, ONE box (110.0 .. 127.3 m) | 329.3 .. 346.6 | 337.5 .. 353.6 (entry 8.2 m late) |
+
+- **G18** (hatchback 909920, northbound): the merge of the two boxes did work in driving (both bands were there and
+  joined for the car), but the joint band began at z 337.5, not at the painted 329.3. The car past the box (911176,
+  z 349.5) left no room, so the hatchback was held at the DRIVEN entry and stopped with its front at ~335.7 (centre
+  333.6): 6.4 m inside the paint. That it stopped just before the exit box's own painted start (338.6) was a
+  coincidence of the shift.
+- **G19** (sedan 909747 northbound, z 294.4 for ~10 s; truck 380975 at z 295.8 and car 910952 at z 288.2 southbound):
+  843726's box was driven 13 m north of the paint on both lanes. The sedan simply queued behind 910969 (z 298.9) INSIDE
+  the paint, with no driven box under it; the southbound truck and car queued back from the main-road junction into the
+  paint, south of the driven box. **The southbound vehicles had the same cause** (the misplaced box), not a moving-queue
+  entry. The stop-and-go reading ("entered while the queue past it was moving") does not fit the track: with the box
+  where it is painted the sedan would have been held at z 288 even with the 0.4.9 moving credit (910969's rear stood
+  0.7 m past the box end at frame 36628536: no room for 4.4 + 1 m either way).
+
+**Now:** the main thread builds every exit / entrance box's window with the paint's own code (Boxes/BoxShapes.Entrance
+with the published shape parameters; boxes less than 2 m apart built as ONE box over the joint window exactly as the
+paint's JointBoxes; derived entrances exactly as the paint derives them; a box the paint does not draw is not driven
+either) and hands the window's two end points on the road's centre line to the job (Boxes/DrivingBands.cs). The job
+projects them onto each lane's own curve (Core/LaneWindow.cs, JRYellowBox.LaneBands, shared by through traffic and by
+vehicles leaving a building). On Alderbrook the driven boxes are now z 288.0..296.0 and 329.3..346.6, within 0.1 m of
+the paint (test `G18G19Tests`). Junction boxes were not affected (they are the junction's own lanes; their entry is
+the stop line at the mouth). The driving list is rebuilt when the boxes change, when the paint regroups (a road or
+node under a box changed) and every 64 steps; the shape work is cached and runs only when an input changed. Log:
+`yellow boxes (driving): N painted exit / entrance box(es) (M boxed exit(s) and entrance(s), J built as one box) on B
+building(s) handed to the box rule, each over its painted window[; K not painted, so not obeyed]`.
+
+### 20.2 G19 rule: room must be free NOW (owner, UK: do not enter unless your exit is clear)
+
+0.4.2-0.4.9 counted a MOVING vehicle past the box as giving room up to its braking distance (#14's zebra measure). Now
+every yellow box room test counts only room that is free now: the junction box at its line, exit and entrance boxes
+for through traffic and for a vehicle leaving a building into a box, and the right-turner's re-check at its in-box spot
+(so it waits there only while its exit has free room and only oncoming traffic stops it). Turning INTO a building
+already needed free room (0.4.9, G15b). Zebras keep the moving credit (not a box). A vehicle still inside the box ahead
+takes exit room first (unchanged); nothing past the box = room (unchanged).
+
+**Deadlock check (G15):** a deadlock is a standing state, and a standing vehicle never had a credit, so free-now gives
+the same verdict and names the same blocker as 0.4.9 in every standing scene (test: 5000 random standing scenes). It
+adds waiting only while the queue past the box still moves, and only on the vehicles ahead (downstream): no new wait on
+anything behind or beside the car, so no new loop. The G15 rules (no part in a box, exits do not wait for entrants,
+side obstacles only for through traffic) are untouched; `G15LoopTests` / `G15bSideObstacleTests` still pass.
+
+**G13 (through traffic not held without reason):** through traffic is held only when the space past the box is not
+physically free for its length + margin. In flowing traffic the car ahead is usually far enough past the box (test:
+rear 12 m past = no hold); the hold can bite in dense, slow platoons (headway shorter than box + own length + margin).
+New counter at the end of the timing line: `box holds only because the queue past the box was moving (free-now rule) N`
+(car-steps where the binding box hold would have been let through by 0.4.9's credit). If N is large on a busy road
+with no jam, tell main.
+
+### 20.3 What to watch
+
+| # | Do | Expect |
+|---|---|---|
+| 20-1 | Alderbrook St, northbound and southbound past 843726 / 193433 (shots 4570fced, 413c538d), busy | nobody stops inside the painted yellow; queues stop at the painted line |
+| 20-2 | Log after load | `yellow boxes (driving): ... built as one box ... each over its painted window`; no `not painted, so not obeyed` unless the paint log says a box was not painted |
+| 20-3 | Any boxed exit on a long road near a junction (largest shift was near the road ends) | the stop line of the box = the painted edge |
+| 20-4 | Timing line end | `box holds only because the queue past the box was moving` small next to the box hold counters; big numbers without a jam = report |
+| 20-5 | Right-turner in a boxed junction with a slow exit queue | waits at the line until its exit has free room; once in, waits only for oncoming traffic |
+
+**Unproven / watch:** (a) None of this has run in game; the misplacement is proven from the decompile, the live lane end
+point, the log windows and the tracks (tests rebuild them), not seen after the fix. (b) Free-now makes box entries more
+cautious in slow dense traffic (counter 20-4). (c) A window is projected onto a lane perpendicular to that lane; on a
+sharp curve the driven box ends follow the lane's perpendicular, the paint's ends the centre line's (same within cm on
+normal curves). (d) A box the paint cannot draw (log `not painted`) is no longer driven (0.4.9 drove a box there); the
+paint log names why. (e) The 2 m same-road merge for the vehicle's own length (19.1, per vehicle) is unchanged and now
+works on the true positions.
