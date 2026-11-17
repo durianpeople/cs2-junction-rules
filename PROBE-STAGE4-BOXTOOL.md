@@ -1,4 +1,14 @@
-# Probe kit: Junction Rules 0.4.10-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits and entrances; vehicles leaving buildings give way before the sidewalk; merged boxes; median; markings hidden; gaps G1-G19)
+# Probe kit: Junction Rules 0.4.11-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits and entrances; vehicles leaving and turning into buildings give way; merged boxes; median; markings hidden; gaps G1-G21)
+
+**0.4.11-probe (JR-T-017: 0.4.10 live gap G21), what changed since 0.4.10 (section 21):** a vehicle turning INTO a
+building across traffic (a right turn in, left-hand traffic) now gives way like a vehicle leaving one: it waits in its
+own lane BEFORE the yellow box (no box: where it would leave its lane) until the lanes its turn crosses have a gap long
+enough for its WHOLE length to clear them, judged from the speed of the approaching vehicles (also those still in the
+junction before the road). 0.4.10 let it into the box, where it waited at the game's own give-way with its nose at the
+oncoming lane and then judged only the time to REACH that lane (van 380934 at No. 40 Alderwood, 19:00). A left turn in
+that crosses no lane never waits. The yellow box room test into the building (G9) is unchanged. No change to the copied
+game code (`vanilla_copy.py check`: 0 unexplained differences, 40 marked blocks / 318 lines as 0.4.10). Same setting as
+the exits ("Vehicles leaving buildings give way"). Carries 0.4.10 and everything before.
 
 **0.4.10-probe (JR-T-016: 0.4.9 live gaps G18, G19, G20), what changed since 0.4.9 (section 20):** cars no longer stop
 inside a painted exit / entrance box: the driving rule now uses exactly the painted box (0.4.3-0.4.9 placed the driven
@@ -101,27 +111,27 @@ copy does not run; the boxes stay in the save).
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.4.10-probe || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.4.11-probe || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-15b7467d5c373309c607127c862df56fe2b37a797fa3aaa7fee598ae14adf878  JunctionRules.dll
-aa74dbd73f127ba4eb4f83e7b73784c9e313f2e2f174072cb1752545216c7232  JunctionRules.pdb
-9e8f8a397f70bbeb121ef7224981278773595c1fe2ce7e31de01d4c4df2b65bf  JunctionRules.mjs
-203e1ef0777062a0bd2dd473dc0ab802fb0ad28b964a822969fe0652a4d260f7  JunctionRules_win_x86_64.dll
-fdce39e269f5e25752f07f8665ef64bd8d3697d3422367609830e617780715cd  JunctionRules_win_x86_64.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.mjs
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
   fi
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules.mjs JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
-  echo "installed 0.4.10-probe"
+  echo "installed 0.4.11-probe"
 )
 ```
 
-Rollback: to 0.4.9 (JR-T-015, Burst from e6c7dd9, installed 17 Nov ~midday; G18 / G19 not fixed): the same block with `.staged/0.4.9-probe` and its sums (commit 84a78fe: dll cf74c32c..., pdb b200ce6b..., mjs 9e8f8a39..., win dll b2d18ddc..., win pdb 1c39bab0...). To 0.4.8 (JR-T-014, Burst from 8fca058, installed 17 Nov 07:5x; G12-G15 not fixed): the same block with `.staged/0.4.8-probe` and its sums (commit 242618d: dll 106bd828..., pdb 01c5735e..., mjs 9e8f8a39..., win dll d3178e58..., win pdb 8b27cc25...). To 0.4.7 (JR-T-013m, Burst from cd6a1eb, installed 17 Nov; no G7 sidewalk rule, no entrance boxes): the same block with `.staged/0.4.7-probe` and its sums (commit 3854a23). To 0.4.6: the same block with `.staged/0.4.6-probe` and its sums (commit 8bf6cf2). To 0.4.5 (JR-T-012 lot-exit build, Burst from 9639e71, installed 16 Nov): the same block with `.staged/0.4.5-probe` and its sums (commit bb676cd). To 0.4.4 (JR-T-012 first build, Burst from ba75f0b, installed 16 Nov): the same block with `.staged/0.4.4-probe-jr012` and its sums (commit 853ea2b). To 0.4.3 (installed 16 Nov, Burst from a14445d): the same block with `.staged/0.4.3-probe` and its sums (commit 1441805). To 0.4.2 (the JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
+Rollback: to 0.4.10 (JR-T-016, Burst from 9ea1ac4, installed 17 Nov afternoon; G21 not fixed): the same block with `.staged/0.4.10-probe` and its sums (commit 5ca57b6: dll 15b7467d..., pdb aa74dbd7..., mjs 9e8f8a39..., win dll 203e1ef0..., win pdb fdce39e2...). To 0.4.9 (JR-T-015, Burst from e6c7dd9, installed 17 Nov ~midday; G18 / G19 not fixed): the same block with `.staged/0.4.9-probe` and its sums (commit 84a78fe: dll cf74c32c..., pdb b200ce6b..., mjs 9e8f8a39..., win dll b2d18ddc..., win pdb 1c39bab0...). To 0.4.8 (JR-T-014, Burst from 8fca058, installed 17 Nov 07:5x; G12-G15 not fixed): the same block with `.staged/0.4.8-probe` and its sums (commit 242618d: dll 106bd828..., pdb 01c5735e..., mjs 9e8f8a39..., win dll d3178e58..., win pdb 8b27cc25...). To 0.4.7 (JR-T-013m, Burst from cd6a1eb, installed 17 Nov; no G7 sidewalk rule, no entrance boxes): the same block with `.staged/0.4.7-probe` and its sums (commit 3854a23). To 0.4.6: the same block with `.staged/0.4.6-probe` and its sums (commit 8bf6cf2). To 0.4.5 (JR-T-012 lot-exit build, Burst from 9639e71, installed 16 Nov): the same block with `.staged/0.4.5-probe` and its sums (commit bb676cd). To 0.4.4 (JR-T-012 first build, Burst from ba75f0b, installed 16 Nov): the same block with `.staged/0.4.4-probe-jr012` and its sums (commit 853ea2b). To 0.4.3 (installed 16 Nov, Burst from a14445d): the same block with `.staged/0.4.3-probe` and its sums (commit 1441805). To 0.4.2 (the JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
 its loader, so exit boxes fall back to one entrance box per building): the same block with `.staged/0.4.2-probe` and
 its sums (full sums in commit c781df0). To 0.4.1 (boxes kept, box driving rule gone): the same block with `.staged/0.4.1-probe` and its sums
 (dll af5b1322..., pdb db04729f..., mjs 9e8f8a39..., win dll 5acf0104..., win pdb d5762071...; full sums in the 0.4.1 commit 07cc519)
@@ -1582,3 +1592,105 @@ Tests (MergedOutlineTests), on the live road (16 m, 3 m footways), for No. 40 Al
    1706, 20.8). None of them ended standing in a box without a light change.
 5. A standing junction-box car with only its TAIL in the box is counted only where its nose / lanes show it (the probe
    sees the nose case and exit / entrance boxes fully).
+
+## 21. 0.4.11: vehicles turning INTO a building give way (JR-T-017, gap G21)
+
+Driving changes act only while Car driving is the Junction Rules copy and the setting "Vehicles leaving buildings give
+way" is on (0.4.11: it also covers turning in). Evidence: 0.4.10 live log 17 Nov 18:59-19:00 (jrlogs copy
+`JunctionRules.Mod.2026-11-17_0410.log`), main's read-only snapshot at frame 36633332, owner shot 60253f58, decompile
+2026-11-13 (`~/Code/decomp/yb-2026-11-13/full`).
+
+### 21.1 What happened (G21)
+
+Van 380934 (to Scandic Baron, No. 40 Alderwood Street) came along the eastbound lane (north, z ~278) and turned right
+(left-hand traffic) across the westbound lane (z ~271) into No. 40's entrance (x ~-1994). The always-on entrance log:
+18:59:29 `held before the box (way in full, waits on the road)`, 19:00:05 `stands in the box 30 s (way in has room:
+waiting to turn)`. Then (frame 36633332) it was at (-1995.1, 275.6), heading 155, 2.5 m/s, crossing in front of the
+westbound traffic. So: the G9 room rule worked (it waited before the box while the yard was full); once there was room
+it drove INTO the box and waited there, at the game's own give-way, with its nose at the oncoming lane; it then went on a
+gap that was long enough to reach the lane but not to clear it.
+
+### 21.2 How the game handles a turn into a driveway (cites)
+
+- The way in is a lane of the ROAD (owner = the road edge), built as a node lane by `Game.Net/LaneSystem.cs`
+  `CreateEdgeConnectionLane` (3646+): it starts ON the road lane the vehicle drives (StartNode = PathNode(edge, lane, b,
+  t2), 3858; curve from `MathUtils.Position(road lane, t2)`, 3794-3803) and runs across the other lanes to the drive.
+  Flags `Unsafe | SideConnection` (3868), TurnLeft / TurnRight by its bend (3873-3880), no `Yield` (only the way OUT,
+  isSource, gets Yield: 3869-3872).
+- Its overlaps with the lanes it crosses are computed because it is a node lane (`LaneOverlapSystem` 1161), and the Unsafe
+  tie-break gives it the lower priority (1386-1389). In the vehicle's own lane check that only means: give way to a road
+  vehicle already ON the crossed lane whose stock 2 s look-ahead reaches the overlap, and to reservations. A vehicle still
+  in the junction before the road is not seen.
+- The vehicle asks road traffic for space on it (`CarNavigationSystem` 920-923: Unsafe and edge-owned = RequestSpace;
+  2277-2287: reserved at priority 96). That only stops a road vehicle that would stand across the drive in a queue
+  (`CheckOverlapSpace`), never moving oncoming traffic.
+
+### 21.3 Why Junction Rules missed it
+
+- The 0.2.4 turn-across rule (`Core/TurnAcross.cs`, block S2-13) classifies only JUNCTION pairs: oncoming straight = a
+  `Forward` lane whose end edge is the turner's start edge. The way in carries `Unsafe` (sign status differs from the road
+  lane) and the road lane has no `Forward` flag: the rule keeps stock (test `G21EntryTests`).
+- The exit rule's driveway hold (S2-29, 0.4.4-0.4.10) acted only on a way OUT (`SideConnection + Yield`).
+- The whole-path rule (S2-04) does run on the way in (any node lane), but it decides at the first crossing, INSIDE the box
+  (the 0.4.8 G9 design: "enters and waits for the oncoming gap inside the box at the game's own give-way"), and with the
+  time to REACH the conflict, not to CLEAR it with the whole vehicle (the exits' 0.4.8 G7 measure).
+
+### 21.4 Now
+
+`Stage2/JRExitGiveWay.cs EntryRoadHold` (rule in `Core/EntryGiveWay.cs`), reached through the existing S2-29 call with
+the ROAD lane (every lane the vehicle's look-ahead walks, its current lane included): no new copy block.
+
+1. Only a path whose next lane is a way in (`SideConnection` without `Yield`); on-duty emergency vehicles: stock.
+2. The lanes judged: the way in's overlaps with road car lanes it CROSSES (not the lane it leaves: a merge at its start;
+   not another drive lane; not water). None (a left turn in, left-hand traffic) = no wait.
+3. Where it waits: the painted box line when the way in leaves inside a box on that lane (0.4.10 painted windows,
+   `LaneBands`), else where the way in leaves its own lane (the drive start: the whole vehicle is still in its own lane).
+   If it can no longer stop before the box line it is judged at the drive start (counter `of them at the drive start
+   inside a box`, expected ~0); past the drive start it is committed and the game finishes the turn. It never waits
+   across the oncoming lane because of this rule.
+4. The judgement is the exits': every road vehicle on a crossed lane and on the lanes feeding it (junction lanes, then
+   the road before them; red / amber-can-stop skipped) blocks when its braking distance + speed x (2 s + the turner's time
+   to CLEAR the lane with its whole length from the spot) reaches the conflict; one standing within 10 m of the conflict
+   blocks (the exits' G7 present rule), unless it is itself waiting to turn into a building (room or gap; G15 rule).
+5. The G9 room test into the building is unchanged (same road lane, earlier in the step): both must pass.
+
+**Loop check.** The entry hold waits only on road vehicles on the crossed lanes; road traffic never waits for it (stock
+gives the way in the lower priority; the turner holds nobody but the vehicles behind it in its own lane). Two turners
+into facing entrances would wait for each other under the present rule alone; a standing vehicle that waits to turn in
+is therefore not present for an entrant's scan (event kind 20, like G15's kind 17). Exits still wait for a gap-held
+entrant standing in the lane they join (it waits only for road traffic, not for the exit: no cycle). Test: 5000 random
+standing facing-entrant scenes, no mutual wait.
+
+**Model** (`G21EntryTests`, the Alderwood No. 40 scene: way in leaves the eastbound lane centre z 278, westbound lane
+269.25..272.75, overlap from ~5 m along the way in for ~6 m, box line ~4 m before the drive start; oncoming vehicles at
+gap 2..150 m and 1..22 m/s, 3278 scenes; "unsafe go" = the oncoming vehicle reaches the lane before the turner has
+cleared it):
+
+| Turner | 0.4.10 own time used | 0.4.10 unsafe goes | 0.4.11 own time used | 0.4.11 unsafe goes |
+|---|---|---|---|---|
+| car 4.5 m | reach 0.60 s | 0 | clear from the box line 4.07 s | 0 |
+| van 6.5 m | reach 0.79 s | 149 | 4.88 s | 0 |
+| artic 18.5 m | reach 1.09 s | 858 | 7.98 s | 0 |
+
+The shot's case (a westbound car ~28 m away at ~10 m/s): 0.4.10 turned, 0.4.11 waits before the box. Price: more waiting
+(the van waits in more scenes than in 0.4.10), most for lorries on a busy road.
+
+### 21.5 Log and counters
+
+- Timing line (exit setting on), at the end: `turning into buildings: judged for a gap N, standing held for a gap M (of
+  them at the drive start inside a box K), not waiting for another vehicle waiting to turn in J`.
+- Entrance log (boxed entrances, always on): sample `held before the box (way in has room; waits for a gap in the traffic
+  its turn crosses)`, notable `held before the box 30 s waiting for a gap ...`, summary `X held before the box for a gap
+  in the traffic their turn crosses (Y over 30 s)`. The 0.4.10 notable `stands in the box 30 s (way in has room: waiting
+  to turn)` should now be ~0 (only a turner that could not stop before the box line and waits at the drive start).
+
+### 21.6 What to watch
+
+| # | Do | Expect |
+|---|---|---|
+| 21-1 | No. 40 Alderwood, eastbound vans turning in with westbound traffic | they stop BEFORE the box in their own lane and turn only with a clear gap; nobody stands in the box with the nose at the westbound lane |
+| 21-2 | Any unboxed driveway on a busy two-way road | the turner waits in its own lane where the drive leaves it, never part-way across |
+| 21-3 | Left turns in (near side) | no wait (apart from the G9 room test at a box) |
+| 21-4 | Timing line end | `standing held for a gap` rises on busy roads; `at the drive start inside a box` ~0 |
+| 21-5 | Busy road with a stationary oncoming queue held before the entrance box | **owner question:** the turner waits for a queued vehicle standing within 10 m of its crossing (the exits' present rule, kept for consistency). UK practice would let it turn through the box gap. If turners wait behind such queues for long, say so: the change is one condition (a standing vehicle held before that box would not count) |
+| 21-6 | Lorries turning in on a busy road | long waits are expected (whole-length clear time); queues behind a waiting turner in its own lane are expected |
