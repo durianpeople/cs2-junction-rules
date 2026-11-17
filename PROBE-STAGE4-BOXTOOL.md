@@ -6,8 +6,7 @@ box metres away from the paint: up to 12-13 m at Alderbrook Street, because the 
 mouth and the box position was measured from node to node). Boxes built as one box are driven as that one box. Every
 yellow box (junction, exit, entrance; through traffic, vehicles leaving a building, the right-turner's re-check at its
 in-box spot) now needs room that is **free now** past the box for the whole vehicle: a creeping queue no longer counts
-as room. G20: boxes on one road less than 6 m apart (was 2 m) are built and driven as one box, with a log line per pair saying merged or not and why. New timing counter at the end of the line. `docs/vanilla_copy_check_0.4.10.txt`: 0 unexplained differences (no
-change to the copied game code). Carries 0.4.9 and everything before.
+as room. G20: boxes on one road less than 6 m apart (was 2 m) are built and driven as one box, with a log line per pair saying merged or not and why. Sweep (20.5): one box definition for every vehicle kind; a car never waits with any part in a box, also where the room past a box ends in another box, a boxed junction or a red light; on-duty emergency vehicles pass boxes. New timing counter at the end of the line. `docs/vanilla_copy_check_0.4.10.txt`: 0 unexplained differences (block conditions S2-28 / S2-28b / S2-37 and the S2-26 call changed, DEVIATIONS.md). Carries 0.4.9 and everything before.
 
 **0.4.9-probe (JR-T-015: 0.4.8 live gaps G12-G15), what changed since 0.4.8 (section 19):** G16 boxes stay yellow in snow; G17 holds name the vehicle they wait for, so No Vehicle Despawn and the cs2 deadlock finder see loops through Junction Rules holds. G15 the Alderwood
 deadlock (No. 40: a van waiting to turn in stood in No. 40's own exit box and the exit waited for it) cannot form: a
@@ -1401,3 +1400,55 @@ or `NOT merged: gap 2.8 m < 6.0 m but the joint box is refused: <why>`.
 |---|---|---|
 | 20-6 | No. 40 Alderwood (shot ae3ba73f) and other boxes 2-6 m apart | one box, one outline; log `pair ... MERGED` |
 | 20-7 | Boxes 6 m or more apart | two boxes; log `NOT merged: gap ... >= 6.0 m` (below 15 m only) |
+
+### 20.5 The sweep (owner: "make 0.4.10 robust"): one box definition, every box kind and vehicle kind
+
+**One definition of the box.** Exit and entrance boxes: the painted window (Boxes/BoxShapes.Entrance, the paint's own
+code and parameters; boxes less than 6 m apart on one road built as one, Core ExitBoxWindows.Assemble), projected onto
+each lane. A box the paint does not draw is not obeyed. Junction boxes: the junction itself. Its entry is the stop line
+(the lane start at the junction mouth), and its exit is where the car's lanes leave the junction. The painted junction
+box lies inside that: its mouths only slide INTO the junction (give-way / STOP arms), and it keeps 0.5 m clear of the
+crossings, which are inside the junction. So a car held at the line never has any part in the paint. Room past a
+junction box is room past the junction. A junction box and an exit box at its mouth are one box for driving, as in the
+paint (20.5 rule 2).
+
+| Who | Where it waits | Room it needs (free NOW, whole length incl. trailers + margin) |
+|---|---|---|
+| Through traffic (car, van, bus, artic) | before the box line (boxes on its lane closer than its own length + margin are one box for it) | past the box |
+| Turning into a building inside the box | before the box line | on its way in (into the building) |
+| Leaving a building into a box | before the pavement | past the box on the lane it joins |
+| Right-turner (UK exception) | at the line; inside the box only at its turn spot | past the box on its exit; at the turn spot only oncoming traffic stops it |
+| On-duty emergency vehicle (siren, priority 108) | not held by boxes (as at exits; stock) | n/a |
+
+**Where the car would wait after the box (new).** A car that has room may still have to stop at the far end of that
+room. The room window (its length + margin, plus the vehicles queued in the box ahead of it) now also looks at:
+1. A further box on the same lane or on its next lanes starting inside the window: the room is needed past THAT box too.
+2. A boxed junction starting inside the window (an exit box near a boxed junction, or a box right after a junction box):
+   the room is needed past the junction.
+3. A red or amber light inside the window: no room now. The car waits before the box until it is green. Example:
+   Alderbrook's 843722 box ends 8.4 m before the north light, so a bus or artic would otherwise stand at red with its
+   tail in the box.
+This also closes review finding F2: on a curved edge built in two lane pieces, a box over the middle continues on the
+next piece and its room is counted past the painted end.
+
+**Deadlock check.** Every new wait is on something DOWNSTREAM of the car: vehicles past the box, a further box's
+vehicles, a light (lights cycle). A held car stands outside every box, so it blocks nobody inside one. No wait points
+back up the road or across to an exit. The G15 rules are unchanged: entrants are not "present" for exits, side obstacles
+count only for through traffic, and no part of a vehicle is in a box. G15LoopTests / G15bSideObstacleTests pass.
+
+**Proof offline.** BoxScenarioTests is a step model of No. 40 Alderwood and of Alderbrook northbound. It uses the live
+windows, the job's own Core decisions, and cars, vans, buses and artics. It has a full one-way yard with entrants and
+exiters, a boxed junction, a light, a stop-and-go exit, and heavy jams; 20 seeds. Result: 7988 vehicles through, 1031
+in and 1091 out of No. 40, **0 vehicle-steps standing in a painted box**, and everything drains when demand stops (no
+deadlock). The same scenes under 0.4.9's rules: 37653 standing-in-box steps.
+
+### 20.6 Known residuals (proven absent in the model, possible in game)
+
+(a) A light that turns amber / red AFTER a car entered a box on green can stop the car at the line with its tail in the
+box. The car was let in with green; the light's remaining green is not read. 0 cases in the model with a 3 s amber; in
+game, watch boxes within one vehicle length of a signal. (b) A give-way / STOP line inside the room window is not treated
+as a stop. Holding the car before the box would hold it forever, since the sign is always there. Such a box is a paint
+mouth-margin question: tell main if one shows up. (c) A bus stopping at a stop inside a box is stock behaviour (the stop
+is the bus's target). (d) The free-now counter (20.2) is an upper bound (review F6). (e) The driving list now caches
+each box's window by its own inputs (road, mouths, crossings / stop lines, exit point). A failure there keeps the last
+good boxes and logs once (review F1).
