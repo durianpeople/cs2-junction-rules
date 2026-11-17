@@ -1220,6 +1220,16 @@ Junction Rules exit rule with nothing physically in its way, so its Blocker was 
 JR holds hid the loop until it had grown into physical blocks. 0.4.9 names the blocker for every JR hold, so such a loop
 is flagged as soon as it closes.
 
+Intermittent (owner shot 5bf5b86c, the same lock NOT outlined): the red exiter at the pavement edge is held twice in
+every update, by the Junction Rules exit hold (stop at its sidewalk spot; 0.4.8 Blocker = Entity.Null) and by the game's
+own check (stop before the dark van on its merge area; Blocker = the dark van). The game writes its blocker only when its
+limit is strictly lower than the one already set, and with the van standing right at its spot the two limits are almost
+equal, so from update to update the Blocker flips between the dark van and nobody. No Vehicle Despawn re-tags every 4
+frames and REMOVES its stuck mark as soon as a chain breaks once, which also restarts its 400-frame linger: the loop
+flickers between outlined and not, and is never despawned. 0.4.9: the Junction Rules hold names the same vehicle (the
+one on the exit's conflict), so the chain stays closed and the mod acts after 400 frames (one vehicle per pass, its own
+setting). The loop itself should not form with 19.1 / 19.1b.
+
 Check: `cs2_vehicles x,z` near a jam caused by Junction Rules shows queue heads behind named vehicles (not "Crossing"
 with nobody); a JR-caused loop (if any) appears under `deadlocks` and is highlighted by No Vehicle Despawn.
 
