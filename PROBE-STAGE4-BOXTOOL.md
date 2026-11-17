@@ -2190,6 +2190,11 @@ a zebra M)` (per entry episode, the game's marked crosswalk under the admitted f
 History: a first version (zebras never blocked, pedestrian-street crossings as non-zebra) was rejected by review (arm pick
 was a tie); the second (zebra = game-marked crosswalk, never blocked) was approved; both superseded by this decision.
 
+Review (Sonnet, APPROVE WITH FIXES) applied: the "tail on a zebra" flag is taken only from the footprint actually entered
+(G22 entry in BoxHold / the UK spot, G28 at the exit's Go), not from other admission checks in the same update; dead
+field removed; stale comments updated. Noted: the zebra-hold skip has no behavioural (job-level) test, only source pins:
+live checks 30-1 / 30-2 cover it.
+
 Tests `PedPathTests`: tail over an unmarked crossing -> enters; tail over a zebra -> enters; footprint over another lane's
 path -> waits; a track under it -> waits; G28 van tail over the sidewalk band -> enters; repo pins of the zebra-hold skip
 and the counter.

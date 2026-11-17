@@ -248,7 +248,7 @@ namespace JunctionRules.Stage2
             if (d == ExitGiveWay.Decision.Go)
             {
                 if (Counting) m_ExitGo = true;
-                if (m_G28Used) m_BoxSameExitEntry = true;
+                if (m_G28Used) { m_BoxSameExitEntry = true; if (m_G28ZebraTail) m_SameExitZebraTail = true; }
                 return float.MaxValue;
             }
             Min(ref m_HasDriveHold, ref m_DriveHoldSpeed, hold);
@@ -1502,7 +1502,7 @@ namespace JunctionRules.Stage2
                     if (ExitSameLane.TouchesOther(s * joinCurve.m_Length, e * joinCurve.m_Length, from, to)) return;
                 }
             m_G28JoinLane = join.m_Lane;
-            if (zebraTail) m_SameExitZebraTail = true;
+            m_G28ZebraTail = zebraTail;   // review F2: counted only at the exit's Go
             m_G28Queue = rearAhead < joinCurve.m_Length;   // a standing queue ahead: vehicles standing behind the merge belong to it
         }
 

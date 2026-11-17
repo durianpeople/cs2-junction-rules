@@ -53,7 +53,7 @@ namespace JunctionRules.Tests
             Check(yb.Contains("if (role == BoxDriving.EntranceRole.Leaving && lane != Entity.Null && (m_G28JoinLane == lane || m_G28Latched == lane))"),
                 "repo: the road-lane box hold (role Leaving) honours the exception, latched once the front is on the pavement (review F3)");
             Check(ex.Contains("if (walkStart >= 0f && start * wayOutLength >= walkStart) m_G28Latched = join.m_Lane;"), "repo (review F3): latch only for a boxed merge-only exit already on the pavement");
-            Check(ex.Contains("if (m_G28Used) m_BoxSameExitEntry = true;") && yb.Contains("&& G28Standing(self))") && yb.Contains("m_BoxSameExitStanding = true;"),
+            Check(ex.Contains("if (m_G28Used) { m_BoxSameExitEntry = true; if (m_G28ZebraTail) m_SameExitZebraTail = true; }") && yb.Contains("&& G28Standing(self))") && yb.Contains("m_BoxSameExitStanding = true;"),
                 "repo (review F4): entry counted at the exit's Go (shared G22 counter); a G28 car standing in its box counts as same-exit standing, not a box violation");
             int eh = ex.IndexOf("private float EntryRoadHold"), ehEnd = eh < 0 ? -1 : ex.IndexOf("\n        private ", eh + 10);
             Check(eh >= 0 && ehEnd > eh && !ex.Substring(eh, ehEnd - eh).Contains("G28"), "repo: turning INTO a building (G21 EntryRoadHold) is untouched");

@@ -333,8 +333,8 @@ namespace JunctionRules.Stage2
         /// <summary>0.4.12 (G28): the road lane a same-exit-lane exiter joins (Null = no exception this update); scanning its merge; exception used.</summary>
         private Entity m_G28JoinLane, m_G28Latched;
         private bool m_G28Scan, m_G28Used, m_G28Queue;
-        /// <summary>0.4.12 owner decision revised: the admitted footprint has a zebra under it (counter); the zebra room hold was skipped for an admitted car.</summary>
-        private bool m_SameExitZebraTail, m_ZebraSameExitSkipped;
+        /// <summary>0.4.12 owner decision revised (counter only): the ENTERED footprint has a zebra under it; the last G22 admission's / G28 check's footprint had one.</summary>
+        private bool m_SameExitZebraTail, m_LastAdmitZebra, m_G28ZebraTail;
         /// <summary>0.4.12 (G29): the pedestrian lookup BoxHold received this update (for SkipStockRoomHold's G22 test).</summary>
         private ComponentLookup<Game.Net.PedestrianLane> m_BoxPedestrians;
         private bool m_HasBoxPedestrians, m_StockSkipBoxed, m_BoxNoseLight;
@@ -777,7 +777,6 @@ namespace JunctionRules.Stage2
             if (m_BoxRule && SameExitZebraExempt(lane, overlaps, curveX, length, inverse, self, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers,
                     ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes))
             {
-                if (Counting) m_ZebraSameExitSkipped = true;
                 return float.MaxValue;
             }
             if (Counting) Min(ref m_HasZebraRoom, ref m_ZebraRoomSpeed, hold);

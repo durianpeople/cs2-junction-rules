@@ -84,13 +84,14 @@ namespace JunctionRules.Stage2
             paths.m_CarLanes = carLanes;
             paths.m_Lanes = m_LaneData;
             paths.m_Pedestrian = pedestrianLanes;
+            m_LastAdmitZebra = false;
             if (!SameExitException.Admits(from, to, ref paths)) return false;
             // counter only: does a zebra lie under the admitted footprint?
             for (int i = 0; i < overlaps.Length && i < 64; i++)
             {
                 if ((zebras & (1UL << i)) == 0) continue;
                 StretchGeometry.ToConflict((int)overlaps[i].m_Flags, overlaps[i].m_ThisStart, overlaps[i].m_ThisEnd, inverse, false, out float zs, out float ze);
-                if (zs * laneLength < to && ze * laneLength > from) { m_SameExitZebraTail = true; break; }
+                if (zs * laneLength < to && ze * laneLength > from) { m_LastAdmitZebra = true; break; }   // review F2: counted only at the entry site
             }
             return true;
         }

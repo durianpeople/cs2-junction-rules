@@ -162,6 +162,7 @@ namespace JunctionRules.Stage2
                 if (SameExitAdmits(lane, owner.m_Owner, laneLength, inverse, start, self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes, ref moving))
                 {
                     m_BoxSameExitEntry = true;
+                    if (m_LastAdmitZebra) m_SameExitZebraTail = true;   // 0.4.12 owner decision revised (counter)
                     return float.MaxValue;
                 }
                 NoteLightPetition(hold);   // review R1
@@ -424,6 +425,7 @@ namespace JunctionRules.Stage2
             if (SameExitAdmits(lane, owner.m_Owner, length, inverse, math.max(0f, m_Stretch.CurveX), self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes, ref moving))
             {
                 m_BoxSameExitEntry = true;
+                    if (m_LastAdmitZebra) m_SameExitZebraTail = true;   // 0.4.12 owner decision revised (counter)
                 return float.MaxValue;
             }
             NoteLightPetition(hold);   // review R1

@@ -7,6 +7,9 @@ namespace JunctionRules.Core
     /// the one getting STOP is 'prioritised' vs YIELD exits) approach: may enter a box whose exit is blocked iff the spot where
     /// the car would wait (its whole body) only crosses paths into the same exit lane it is queued for."
     ///
+    /// 0.4.12 OWNER DECISION REVISED: pedestrian paths (zebras too) never disqualify the footprint and the front is not held before an
+    /// exit zebra (callers pass no exit zebra); the notes below about pedestrian crossings are the 0.4.11 reading, superseded.
+    ///
     /// Reading (junction boxes only; exit / entrance boxes keep G9 / G21):
     /// <list type="bullet">
     /// <item>Eligible approach (<see cref="Eligible"/>): the car's junction lane yields (Stop or Yield sign status, the game's
@@ -112,7 +115,7 @@ namespace JunctionRules.Core
         /// under the footprint. Open owner question (PROBE 22.9): a pedestrian-street (tiled) arm's crossing carries the marked
         /// flag although no stripes are drawn; it counts as a zebra here AND in the no-stop rule until the owner rules otherwise.
         /// </summary>
-        public static bool BlocksAsZebra(int pedestrianFlags) => ZebraSections.IsZebra(pedestrianFlags);
+        public static bool BlocksAsZebra(int pedestrianFlags) => ZebraSections.IsZebra(pedestrianFlags);   // 0.4.12 revised: counter only (a zebra under the footprint is allowed)
 
         /// <summary>
         /// 0.4.12 OWNER DECISION REVISED (17 Nov, supersedes the zebra limit above for this exception): "it can block ANY pedestrian

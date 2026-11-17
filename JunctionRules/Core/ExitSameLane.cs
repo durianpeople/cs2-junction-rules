@@ -20,8 +20,8 @@ namespace JunctionRules.Core
     /// way in / out) = no.</item>
     /// <item>Footprint (<see cref="Footprint"/>): front at the rear of the nearest vehicle STANDING ahead on the joined lane (or
     /// that lane's end) minus the margin; body = its whole length (trailers incl.) + margin behind the front, first on the
-    /// joined lane back to the join point, the rest on the leaving lane's end. No part may lie on the pavement (the leaving
-    /// lane's pedestrian overlap: the pavement is a zebra, G7) and the front must reach past the join point.</item>
+    /// joined lane back to the join point, the rest on the leaving lane's end. 0.4.12 OWNER DECISION REVISED: it may lie on the pavement / any crossing (the job passes walkEndM -1); the front must
+    /// reach past the join point.</item>
     /// <item>Joined-lane paths (<see cref="TouchesOther"/>): no other overlap of the joined lane (another building's way in or
     /// out, a turn-in path) within the footprint's stretch of it: the exiter standing there never blocks an entrance path
     /// or a turn-in (G15 / G21 deadlocks).</item>
