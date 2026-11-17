@@ -104,6 +104,8 @@ namespace JunctionRules.Stage2
             // keep the curve lookup for BeginLane's "is this way in boxed" test (WayInBoxed).
             m_BoxCurves = curves;
             m_HasBoxCurves = true;
+            m_BoxPedestrians = pedestrianLanes;   // 0.4.12 (G29): for SkipStockRoomHold's G22 test (S2-54)
+            m_HasBoxPedestrians = true;
             if (!m_BoxLookups || !carLanes.HasComponent(lane)) return float.MaxValue;
             float start = StretchGeometry.ToDriving(curveOffset.x, inverse);
             float end = StretchGeometry.ToDriving(curveOffset.y, inverse);
@@ -131,7 +133,19 @@ namespace JunctionRules.Stage2
                     // Review 3 F3: a car admitted by the G22 exception is counted apart, never as a nose in the box.
                     if (BoxDriving.NoseIn(fl, m_VehicleLength) && !m_BoxSameExitStanding
                         && !(sameExitChecked ? sameExitOk : SameExitAdmits(lane, owner.m_Owner, laneLength, inverse, start, self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes, ref moving)))
-                    { m_BoxNose = true; m_BoxStoodInside = true; }
+                    {
+                        m_BoxStoodInside = true;
+                        // 0.4.12 (G29): stopped past the line by the lane's own red / amber light (the game's amber rule) is counted
+                        // apart; every other nose is a violation (must be 0) and gets one trace line naming it
+                        if (m_BoxSignalData.TryGetComponent(lane, out LaneSignal noseSig) && BoxDriving.LightStopsInWindow((int)noseSig.m_Signal)) m_BoxNoseLight = true;
+                        else
+                        {
+                            m_BoxNose = true;
+                            m_NoseOwner = owner.m_Owner;
+                            m_NoseFront = -fl;
+                            m_NoseSameExitEligible = sameExitChecked && sameExitOk;
+                        }
+                    }
                 }
                 BoxDriving.Approach a = BoxDriving.Classify(inBox, wait, margin, VehicleUtils.GetBrakingDistance(car, currentSpeed, timeStep));
                 if (a != BoxDriving.Approach.Check) return float.MaxValue;
@@ -181,7 +195,13 @@ namespace JunctionRules.Stage2
                 {
                     float f0 = BoxDriving.FrontToLine(wait0 + laneLength * (b0 - start), margin);
                     if (BoxDriving.BodyInside(f0, f0 + (b1 - b0) * laneLength, m_VehicleLength)) m_BoxStoodInside = true;
-                    if (BoxDriving.NoseIn(f0, m_VehicleLength)) m_BoxNose = true;   // review 3 F1: the nose counter measures standing cars, not holds
+                    if (BoxDriving.NoseIn(f0, m_VehicleLength))   // review 3 F1: the nose counter measures standing cars, not holds
+                    {
+                        m_BoxNose = true;
+                        m_NoseOwner = edgeOwner.m_Owner;   // 0.4.12 (G29 trace): the road edge of the exit / entrance box
+                        m_NoseFront = -f0;
+                        m_NoseSameExitEligible = false;
+                    }
                 }
                 BoxDriving.EntranceRole role = BoxDriving.Role(start, end, b0, b1, out float entry);
                 if (role == BoxDriving.EntranceRole.Entering)

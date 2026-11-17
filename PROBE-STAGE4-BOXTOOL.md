@@ -2110,3 +2110,39 @@ car then drives through the box when the shortfall is further on). Burst build n
 | 28-2 | Same with a lorry, or a building whose exit turns across a lane | waits before the pavement as before |
 | 28-3 | A car waiting to turn INTO a building across the box | still waits before the box (G21) |
 | 28-4 | Watch for | an exiter standing in a box across another building's way in (must not happen); queue cars upstream let the exiter in (accepted) |
+
+### 22.8 G29: "this cop car is yielded but doesn't go in" (G22 never admitted anyone) + the nose counter
+
+Owner live 0.4.11 (shot 8901d747): patrolling police car 1224495 (not on a call: normal priority; read-only frame
+36859412 at (81.8, 403.6), heading 73, stopped) on Mistwood Lane (alley, give way) 11 m west of node 621408, turning
+right into Sunset Street 953631's near carriageway, whose queue stands just past the box; it waits before its own zebra.
+(1224510 at (93.2, 393.1) heading 170 is on 953631 itself, in the queue.) Its G22 waiting footprint: the turn is ~11 m
+(geometry from the 621408 outline), Mistwood's zebra lies 0-2.3 m into the node (log: box starts +2.8 m on arm 1), no
+zebra on 953631; footprint ~4.3-10 m: past its zebra, over through paths into the same lane only. So G22 should admit
+it. But the 0.4.11 log shows `entered a box under the same-exit-lane exception 0` in every timing line of the session.
+
+Cause: the GAME's own junction room hold (`CarLaneSpeedIterator.IterateNextLane` -> `CheckSpace`, decompile ~429-480:
+a junction lane with a true crossing and no room on the next lane: driveSpeed 0, blocker Continuing) still ran at
+BOXED junctions: G25's skip (S2-54) was for unboxed junctions only ("boxed junctions keep the box rules"), but the
+stock hold is the same room test without the owner's exception, so it kept every G22 car out before BoxHold's
+exception could matter. Fix (job side; the copied S2-54 line is unchanged): `SkipStockRoomHold` also drops the stock
+hold at a boxed junction when the box rule admits that car under G22 (`SameExitAdmits`, car before the lane), and only
+when every crossed lane is clear by the gap scan (as G25). Signals / level crossings / roundabouts: stock. Counter
+`stock room hold skipped (... boxed, same-exit-lane exception N)`. Not proven live (game closed): the alternative
+holders (whole-junction gap for moving traffic, people on its zebra) would show in the watch log.
+
+Nose counter (`standing with the front bumper past a box line` 63-423 per window, must be 0): it measured every
+standing nose, including cars stopped past the line by their own red / amber light (the game's amber rule: entered on
+green / could not stop; the 0.4.10 model counted 1589 such vs 0 others). Those are now counted apart (`at a red /
+amber light ... apart: N`). The rest jumped each time an unsignalled Anchor Street junction box was added (51645 at
+20:19:49 with one car standing there under G22 for ~8 minutes, 1154562 / 1154291 / 51722 at 20:28): not identifiable
+offline (no per-car line existed). New: one `box trace: NOTABLE nose in a box: vehicle V stands with its front X m past
+the line of the box at N (same-exit-lane exception admits it); waits for B` line per episode (exit trace ring, on by
+default), so the next session names each one; the behaviour fix follows from that. The G22 standing counter (64 =
+one car all window) is a legitimate stander. Tests `G29Tests`; counters +2 at the end.
+
+| # | Do | Expect |
+|---|---|---|
+| 29-1 | A yielding car turning into a full lane at a box junction, footprint clear (the cop's case at 621408) | it enters and waits in the box; `entered a box under the same-exit-lane exception` > 0; `stock room hold skipped (... boxed ...)` > 0 |
+| 29-2 | Same with crossing traffic moving | waits outside |
+| 29-3 | Timing line | nose (must be 0) apart from `at a red / amber light`; every remaining nose has a `box trace: NOTABLE nose in a box` line: send them to Technical |

@@ -333,6 +333,13 @@ namespace JunctionRules.Stage2
         /// <summary>0.4.12 (G28): the road lane a same-exit-lane exiter joins (Null = no exception this update); scanning its merge; exception used.</summary>
         private Entity m_G28JoinLane, m_G28Latched;
         private bool m_G28Scan, m_G28Used, m_G28Queue;
+        /// <summary>0.4.12 (G29): the pedestrian lookup BoxHold received this update (for SkipStockRoomHold's G22 test).</summary>
+        private ComponentLookup<Game.Net.PedestrianLane> m_BoxPedestrians;
+        private bool m_HasBoxPedestrians, m_StockSkipBoxed, m_BoxNoseLight;
+        /// <summary>0.4.12 (G29 nose trace): the box (node, or the road edge of an exit band) and how far the front stood past its line.</summary>
+        private Entity m_NoseOwner;
+        private float m_NoseFront;
+        private bool m_NoseSameExitEligible;
         /// <summary>G15b (final review): this car-step a room scan was blocked by a vehicle standing across the lane from a driveway.</summary>
         private bool m_SideHeld;
         /// <summary>0.4.10 (G19, probe): the last HasRoomPast with freeNow found no room only because a moving queue no longer counts.</summary>
@@ -1785,7 +1792,7 @@ namespace JunctionRules.Stage2
             if (m_EntryKeptClear) Add(counters, Stage2Counters.EntryKeptClear, 1);
             if (m_PeopleBesideCreep) Add(counters, Stage2Counters.PeopleBesideCrossingCreep, 1);   // 0.4.11 (G23)
             if (m_PeopleWaitingSkipped) Add(counters, Stage2Counters.PeopleWaitingNotCrossing, 1);
-            if (m_StockRoomSkipped) Add(counters, Stage2Counters.StockRoomHoldSkipped, 1);   // 0.4.11 (G25)
+            if (m_StockRoomSkipped) Add(counters, m_StockSkipBoxed ? Stage2Counters.StockRoomHoldSkippedBoxed : Stage2Counters.StockRoomHoldSkipped, 1);   // 0.4.11 (G25), 0.4.12 (G29 boxed)
             if (m_HeldForWaitingPerson && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.HeldForWaitingPerson, 1);
             if (m_RedQueueIgnored) Add(counters, Stage2Counters.RedQueueNotPresent, 1);   // 0.4.11 (G23)
             // 0.4.11 (G22): entries under the same-exit-lane exception (one per vehicle episode), standing in a box under it (car-steps)
@@ -1802,7 +1809,15 @@ namespace JunctionRules.Stage2
             // 0.4.10 probes; the UK right-turn spot (waiting for the oncoming gap or, review 3 F2, for exit room) is excluded
             bool turnSpot = Stage2Counters.IsStandingOn(m_HasBoxTurnWait, m_BoxTurnWaitSpeed, finalMaxSpeed, currentSpeed)
                 || Stage2Counters.IsStandingOn(m_HasBoxTurnRoom, m_BoxTurnRoomSpeed, finalMaxSpeed, currentSpeed);
-            if (m_BoxNose && !turnSpot && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.BoxNosePast, 1);   // owner nose rule: must be 0
+            if (m_BoxNose && !turnSpot && currentSpeed < Stage2Counters.StandingSpeed)
+            {
+                Add(counters, Stage2Counters.BoxNosePast, 1);   // owner nose rule: must be 0
+                // 0.4.12 (G29): one NOTABLE trace line per nose episode naming the car, the box and what holds it
+                if (ExitEvent(eventTable, entity, frame, ExitGiveWay.BoxNoseKind))
+                    TraceWrite(m_TraceRing, entity, m_LastBlocker, ExitTrace.Pack(ExitTrace.Event.BoxNose, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, ExitGiveWay.Decision.Go,
+                        m_NoseSameExitEligible ? ExitTrace.ReasonSameExitEligible : 0, true), frame, m_NoseOwner, math.float2(m_NoseFront, 0f));
+            }
+            if (m_BoxNoseLight && !turnSpot && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.BoxNoseAtLight, 1);   // 0.4.12 (G29): game's amber rule, apart
             if (m_BoxStoodInside && !turnSpot && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.BoxStoodInside, 1);
             // 0.4.7: the cap hits by kind (lane cap: go; vehicle cap: wait).
             if (m_ExitLaneCap) Add(counters, Stage2Counters.ExitCapLanes, 1);

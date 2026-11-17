@@ -203,6 +203,10 @@ namespace JunctionRules.Core
             LongHold = 3,
             /// <summary>0.4.8 (G7 diagnostics): a vehicle stands still on a driveway's leaving lane, i.e. past the sidewalk, on / across the road (once per episode).</summary>
             StuckOnRoad = 4,
+            /// <summary>0.4.12 (G29): a vehicle stands with its nose past a yellow box line (not at its own red / amber light), once per
+            /// episode: building slot = the vehicle / object it waits for (blocker), road owner = the box's node (or road edge of an
+            /// exit / entrance box), point x = metres the front bumper stands past the line.</summary>
+            BoxNose = 5,
         }
 
         /// <summary>0.4.8: a wait at an exit this long (s, the game's time on the current lane) is logged as notable.</summary>
@@ -219,7 +223,7 @@ namespace JunctionRules.Core
         public static bool Notable(long facts)
         {
             Unpack(facts, out Event e, out ExitPaths.Path path, out _, out _, out int reasons, out _);
-            if (e == Event.LongHold || e == Event.StuckOnRoad) return true;
+            if (e == Event.LongHold || e == Event.StuckOnRoad || e == Event.BoxNose) return true;
             if ((reasons & ReasonEmergency) != 0) return false;
             if (e == Event.EnterDrive) return (reasons & (ReasonDecided | ReasonLate)) == 0;
             if (e == Event.HandOver) return (reasons & ReasonDecided) == 0 && path != ExitPaths.Path.Drive;
@@ -234,6 +238,9 @@ namespace JunctionRules.Core
 
         /// <summary>0.4.9 (G12): the sidewalk was crossed without a standing Go, but the decision was taken at the first road lane (could not stop before the sidewalk).</summary>
         public const int ReasonLate = 64;
+
+        /// <summary>0.4.12 (G29, nose trace): the car's approach is eligible for / admitted by the G22 same-exit-lane exception there.</summary>
+        public const int ReasonSameExitEligible = 128;
 
         /// <summary>
         /// 0.4.12 (G27): the gap scan's blocker was a STANDING vehicle (on a lane it joins or crosses, within the present distance: a queue, not a gap):
@@ -279,6 +286,13 @@ namespace JunctionRules.Core
         {
             Unpack(facts, out Event e, out ExitPaths.Path path, out ExitPaths.LaneKind kind, out ExitGiveWay.Decision decision, out int reasons, out bool boxed);
             CultureInfo ci = CultureInfo.InvariantCulture;
+            if (e == Event.BoxNose)
+            {
+                float past = point == 0 ? 0f : System.BitConverter.Int32BitsToSingle((int)(uint)point);
+                return "box trace: NOTABLE nose in a box: vehicle " + Ent(vehicle) + " stands with its front " + past.ToString("0.0", ci) + " m past the line of the box at "
+                       + ((int)(frameRoad >> 32)).ToString(ci) + ((reasons & ReasonSameExitEligible) != 0 ? " (same-exit-lane exception admits it)" : "")
+                       + "; waits for " + (building == 0 ? "nothing named (the game's own check)" : Ent(building)) + " frame " + ((uint)frameRoad).ToString(ci);
+            }
             string decided;
             if ((reasons & ReasonEmergency) != 0) decided = "go (on-duty emergency, stock)";
             else if ((reasons & ReasonDecided) == 0) decided = path == ExitPaths.Path.Drive ? "judged before the hand-over (driveway give-way)" : "not judged";

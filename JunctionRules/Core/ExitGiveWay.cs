@@ -293,7 +293,10 @@ namespace JunctionRules.Core
         public const float AreaScanMin = 25f;
 
         /// <summary>Counter episodes (0.4.6): a vehicle's consecutive exit decisions (at most <see cref="Core.SafetyStopEvents.ContinueFrames"/> apart) are one event, per kind.</summary>
-        public const int EventKinds = 22;
+        public const int EventKinds = 23;
+
+        /// <summary>0.4.12 (G29): event kind of "standing with the nose past a box line" (one trace line per episode).</summary>
+        public const int BoxNoseKind = 22;
 
         /// <summary>0.4.11 (G22): event kind of "entered a junction box under the same-exit-lane exception" (counter episodes).</summary>
         public const int SameExitEntryKind = 21;

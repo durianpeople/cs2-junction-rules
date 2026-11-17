@@ -158,6 +158,7 @@ namespace JunctionRules.Tests
             ("G26ReviewTests", G26ReviewTests),
             ("G27TraceTests", G27TraceTests),
             ("G28Tests", G28Tests),
+            ("G29Tests", G29Tests),
             ("BoxWindowUnitTests", BoxWindowUnitTests),
             ("BoxScenarioTests", BoxScenarioTests),
             ("ChainTests", ChainTests),

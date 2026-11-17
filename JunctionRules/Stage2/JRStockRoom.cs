@@ -41,7 +41,13 @@ namespace JunctionRules.Stage2
             ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<CarData> prefabCars,
             ref ComponentLookup<ObjectGeometryData> geometries, ref BufferLookup<LaneOverlap> overlapData)
         {
-            if (!StockRoomSkip.Applies(RuleOn, m_ExitLookups, (uint)laneData.m_Flags, m_NodeLaneData.HasComponent(lane), IsBoxedJunctionLane(lane))) return false;
+            bool boxed = IsBoxedJunctionLane(lane);
+            // 0.4.12 (G29): at a boxed junction only when the box rule's G22 exception admits this car (the car is before the
+            // lane: start 0); the pedestrian lookup is the one BoxHold kept this update (no change to the copied call).
+            bool sameExit = boxed && m_BoxRule && m_HasBoxPedestrians && m_OwnerData.TryGetComponent(lane, out Owner boxOwner)
+                && SameExitAdmits(lane, boxOwner.m_Owner, laneLength, inverse, 0f, self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs,
+                    ref geometries, ref overlapData, ref m_BoxPedestrians, ref moving);
+            if (!StockRoomSkip.Applies(RuleOn, m_ExitLookups, (uint)laneData.m_Flags, m_NodeLaneData.HasComponent(lane), boxed, sameExit)) return false;
             if (!overlapData.TryGetBuffer(lane, out DynamicBuffer<LaneOverlap> overlaps) || overlaps.Length == 0) return false;
             ExitReads reads = default;
             reads.m_Self = self;
@@ -81,7 +87,7 @@ namespace JunctionRules.Stage2
                 if (ConflictBusy(o.m_Other, otherCurve, oS, oE, delta, ref reads, ref budget) || budget.m_CapHit) return false;
             }
             if (crossings == 0) return false;   // nothing crossed: the stock hold had another reason (stays)
-            if (Counting) m_StockRoomSkipped = true;
+            if (Counting) { m_StockRoomSkipped = true; m_StockSkipBoxed = boxed; }
             return true;
         }
     }

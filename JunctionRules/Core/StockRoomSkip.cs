@@ -19,7 +19,17 @@ namespace JunctionRules.Core
         /// not a boxed junction (the box rules decide there), not a signalled / level-crossing / roundabout lane (stock).
         /// </summary>
         public static bool Applies(bool wholeJunctionRule, bool scanLookups, uint junctionLaneFlags, bool isJunctionLane, bool boxed) =>
-            wholeJunctionRule && scanLookups && isJunctionLane && !boxed && (junctionLaneFlags & (TrafficLights | LevelCrossing | Roundabout)) == 0;
+            Applies(wholeJunctionRule, scanLookups, junctionLaneFlags, isJunctionLane, boxed, false);
+
+        /// <summary>
+        /// 0.4.12 (JR-T-018, G29, owner live 17 Nov: "this cop car is yielded but doesn't go in"): at a BOXED junction the stock
+        /// hold is the same room test the box rule already makes, but without the owner's G22 same-exit-lane exception, so G22
+        /// could never let anyone in (0.4.11 live: "entered a box under the same-exit-lane exception 0" all session). The skip
+        /// now also applies at a boxed junction when the box rule admits this car under G22 (sameExitAdmits); the crossed lanes
+        /// must still be clear (Skip). Signals / level crossings / roundabouts: stock, as G22 itself.
+        /// </summary>
+        public static bool Applies(bool wholeJunctionRule, bool scanLookups, uint junctionLaneFlags, bool isJunctionLane, bool boxed, bool sameExitAdmits) =>
+            wholeJunctionRule && scanLookups && isJunctionLane && (!boxed || sameExitAdmits) && (junctionLaneFlags & (TrafficLights | LevelCrossing | Roundabout)) == 0;
 
         /// <summary>A lane the turner CROSSES: the overlaps CheckSpace counts as crossings (no merge / unsafe / water flag), a car lane.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
