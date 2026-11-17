@@ -142,6 +142,8 @@ PROBE-STAGE3-PAINT.md section 10.
 - **Vehicles leaving buildings give way** (0.4.4, lot exits 0.4.5, judged earlier 0.4.6): on (default) or off (= 0.4.3). "Cars coming out of ANY building
   must give way, and when that building exit is a yellow box, must ALSO obey the yellow box rules." Timing log:
   building exits: waits (turning across, spawn/gate), go decisions, emergency passthroughs, cap hits, hand-overs to the road (lot, gate, other); since 0.4.6 counted per vehicle, not per car-step.
+  0.4.11 (G21): also a vehicle turning INTO a building across traffic: it waits in its own lane before the yellow box (no box:
+  where it would leave its lane) until its whole length can clear the lanes it crosses (PROBE section 21).
 - **Exit trace (log)** (0.4.7, debug; 0.4.8 probe: default ON and compact, switched on once on first load): one line when a vehicle starts waiting at a building / parking
   exit and one when it joins the road (decision, path kind, boxed), at most 20 lines a second. Needs Vehicles leaving
   buildings give way. 0.4.7 timing log adds hand-overs by path (spawn point, building parking, kerbside parking,

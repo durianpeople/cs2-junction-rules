@@ -362,3 +362,14 @@ limit" above is gone: 0.4.3-0.4.9 mapped the edge t through `EdgeLane.m_EdgeDelt
 `EdgeGeometry` (`Game.Net/LaneSystem.cs` 2652, 2661-2662, 4101-4105), so bands sat up to 13 m off the paint); box room
 is free now (RoomScan.FreeNow); the room window extends past a further box / boxed junction and stops at a red / amber
 light (`JRWholeJunction.FurtherBoxes`).
+
+0.4.11-probe (JR-T-017: G21, vehicles turning INTO a building give way). No copy change: 40 blocks, 318 lines as 0.4.10
+(`vanilla_copy.py check`: 0 unexplained differences). Job side only: the S2-29 call (`ExitDrivewayHold`, every lane the
+look-ahead walks) now hands a ROAD lane whose next path lane is a drive's way in (`SideConnection` without `Yield`) to
+`JRExitGiveWay.EntryRoadHold` (Core/EntryGiveWay.cs), which holds the vehicle on its own lane before the painted box line
+(or, unboxed, where the way in leaves the lane) while a crossed road lane of the way in is busy by the exits' judgement
+with the whole-length clear time; the block's speed / blocker / blocker type lines are unchanged (type Crossing, blocker =
+the road vehicle it gives way to). Stock cause: `Game.Net/LaneSystem.cs` `CreateEdgeConnectionLane` (way in = edge-owned
+node lane, `Unsafe | SideConnection`, no Yield: 3858, 3868-3880); `LaneOverlapSystem` 1161, 1386-1389 (Unsafe tie-break,
+the stock give-way is the 2 s look-ahead on the crossed lane only); `CarNavigationSystem` 920-923 / 2277-2287 (the way in's
+RequestSpace keep-clear at priority 96, queues only). PROBE section 21.
