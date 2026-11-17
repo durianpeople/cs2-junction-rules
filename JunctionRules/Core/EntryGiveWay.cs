@@ -69,8 +69,57 @@ namespace JunctionRules.Core
         public static bool IsCrossedRoad(int overlapFlags, bool otherIsCarLane, bool otherIsSideConnection, bool isOwnRoadLane)
         {
             if ((overlapFlags & Water) != 0 || !otherIsCarLane || otherIsSideConnection || isOwnRoadLane) return false;
-            return WholePathRule.IsYieldChecked(overlapFlags, false);
+            // Review 1 F5: a true crossing only (the game sets OverlapLeft | OverlapRight on every overlap that is no merge,
+            // LaneOverlapSystem 1265; a merge at either end gets one side), never a merge at its start or end.
+            return WholePathRule.IsYieldChecked(overlapFlags, false) && IsCrossing(overlapFlags);
         }
+
+        /// <summary>LaneOverlap flags OverlapLeft / OverlapRight (Game.Net/OverlapFlags.cs) and the merge flags.</summary>
+        public const int OverlapLeft = 0x4, OverlapRight = 0x8, MergeFlags = 0x1 | 0x2 | 0x10 | 0x20;
+
+        /// <summary>A true crossing: both overlap sides, no merge flag (LaneOverlapSystem 1263-1266).</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsCrossing(int overlapFlags) =>
+            (overlapFlags & (OverlapLeft | OverlapRight)) == (OverlapLeft | OverlapRight) && (overlapFlags & MergeFlags) == 0;
+
+        /// <summary>
+        /// Review 1 F1 (deadlock of two vehicles turning into facing drives a few metres apart): where a waiting entrant stands,
+        /// its body must keep OTHER drives' crossings of its lane clear (a way in or out of another building crossing this lane;
+        /// the game's own keep-clear idea, RequestSpace / CheckOverlapSpace). Live-like geometry (way in starts sqrt(d) m before
+        /// the drive, LaneSystem 3750 / 3774-3792, and crosses the far lane near the drive): turners into drives offset 2-10 m stand
+        /// each on the other's crossing and wait for each other for ever. Metres along its lane in driving direction: front =
+        /// where its front would stand (spot minus the stop margin), crossings = [start, end] of the other drives' crossings.
+        /// Returns the front position moved back before every crossing its body (ownLength + margin behind the front, margin in
+        /// front) would cover; chained crossings move it further. Crossings in metres (IConflictList: start, end; false = skip); any order (repeated until nothing moves).
+        /// </summary>
+        public static float KeepClearFront<T>(float front, float ownLength, float margin, ref T crossings) where T : struct, IConflictList
+        {
+            bool moved = true;
+            int guard = 0;
+            while (moved && guard++ < 16)
+            {
+                moved = false;
+                for (int i = 0; i < crossings.Count; i++)
+                {
+                    if (!crossings.Conflict(i, out float s, out float e)) continue;
+                    if (e > front - ownLength - margin && s < front + margin)
+                    {
+                        front = s - margin;
+                        moved = true;
+                    }
+                }
+            }
+            return front;
+        }
+
+        /// <summary>
+        /// Review 1 F1 (queued followers): for an ENTRANT's scan, only the vehicle nearest before a crossed conflict on a lane can
+        /// be "present" while standing (the exits' 10 m rule); a vehicle standing behind it cannot reach the conflict before it
+        /// does. Without this, a westbound car queued behind a waiting entrant, within 10 m of a facing entrant's crossing,
+        /// closed a loop (entrant -> follower -> entrant ahead -> facing entrant). Moving vehicles are judged as always.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool StandingCountsAsPresent(bool isNearestBeforeConflict, bool waitingToTurnIn) => isNearestBeforeConflict && !waitingToTurnIn;
 
         /// <summary>
         /// 0.4.11 (owner: every building access): a road lane lies between the vehicle's own lane and the building-side end of a
@@ -92,14 +141,20 @@ namespace JunctionRules.Core
         }
 
         /// <summary>
+        /// 0.4.11 owner box rule (17 Nov): a vehicle turning into a building must not block the box while it gives way or waits
+        /// for entrance room: it waits in its own lane BEFORE the box line (no part inside) and enters the box only when it can
+        /// go straight through (oncoming gap AND entrance room clear). The UK right-turn in-box spot does not apply to turning
+        /// into buildings (it stays only at junction boxes). Unboxed accesses: at the drive start, in its own lane.
         /// Where the vehicle is judged. boxLineWait / driveStartWait = the game's stop distance (num5 form: metres from its front
         /// minus the stop margin) to the box line and to the drive start; boxed = the way in leaves inside a box on this lane;
         /// inBox = the vehicle already drives inside that band (BoxHold's in-band test); braking = its stock braking distance.
-        /// The box line first; the drive start when the box line cannot be held (or there is no box); none = committed.
+        /// Boxed: the box line, else committed (never held inside the box). Unboxed: the drive start, else committed.
         /// </summary>
         public static Spot Choose(bool boxed, bool inBox, float boxLineWait, float driveStartWait, float margin, float braking)
         {
-            if (boxed && !inBox && ExitGiveWay.CanHold(boxLineWait + ExitGiveWay.SpotSlack, margin, braking)) return Spot.BoxLine;
+            // Owner 17 Nov (box rule): at a box the vehicle waits only BEFORE the box line, never inside the box; once it can
+            // no longer stop before the line it goes straight through (the game's own checks), it is never held in the box.
+            if (boxed) return !inBox && ExitGiveWay.CanHold(boxLineWait + ExitGiveWay.SpotSlack, margin, braking) ? Spot.BoxLine : Spot.None;
             if (ExitGiveWay.CanHold(driveStartWait + ExitGiveWay.SpotSlack, margin, braking)) return Spot.DriveStart;
             return Spot.None;
         }

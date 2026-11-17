@@ -300,8 +300,13 @@ namespace JunctionRules.Stage2
         /// <summary>G21 (counting): the entry gap hold (before the box line or at the drive start).</summary>
         private bool m_HasEntryGap;
         private float m_EntryGapSpeed;
-        /// <summary>G21 (counting): of those, held at the drive start INSIDE a box (could no longer stop before the box line).</summary>
-        private bool m_EntryGapInBox;
+        /// <summary>G21 review 1 (counting): the turn-in spot moved back to keep another drive's crossing clear; committed without a hold (could not stop before its spot).</summary>
+        private bool m_EntryKeptClear, m_EntryCommitted;
+        /// <summary>G21 box rule: the curve lookup kept by BoxHold (S2-28) for BeginLane's WayInBoxed.</summary>
+        private ComponentLookup<Curve> m_BoxCurves;
+        private bool m_HasBoxCurves;
+        /// <summary>G21 box rule (counting): this car-step the whole-path decision on a boxed way in was left out (decided at the box line).</summary>
+        private bool m_EntryWholePathSkipped;
         /// <summary>G21 (counting, owner: every access): of the judged / held, at an UNBOXED access; judged at a gate / lot / parking way in.</summary>
         private bool m_EntryJudgedUnboxed, m_EntryGapUnboxed, m_EntryJudgedOther;
         /// <summary>G21 (counting): an entrant's scan did not wait for a standing vehicle that itself waits to turn in.</summary>
@@ -474,6 +479,16 @@ namespace JunctionRules.Stage2
             m_BoxTurnSpot = 2f;
             m_BoxTurnIndex = -1;
             if (!m_NodeLaneData.HasComponent(lane)) return;
+            // 0.4.11 (G21, owner 17 Nov: a vehicle turning into a building never waits in the box; the UK in-box turn spot does
+            // not apply to turning into buildings): a drive's way in that leaves its road inside a painted box is decided at the
+            // box line by the entry rule (JRExitGiveWay.EntryRoadHold, oncoming gap) and the G9 room hold, both on the road lane
+            // before it; no second whole-path decision with its spot inside the box (0.4.8-0.4.10 waited there, nose at the
+            // oncoming lane). The game's own checks on the way in stay (a vehicle physically in its path).
+            if (m_ExitRule && m_BoxRule && carLanes.TryGetComponent(lane, out Game.Net.CarLane wayIn) && EntryGiveWay.IsDrivewayEntryLane((uint)wayIn.m_Flags) && WayInBoxed(lane, ref carLanes))
+            {
+                if (Counting) m_EntryWholePathSkipped = true;
+                return;
+            }
             // JR-T-013b (G4): the car checks a lane of the watched junction (debug log only; no driving effect).
             if (m_WatchNode != Entity.Null && !m_WatchSeen && m_OwnerData.TryGetComponent(lane, out Owner watchOwner) && watchOwner.m_Owner == m_WatchNode) m_WatchSeen = true;
             OverlapConflicts list = default;
@@ -1714,10 +1729,12 @@ namespace JunctionRules.Stage2
             if (m_EntryJudged) Add(counters, Stage2Counters.EntryJudged, 1);
             if (m_EntryJudgedUnboxed) Add(counters, Stage2Counters.EntryJudgedUnboxed, 1);
             if (m_EntryJudgedOther) Add(counters, Stage2Counters.EntryJudgedOther, 1);
+            if (m_EntryWholePathSkipped) Add(counters, Stage2Counters.EntryBoxedWayWholePathSkipped, 1);
+            if (m_EntryKeptClear) Add(counters, Stage2Counters.EntryKeptClear, 1);
+            if (m_EntryCommitted) Add(counters, Stage2Counters.EntryCommitted, 1);
             if (Stage2Counters.IsStandingOn(m_HasEntryGap, m_EntryGapSpeed, finalMaxSpeed, currentSpeed))
             {
                 Add(counters, Stage2Counters.EntryGapHeld, 1);
-                if (m_EntryGapInBox) Add(counters, Stage2Counters.EntryGapHeldInBox, 1);
                 if (m_EntryGapUnboxed) Add(counters, Stage2Counters.EntryGapHeldUnboxed, 1);
             }
             if (m_EntryEntrantIgnored) Add(counters, Stage2Counters.EntryEntrantIgnored, 1);

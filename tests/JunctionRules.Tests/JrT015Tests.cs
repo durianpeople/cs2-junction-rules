@@ -189,7 +189,7 @@ namespace JunctionRules.Tests
             Check(exit.Contains("if (m_DriveCommitted) ExitEvent(eventTable, self, frame, ExitGiveWay.DriveGoKind);"), "review F3: a committed crossing keeps its Go fresh");
             string merge = File.ReadAllText(Path.Combine(root, "JunctionRules", "Core", "BoxMerge.cs"));
             Check(merge.Contains("if (same != null) { same.Members.Add(m); continue; }"), "review F6: a failed union draws a joint box's identical rings once, every member kept in that group");
-            Check(exit.Contains("bool entering = !occupies && gap > 0f && gap <= ExitGiveWay.PresentMetres && (EnteringHeld(e) || (m_EntryScan && EntryGapHeld(e)));") && exit.Contains("ExitGiveWay.VehicleBlocks(gap, occupies, speed, braking, delta, entering)"),
+            Check(exit.Contains("bool entering = !occupies && gap > 0f && ((gap <= ExitGiveWay.PresentMetres && (EnteringHeld(e) || (m_EntryScan && EntryGapHeld(e))))") && exit.Contains("ExitGiveWay.VehicleBlocks(gap, occupies, speed, braking, delta, entering)"),
                 "G15: the exit scan asks whether a standing vehicle waits to turn in");
             Check(paint.Contains("Dictionary<Box, List<V3>> joint = JointBoxes();") && paint.Contains("ExitBoxWindows.Chains(windows, ExitBands.MergeGapMetres)"), "G14: the paint builds near boxes on one road as one");
         }

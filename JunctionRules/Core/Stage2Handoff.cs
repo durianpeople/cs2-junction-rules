@@ -233,7 +233,7 @@ namespace JunctionRules.Core
         public const int EntryJudged = FeedingScans + 56;
         /// <summary>0.4.11 (G21): car-steps in which such a vehicle STOOD held for a gap in the traffic it crosses (before the box line, or at the drive start in its own lane).</summary>
         public const int EntryGapHeld = FeedingScans + 57;
-        /// <summary>0.4.11 (G21): of those, standing at the drive start INSIDE a box (it could no longer stop before the box line; expected ~0).</summary>
+        /// <summary>0.4.11 (G21): RETIRED by the owner box rule (never held inside a box); kept so the counter layout stays; always 0.</summary>
         public const int EntryGapHeldInBox = FeedingScans + 58;
         /// <summary>0.4.11 (G21): car-steps in which an entrant's gap scan did not wait for a standing vehicle that itself waits to turn into a building.</summary>
         public const int EntryEntrantIgnored = FeedingScans + 59;
@@ -243,7 +243,13 @@ namespace JunctionRules.Core
         public const int EntryGapHeldUnboxed = FeedingScans + 61;
         /// <summary>0.4.11 (G21): judged car-steps at a gate / lot / building parking way in that crosses a road lane (expected rare: the game ties those to the nearest lane).</summary>
         public const int EntryJudgedOther = FeedingScans + 62;
-        public const int Count = FeedingScans + 63;
+        /// <summary>0.4.11 (G21 box rule): car-steps in which the whole-path decision on a BOXED way in (spot inside the box) was left out: decided at the box line.</summary>
+        public const int EntryBoxedWayWholePathSkipped = FeedingScans + 63;
+        /// <summary>0.4.11 review 1 F1: car-steps in which a waiting turner's spot moved back to keep another drive's crossing of its lane clear.</summary>
+        public const int EntryKeptClear = FeedingScans + 64;
+        /// <summary>0.4.11 review 1 F3: car-steps in which a turner could no longer stop before its spot (box line / drive start) and went on unjudged (the game's own checks). Should be small: the judgement starts while it can still stop.</summary>
+        public const int EntryCommitted = FeedingScans + 65;
+        public const int Count = FeedingScans + 66;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -404,8 +410,11 @@ namespace JunctionRules.Core
                        ? "; turning into buildings: judged for a gap " + deltas[EntryJudged].ToString(ci) +
                          " (unboxed " + deltas[EntryJudgedUnboxed].ToString(ci) + ", gate / lot / parking " + deltas[EntryJudgedOther].ToString(ci) + ")" +
                          ", standing held for a gap " + deltas[EntryGapHeld].ToString(ci) +
-                         " (unboxed " + deltas[EntryGapHeldUnboxed].ToString(ci) + "; at the drive start inside a box " + deltas[EntryGapHeldInBox].ToString(ci) + ")" +
-                         ", not waiting for another vehicle waiting to turn in " + deltas[EntryEntrantIgnored].ToString(ci)
+                         " (unboxed " + deltas[EntryGapHeldUnboxed].ToString(ci) + ")" +
+                         ", not waiting for another vehicle waiting to turn in " + deltas[EntryEntrantIgnored].ToString(ci) +
+                         ", boxed ways in decided at the box line only (no in-box spot) " + deltas[EntryBoxedWayWholePathSkipped].ToString(ci) +
+                         ", spot moved back to keep another drive clear " + deltas[EntryKeptClear].ToString(ci) +
+                         ", could not stop before the spot (went on unjudged) " + deltas[EntryCommitted].ToString(ci)
                        : "") +
                    // 0.4.10 (G19): newest, at the end.
                    (boxMask >= 2 ? "; box holds only because the queue past the box was moving (free-now rule) " + deltas[BoxHeldFreeNow].ToString(ci)

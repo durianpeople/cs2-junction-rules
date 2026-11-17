@@ -100,6 +100,10 @@ namespace JunctionRules.Stage2
             ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
         {
             BeginHoldBlocker();   // 0.4.9 (G17)
+            // 0.4.11 (G21 box rule): BoxHold runs at the top of every lane's CheckCurrentLane, before that lane's BeginLane (S2-04):
+            // keep the curve lookup for BeginLane's "is this way in boxed" test (WayInBoxed).
+            m_BoxCurves = curves;
+            m_HasBoxCurves = true;
             if (!m_BoxLookups || !carLanes.HasComponent(lane)) return float.MaxValue;
             float start = StretchGeometry.ToDriving(curveOffset.x, inverse);
             float end = StretchGeometry.ToDriving(curveOffset.y, inverse);

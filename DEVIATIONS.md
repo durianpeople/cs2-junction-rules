@@ -372,4 +372,8 @@ with the whole-length clear time; the block's speed / blocker / blocker type lin
 the road vehicle it gives way to). Stock cause: `Game.Net/LaneSystem.cs` `CreateEdgeConnectionLane` (way in = edge-owned
 node lane, `Unsafe | SideConnection`, no Yield: 3858, 3868-3880); `LaneOverlapSystem` 1161, 1386-1389 (Unsafe tie-break,
 the stock give-way is the 2 s look-ahead on the crossed lane only); `CarNavigationSystem` 920-923 / 2277-2287 (the way in's
-RequestSpace keep-clear at priority 96, queues only). PROBE section 21.
+RequestSpace keep-clear at priority 96, queues only). PROBE section 21. Owner box rule (17 Nov): at a boxed entrance the turner waits only before the box line and never inside the box;
+`JRWholeJunction.BeginLane` (S2-04, block unchanged) leaves out the whole-path decision on a way in that leaves inside a
+painted box (its spot lay inside the box), using the curve lookup S2-28's `BoxHold` keeps for the step. Review 1: keep-clear
+of other drives' crossings, nearest-only present vehicle for entrant scans, true crossings only, way in must start on the
+lane.

@@ -1651,23 +1651,40 @@ the ROAD lane (every lane the vehicle's look-ahead walks, its current lane inclu
    lies beyond another road lane anyway, that lane is crossed (lateral geometry, as the exits). None (a left turn in,
    left-hand traffic; a gate on its own side) = no wait. A building road meeting the public road at a JUNCTION is a
    junction turn: the Whole junction rule and the 0.2.4 turn-across rule decide it (unchanged).
-3. Where it waits: the painted box line when the way in leaves inside a box on that lane (0.4.10 painted windows,
-   `LaneBands`), else where the way in leaves its own lane (the drive start: the whole vehicle is still in its own lane).
-   If it can no longer stop before the box line it is judged at the drive start (counter `of them at the drive start
-   inside a box`, expected ~0); past the drive start it is committed and the game finishes the turn. It never waits
-   across the oncoming lane because of this rule.
+3. Where it waits. **Owner box rule (17 Nov): a vehicle turning into a building never blocks the box.** At a boxed
+   entrance it waits in its own lane BEFORE the painted box line (0.4.10 windows, `LaneBands`), no part inside, and
+   enters the box only when it can go straight through: oncoming gap clear (this rule) AND room in the entrance (G9).
+   Once it can no longer stop before the line it goes straight through (counter `could not stop before the spot`); it is
+   never held inside the box. The UK in-box turn spot applies to junction boxes only: for a way in that leaves inside a
+   box the whole-path decision on the way in (whose spot lay inside the box, 0.4.8-0.4.10) is left out (`BeginLane`,
+   `WayInBoxed`; counter `boxed ways in decided at the box line only`); the game's own checks on the way in stay.
+   Unboxed: where the way in leaves its own lane (the drive start). It never waits across the oncoming lane.
+   Keep clear (review 1 F1): the waiting spot moves back so its body does not stand on another drive's crossing of its
+   lane (two turners into facing drives 2-10 m apart otherwise stood each on the other's way: a deadlock).
+   The way in must start on the lane the vehicle is on (drive: the game's start node; gate / lot: within 3 m).
 4. The judgement is the exits': every road vehicle on a crossed lane and on the lanes feeding it (junction lanes, then
    the road before them; red / amber-can-stop skipped) blocks when its braking distance + speed x (2 s + the turner's time
    to CLEAR the lane with its whole length from the spot) reaches the conflict; one standing within 10 m of the conflict
-   blocks (the exits' G7 present rule), unless it is itself waiting to turn into a building (room or gap; G15 rule).
+   blocks (the exits' G7 present rule), unless it is itself waiting to turn into a building (room or gap; G15 rule) or a
+   vehicle stands between it and the conflict (only the nearest standing vehicle is present: review 1 F1, queued
+   followers). Crossed = a true crossing (both overlap sides, no merge flag).
 5. The G9 room test into the building is unchanged (same road lane, earlier in the step): both must pass.
 
 **Loop check.** The entry hold waits only on road vehicles on the crossed lanes; road traffic never waits for it (stock
 gives the way in the lower priority; the turner holds nobody but the vehicles behind it in its own lane). Two turners
 into facing entrances would wait for each other under the present rule alone; a standing vehicle that waits to turn in
 is therefore not present for an entrant's scan (event kind 20, like G15's kind 17). Exits still wait for a gap-held
-entrant standing in the lane they join (it waits only for road traffic, not for the exit: no cycle). Test: 5000 random
-standing facing-entrant scenes, no mutual wait.
+entrant standing in the lane they join (it waits only for road traffic, not for the exit: no cycle). Facing drives a few
+metres apart: keep-clear (item 3) keeps each waiting body off the other's crossing (test `G21FacingDrives`: offsets -12..12 m,
+mutual blocking in several offsets without it, none with it); followers queued behind a waiting turner are not "present"
+for the facing turner (only the nearest standing vehicle is).
+
+**Exits and the box.** An exiter never stands in the box: it decides before the sidewalk (0.4.8), needs room past the box
+for its whole length, free now (0.4.10), and waits only in the lot; unchanged in 0.4.11 (tests G7 / G15 / G18G19).
+
+**Owner box scenario** (`G21OwnerBoxRule`): the No. 40 van at 30 km/h towards the box line with oncoming traffic all along
+stops right at the line, no part ever inside the box; an exit with room past the box goes; the 0.4.10 in-box position had
+the body inside the box.
 
 **Model** (`G21EntryTests`, the Alderwood No. 40 scene: way in leaves the eastbound lane centre z 278, westbound lane
 269.25..272.75, overlap from ~5 m along the way in for ~6 m, box line ~4 m before the drive start; oncoming vehicles at
@@ -1686,8 +1703,9 @@ The shot's case (a westbound car ~28 m away at ~10 m/s): 0.4.10 turned, 0.4.11 w
 ### 21.5 Log and counters
 
 - Timing line (exit setting on), at the end: `turning into buildings: judged for a gap N (unboxed U, gate / lot / parking
-  G), standing held for a gap M (unboxed V; at the drive start inside a box K), not waiting for another vehicle waiting to
-  turn in J`. G is expected ~0 (see 21.4 item 2); non-zero = a gate / lot whose way in crosses a lane (now judged).
+  G), standing held for a gap M (unboxed V), not waiting for another vehicle waiting to turn in J, boxed ways in decided at
+  the box line only (no in-box spot) B, spot moved back to keep another drive clear K, could not stop before the spot
+  (went on unjudged) C`. C should be small; the 0.4.10 timing counter `standing inside a box` must not rise from turners. G is expected ~0 (see 21.4 item 2); non-zero = a gate / lot whose way in crosses a lane (now judged).
 - Entrance log (boxed entrances, always on): sample `held before the box (way in has room; waits for a gap in the traffic
   its turn crosses)`, notable `held before the box 30 s waiting for a gap ...`, summary `X held before the box for a gap
   in the traffic their turn crosses (Y over 30 s)`. The 0.4.10 notable `stands in the box 30 s (way in has room: waiting
@@ -1697,7 +1715,8 @@ The shot's case (a westbound car ~28 m away at ~10 m/s): 0.4.10 turned, 0.4.11 w
 
 | # | Do | Expect |
 |---|---|---|
-| 21-1 | No. 40 Alderwood, eastbound vans turning in with westbound traffic | they stop BEFORE the box in their own lane and turn only with a clear gap; nobody stands in the box with the nose at the westbound lane |
+| 21-1 | No. 40 Alderwood, eastbound vans turning in with westbound traffic | they stop BEFORE the box line in their own lane (no part inside) and enter only to go straight in; the box stays empty for westbound and exiting traffic |
+| 21-1b | Two drives facing each other a few metres apart, both with turners waiting | the second one stops short of the first one's crossing; no standstill |
 | 21-2 | Any unboxed driveway on a busy two-way road | the turner waits in its own lane where the drive leaves it, never part-way across |
 | 21-3 | Left turns in (near side) | no wait (apart from the G9 room test at a box) |
 | 21-4 | Timing line end | `standing held for a gap` rises on busy roads; `at the drive start inside a box` ~0 |

@@ -44,6 +44,9 @@ namespace JunctionRules.Tests
             Check(!EntryGiveWay.IsDrivewayEntryLane(0x100000u) && !EntryGiveWay.IsDrivewayEntryLane(0u), "road lanes are not entry lanes");
             Check(EntryGiveWay.IsCrossedRoad(G21OvCross, true, false, false), "the westbound lane the right turn crosses is judged");
             Check(!EntryGiveWay.IsCrossedRoad(G21OvOwnLane, true, false, false), "the lane it leaves (merge at the start of the way in) is not judged");
+            Check(EntryGiveWay.IsCrossing(G21OvCross) && !EntryGiveWay.IsCrossing(WholePathRule.Road | 0x4) && !EntryGiveWay.IsCrossing(WholePathRule.Road | 0x4 | 0x8 | WholePathRule.MergeEnd),
+                "a crossing has both overlap sides and no merge flag (review 1 F5)");
+            Check(!EntryGiveWay.IsCrossedRoad(WholePathRule.Road | 0x8 | WholePathRule.MergeEnd, true, false, false), "a merge at the end of the way in is not a crossing");
             Check(!EntryGiveWay.IsCrossedRoad(WholePathRule.Road | WholePathRule.MergeMiddleStart, true, false, false), "a middle-start merge with the lane it leaves is not judged");
             Check(!EntryGiveWay.IsCrossedRoad(G21OvCross, true, false, true), "own road lane excluded by entity too");
             Check(!EntryGiveWay.IsCrossedRoad(G21OvCross, true, true, false), "another drive's way in / out is not road traffic (stock decides)");
@@ -61,8 +64,9 @@ namespace JunctionRules.Tests
             // --- the spot: before the box, else at the drive start in its own lane, else committed ---
             float vanBraking8 = 8.3f * 8.3f / (2f * 6f);   // a van at 30 km/h
             Check(EntryGiveWay.Choose(true, false, 20f, 24f, G21Margin, vanBraking8) == EntryGiveWay.Spot.BoxLine, "20 m before the box line at 30 km/h: waits before the box");
-            Check(EntryGiveWay.Choose(true, false, 2f, 6f, G21Margin, vanBraking8) == EntryGiveWay.Spot.DriveStart, "too late for the box line: at the drive start, still in its own lane");
-            Check(EntryGiveWay.Choose(true, true, -1f, 3f, G21Margin, 1f) == EntryGiveWay.Spot.DriveStart, "already in the band: at the drive start");
+            Check(EntryGiveWay.Choose(true, false, 2f, 6f, G21Margin, vanBraking8) == EntryGiveWay.Spot.None, "owner box rule: too late for the box line = straight through, never held inside the box (0.4.11 first cut held it at the drive start in the box)");
+            Check(EntryGiveWay.Choose(true, true, -1f, 3f, G21Margin, 1f) == EntryGiveWay.Spot.None, "owner box rule: already in the band = goes through, no in-box waiting spot for turning into buildings");
+            Check(EntryGiveWay.Choose(false, false, 0f, 3f, G21Margin, 1f) == EntryGiveWay.Spot.DriveStart, "unboxed: judged at the drive start");
             Check(EntryGiveWay.Choose(false, false, 0f, 15f, G21Margin, vanBraking8) == EntryGiveWay.Spot.DriveStart, "no box: at the drive start");
             Check(EntryGiveWay.Choose(true, true, -6f, -0.5f, G21Margin, 3f) == EntryGiveWay.Spot.None, "past the drive start (or cannot stop): committed, never stopped across the oncoming lane by this rule");
             Check(EntryGiveWay.Choose(false, false, 0f, 0.1f, G21Margin, 0f) == EntryGiveWay.Spot.DriveStart, "standing at the drive start: judged there");
@@ -143,6 +147,11 @@ namespace JunctionRules.Tests
             }
             Check(loops == 0, "5000 standing facing-entrant scenes: no mutual wait");
 
+            G21OwnerBoxRule();
+            G21FacingDrives();
+            Check(EntryGiveWay.StandingCountsAsPresent(true, false) && !EntryGiveWay.StandingCountsAsPresent(false, false) && !EntryGiveWay.StandingCountsAsPresent(true, true),
+                "entrant scans: only the nearest standing vehicle before the conflict is present, and not when it waits to turn in itself");
+
             // --- event kinds: the entry gap record has its own kind, keys fit an int ---
             Check(ExitGiveWay.EntryGapHeldKind < ExitGiveWay.EventKinds && ExitGiveWay.EntryGapHeldKind != ExitGiveWay.EnteringHeldKind
                   && (long)ExitGiveWay.EventKinds * ExitGiveWay.EventKindStride < int.MaxValue && ExitGiveWay.EventKey(1 << 25, ExitGiveWay.EventKinds - 1) > 0,
@@ -176,6 +185,94 @@ namespace JunctionRules.Tests
                 }
             }
             Console.WriteLine($"  G21 {name} ({(boxed ? "boxed" : "unboxed")}): own time 0.4.10 reach {oldReach:0.00} s / clear from the in-box spot {oldClear:0.00} s; 0.4.11 clear from {(boxed ? "the box line" : "the drive start")} {newClear:0.00} s; unsafe goes 0.4.10 {oldUnsafe}, 0.4.11 {newUnsafe} (of 3278 scenes)");
+        }
+
+        private struct G21Crossings : IConflictList
+        {
+            public float[] S, E;
+            public int Count => S.Length;
+            public bool Conflict(int i, out float start, out float end) { start = S[i]; end = E[i]; return true; }
+        }
+
+        /// <summary>
+        /// Owner 17 Nov (box rule): a vehicle turning into a building waits in its own lane BEFORE the box line (no part inside) and
+        /// enters the box only when it can go straight through (oncoming gap AND entrance room clear). Kinematic run of the
+        /// Alderwood No. 40 van (6.5 m, braking 6 m/s^2, 16-frame steps) approaching at 30 km/h along the eastbound lane, box line at
+        /// 0 m, box 0..18.8 m (No. 40's merged entrance + exit window), drive start 4 m in, oncoming westbound traffic all along.
+        /// </summary>
+        private static void G21OwnerBoxRule()
+        {
+            const float boxStart = 0f, boxEnd = 18.8f, driveStart = 4f, len = 6.5f, br = 6f, dt = 4f / 15f;
+            float front = -60f, v = 8.3f;
+            bool everInside = false, everHeld = false;
+            for (int k = 0; k < 400; k++)
+            {
+                float braking = v * v / (2f * br);
+                float boxLineWait = boxStart - front - G21Margin, driveWait = driveStart - front - G21Margin;
+                var spot = EntryGiveWay.Choose(true, false, boxLineWait, driveWait, G21Margin, braking);
+                bool gapClear = false;   // oncoming traffic all the time
+                float limit = 8.3f;
+                if (EntryGiveWay.Holds(true, spot, gapClear))
+                {
+                    everHeld = true;
+                    limit = (float)(Math.Sqrt(br * dt * br * dt + 2f * br * Math.Max(0f, boxLineWait)) - br * dt);   // VehicleUtils.GetMaxBrakingSpeed form
+                }
+                float nv = Math.Max(0f, Math.Min(limit, v + 3f * dt));
+                if (nv < v - br * dt) nv = v - br * dt;
+                front += 0.5f * (v + nv) * dt;
+                v = Math.Max(0f, nv);
+                if (BoxDriving.BodyInside(boxStart - front, boxEnd - front, len) || front > boxStart) everInside = true;
+            }
+            Check(everHeld && !everInside, $"turn-in at a boxed entrance with oncoming traffic: held before the line, no part ever inside the box (front stopped {(-front):0.0} m before the line)");
+            Check(front <= boxStart && front >= boxStart - G21Margin - 1.5f, "it stands right at the line in its own lane (not metres back)");
+            // The box stays empty for through and exiting traffic: an exit at No. 40 with room past the band and a clear gap goes,
+            // and a westbound through car is not held by the waiting van (it is not in the box, not in the westbound lane).
+            Check(ExitGiveWay.Decide(true, 100, true, true, true, true, true) == ExitGiveWay.Decision.Go, "exiting vehicle: box empty, room past it: goes");
+            Check(!BoxDriving.BodyInside(boxStart - front, boxEnd - front, len), "the waiting van's body is outside the box: through traffic's room test finds the box empty");
+            // 0.4.10 for comparison: in-box wait at the game's give-way of the way in (~2 m before the westbound lane, 4 + 4 m in).
+            float oldFront = driveStart + 4f - G21Margin;
+            Check(BoxDriving.BodyInside(boxStart - oldFront, boxEnd - oldFront, len), "0.4.10 stood with its body inside the box (the G21 shot)");
+            // Gap clear but entrance full: the G9 room hold keeps it at the same line (both must pass before it enters the box).
+            Check(BoxDriving.EnteringHolds(BoxDriving.Approach.Check, false) && !BoxDriving.EnteringHolds(BoxDriving.Approach.Check, true), "entrance full holds at the line, room lets it in (G9, unchanged)");
+        }
+
+        /// <summary>
+        /// Review 1 F1: two vehicles waiting to turn into facing drives (A eastbound into a south drive at x = 0, C westbound into
+        /// a north drive at x = off). Ways in start sqrt(d) ~ 2.6 m before their drive (LaneSystem 3750 / 3774-3792) and cross the
+        /// far lane at about the drive; each stands with its front a margin before its spot, body 6.5 m behind. Without keep-clear,
+        /// offsets of a few metres put each body on the other's crossing: mutual wait for ever (and physically blocked).
+        /// </summary>
+        private static void G21FacingDrives()
+        {
+            const float len = 6.5f, back = 2.6f, half = 1.75f;
+            int deadOld = 0, deadNew = 0, cases = 0;
+            for (float off = -12f; off <= 12f; off += 0.5f)
+            {
+                cases++;
+                // A on the eastbound lane (x increasing): spot at -back; C's crossing of the eastbound lane at x = off.
+                // C on the westbound lane (x decreasing): in its own driving metres u = -x; spot at -(off + back) -> u = -off - back... use x.
+                float aFront = -back - G21Margin;                       // x of A's front
+                float cFront = off + back + G21Margin;                  // x of C's front (driving west)
+                bool aOnC = off - half < aFront + G21Margin && off + half > aFront - len - G21Margin;   // A's body over C's crossing (x = off)
+                bool cOnA = 0f - half < cFront + len + G21Margin && 0f + half > cFront - G21Margin;     // C's body over A's crossing (x = 0)
+                if (aOnC && cOnA) deadOld++;
+                // 0.4.11: each moves its front back before the other's crossing (in its own driving metres).
+                var ca = new G21Crossings { S = new[] { off - half }, E = new[] { off + half } };
+                float aFront2 = EntryGiveWay.KeepClearFront(aFront, len, G21Margin, ref ca);
+                var cc = new G21Crossings { S = new[] { -half }, E = new[] { half } };      // C drives towards -x: its metres u = -x
+                float cFrontU = EntryGiveWay.KeepClearFront(-cFront, len, G21Margin, ref cc);
+                float cFront2 = -cFrontU;
+                bool aOnC2 = off - half < aFront2 + G21Margin && off + half > aFront2 - len - G21Margin;
+                bool cOnA2 = -half < cFront2 + len + G21Margin && half > cFront2 - G21Margin;
+                if (aOnC2 && cOnA2) deadNew++;
+                if (aOnC2 || cOnA2) { /* one may still stand on the other's crossing only when that other can go first */ }
+            }
+            Check(deadOld > 0, $"facing drives without keep-clear: mutual blocking in {deadOld} of {cases} offsets (review 1 F1 reproduced)");
+            Check(deadNew == 0, $"0.4.11 keep-clear: no offset leaves both on each other's crossing ({cases} offsets -12..12 m)");
+            var chain = new G21Crossings { S = new[] { -3f, -10f }, E = new[] { -1f, -8f } };
+            Check(Math.Abs(EntryGiveWay.KeepClearFront(0f, len, G21Margin, ref chain) - (-10f - G21Margin)) < 1e-4f, "chained crossings move it back past both");
+            var none = new G21Crossings { S = new[] { 5f }, E = new[] { 7f } };
+            Check(EntryGiveWay.KeepClearFront(0f, len, G21Margin, ref none) == 0f, "a crossing ahead of its front (beyond the margin) does not move it");
         }
 
         private static void G21LogTests()
