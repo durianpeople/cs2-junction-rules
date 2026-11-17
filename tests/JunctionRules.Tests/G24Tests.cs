@@ -50,7 +50,7 @@ namespace JunctionRules.Tests
             string notes = string.Join("; ", res.Notes);
             Check(notes.Contains("arm 1: marking (+ margin) ends 2.8 m in, past the kerb lines") || notes.Contains("arm 2: marking (+ margin) ends 2.8 m in, past the kerb lines")
                   || notes.Contains("arm 3: marking (+ margin) ends 2.8 m in, past the kerb lines"), "Capper geometry reproduced: priority-arm zebra ends 2.8 m in, past the kerb lines (" + notes + ")");
-            Check(notes.Contains("would cover a marking past the kerb lines"), "the 0.4.10 shape (priority mouths at the mouth) is recognised as covering the zebra and not taken");
+            Check(notes.Contains("would cover a zebra past the kerb lines"), "the 0.4.10 shape (priority mouths at the mouth) is recognised as covering the zebra and not taken");
             Check(res.Outline != null, "a box is built clear of the zebras (" + res.Failure + ")");
             if (res.Outline == null) return;
             var ring = G.ToXZ(res.Outline);
@@ -69,6 +69,23 @@ namespace JunctionRules.Tests
             foreach (var c in cps) cpsIn &= G.Contains(ring, c, 1e-3);
             Check(cpsIn, "conflict points in the middle stay inside");
             Check(res.Outline.Count <= 8, $"straight-sided box ({res.Outline.Count} vertices)");
+            // Owner correction: only ZEBRAS force the hold. The same stubs with a give-way line (not a zebra) past the kerb lines
+            // on a give-way arm and no zebras: the 0.4.7 shape is taken as before (0.4.8 handling for stop / give-way lines).
+            {
+                var lines = new List<CrosswalkStrip>();
+                double a1 = 90 * Math.PI / 180;
+                var u1 = new V2(Math.Cos(a1), Math.Sin(a1));
+                V2 c1 = u1 * (r - 2.3 + 0.15);
+                lines.Add(new CrosswalkStrip(c1 + u1.Left * 7.5, c1 - u1.Left * 7.5, 0.3, true));
+                var rl = CW.BuildStraight(arms, o, lines, 0.5, cps, false);
+                string nl = string.Join("; ", rl.Notes);
+                Check(rl.Outline != null && !nl.Contains("would cover a zebra") && !nl.Contains("held clear of a marking"), "a give-way line past the kerb lines (no zebra): no forced hold, shape as in 0.4.10 (" + nl + ")");
+                Check(nl.Contains("arm 2: marking (+ margin) ends") && nl.Contains("past the kerb lines; box starts at the mouth"), "that give-way line really lies past the kerb lines (the case is exercised)");
+            }
+            // Lane dashes, arrows, centre lines, prefab text are never shape inputs: only marked crosswalks and stop / give-way lines.
+            string bs = System.IO.File.ReadAllText(System.IO.Path.Combine(RepoRoot(), "JunctionRules", "Boxes", "BoxShapes.cs"));
+            Check(bs.Contains("if ((f & PedestrianLaneFlags.Crosswalk) == 0) continue;") && bs.Contains("CarriagewayOutline.BuildStraight(arms, centre, markings, margin, conflicts, signals)"),
+                "shape markings = marked crosswalks (+ stop / give-way lines): other road markings may lie under a box (hidden by the setting)");
             // A box with no marking past its kerb lines keeps its shape exactly (the 0.4.7 / 0.4.8 shapes stay cm for cm).
             var plain = CW.BuildStraight(Synth(deg, H, 20, 6, 3, new[] { false, true, false, true }), o, null, 0.5, null, false);
             Check(plain.Outline != null && !string.Join("; ", plain.Notes).Contains("held clear"), "no marking past the kerb lines: built the 0.4.7 way, unchanged");

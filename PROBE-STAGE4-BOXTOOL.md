@@ -1847,14 +1847,19 @@ are short; their kerbs do not meet), the arm cannot be trimmed to the marking. 0
 least that far in" (`BoxMouth.MinShift`), but only on the second try, after the 0.4.7 shape was REFUSED. At Capper Street
 the 0.4.7 shape built, so the priority arms stayed at their mouths, on the zebras.
 
-**Now** (owner rule: the box never covers a zebra or any road marking, 0.5 m margin; "priority arms stay put" yields to
-"never on a marking"): (1) the 0.4.7 shape is taken only when no marking lies past any arm's kerb lines, so every such
+**Owner correction:** the never-cover rule is for ZEBRAS / pedestrian crossings (plus the stop / give-way lines the 0.5 m
+margin already respects), not all markings: lane dashes, arrows, centre lines and road-prefab text may lie under a box
+(the "hide markings under boxes" setting is for them). They were never shape inputs: the box shape reads only marked
+crosswalks and stop / give-way lines (`BoxShapes.MarkedCrossings` / `StopLines`). The forced hold below is for a ZEBRA past
+an arm's kerb lines; a stop / give-way line past the kerb lines keeps the 0.4.8 handling (held only if the shape is refused).
+
+**Now** ("priority arms stay put" yields to "never on a zebra"): (1) the 0.4.7 shape is taken only when no ZEBRA lies
+past any arm's kerb lines, so every such
 box keeps its shape cm for cm (all earlier tests unchanged, including Crescent x Eastgate); (2) otherwise the 0.4.8 way
 (game corners + held mouths) when the junction has game corners; (3) else plain corners with every such mouth held clear,
 priority arms included (`StraightBox.Search` gives every arm at least its MinShift; straight sides, conflict points still
-inside where they can be); (4) if no box can clear the marking: no box, logged `no box clear of the marking(s) past the
-kerb lines: ...`. The note says `the 0.4.7 shape would cover a marking past the kerb lines on N arm(s) (G24: never on a
-marking)` and `built with N mouth(s) held clear ...`.
+inside where they can be); (4) if no box can clear the marking: no box, logged `no box clear of the zebra(s) past the
+kerb lines: ...`. The note says `the 0.4.7 shape would cover a zebra past the kerb lines on N arm(s) (G24: never on a zebra)` and `built with N mouth(s) held clear ...`.
 
 Saved boxes whose log showed the same note in this session (all rebuilt this way at the next load, no action needed):
 nodes 1205548 (Capper Street), 1205897, 730419, 831949, 839498, 1205085. Check each one's `saved junction box` line after
@@ -1869,4 +1874,5 @@ way, unchanged.
 | # | Do | Expect |
 |---|---|---|
 | 24-1 | Capper Street x Lilac Street after load | the box stops 0.5 m short of all four zebras, also on the Capper Street arms |
-| 24-2 | Log after load, the six nodes above | no `box starts at the mouth`; any `no box clear of the marking(s)` = report (that junction lost its box) |
+| 24-2 | Log after load, the six nodes above | no zebra arm with `box starts at the mouth` (a give-way-line arm may keep it); any `no box clear of the zebra(s)` = report (that junction lost its box) |
+| 24-3 | Lane dashes / arrows / centre lines inside a box | allowed under the box (hidden with the setting on) |
