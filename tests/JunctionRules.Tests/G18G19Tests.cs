@@ -77,6 +77,9 @@ namespace JunctionRules.Tests
             Check(chains.Count == 1 && chains[0].Members.Count == 2 && Math.Abs(chains[0].From - 34.7) < 1e-9 && Math.Abs(chains[0].To - 53.5) < 1e-9,
                 "G20: 0.4.10 builds them as ONE box 34.7..53.5 m (paint and driving use the same chains)");
             Check(EntranceBox.WindowFits(34.7, 53.5, 0, 120, 0.5, null, out _), "the joint window fits when no marking lies in the gap");
+            // full 0.4.9 log (JunctionRules.Mod.2026-11-17_049.log lines 13-14): edge 557050's part 8.9..127.3 m, 1 marking on
+            // the road; stop / give-way lines lie at the road's ends (BoxShapes.StopLines, zebras at the end nodes), e.g. 126.5 m
+            Check(EntranceBox.WindowFits(34.7, 53.5, 8.9, 127.3, 0.5, new[] { new AlongSpan(126.3, 126.6) }, out string fitWhy), "No. 40: the joint window 34.7..53.5 m fits its road (part 8.9..127.3 m, marking at the end): " + fitWhy);
             var pairs = ExitBoxWindows.Neighbours(w, ExitBoxWindows.LogPairsWithin);
             Check(pairs.Count == 1 && pairs[0].A == 1 && pairs[0].B == 0 && Math.Abs(pairs[0].Gap - 2.8) < 1e-9, "one neighbour pair logged, gap 2.8 m");
             string merged = ExitBoxWindows.PairDecision(2.8, ExitBands.MergeGapMetres, true, null, 34.7, 53.5);
@@ -110,6 +113,9 @@ namespace JunctionRules.Tests
             // frame 36628751: sedan 909747 stood at z 294.4 (front ~296.6, car ahead 910969 at 298.9): in the paint, outside
             // the 0.4.9 band (so nothing held it at the box line); 0.4.10: z 294.4 is inside the band
             Check(294.4f > nz0 && 294.4f < nz1 && 294.4f < oz0, "G19 sedan: stood in the painted box, which 0.4.9 did not drive (band further north); 0.4.10 drives it");
+            // sedan.txt: the car ahead 910969 crept to z 298.9 (front ~301.1) and stood there 36628579..36629298: at the 0.4.9
+            // DRIVEN box line (z ~301.3), i.e. held for room past the misplaced box; the sedan queued behind it in the paint
+            Check(Math.Abs(298.9f + 2.2f - oz0) < 1.0f, $"G19: 910969 stood with its front at the 0.4.9 driven line (z {oz0:0.0})");
             // frame 36627998: truck 380975 (z 295.8) and car 910952 (z 288.2) southbound stood in the paint queued from the junction:
             // same cause (the southbound lane maps the same t to the same metres along: the band was at z ~300..309 too)
             Check(295.8f < oz0 && 288.2f < oz0, "G19 southbound truck / car: in the painted box, south of the 0.4.9 band: same cause (misplaced band), not a moving-queue entry");
