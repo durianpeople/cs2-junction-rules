@@ -33,7 +33,14 @@ namespace JunctionRules.Tests
 
             string root = RepoRoot();
             string wj = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRWholeJunction.cs"));
-            Check(wj.Contains("if (scan.HasRoom) SideObstacles(ref scan, lane,") && wj.Contains("(other.m_Flags & Game.Net.CarLaneFlags.SideConnection) == 0) continue;"),
+            string yb = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRYellowBox.cs"));
+            string ex = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRExitGiveWay.cs"));
+            Check(yb.Contains("ref overlapData, ref pedestrianLanes, role == BoxDriving.EntranceRole.Main);") && !ex.Contains("ref pedestrianLanes, true)")
+                && !ex.Contains("sideObstacles: true"), "review 1: side obstacles only for traffic through a band, never in an exit's own room checks (no exit <-> entrant loop)");
+            Check(yb.Contains("if (!BoxDriving.Holds(a, room)) { m_LastBlocker = keepBand; continue; }") && yb.Contains("else m_LastBlocker = keepEnter;")
+                && yb.Contains("m_LastBlocker = keepLog;") && yb.Contains("m_LastBlocker = keepF1;"), "review 2: only the binding hold's scan names the blocker");
+            Check(wj.Contains("bool against = lo.m_CurvePosition.y < lo.m_CurvePosition.x;"), "review 5: a vehicle driving a two-way driveway lane against its curve is measured the right way round");
+            Check(wj.Contains("if (sideObstacles && scan.HasRoom) SideObstacles(ref scan, lane,") && wj.Contains("(other.m_Flags & Game.Net.CarLaneFlags.SideConnection) == 0) continue;"),
                 "G15b: the room-past scan also reads vehicles across the lane on overlapping driveway lanes");
             Check(wj.Contains("ref prefabCars, ref unsorted, noCredit: true);") && wj.Contains("if (!noCredit && hasCurve && moving.TryGetComponent(e, out Moving m)"),
                 "G15b: a vehicle turning in needs room that is free now (no moving-queue credit on the way in)");

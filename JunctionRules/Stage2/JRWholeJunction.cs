@@ -700,7 +700,7 @@ namespace JunctionRules.Stage2
             ref ComponentLookup<Game.Net.CarLane> carLanes, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves,
             ref ComponentLookup<Moving> moving, ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs,
             ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars,
-            ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
+            ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes, bool sideObstacles = false)
         {
             RoomScan scan = RoomScan.Begin(m_VehicleLength, m_RoomMargin);
             bool unsorted = false;
@@ -738,7 +738,7 @@ namespace JunctionRules.Stage2
             if (unsorted && Counting) m_ZebraUnsortedSeen = true;
             // 0.4.9 (G15b): a vehicle turning into (or out of) a driveway whose body still lies across this lane is not one of
             // this lane's objects (the game lists a car only on its current lane), so the scan above did not see it.
-            if (scan.HasRoom) SideObstacles(ref scan, lane, queueFrom >= 0f && queueFrom < fromDriving ? queueFrom : fromDriving, fromDriving, inverse, length, self,
+            if (sideObstacles && scan.HasRoom) SideObstacles(ref scan, lane, queueFrom >= 0f && queueFrom < fromDriving ? queueFrom : fromDriving, fromDriving, inverse, length, self,
                 ref carLanes, ref laneObjects, ref controllers, ref prefabRefs, ref geometries, ref curves, ref overlapData);
             NoteRoomBlocker(scan);
             return scan.HasRoom;
@@ -749,7 +749,9 @@ namespace JunctionRules.Stage2
         /// into No. 40's entrance stood angled across the near lane (its pivot already on the drive's entering lane, its rear
         /// on the road), and a van behind it entered No. 40's EXIT box because the room-past scan reads only the road lane's
         /// own objects (CarNavigationSystem registers a car on its current lane only: CheckChanges is passed no blocked
-        /// lanes). Here: every driveway lane (SideConnection, in or out) that overlaps this lane; a vehicle on it whose body
+        /// lanes). Only for traffic driving THROUGH a band (BoxHold Main role; review 1: never for an exit's own room checks, where
+        /// the vehicle across the lane may be the entrant waiting for that exit, nor for zebras / junction boxes). Here: every
+        /// driveway lane (SideConnection, in or out) that overlaps this lane; a vehicle on it whose body
         /// still covers the overlap stands across this lane at the overlap: inside the band (from 'queueFrom') or within the
         /// room needed past it (from 'fromDriving') it leaves no room (conservative: Block, naming it). Not the car itself.
         /// </summary>
@@ -779,7 +781,10 @@ namespace JunctionRules.Stage2
                     if (who == self) continue;
                     if (!prefabRefs.TryGetComponent(e, out PrefabRef pr) || !geometries.TryGetComponent(pr.m_Prefab, out ObjectGeometryData g)) continue;
                     float x = lo.m_CurvePosition.x * oc.m_Length;
-                    if (!BoxDriving.SideBodyCovers(x + g.m_Bounds.min.z, x + g.m_Bounds.max.z, oS, oE)) continue;
+                    // review 5: on a two-way lane a vehicle driving against the curve (y < x) faces the other way
+                    bool against = lo.m_CurvePosition.y < lo.m_CurvePosition.x;
+                    float rear = against ? x - g.m_Bounds.max.z : x + g.m_Bounds.min.z, front = against ? x - g.m_Bounds.min.z : x + g.m_Bounds.max.z;
+                    if (!BoxDriving.SideBodyCovers(rear, front, oS, oE)) continue;
                     scan.BlockBy(who.Index, who.Version);
                     break;
                 }
@@ -792,8 +797,8 @@ namespace JunctionRules.Stage2
         /// </summary>
         private void NoteRoomBlocker(RoomScan scan)
         {
-            if (scan.HasRoom || scan.BlockerIndex <= 0) return;
-            Entity b = default;
+            if (scan.HasRoom) return;
+            Entity b = default;   // review 2: an unknown blocker (people on a further zebra) names nobody, never an older one
             b.Index = scan.BlockerIndex;
             b.Version = scan.BlockerVersion;
             m_LastBlocker = b;

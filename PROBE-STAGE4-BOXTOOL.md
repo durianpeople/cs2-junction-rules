@@ -1124,8 +1124,10 @@ Who waits for whom, with the evidence:
   EXIT box 2.5 m upstream (fixed in 19.1: it now waits before the exit box). (2) A vehicle entering a box needed room past
   it, but the room scan reads only the road lane's own vehicles, and the game lists a vehicle only on its CURRENT lane:
   the angled van's pivot was already on the entrance drive lane, so its rear across the near lane was invisible and the
-  box looked clear. Fixed: the room scan also reads every driveway lane overlapping the road lane in the box / room window;
-  a vehicle on it whose body still covers the road part stands across the lane and leaves no room (named as blocker).
+  box looked clear. Fixed: for traffic driving THROUGH a box, the room scan also reads every driveway lane
+  overlapping the road lane in the box / room window; a vehicle on it whose body still covers the road part stands across
+  the lane and leaves no room (named as blocker). Never in an exit's own room checks (review: the vehicle across the lane
+  may be the entrant that waits for that exit; counting it there would rebuild the loop), nor for zebras / junction boxes.
 - Angled van -> entrance drive / yard: 0.4.8 fault (3): G9 let a vehicle turn in when the queue on its way in was MOVING
   (a moving queue counted its braking distance as room). A yard queue that moves can stop, and the yard only empties
   through its exit. Fixed: on the way IN only room that is free now counts.
@@ -1269,4 +1271,12 @@ blockers also feeds the game's traffic-bottleneck notification (it groups 'Conti
 (a named blocker makes a car look for a better lane, as stock); No Vehicle Despawn will now despawn vehicles of
 JR-caused loops after 400 frames (the owner's own mod setting). (l) G15b: vehicles turn in only with room free NOW (more waiting on the road at busy yards; a queue waiting to turn in
 blocks the lane behind it, as in the UK); a vehicle half across a lane from a driveway now holds box / zebra entries on
-that lane until it has cleared. (m) None of this has run in game yet.
+that lane until it has cleared. (m) Review (Sonnet) of G16/G17/G15b: only the hold that binds names its blocker (no stale name from a log-only or
+non-binding room read); the named blocker also feeds the game's own jam handling as for any stock stop: a car standing
+behind a named blocker may look for another lane, and once the Junction Rules hold releases while the same car is still
+named, the game's IgnoreBlocker creep (3 m/s) can apply as it does for stock blocks; the lot-exit branch (S2-32) writes
+the JR blocker over the game's own Entity.Null (the stock area branch names nobody). (n) G13: the shot alone cannot show
+which game check held the sedan; the JR-side causes found in the code are all changed (held exits no longer ask for
+keep-clear space, near boxes are one band, Go'd exits are never re-held on the pavement); the counters show the rest.
+(o) None of this has run in game yet; everything above is proven from code, the decompile, the shader disassembly, the
+logs and the tests (2753).

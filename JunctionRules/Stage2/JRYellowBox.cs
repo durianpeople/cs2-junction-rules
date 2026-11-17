@@ -161,10 +161,12 @@ namespace JunctionRules.Stage2
                 if (role == BoxDriving.EntranceRole.Entering)
                 {
                     // JR-T-014c (G9): turning INTO the building inside this band: held before the band while its way in is full.
+                    Entity keepEnter = m_LastBlocker;   // review 2 (G17): only the binding hold names its blocker
                     float enterHold = EnteringHold(lane, edgeOwner.m_Owner, start, b0, laneLength, wait0, margin, car, currentSpeed, timeStep, safeTimeStep, speedRange,
                         currentMax < result ? currentMax : result, self, ref braking, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs,
                         ref geometries, ref prefabCars);
                     if (enterHold < result) result = enterHold;
+                    else m_LastBlocker = keepEnter;
                     continue;
                 }
                 if (role != BoxDriving.EntranceRole.Main && role != BoxDriving.EntranceRole.Leaving) continue;
@@ -178,9 +180,12 @@ namespace JunctionRules.Stage2
                 // 0.4.4: a band reaching the lane end where the path enters a boxed junction is one box with it (the paint
                 // bridges that gap): room is then needed past the junction box (its lanes count as inside the box).
                 Entity joined = (1f - b1) * laneLength <= ExitBands.JunctionJoinMetres ? NextBoxedJunction(lane) : Entity.Null;
+                // 0.4.9 (G15b, review 1): vehicles standing across the lane from a driveway count only for traffic driving THROUGH the
+                // band (Main); a vehicle leaving the drive (Leaving) never waits for one (it could be the entrant that waits for it).
+                Entity keepBand = m_LastBlocker;
                 bool room = HasRoomPast(lane, b1, inverse, laneLength, entry, joined, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
-                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes);
-                if (!BoxDriving.Holds(a, room)) continue;
+                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, role == BoxDriving.EntranceRole.Main);
+                if (!BoxDriving.Holds(a, room)) { m_LastBlocker = keepBand; continue; }
                 result = hold;
                 if (Counting)
                 {
@@ -224,7 +229,9 @@ namespace JunctionRules.Stage2
             {
                 // Always-on entrance log (owner rule 0.4.8): in the box (or too close to stop): carries on; the room read
                 // here is for the log only (did it go in without room, does it stand in the box).
+                Entity keepLog = m_LastBlocker;
                 bool roomNow = HasRoomInto(next, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars);
+                m_LastBlocker = keepLog;   // review 2: a log-only read names nobody
                 EntranceWrite(self, road, EntranceLog.Pack(EntranceLog.Event.InBox, roomNow, currentSpeed, b0));
                 return float.MaxValue;
             }
@@ -234,9 +241,11 @@ namespace JunctionRules.Stage2
                 // 0.4.9 review F1 (G15): a STANDING entrant held harder by something else (in practice the entrant ahead of it in
                 // the same queue for the full building) would also be held by this rule: record it too, so an exit within 10 m
                 // does not wait for the second van of the queue either. Read only while it stands (one room read per update).
+                Entity keepF1 = m_LastBlocker;
                 if (currentSpeed < ExitGiveWay.EnteringStandSpeed
                     && !HasRoomInto(next, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars))
                     NoteEnteringHeld(self);
+                m_LastBlocker = keepF1;   // review 2: not this hook's binding hold
                 return float.MaxValue;
             }
             bool room = HasRoomInto(next, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars);
