@@ -982,6 +982,17 @@ namespace JunctionRules.Stage2
             return curves.TryGetComponent(next.m_Lane, out Curve c) ? MathUtils.Position(c.m_Bezier, next.m_CurvePosition.x).xz : default;
         }
 
+        /// <summary>Review F4 (0.4.12, G28): this vehicle's same-exit-lane episode is still running (the event at most SafetyStopEvents.ContinueFrames old).</summary>
+        private unsafe bool G28Standing(Entity self)
+        {
+            if (!m_Events.IsCreated || self == Entity.Null) return false;
+            TableSlots slots = default;
+            slots.m_P = (long*)NativeArrayUnsafeUtility.GetUnsafeBufferPointerWithoutChecks(m_Events);
+            slots.m_N = m_Events.Length;
+            bool found = EventLookup.Last(ref slots, ExitGiveWay.EventKey(self.Index, ExitGiveWay.SameExitEntryKind), out uint last);
+            return EventLookup.Fresh(found, last, m_EventFrame, SafetyStopEvents.ContinueFrames);
+        }
+
         private static unsafe bool BoxedGo(NativeArray<long> eventTable, Entity self, uint frame)
         {
             if (!eventTable.IsCreated) return false;
@@ -1419,24 +1430,34 @@ namespace JunctionRules.Stage2
             ref ComponentLookup<ObjectGeometryData> geometries, ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
         {
             m_G28JoinLane = Entity.Null;
+            m_G28Latched = Entity.Null;
             m_G28Queue = false;
             if (!PathLaneAfter(wayOut, out CarNavigationLane join) || !curves.TryGetComponent(join.m_Lane, out Curve joinCurve) || !(joinCurve.m_Length > 0f)) return;
             if (!ExitInBand(join.m_Lane, join.m_CurvePosition.x, ref carLanes, ref curves)) return;
             // merge only; the pavement's far end on the leaving lane
             int ahead = 0, joined = 0;
-            float walkEnd = -1f;
+            float walkEnd = -1f, walkStart = -1f;
             for (int i = 0; i < overlaps.Length; i++)
             {
                 LaneOverlap o = overlaps[i];
                 if (((int)o.m_Flags & WholePathRule.Water) != 0) continue;
                 float a = o.m_ThisStart * WholePathRule.ByteToOffset, b = o.m_ThisEnd * WholePathRule.ByteToOffset;
                 float s = inverse ? 1f - b : a, e = inverse ? 1f - a : b;
-                if (pedestrianLanes.HasComponent(o.m_Other)) { if (e * wayOutLength > walkEnd) walkEnd = e * wayOutLength; continue; }
+                if (pedestrianLanes.HasComponent(o.m_Other))
+                {
+                    if (e * wayOutLength > walkEnd) walkEnd = e * wayOutLength;
+                    if (walkStart < 0f || s * wayOutLength < walkStart) walkStart = s * wayOutLength;
+                    continue;
+                }
                 if (!(e > start)) continue;
                 ahead++;
                 if (o.m_Other == join.m_Lane) joined++;
             }
             if (!ExitSameLane.MergeOnly(ahead, joined)) return;
+            // review F3 (latch): with its front already on the pavement (start past the pavement's start) a merge-only boxed exit
+            // keeps the exception even if the footprint no longer fits (a queue change): held at the join point it would stand
+            // with its tail on the pavement.
+            if (walkStart >= 0f && start * wayOutLength >= walkStart) m_G28Latched = join.m_Lane;
             bool inverseJ = join.m_CurvePosition.y < join.m_CurvePosition.x;
             float joinM = StretchGeometry.ToDriving(join.m_CurvePosition.x, inverseJ) * joinCurve.m_Length;
             // the nearest vehicle standing ahead of the join point on the joined lane (same direction)
@@ -1768,7 +1789,7 @@ namespace JunctionRules.Stage2
                 }
                 // 0.4.12 (G28): on the lane a same-exit-lane exiter joins, a vehicle standing before the merge (not on it) is the
                 // queue it joins at the back (it waits in the box behind the queue ahead): not present. Moving ones count.
-                if (ExitSameLane.QueueNotPresent(m_G28Scan, occupies, gap, speed)) continue;
+                if (ExitSameLane.QueueNotPresent(m_G28Scan && lane == m_G28JoinLane, occupies, gap, speed)) continue;   // review F1: not on its feeders
                 // 0.4.9 (G15): a vehicle standing before the exit while it waits for room INTO a building (G9 entrance hold,
                 // recorded this or the last navigation updates) is not "present at the exit": the exit may go.
                 bool entering = !occupies && gap > 0f && ((gap <= ExitGiveWay.PresentMetres && (EnteringHeld(e) || (m_EntryScan && EntryGapHeld(e))))

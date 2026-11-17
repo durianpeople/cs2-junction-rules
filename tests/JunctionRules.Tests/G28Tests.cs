@@ -39,6 +39,7 @@ namespace JunctionRules.Tests
             Check(!ExitSameLane.QueueNotPresent(true, true, -1f, 0f), "G28 a car standing ON the merge point still blocks");
             Check(!ExitSameLane.QueueNotPresent(true, false, 8f, 6f), "G28 a moving car is judged as before (gap)");
             Check(!ExitSameLane.QueueNotPresent(false, false, 3f, 0f), "G28 without the exception standing cars stay present (0.4.8 rule)");
+            Check(!ExitSameLane.QueueNotPresent(true, false, 3f, 0.3f), "G28 review F2: a queue car creeping at 0.3 m/s (starting to move) counts again");
             // ---- deadlock argument (G15): the exiter in the box blocks only the joined lane's own traffic behind it, which waits
             // for the same full lane; entrance paths / turn-ins under it are excluded above; the far carriageway is never touched
             // (merge only + median, G26). So no wait cycle runs through it that did not exist without it.
@@ -48,9 +49,12 @@ namespace JunctionRules.Tests
             Check(ex.Contains("if (m_BoxRule) G28Check(lane, overlaps, start, inverse, length, self,") && ex.IndexOf("G28Check(lane") < ex.IndexOf("if (firstRoad > 1f)"),
                 "repo: G28Check runs before the drive judgement's early returns (committed vehicles too)");
             Check(ex.Contains("if (boxed && !roomBox && m_G28JoinLane != Entity.Null && m_G28JoinLane == joinNav.m_Lane) { roomBox = true; m_G28Used = true; }"), "repo: the exception replaces only the room past the box");
-            Check(ex.Contains("if (ExitSameLane.QueueNotPresent(m_G28Scan, occupies, gap, speed)) continue;"), "repo: standing queue on the joined lane not present only in the G28 scan");
-            Check(yb.Contains("if (role == BoxDriving.EntranceRole.Leaving && m_G28JoinLane != Entity.Null && m_G28JoinLane == lane)") && yb.Contains("m_BoxSameExitEntry = true;"),
-                "repo: the road-lane box hold (role Leaving) honours the exception; counter shared with G22");
+            Check(ex.Contains("if (ExitSameLane.QueueNotPresent(m_G28Scan && lane == m_G28JoinLane, occupies, gap, speed)) continue;"), "repo (review F1): standing queue not present only ON the joined lane in the G28 scan, never on its feeders");
+            Check(yb.Contains("if (role == BoxDriving.EntranceRole.Leaving && lane != Entity.Null && (m_G28JoinLane == lane || m_G28Latched == lane))"),
+                "repo: the road-lane box hold (role Leaving) honours the exception, latched once the front is on the pavement (review F3)");
+            Check(ex.Contains("if (walkStart >= 0f && start * wayOutLength >= walkStart) m_G28Latched = join.m_Lane;"), "repo (review F3): latch only for a boxed merge-only exit already on the pavement");
+            Check(ex.Contains("if (m_G28Used) m_BoxSameExitEntry = true;") && yb.Contains("&& G28Standing(self))") && yb.Contains("m_BoxSameExitStanding = true;"),
+                "repo (review F4): entry counted at the exit's Go (shared G22 counter); a G28 car standing in its box counts as same-exit standing, not a box violation");
             int eh = ex.IndexOf("private float EntryRoadHold"), ehEnd = eh < 0 ? -1 : ex.IndexOf("\n        private ", eh + 10);
             Check(eh >= 0 && ehEnd > eh && !ex.Substring(eh, ehEnd - eh).Contains("G28"), "repo: turning INTO a building (G21 EntryRoadHold) is untouched");
         }

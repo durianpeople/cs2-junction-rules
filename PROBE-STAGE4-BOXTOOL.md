@@ -2095,6 +2095,15 @@ edge, lateral -2.46 m (same lane), rear ~25.1 m; join ~19.0 m. Footprint front 2
 SUV's tail on the leaving lane's road part, off the pavement (estimated leaving-lane geometry: unproven until live). A
 12 m lorry there would stand on the pavement: normal rule. Tests `G28Tests`.
 
+Review (Sonnet, APPROVE WITH FIXES) applied: F1 the standing-queue relaxation acts only ON the joined lane, never on its
+feeders (a car standing on a junction lane feeding it within 10 m still blocks); F2 "standing" = at most 0.2 m/s (as G15),
+a queue car starting to move counts again; F3 latch: once its front is on the pavement, a boxed merge-only exit keeps
+the exception for the road-lane box hold even if the queue changes (never held at the join point with its tail on the
+pavement); F4 the entry is counted where the exit is let go (not while still held), and a G28 car standing in its box
+counts as same-exit standing, not in the "standing inside a box" / nose probes. Accepted: G28Check runs every update
+for vehicles on a drive's leaving lane (no budget; cheap); with no standing queue the footprint is at the lane end (the
+car then drives through the box when the shortfall is further on). Burst build not run (game closed rule: main does it).
+
 | # | Do | Expect |
 |---|---|---|
 | 28-1 | 77236's exit with the right lane queued past the box | a car pulls into the box behind the queue and waits there (counter `entered a box under the same-exit-lane exception` +1); never on the pavement |

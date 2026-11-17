@@ -331,7 +331,7 @@ namespace JunctionRules.Stage2
         /// <summary>0.4.12 (G27, trace only): the exit gap scan's blocker was standing (Core ExitTrace.Standing); per judgement.</summary>
         private bool m_LastBlockerStanding, m_DriveBlockerStanding, m_ExitBlockerStanding;
         /// <summary>0.4.12 (G28): the road lane a same-exit-lane exiter joins (Null = no exception this update); scanning its merge; exception used.</summary>
-        private Entity m_G28JoinLane;
+        private Entity m_G28JoinLane, m_G28Latched;
         private bool m_G28Scan, m_G28Used, m_G28Queue;
         /// <summary>G15b (final review): this car-step a room scan was blocked by a vehicle standing across the lane from a driveway.</summary>
         private bool m_SideHeld;

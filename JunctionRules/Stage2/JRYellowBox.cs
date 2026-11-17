@@ -170,7 +170,14 @@ namespace JunctionRules.Stage2
             {
                 float b0 = merged[m].x, b1 = merged[m].y;
                 // 0.4.10 probe: a standing car with any part of its body inside this box (front past the line, rear not yet past the far edge)
-                if (Counting && currentSpeed < Stage2Counters.StandingSpeed)
+                if (Counting && currentSpeed < Stage2Counters.StandingSpeed && G28Standing(self))
+                {
+                    // review F4 (G28): an exiter that entered this box under the same-exit-lane exception (episode still running)
+                    // waits there by the owner's rule: counted as same-exit standing, not as a box violation
+                    m_BoxSameExitStanding = true;
+                    m_BoxSameExitEntry = true;   // keeps the episode running (one entry counted)
+                }
+                else if (Counting && currentSpeed < Stage2Counters.StandingSpeed)
                 {
                     float f0 = BoxDriving.FrontToLine(wait0 + laneLength * (b0 - start), margin);
                     if (BoxDriving.BodyInside(f0, f0 + (b1 - b0) * laneLength, m_VehicleLength)) m_BoxStoodInside = true;
@@ -210,10 +217,10 @@ namespace JunctionRules.Stage2
                 if (!BoxDriving.Holds(a, room)) { m_LastBlocker = keepBand; continue; }
                 // 0.4.12 (G28): a vehicle leaving a drive into this band under the same-exit-lane exception (S2-29 G28Check this
                 // update: near-side merge, footprint over only this lane's own traffic) waits in the box at the back of the queue.
-                if (role == BoxDriving.EntranceRole.Leaving && m_G28JoinLane != Entity.Null && m_G28JoinLane == lane)
+                if (role == BoxDriving.EntranceRole.Leaving && lane != Entity.Null && (m_G28JoinLane == lane || m_G28Latched == lane))
                 {
+                    // review F4: counted where the exit judgement lets it go (S2-29), not here (it may still be held for a gap there)
                     m_LastBlocker = keepBand;
-                    m_BoxSameExitEntry = true;
                     continue;
                 }
                 result = hold;

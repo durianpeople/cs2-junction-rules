@@ -65,6 +65,7 @@ namespace JunctionRules.Core
 
         /// <summary>A vehicle on the joined lane is the queue the exiter joins at the back (not present): standing, not on the merge, before it.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool QueueNotPresent(bool g28, bool occupies, float gap, float speed) => g28 && !occupies && gap > 0f && ExitTrace.Standing(speed);
+        /// Review F2: standing = at most <see cref="ExitGiveWay.EnteringStandSpeed"/> (0.2 m/s, as G15): a queue car starting to move counts again.
+        public static bool QueueNotPresent(bool g28, bool occupies, float gap, float speed) => g28 && !occupies && gap > 0f && speed <= ExitGiveWay.EnteringStandSpeed;
     }
 }
