@@ -578,22 +578,23 @@ namespace JunctionRules.Core
             // when that is refused, and a corner between different footways carries the game's corner data or a marking
             // lies past an arm's kerb lines, is it built again the 0.4.8 way: those corners' kerbs as the game draws them
             // (KerbRemap) and such an arm's mouth held clear of its marking (BoxMouth.MinShift) instead of left at the mouth.
-            // 0.4.11 (JR-T-017, G24, owner rule 17 Nov, corrected: the box never covers a ZEBRA / pedestrian crossing (0.5 m
-            // margin); lane dashes, arrows, centre lines and prefab text may lie under a box - they are not inputs here at all,
-            // only zebras and stop / give-way lines are (BoxShapes.MarkedCrossings / StopLines)): an arm whose ZEBRA lies past
-            // its kerb lines ALWAYS has its mouth held clear of it (BoxMouth.MinShift), also a priority arm and also when the
-            // 0.4.7 shape would build; a stop / give-way line past the kerb lines keeps the 0.4.8 handling: 0.4.8-0.4.10 held it only when that shape was refused,
+            // 0.4.11 (JR-T-017, G24, owner rule 17 Nov, exact list confirmed: the box never covers, with the 0.5 m margin,
+            // ZEBRAS, YIELD (give-way) lines and STOP lines; everything else - lane dashes, arrows, centre lines, prefab text -
+            // may lie under a box, and those are not inputs here at all: only zebras and stop / give-way lines are,
+            // BoxShapes.MarkedCrossings / StopLines): an arm whose zebra or stop / give-way line lies past its kerb lines
+            // ALWAYS has its mouth held clear of it (BoxMouth.MinShift), also a priority arm and also when the 0.4.7 shape
+            // would build: 0.4.8-0.4.10 held it only when that shape was refused,
             // so a priority arm's mouth stayed at the mouth, ON the zebra (Capper Street node 1205548, arms 1 / 2: "marking
             // (+ margin) ends 2.8 m in, past the kerb lines; box starts at the mouth", shape rule priority-road). The rule
             // "priority arms stay put" yields to "never on a marking": StraightBox.Search gives every arm at least its MinShift.
             // Corners as the game draws them (KerbRemap) are still tried only when the plain corners are refused.
-            // Order keeps every box that covers no zebra exactly as before: (1) the 0.4.7 shape, taken only when no zebra lies
-            // past an arm's kerb lines (zebraHeld == 0); (2) the 0.4.8 way (game corners + held mouths) when there are game corners;
+            // Order keeps every box that covers none of them exactly as before: (1) the 0.4.7 shape, taken only when no zebra /
+            // stop / give-way line lies past an arm's kerb lines (held == 0); (2) the 0.4.8 way (game corners + held mouths) when there are game corners;
             // (3) plain corners with the held mouths; else no box (never one on a marking).
             CarriagewayResult first = Straight(arms, centre, ok, margin, conflictPoints, signals, false, false, res.Notes, out int gamePairs, out int held, out int zebraHeld);
-            if (first.Outline != null && zebraHeld == 0) return first;
+            if (first.Outline != null && held == 0) return first;
             if (first.Outline == null && gamePairs == 0 && held == 0) return first;
-            string why = first.Outline != null ? $"the 0.4.7 shape would cover a zebra past the kerb lines on {zebraHeld} arm(s) (G24: never on a zebra)" : $"the 0.4.7 shape was refused ({first.Failure})";
+            string why = first.Outline != null ? $"the 0.4.7 shape would cover a zebra / stop / give-way line past the kerb lines on {held} arm(s) (G24: never on one; {zebraHeld} of them zebra arm(s))" : $"the 0.4.7 shape was refused ({first.Failure})";
             CarriagewayResult game = null;
             if (gamePairs > 0)
             {
@@ -610,7 +611,7 @@ namespace JunctionRules.Core
                 CarriagewayResult hold = Straight(arms, centre, ok, margin, conflictPoints, signals, false, true, res.Notes, out _, out _, out _);
                 if (hold.Outline != null)
                 {
-                    hold.Notes.Add($"built with {held} mouth(s) held clear of a marking past the kerb lines (priority arms too: never on a zebra); {why}");
+                    hold.Notes.Add($"built with {held} mouth(s) held clear of a marking past the kerb lines (priority arms too: never on a zebra / stop / give-way line); {why}");
                     return hold;
                 }
                 if (first.Outline != null)
@@ -620,7 +621,7 @@ namespace JunctionRules.Core
                     refused.Notes.AddRange(hold.Notes);
                     refused.StopDistance = hold.StopDistance;
                     refused.Kerbs = hold.Kerbs;
-                    refused.Failure = $"no box clear of the zebra(s) past the kerb lines: {hold.Failure}" + (game != null ? $"; game corners: {game.Failure}" : "");
+                    refused.Failure = $"no box clear of the zebra(s) / stop / give-way line(s) past the kerb lines: {hold.Failure}" + (game != null ? $"; game corners: {game.Failure}" : "");
                     return refused;
                 }
             }

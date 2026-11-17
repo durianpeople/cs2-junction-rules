@@ -1852,6 +1852,11 @@ margin already respects), not all markings: lane dashes, arrows, centre lines an
 (the "hide markings under boxes" setting is for them). They were never shape inputs: the box shape reads only marked
 crosswalks and stop / give-way lines (`BoxShapes.MarkedCrossings` / `StopLines`). The forced hold below is for a ZEBRA past
 an arm's kerb lines; a stop / give-way line past the kerb lines keeps the 0.4.8 handling (held only if the shape is refused).
+**Owner, exact list (final):** the box never covers, with the 0.5 m margin, ZEBRAS, YIELD (give-way) lines and STOP lines;
+everything else may lie under a box. So the forced hold applies to all three (a give-way / STOP line past the kerb lines
+holds its mouth too); these three are exactly the shape's marking inputs. Note text: `the 0.4.7 shape would cover a zebra /
+stop / give-way line past the kerb lines on N arm(s) (... K of them zebra arm(s))`; refusal: `no box clear of the zebra(s) /
+stop / give-way line(s) past the kerb lines`.
 
 **Now** ("priority arms stay put" yields to "never on a zebra"): (1) the 0.4.7 shape is taken only when no ZEBRA lies
 past any arm's kerb lines, so every such
@@ -1874,7 +1879,7 @@ way, unchanged.
 | # | Do | Expect |
 |---|---|---|
 | 24-1 | Capper Street x Lilac Street after load | the box stops 0.5 m short of all four zebras, also on the Capper Street arms |
-| 24-2 | Log after load, the six nodes above | no zebra arm with `box starts at the mouth` (a give-way-line arm may keep it); any `no box clear of the zebra(s)` = report (that junction lost its box) |
+| 24-2 | Log after load, the six nodes above | no `box starts at the mouth`; any `no box clear of the zebra(s) / stop / give-way line(s)` = report (that junction lost its box) |
 | 24-3 | Lane dashes / arrows / centre lines inside a box | allowed under the box (hidden with the setting on) |
 
 ### 21.11 Review 3 (Sonnet) fixes
