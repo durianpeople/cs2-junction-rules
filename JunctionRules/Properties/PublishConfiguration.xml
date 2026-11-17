@@ -54,6 +54,7 @@ Source code, issue tracker and design notes: https://github.com/durianpeople/cs2
 	<Screenshot Value="Properties/Screenshot2.png" />
 	<Screenshot Value="Properties/Screenshot3.png" />
 	<Screenshot Value="Properties/Screenshot4.png" />
+	<Screenshot Value="Properties/Screenshot5.png" />
 	<!--Tag, can be set multiple times. ModPublisher always adds "Code Mod"; it is listed here for clarity.-->
 	<Tag Value="Code Mod" />
 	<!--Link to the forum post where the mod can be discussed-->
