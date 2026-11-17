@@ -155,6 +155,7 @@ namespace JunctionRules.Tests
             ("G26ExitTests", G26ExitTests),
             ("G26JunctionTests", G26JunctionTests),
             ("G26RepoTests", G26RepoTests),
+            ("G26ReviewTests", G26ReviewTests),
             ("G27TraceTests", G27TraceTests),
             ("BoxWindowUnitTests", BoxWindowUnitTests),
             ("BoxScenarioTests", BoxScenarioTests),

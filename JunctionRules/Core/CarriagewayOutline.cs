@@ -629,7 +629,7 @@ namespace JunctionRules.Core
                     refused.Notes.AddRange(hold.Notes);
                     refused.StopDistance = hold.StopDistance;
                     refused.Kerbs = hold.Kerbs;
-                    refused.Failure = $"no box clear of the zebra(s) / stop / give-way line(s) past the kerb lines: {hold.Failure}" + (game != null ? $"; game corners: {game.Failure}" : "");
+                    refused.Failure = $"no box clear of the zebra(s) / stop / give-way line(s) / median nose(s) past the kerb lines: {hold.Failure}" + (game != null ? $"; game corners: {game.Failure}" : "");
                     return refused;
                 }
             }

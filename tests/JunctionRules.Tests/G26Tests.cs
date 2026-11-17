@@ -124,7 +124,7 @@ namespace JunctionRules.Tests
             // ---- E7: margin wider than the carriageway: zero-width span, never reversed (the box builder then refuses it)
             {
                 var narrow = new List<CompositionLaneInfo> { new CompositionLaneInfo(-1.5, 1, 0, G26Road), new CompositionLaneInfo(1.5, 1, 1, G26Road) };
-                Check(MedianSplit.SideSpan(narrow, new List<DividerInfo> { new DividerInfo(-1, 1) }, true, 2.0, out SideSpanResult n) && n.Hi >= n.Lo && n.Hi - n.Lo < 1e-9, $"E7 too narrow: zero width, not reversed ({n.Lo}..{n.Hi})");
+                Check(MedianSplit.SideSpan(narrow, new List<DividerInfo> { new DividerInfo(-1, 1) }, true, 2.0, out SideSpanResult n) && n.Hi >= n.Lo && n.Hi - n.Lo < 1e-9 && n.Degenerate, $"E7 too narrow: zero width, not reversed, flagged Degenerate (the box is refused) ({n.Lo}..{n.Hi})");
             }
 
             // ---- E8: divider pieces outside the gap between the lane groups (a kerb-side barrier) are ignored; the lane gap is
@@ -220,7 +220,7 @@ namespace JunctionRules.Tests
             Check(shapes.Contains("MedianSide(em, e, a.T, side.Value, margin, out SideSpanResult span, out bool buildingCompLeft)"), "repo: exit / entrance boxes pass the marking margin to the median rule");
             Check(shapes.Contains("MedianSplit.SideSpan(info, Dividers(em, ce), compLeft, margin, out span)"), "repo: the median rule reads the composition's divider pieces");
             Check(shapes.Contains("(p.m_PieceFlags & NetPieceFlags.BlockTraffic) == 0") && shapes.Contains("NetSectionFlags.Underground | NetSectionFlags.Overhead"), "repo: dividers = BlockTraffic pieces above ground");
-            Check(shapes.Contains("noses += MedianNoses(em, armEdges[k], node, markings, out string through);"), "repo: junction boxes add every arm's median nose as a never-cover strip");
+            Check(shapes.Contains("noses += MedianNoses(em, armEdges[k], node, markings, s.Notes, out string through);"), "repo: junction boxes add every arm's median nose as a never-cover strip");
             Check(shapes.Contains("s.Failure = \"roundabout: the box would cover the centre island"), "repo: a saved roundabout box is refused (island)");
             string cw = File.ReadAllText(Path.Combine(root, "JunctionRules", "Core", "CarriagewayOutline.cs"));
             Check(cw.Contains("ok.FindAll(c => !c.StopLine && !c.Median)"), "repo: median noses are not counted as zebras");
@@ -263,6 +263,43 @@ namespace JunctionRules.Tests
                   && src.Contains("if (busy && m_BoxRule) boxed = ExitInBand(road, t, ref carLanes, ref curves);"),
                 "G27 repo: both exit judgements know 'boxed' also when the gap scan holds the exit (label only, decision unchanged)");
             Check(src.Contains("ExitTrace.ReasonDecided | DriveReasons(drive), drive ? m_DriveBoxed : m_ExitBoxed)"), "G27 repo: the drive-lane long-hold line uses the drive judgement's own flags");
+        }
+    }
+}
+
+namespace JunctionRules.Tests
+{
+    /// <summary>0.4.12 review 1 fixes (JR-T-018): nose placed from the edge frame (asymmetric / mirrored node frame), nose inward.</summary>
+    internal static partial class Program
+    {
+        private static void G26ReviewTests()
+        {
+            // F3: an off-centre median (edge divider x 2..4); the node piece reports -3 (mirrored end-node frame) or 3: both land on 3
+            foreach (double nodeOffset in new[] { -3.0, 3.0 })
+            {
+                var pcs = new List<MedianPiece> { new MedianPiece(nodeOffset, 2, 0.6, true, true), new MedianPiece(-5, 3, 64, false, false) };
+                Check(MedianNose.PlaceOnEdge(pcs, new List<DividerInfo> { new DividerInfo(2, 4) }) && Math.Abs(pcs[0].Offset - 3) < 1e-9 && Math.Abs(pcs[0].Width - 2) < 1e-9 && pcs[1].Offset == -5,
+                    $"F3 nose at node offset {nodeOffset} placed on the edge median at 3 (edge frame), other pieces untouched");
+            }
+            {
+                var pcs = new List<MedianPiece> { new MedianPiece(0, 2, 0.6, true, true) };
+                Check(!MedianNose.PlaceOnEdge(pcs, new List<DividerInfo> { new DividerInfo(5, 7) }) && pcs[0].Offset == 0, "F3 no edge median near the nose: node-frame fallback, pieces unchanged");
+            }
+            // test gap: the nose lies INTO the node, not out on the road (621408 arm 1155147: inward = towards the node centre)
+            {
+                var la = LiveFixtures621408.Arms[3];
+                var oa = Pts(la.OuterA); var ia = Pts(la.InnerA); var ob = Pts(la.OuterB); var ib = Pts(la.InnerB);
+                var node = LiveFixtures621408.Nodes[3];
+                var mouth = new NodeMouth(oa[0].XZ, ia[0].XZ, ib[0].XZ, ob[0].XZ, node.Width, node.MiddleOffset);
+                var into = new List<CrosswalkStrip>();
+                MedianNose.AddStrips(mouth, (ia[1].XZ - ia[0].XZ) + (ib[1].XZ - ib[0].XZ), new List<MedianPiece> { new MedianPiece(0, 2, 0.6, true, true) }, into, out _);
+                var centre = new V2(LiveFixtures621408.Centre[0], LiveFixtures621408.Centre[1]);
+                V2 m0 = (ia[0].XZ + ib[0].XZ) * 0.5, mid = (into[0].A + into[0].B) * 0.5;
+                Check(into.Count == 1 && V2.Distance(mid, centre) < V2.Distance(m0, centre) - 0.2, $"test gap: the 1155147 nose strip lies on the node side of the mouth ({V2.Distance(mid, centre):0.00} m vs mouth {V2.Distance(m0, centre):0.00} m from the centre)");
+            }
+            string shapes = System.IO.File.ReadAllText(System.IO.Path.Combine(RepoRoot(), "JunctionRules", "Boxes", "BoxShapes.cs"));
+            Check(shapes.Contains("if (span.Degenerate) { s.Failure =") && shapes.Contains("MedianNose.PlaceOnEdge(list, edgeDividers)") && shapes.Contains("AddOnce(notes, $\"median noses not read on road"),
+                "repo: F1 degenerate span refuses the box; F3 noses placed in the edge frame; F4 a skipped nose read is noted");
         }
     }
 }

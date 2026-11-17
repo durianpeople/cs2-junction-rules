@@ -70,6 +70,8 @@ namespace JunctionRules.Core
         public bool NearCut;
         /// <summary>0.4.12: a median lies past the exit's carriageway (the box stops before it).</summary>
         public bool FarCut;
+        /// <summary>Review 1 F1 (0.4.12): the exit's carriageway is narrower than its margins: no box (the caller refuses it).</summary>
+        public bool Degenerate;
         /// <summary>0.4.12: the median edges came from the divider pieces (false = from the gap between the lanes).</summary>
         public bool FromPieces;
         /// <summary>Bit c set = carriageway index c is inside the box (all bits = undivided / unknown).</summary>
@@ -167,9 +169,9 @@ namespace JunctionRules.Core
             else { if (leftSide) r.Hi = hi; else r.Lo = lo; }
             r.Divided = r.NearCut || r.FarCut;
             if (!r.Divided) { r.FromPieces = false; r.CarriagewayMask = AllCarriageways; }
-            // never a reversed span: a carriageway narrower than its margins keeps a zero-width span (the box builder then
-            // refuses it: no box rather than one on the median)
-            if (r.Hi < r.Lo) { double m = (r.Lo + r.Hi) * 0.5; r.Lo = r.Hi = m; }
+            // never a reversed span: a carriageway narrower than its margins keeps a zero-width span, flagged Degenerate:
+            // the caller (BoxShapes.Entrance) refuses the box (no box rather than one on or against the median)
+            if (r.Hi < r.Lo) { double m = (r.Lo + r.Hi) * 0.5; r.Lo = r.Hi = m; r.Degenerate = true; }
             return true;
         }
 

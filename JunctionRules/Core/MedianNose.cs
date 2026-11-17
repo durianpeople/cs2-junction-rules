@@ -67,6 +67,35 @@ namespace JunctionRules.Core
         public const double FallbackLength = 1.2;
 
         /// <summary>
+        /// Review 1 F3 (0.4.12): moves each nose piece (BlockTraffic | PreserveShape) onto the edge's own median: its offset
+        /// becomes the centre of the edge divider nearest to it (its node-frame offset or the mirrored one, whichever is
+        /// nearer: the node frame mirrors at an end node), its width the wider of the two. False (pieces unchanged) when a
+        /// nose has no edge divider within 1 m of either reading.
+        /// </summary>
+        public static bool PlaceOnEdge(List<MedianPiece> pieces, IList<DividerInfo> edgeDividers)
+        {
+            if (pieces == null || edgeDividers == null || edgeDividers.Count == 0) return false;
+            var placed = new List<MedianPiece>(pieces.Count);
+            foreach (MedianPiece p in pieces)
+            {
+                if (!p.BlockTraffic || !p.PreserveShape) { placed.Add(p); continue; }
+                double best = double.MaxValue;
+                DividerInfo hit = default;
+                foreach (DividerInfo d in edgeDividers)
+                {
+                    double c = (d.Lo + d.Hi) * 0.5, dist = Math.Min(Math.Abs(c - p.Offset), Math.Abs(c + p.Offset));
+                    if (dist < best) { best = dist; hit = d; }
+                }
+                if (best > 1.0) return false;
+                double w = Math.Max(p.Width, hit.Hi - hit.Lo);
+                placed.Add(new MedianPiece((hit.Lo + hit.Hi) * 0.5, w, p.Length, true, true));
+            }
+            pieces.Clear();
+            pieces.AddRange(placed);
+            return true;
+        }
+
+        /// <summary>
         /// Adds a strip per nose piece to 'into' (Median = true): across the piece's width at the mouth, centred half its
         /// length in from the mouth, painted width = its length. 'inward' = into the node (the node-end curves' start
         /// tangent; when unusable, the left normal of the mouth line outer left -&gt; outer right, which points into the node:

@@ -172,7 +172,7 @@ namespace JunctionRules.Boxes
             foreach (Entity e in armEdges) stopLines += StopLines(em, e, markings, em.GetComponentData<Edge>(e).m_Start == node);
             for (int k = 0; k < armEdges.Count; k++)
             {
-                noses += MedianNoses(em, armEdges[k], node, markings, out string through);
+                noses += MedianNoses(em, armEdges[k], node, markings, s.Notes, out string through);
                 if (through != null) { s.Failure = $"arm {k + 1}: {through} (never on a median)"; return s; }
             }
             if (noses > 0) s.Notes.Add($"{noses} median nose(s) at the mouths: kept clear like a marking (+ margin)");
@@ -208,7 +208,6 @@ namespace JunctionRules.Boxes
             string shape = cw.ShapeSummary();
             if (shape != null) s.Notes.Add(shape);
             s.Summary = shape;
-            if (s.Roundabout) s.Notes.Add("roundabout node: kerbs from the outer curves offset sideways; island not cut out");
             s.Outline = cw.Outline;
             s.Failure = cw.Failure;
             return s;
@@ -324,6 +323,7 @@ namespace JunctionRules.Boxes
             // divider piece), and a divider between the kerb and the exit's carriageway moves the near side in past it
             if (side.HasValue && MedianSide(em, e, a.T, side.Value, margin, out SideSpanResult span, out bool buildingCompLeft) && span.Divided)
             {
+                if (span.Degenerate) { s.Failure = $"the exit's lanes between the kerb / median are narrower than the {margin:0.0} m margins (never on a median)"; return s; }
                 MedianSplit.Insets(half, footL, footR, span, buildingCompLeft, out footL, out footR);
                 s.Divided = true;
                 s.Carriageways = span.CarriagewayMask;
@@ -556,21 +556,32 @@ namespace JunctionRules.Boxes
         /// is a median running on through the junction (no median break): 'through' names it and the caller builds no box.
         /// Returns how many noses were added.
         /// </summary>
-        internal static int MedianNoses(EntityManager em, Entity edge, Entity node, List<CrosswalkStrip> into, out string through)
+        internal static int MedianNoses(EntityManager em, Entity edge, Entity node, List<CrosswalkStrip> into, out string through) =>
+            MedianNoses(em, edge, node, into, null, out through);
+
+        /// <summary>
+        /// Review 1 F3 / F4 (0.4.12): the nose's cross position comes from the EDGE's own median piece (edge composition frame,
+        /// the same frame test as Entrance: EdgeGeometry left against the curve tangent), mapped linearly onto the edge's end
+        /// line at this node (the mouth); the node piece gives only its presence, width and length. The node composition's own
+        /// frame mirrors at an end node (GeometrySystem 824 / 868 / 2495 negate m_MiddleOffset), so an asymmetric median read
+        /// in the node frame could land mirrored; the edge frame cannot. No edge median piece near it: the node halves
+        /// (NodeMouth) as before. 'notes' gets a line when a node's data is missing (no silent skip).
+        /// </summary>
+        internal static int MedianNoses(EntityManager em, Entity edge, Entity node, List<CrosswalkStrip> into, List<string> notes, out string through)
         {
             through = null;
             if (!em.HasComponent<Edge>(edge) || !em.HasComponent<Composition>(edge)) return 0;
             bool isStart = em.GetComponentData<Edge>(edge).m_Start == node;
             Composition comp = em.GetComponentData<Composition>(edge);
             Entity nc = isStart ? comp.m_StartNode : comp.m_EndNode;
-            if (nc == Entity.Null || !em.HasBuffer<NetCompositionPiece>(nc) || !em.HasComponent<NetCompositionData>(nc)) return 0;
-            if (isStart ? !em.HasComponent<StartNodeGeometry>(edge) : !em.HasComponent<EndNodeGeometry>(edge)) return 0;
+            if (nc == Entity.Null || !em.HasBuffer<NetCompositionPiece>(nc) || !em.HasComponent<NetCompositionData>(nc)
+                || (isStart ? !em.HasComponent<StartNodeGeometry>(edge) : !em.HasComponent<EndNodeGeometry>(edge)))
+            {
+                AddOnce(notes, $"median noses not read on road {edge.Index} (no node composition / pieces / node geometry)");
+                return 0;
+            }
             EdgeNodeGeometry g = isStart ? em.GetComponentData<StartNodeGeometry>(edge).m_Geometry : em.GetComponentData<EndNodeGeometry>(edge).m_Geometry;
             NetCompositionData ncd = em.GetComponentData<NetCompositionData>(nc);
-            var mouth = new NodeMouth(
-                new V2(g.m_Left.m_Left.a.x, g.m_Left.m_Left.a.z), new V2(g.m_Left.m_Right.a.x, g.m_Left.m_Right.a.z),
-                new V2(g.m_Right.m_Left.a.x, g.m_Right.m_Left.a.z), new V2(g.m_Right.m_Right.a.x, g.m_Right.m_Right.a.z),
-                ncd.m_Width, ncd.m_MiddleOffset);
             float3 tl = MathUtils.Tangent(g.m_Left.m_Right, 0f), tr = MathUtils.Tangent(g.m_Right.m_Left, 0f);
             V2 inward = new V2(tl.x + tr.x, tl.z + tr.z).Normalized;
             DynamicBuffer<NetCompositionPiece> pieces = em.GetBuffer<NetCompositionPiece>(nc, true);
@@ -581,6 +592,25 @@ namespace JunctionRules.Boxes
                 if ((p.m_SectionFlags & (NetSectionFlags.Underground | NetSectionFlags.Overhead)) != 0) continue;
                 list.Add(new MedianPiece(p.m_Offset.x, p.m_Size.x, p.m_Size.z, (p.m_PieceFlags & NetPieceFlags.BlockTraffic) != 0, (p.m_PieceFlags & NetPieceFlags.PreserveShape) != 0));
             }
+            // edge frame: the end line of the edge at this node, composition left -> right
+            List<DividerInfo> edgeDividers = Dividers(em, comp.m_Edge);
+            double edgeWidth = em.HasComponent<NetCompositionData>(comp.m_Edge) ? em.GetComponentData<NetCompositionData>(comp.m_Edge).m_Width : 0;
+            if (edgeDividers.Count > 0 && edgeWidth > 0 && em.HasComponent<EdgeGeometry>(edge) && em.HasComponent<Curve>(edge))
+            {
+                EdgeGeometry eg = em.GetComponentData<EdgeGeometry>(edge);
+                Bezier4x3 curve = em.GetComponentData<Curve>(edge).m_Bezier;
+                float3 lp0 = eg.m_Start.m_Left.a, tan0 = MathUtils.Tangent(curve, 0f);
+                bool compLeftIsGeomLeft = V2.Cross(new V2(tan0.x, tan0.z), new V2(lp0.x - curve.a.x, lp0.z - curve.a.z)) >= 0;
+                float3 gl = isStart ? eg.m_Start.m_Left.a : eg.m_End.m_Left.d, gr = isStart ? eg.m_Start.m_Right.a : eg.m_End.m_Right.d;
+                V2 cl = compLeftIsGeomLeft ? new V2(gl.x, gl.z) : new V2(gr.x, gr.z), cr = compLeftIsGeomLeft ? new V2(gr.x, gr.z) : new V2(gl.x, gl.z);
+                var edgeMouth = new NodeMouth(cl, (cl + cr) * 0.5, (cl + cr) * 0.5, cr, edgeWidth, 0);
+                if (MedianNose.PlaceOnEdge(list, edgeDividers))
+                    return MedianNose.AddStrips(edgeMouth, inward, list, into, out through);
+            }
+            var mouth = new NodeMouth(
+                new V2(g.m_Left.m_Left.a.x, g.m_Left.m_Left.a.z), new V2(g.m_Left.m_Right.a.x, g.m_Left.m_Right.a.z),
+                new V2(g.m_Right.m_Left.a.x, g.m_Right.m_Left.a.z), new V2(g.m_Right.m_Right.a.x, g.m_Right.m_Right.a.z),
+                ncd.m_Width, ncd.m_MiddleOffset);
             return MedianNose.AddStrips(mouth, inward, list, into, out through);
         }
 
