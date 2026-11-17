@@ -2239,7 +2239,7 @@ Targets (exactly one form): `{"node":I}`, `{"node":{"index":I,"version":V}}`, `{
 entrances), as List and `ambiguous_exit` print them. `{"building":I}` without `exit` = the only exit; several exits =
 `ambiguous_exit` (with the list); entrances only = `entrance_derived`. A sub-building / extension id stands for its main
 building (the tool's rule). Error codes: `not_ready`, `bad_target`, `not_found`, `not_boxable` (reason = the tool's text:
-the selection rule's `why`, `no box shape can be built here: ...`, `the building already has 50 exit boxes`),
+the selection rule's `why`, `no box shape can be built here: ...`, `the building already has 10 exit boxes`),
 `already_boxed`, `not_boxed`, `ambiguous_exit`, `entrance_derived`, `internal` (exception text; the API never throws).
 
 Results carry the target (node / building + exit), `outline` (the target's own box, world x/z), `areaM2`,

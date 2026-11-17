@@ -55,7 +55,7 @@ namespace JunctionRules.Core
 
     public static class BoxCommand
     {
-        /// <summary>The tool's text for a full building (Boxes/BoxStore.AddExit false): "the building already has 50 exit boxes".</summary>
+        /// <summary>The tool's text for a full building (Boxes/BoxStore.AddExit false): "the building already has {ExitRules.MaxBoxesPerBuilding} (10) exit boxes".</summary>
         public static string FullReason => $"the building already has {ExitRules.MaxBoxesPerBuilding} exit boxes";
 
         /// <summary>The tool's text when a white entrance's building has no road edge for its marker key.</summary>

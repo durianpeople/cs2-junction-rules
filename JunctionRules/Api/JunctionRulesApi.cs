@@ -317,7 +317,7 @@ namespace JunctionRules.Api
                     foreach (ExitKey sk in saved)
                     {
                         var info = new ApiBoxInfo { Ref = new ApiBoxRef(ApiBoxKind.BuildingExit, b.Index, b.Version), ExitKey = sk.ToString() };
-                        if (sk.ExitKind == ExitKind.Fallback)
+                        if (sk.ExitKind == ExitKind.Fallback && !BoxFacts.FindExit(acc.Exits, sk, out _))   // the paint (RebuildEntrance): a Fallback key that matches a real exit is drawn as that exit
                         {
                             info.Center = new V2(bp.x, bp.z);
                             info.Outline = new List<V3>();
