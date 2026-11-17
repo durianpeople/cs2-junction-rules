@@ -2151,3 +2151,20 @@ nose trace only with the exit trace on; F4 the boxed skip counted when any skip 
 | 29-1 | A yielding car turning into a full lane at a box junction, footprint clear (the cop's case at 621408) | it enters and waits in the box; `entered a box under the same-exit-lane exception` > 0; `stock room hold skipped (... boxed ...)` > 0 |
 | 29-2 | Same with crossing traffic moving | waits outside |
 | 29-3 | Timing line | nose (must be 0) apart from `at a red / amber light`; every remaining nose has a `box trace: NOTABLE nose in a box` line: send them to Technical |
+
+**G29 owner follow-up (lane-connector shot 9dbe8128): the BOTTOM police car.** The shot is node 621408 seen rotated
+(Sunset runs north-south there): top arm = Mistwood Lane (zebra; the first police car, explained: its right turn
+crosses another path), bottom arm = Lilac Street (Pedestrian Street, east of the node, give way). The bottom car turns
+left (near side, left-hand traffic) from Lilac's inbound lane (~(101.9, 405.9)) into 953631's east lane (~(97.5, 398.6)),
+merging with 1155147's east-lane through traffic into the same exit lane; nothing else under it (the turn-in from that
+carriageway into Lilac uses Lilac's other lane and does not meet it). Turn ~9.3-9.4 m (outline: chord 8.5 m, ~90 degrees;
+shot: 38 px/m, ~9.3 m). Lilac's crossing (the paved band) ends 2.2 m in (log: "arm 2: marking (+ margin) ends 2.7 m in").
+G22 footprint = lane end - 1 m back over car + 1 m: ~2.3-2.7 .. 8.3 m for a 4.6-5.0 m car, i.e. clear of the crossing by
+only ~0.1-0.5 m (within the measuring error; a 0.7 m shorter turn would put the tail 0.2-0.6 m over it). In the game's
+data that band is a MARKED crosswalk (crosswalk lane with the Crosswalk flag, not Unsafe: log "2 zebra(s) ... 0 unmarked
+crossing(s)" at 621408), so the G11 unmarked-crossing rule does not apply to it. What held it in 0.4.11 regardless: the
+game's own junction room hold (stock CheckSpace), which counts that crossing as a true crossing; with the exit lane full
+it held the car outside, and S2-54 did not skip at boxed junctions (G29 above; the zebra-only case is review F1). 0.4.12
+drops that hold when G22 admits the car, so the remaining question is only G22's footprint: if it lands on the crossing,
+the blocking path is Lilac Street's crossing (its tail), otherwise it enters. Pedestrian-path rule unchanged pending the
+owner's ruling on tails over unmarked crossings.
