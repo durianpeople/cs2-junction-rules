@@ -6,8 +6,8 @@ road's lanes, also on a ONE-WAY road (0.4.4-0.4.11 cut only where the lanes past
 box at building 77236 on Sunset Street was painted kerb to kerb across the raised centre median); the box and the
 driving rule cover only the building's own lanes. Junction boxes keep 0.5 m clear of every median nose at their arms
 (like a zebra: the mouth is held back past it); a junction whose median runs on through it, and a saved roundabout
-box (centre island), get no box. G28 (owner rule): a car leaving a building by a drive may pull into its exit box behind a queue when it only merges into that lane (G22's exception for exits). G27: the exit trace says `boxed yes` and `no room` (not `gap`) when a standing queue holds a boxed exit (labels only). Copied game code: `docs/vanilla_copy_check_0.4.12.txt`: 0 unexplained differences, 42 marked blocks / 336 lines
-(+8 inside S2-20 / S2-23 / S2-26: composition lookups for 22.9). Carries 0.4.11 and everything before.
+box (centre island), get no box. G28 (owner rule): a car leaving a building by a drive may pull into its exit box behind a queue when it only merges into that lane (G22's exception for exits). G27: the exit trace says `boxed yes` and `no room` (not `gap`) when a standing queue holds a boxed exit (labels only). No change to the copied game code (`docs/vanilla_copy_check_0.4.12.txt`: 0 unexplained
+differences, 42 marked blocks / 328 lines as 0.4.11). Carries 0.4.11 and everything before.
 
 **0.4.11-probe (JR-T-017: 0.4.10 live gap G21), what changed since 0.4.10 (section 21):** a vehicle turning INTO a
 building across traffic (a right turn in, left-hand traffic) now gives way like a vehicle leaving one: it waits in its
@@ -2172,27 +2172,29 @@ owner's ruling on tails over unmarked crossings.
 ### 22.9 Owner decision: the same-exit-lane exception may block non-zebra and pavement pedestrian paths
 
 Owner 17 Nov (G22 / G28 / G29): "for this exception, it is allowed to block non-zebra and pavement pedestrian paths". So
-for the same-exit-lane exception (junction boxes, G22; building drive exits, G28) the waiting footprint may lie over:
-unmarked crossings (crosswalk lane with `Unsafe`), crossings on a pedestrian-street arm (tiled: the game gives the lane the
-`Crosswalk` flag but draws no zebra stripes; 621408's Lilac Street arm, owner shot 9dbe8128), and pavement / footway paths
-(no `Crosswalk` flag, incl. a drive's sidewalk band). Never over a ZEBRA = a marked crosswalk (`Crosswalk` without
-`Unsafe`) on an arm whose node composition is not `Tiles` (`Core/SameExitException.BlocksAsZebra`; unreadable arm =
-zebra). The arm is the connected edge whose end at the node lies nearest the crosswalk's middle; its node-end composition
-(`Composition.m_StartNode / m_EndNode` -> `NetCompositionData.m_Flags.m_General & Tiles`) comes from two read-only
-lookups handed in at S2-26 (`SetCompositions`). Vehicle paths into other lanes still disqualify. Only real zebras limit
-the junction footprint's front (exit zebra) and the G28 leaving-lane footprint (a drive's sidewalk band no longer does).
+for the same-exit-lane exception (junction boxes, G22; building drive exits, G28) the waiting footprint may lie over
+unmarked crossings (crosswalk lane with `Unsafe`) and pavement / footway paths (no `Crosswalk` flag, incl. a drive's
+sidewalk band). Never over a ZEBRA = the game's marked crosswalk (`Crosswalk` without `Unsafe`): exactly the definition of
+the kept "cars never stop on a zebra" rule (`ZebraSections.IsZebra`), so the exception never admits a car that the
+no-stop rule would then stop short on a crossing (`Core/SameExitException.BlocksAsZebra`). Vehicle paths into other lanes
+still disqualify. Only zebras limit the junction footprint's front (exit zebra) and the G28 leaving-lane footprint (a
+drive's sidewalk band no longer does). No change to the copied game code (42 blocks / 328 lines as 0.4.11).
 
-Unchanged: the "cars never stop on a zebra" rule uses the game's own marked flag (`ZebraSections.IsZebra`: `Crosswalk`
-without `Unsafe`), so it still treats a tiled pedestrian-street crossing as a zebra. For the bottom police car (turn ~9.3 m,
-crossing 0-2.2 m) that rule finds room past the crossing (~7.1 m for a 5.7 m car + margin), so it does not stop it; on a
-turn shorter than ~7.9 m it would hold the car before that crossing. Owner to rule whether pedestrian-street crossings are
-zebras for the no-stop rule too.
+Review (Sonnet) of a first version that also treated a pedestrian-street crossing as non-zebra: REJECT (its arm pick was
+an arbitrary tie: every edge's curve ends at the node; and the no-stop rule would still call that crossing a zebra), so
+that part was dropped. **OPEN FOR THE OWNER:** Lilac Street's crossing at 621408 (the bottom police car's arm) is a
+pedestrian street: the game gives its crossing lane the MARKED flag (`Crosswalk`, node end flags "Crosswalk, Pavement,
+Tiles") although no stripes are drawn. It therefore counts as a zebra for BOTH rules today. If the owner wants
+pedestrian-street crossings treated as unmarked, that should change both rules together (the exception and "never stop on
+a zebra"); it needs the arm's composition (read by the arm's direction, not the curve end). For the bottom police car
+itself (turn ~9.3 m, crossing 0-2.2 m) the footprint most likely clears the crossing anyway (22.8 follow-up), and the
+0.4.12 G29 fix removes what held it in 0.4.11.
 
-Tests `PedPathTests`: bottom police car with its tail over the unmarked crossing -> enters; over the tiled one (as in the
-game's data) -> enters; with a zebra there -> waits; a vehicle path into another lane under it -> waits; G28: a van's tail
-over the drive's sidewalk band -> enters, over a zebra band -> refused.
+Tests `PedPathTests`: tail over an unmarked crossing -> enters; with a zebra there -> waits; a vehicle path into another
+lane under it -> waits; the exception and the no-stop rule agree for every flag combination; G28: a van's tail over the
+drive's sidewalk band -> enters, over a zebra band -> refused.
 
 | # | Do | Expect |
 |---|---|---|
-| 30-1 | The bottom police car's case at 621408 (Lilac Street, exit lane queued past the box) | it enters and waits in the box (counter `entered a box under the same-exit-lane exception` +1) |
-| 30-2 | A same-exit case where the tail would lie on a painted zebra | waits before the box |
+| 30-1 | A same-exit case whose tail lies over an unmarked crossing or a footway | it enters and waits in the box (counter `entered a box under the same-exit-lane exception` +1) |
+| 30-2 | A same-exit case whose tail would lie on a zebra (incl. a pedestrian-street crossing, pending the owner) | waits before the box |

@@ -96,8 +96,8 @@ namespace JunctionRules.Core
             Other = 2,
             /// <summary>
             /// 0.4.12 (owner decision 17 Nov: "for this exception, it is allowed to block non-zebra and pavement pedestrian
-            /// paths"): a pedestrian path that is NOT a zebra (<see cref="BlocksAsZebra"/> false): an unmarked crossing, a
-            /// crossing on a pedestrian-street (tiled) arm, a pavement / footway path. May lie under the footprint.
+            /// paths"): a pedestrian path that is NOT a zebra (<see cref="BlocksAsZebra"/> false): an unmarked crossing or a
+            /// pavement / footway path. May lie under the footprint.
             /// </summary>
             Pavement = 3,
         }
@@ -105,18 +105,17 @@ namespace JunctionRules.Core
         public const int PedCrosswalk = ZebraSections.PedestrianCrosswalk, PedUnsafe = ZebraSections.PedestrianUnsafe;   // Game.Net.PedestrianLaneFlags
 
         /// <summary>
-        /// 0.4.12 (owner decision): a pedestrian path the same-exit-lane exception must never block = a ZEBRA: the game's marked
-        /// crosswalk (PedestrianLaneFlags.Crosswalk without Unsafe, LaneSystem.cs 8571-8580) on an arm whose node composition is
-        /// not paved with tiles (CompositionFlags.General.Tiles 0x8000000: a pedestrian street; its crosswalk lane has the
-        /// Crosswalk flag but no zebra stripes are drawn - 621408's Lilac Street arm, owner shot 9dbe8128). tiledArmKnown false
-        /// = the arm could not be read: treated as a zebra (conservative). Unmarked crossings (Unsafe) and footway / pavement
-        /// lanes (no Crosswalk flag, incl. a drive's sidewalk band) are not zebras.
+        /// 0.4.12 (owner decision 17 Nov): a pedestrian path the same-exit-lane exception must never block = a ZEBRA: the game's
+        /// marked crosswalk (PedestrianLaneFlags.Crosswalk without Unsafe, LaneSystem.cs 8571-8580), the same definition as the
+        /// kept "cars never stop on a zebra" rule (ZebraSections.IsZebra), so the two rules always agree on what a zebra is.
+        /// Unmarked crossings (Unsafe) and footway / pavement lanes (no Crosswalk flag, incl. a drive's sidewalk band) may be
+        /// under the footprint. Open owner question (PROBE 22.9): a pedestrian-street (tiled) arm's crossing carries the marked
+        /// flag although no stripes are drawn; it counts as a zebra here AND in the no-stop rule until the owner rules otherwise.
         /// </summary>
-        public static bool BlocksAsZebra(int pedestrianFlags, bool tiledArm) =>
-            (pedestrianFlags & PedCrosswalk) != 0 && (pedestrianFlags & PedUnsafe) == 0 && !tiledArm;
+        public static bool BlocksAsZebra(int pedestrianFlags) => ZebraSections.IsZebra(pedestrianFlags);
 
         /// <summary>The footprint kind of a pedestrian path (0.4.12 owner decision).</summary>
-        public static Path PedestrianKind(int pedestrianFlags, bool tiledArm) => BlocksAsZebra(pedestrianFlags, tiledArm) ? Path.Other : Path.Pavement;
+        public static Path PedestrianKind(int pedestrianFlags) => BlocksAsZebra(pedestrianFlags) ? Path.Other : Path.Pavement;
 
         /// <summary>The footprint [from, to] admits the car: every overlap range [s, e] (metres) it touches is a SameExit path.</summary>
         public static bool Admits<T>(float from, float to, ref T paths) where T : struct, IFootprintPaths

@@ -423,11 +423,6 @@ public class JRCarNavigationSystem : GameSystemBase
 		[NativeDisableParallelForRestriction]
 		[Unity.Collections.LowLevel.Unsafe.NativeDisableContainerSafetyRestriction]
 		public NativeArray<long> m_JRWatch;
-		// 0.4.12 (owner decision, same-exit-lane exception may block non-zebra pedestrian paths): arm compositions for the zebra test
-		[ReadOnly]
-		public ComponentLookup<Composition> m_JRCompositionData;
-		[ReadOnly]
-		public ComponentLookup<NetCompositionData> m_JRNetCompositionData;
 		// JR-STAGE2 END
 
 		public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
@@ -1627,7 +1622,6 @@ public class JRCarNavigationSystem : GameSystemBase
 			if (carLaneSpeedIterator.m_JR.m_BoxRule)
 			{
 				carLaneSpeedIterator.m_JR.SetBoxes(m_JRBoxJunctionData, m_JREdgeLaneData, ref m_JRBoxEdges, m_LaneSignalData);
-				carLaneSpeedIterator.m_JR.SetCompositions(m_JRCompositionData, m_JRNetCompositionData, m_JRExitEdges);
 			}
 			if (carLaneSpeedIterator.m_JR.m_ZebraRule || carLaneSpeedIterator.m_JR.m_BoxRule || carLaneSpeedIterator.m_JR.m_ExitRule)
 			{
@@ -3313,8 +3307,6 @@ public class JRCarNavigationSystem : GameSystemBase
 		jobData.m_JRExitTraceOn = JunctionRules.Stage2.JRStage2Bridge.TraceOn;
 		jobData.m_JRExitTrace = JunctionRules.Stage2.JRStage2Bridge.TraceRing;
 		jobData.m_JRWatch = JunctionRules.Stage2.JRStage2Bridge.Watch;
-		jobData.m_JRCompositionData = GetComponentLookup<Composition>(isReadOnly: true);
-		jobData.m_JRNetCompositionData = GetComponentLookup<NetCompositionData>(isReadOnly: true);
 		// JR-STAGE2 END
 		JobHandle jobHandle = JobChunkExtensions.ScheduleParallel(jobData, m_VehicleQuery, JobUtils.CombineDependencies(base.Dependency, dependencies, dependencies2, dependencies3, dependencies4));
 		m_NetSearchSystem.AddNetSearchTreeReader(jobHandle);

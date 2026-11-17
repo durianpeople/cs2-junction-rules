@@ -332,11 +332,6 @@ namespace JunctionRules.Stage2
         private bool m_LastBlockerStanding, m_DriveBlockerStanding, m_ExitBlockerStanding;
         /// <summary>0.4.12 (G28): the road lane a same-exit-lane exiter joins (Null = no exception this update); scanning its merge; exception used.</summary>
         private Entity m_G28JoinLane, m_G28Latched;
-        /// <summary>0.4.12 (owner decision, zebra test of the same-exit-lane exception): arm compositions (S2-26 SetCompositions).</summary>
-        private ComponentLookup<Composition> m_CompositionData;
-        private ComponentLookup<NetCompositionData> m_NetCompositionData;
-        private ComponentLookup<Game.Net.Edge> m_CompEdgeData;
-        private bool m_HasCompositions;
         private bool m_G28Scan, m_G28Used, m_G28Queue;
         /// <summary>0.4.12 (G29): the pedestrian lookup BoxHold received this update (for SkipStockRoomHold's G22 test).</summary>
         private ComponentLookup<Game.Net.PedestrianLane> m_BoxPedestrians;

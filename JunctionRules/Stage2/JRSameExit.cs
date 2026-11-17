@@ -45,8 +45,8 @@ namespace JunctionRules.Stage2
             if (!m_LaneData.TryGetComponent(lane, out Lane ownLane) || !overlapData.TryGetBuffer(lane, out DynamicBuffer<LaneOverlap> overlaps)) return false;
             // Exit zebra: the first pedestrian overlap in the far half (the zebra rule never lets the car stand on it).
             float zebra = float.MaxValue;
-            // 0.4.12 (owner decision): a non-zebra pedestrian path (unmarked / tiled crossing, pavement) may lie under the footprint:
-            // bit i of 'pavement' (first 64 overlaps) = overlap i is such a path; only real zebras limit the front.
+            // 0.4.12 (owner decision): a non-zebra pedestrian path (unmarked crossing, pavement) may lie under the footprint:
+            // bit i of 'pavement' (first 64 overlaps) = overlap i is such a path; zebras (the no-stop rule's own) limit the front.
             ulong pavement = 0UL;
             for (int i = 0; i < overlaps.Length; i++)
             {
@@ -93,47 +93,8 @@ namespace JunctionRules.Stage2
             return SameExitException.Admits(from, to, ref paths);
         }
 
-        /// <summary>
-        /// 0.4.12 (owner decision, Core SameExitException.BlocksAsZebra): is this pedestrian lane a ZEBRA the same-exit-lane
-        /// exception must never block? A crosswalk (node lane) is read on the arm whose mouth it crosses: the connected edge whose
-        /// end at the lane's node lies nearest the crosswalk's middle, and that edge's node-end composition (Composition
-        /// m_StartNode / m_EndNode -> NetCompositionData) carries Tiles on a pedestrian street. Lookups missing: a zebra.
-        /// </summary>
-        private bool PedestrianBlocksAsZebra(Entity ped, int pedFlags, ref ComponentLookup<Curve> curves)
-        {
-            if ((pedFlags & SameExitException.PedCrosswalk) == 0 || (pedFlags & SameExitException.PedUnsafe) != 0) return false;   // pavement / unmarked
-            bool tiled = false;
-            if (m_HasCompositions && m_OwnerData.TryGetComponent(ped, out Owner o) && m_ConnectedEdges.TryGetBuffer(o.m_Owner, out DynamicBuffer<ConnectedEdge> edges)
-                && curves.TryGetComponent(ped, out Curve pc))
-            {
-                float2 mid = (pc.m_Bezier.a.xz + pc.m_Bezier.d.xz) * 0.5f;
-                float best = float.MaxValue;
-                Entity bestComp = Entity.Null;
-                for (int i = 0; i < edges.Length; i++)
-                {
-                    Entity e = edges[i].m_Edge;
-                    if (!m_CompEdgeData.TryGetComponent(e, out Game.Net.Edge ed) || !curves.TryGetComponent(e, out Curve ec) || !m_CompositionData.TryGetComponent(e, out Composition comp)) continue;
-                    bool atStart = ed.m_Start == o.m_Owner;
-                    if (!atStart && ed.m_End != o.m_Owner) continue;
-                    float d = math.distance(mid, atStart ? ec.m_Bezier.a.xz : ec.m_Bezier.d.xz);
-                    if (d < best) { best = d; bestComp = atStart ? comp.m_StartNode : comp.m_EndNode; }
-                }
-                if (bestComp != Entity.Null && m_NetCompositionData.TryGetComponent(bestComp, out NetCompositionData ncd))
-                    tiled = (ncd.m_Flags.m_General & CompositionFlags.General.Tiles) != 0;
-                else return true;
-            }
-            else return true;
-            return SameExitException.BlocksAsZebra(pedFlags, tiled);
-        }
-
-        /// <summary>0.4.12 (S2-26, with the box rule): the composition lookups for the zebra test above.</summary>
-        public void SetCompositions(ComponentLookup<Composition> compositions, ComponentLookup<NetCompositionData> netCompositions, ComponentLookup<Game.Net.Edge> edges)
-        {
-            m_CompositionData = compositions;
-            m_NetCompositionData = netCompositions;
-            m_CompEdgeData = edges;
-            m_HasCompositions = true;
-        }
+        /// <summary>0.4.12 (owner decision, Core SameExitException.BlocksAsZebra): is this pedestrian lane a zebra the same-exit-lane exception must never block (the game's marked crosswalk, as the no-stop-on-zebra rule)?</summary>
+        private static bool PedestrianBlocksAsZebra(Entity ped, int pedFlags, ref ComponentLookup<Curve> curves) => SameExitException.BlocksAsZebra(pedFlags);
 
         /// <summary>0.4.11 (G22): the junction lane's overlaps as footprint paths (metres, kind by the other lane's exit lane).</summary>
         private struct FootprintPaths : IFootprintPaths
