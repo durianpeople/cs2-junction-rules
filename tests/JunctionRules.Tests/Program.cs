@@ -142,6 +142,8 @@ namespace JunctionRules.Tests
             ("G15bSideObstacleTests", G15bSideObstacleTests),
             ("G18G19Tests", G18G19Tests),
             ("G20MergeGapTests", G20MergeGapTests),
+            ("BoxWindowUnitTests", BoxWindowUnitTests),
+            ("BoxScenarioTests", BoxScenarioTests),
         };
 
         private static int Main(string[] args)

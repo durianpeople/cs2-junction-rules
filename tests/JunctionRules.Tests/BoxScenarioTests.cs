@@ -1,0 +1,331 @@
+using System;
+using System.Collections.Generic;
+using JunctionRules.Core;
+
+namespace JunctionRules.Tests
+{
+    /// <summary>
+    /// 0.4.10 (JR-T-016, owner 17 Nov 2026: "make 0.4.10 robust ... no part of a waiting vehicle inside any painted box; no
+    /// new deadlock loops ... a combined Alderwood / Alderbrook scenario test"). A step model of one road lane each, with the
+    /// live box windows, driven by the SAME Core decisions as the job (ExitBoxWindows.Chains / MergeGapMetres for the paint,
+    /// ExitBands.Chain + HoldTouchMetres for the per-vehicle band, BoxDriving.Role / EnteringEntry, RoomScan with FreeNow,
+    /// ExtendPast for a further box or boxed junction inside the reach, BoxDriving.LightStopsInWindow, ExitGiveWay's G15
+    /// "an entrant waiting for room in is not present" rule). Vehicle mix: car 4.2 m, van 6.5 m, bus 12 m, artic 16.5 m
+    /// (tractor + trailer = the job's whole length). Traffic past the lane end is stop-and-go (the exit opens at random).
+    ///
+    /// Alderwood (westbound past No. 40, edge 557050, PROBE 19.1 / 20.4): entrance box 34.7..42.7 m and exit box
+    /// 45.5..53.5 m (2.8 m apart: one box since G20), a full yard (capacity 3, one-way: in by the entrance drive at 38.7 m,
+    /// out by the exit drive at 49.5 m), vans and artics turning in, a boxed junction at the lane end (110..124 m).
+    /// Alderbrook (northbound, edge 984373, metres from the south mouth): 843726 exit 6.7..14.7, the 193433 + 843726 joint
+    /// box 48.0..65.3, 843724 exit 107.1..115.1, 843722 entrance 151.7..159.7, a signal at the north mouth 168.1 m
+    /// (8.4 m past the last box: a bus or artic waiting at red would stand in it).
+    /// Checked every step: no STANDING vehicle has any part inside a painted box; at the end (demand off, exit open, lights
+    /// still cycling, the yard still turning over) everything has drained: no deadlock.
+    /// </summary>
+    internal static partial class Program
+    {
+        private sealed class SimVehicle
+        {
+            public int Id;
+            public float Front, Length, Speed;
+            public bool Entrant, Reserved, WaitingToEnter;
+            /// <summary>Crossed a box line while the light was green (not amber / red): a later light change can catch it.</summary>
+            public bool EnteredOnGreen;
+        }
+
+        private sealed class SimLane
+        {
+            public string Name;
+            public float End;                       // lane end (stop line of the junction / the light)
+            public float JunctionEnd;               // where the vehicle leaves the model (past the junction)
+            public bool JunctionBoxed;
+            public bool Light;                      // signal at End
+            public List<(float a, float b)> Painted = new List<(float a, float b)>();
+            public float Drive = -1f, ExitJoin = -1f; // yard: entrance drive and exit join point (-1 = none)
+            public int YardCap, Yard;
+        }
+
+        private const float SimMargin = 1f, SimDt = 0.5f, SimVmax = 8f;
+
+        /// <summary>The paint: the windows chained with the merge gap (one box each chain), as the paint and DrivingBands do.</summary>
+        private static List<(float a, float b)> SimPaint(List<(double a, double b)> windows, double gap)
+        {
+            var w = new List<ExitWindow>();
+            foreach (var x in windows) w.Add(new ExitWindow(1, MedianSplit.AllCarriageways, x.a, x.b));
+            var r = new List<(float a, float b)>();
+            foreach (var box in ExitBoxWindows.Assemble(w, gap, (m, f, t) => true)) r.Add(((float)box.From, (float)box.To));
+            r.Sort((x, y) => x.a.CompareTo(y.a));
+            return r;
+        }
+
+        /// <summary>The boxes this vehicle's hold sees: painted boxes (+ the boxed junction), chained by its own length + margin.</summary>
+        private static List<(float b0, float b1)> SimBands(SimLane lane, float length)
+        {
+            var all = new List<(float, float)>(lane.Painted);
+            if (lane.JunctionBoxed) all.Add((lane.End, lane.JunctionEnd));
+            all.Sort((x, y) => x.Item1.CompareTo(y.Item1));
+            return ExitBands.Chain(all, ExitBands.HoldTouchMetres(length, SimMargin));
+        }
+
+        /// <summary>Signal cycle of 80 steps (40 s): green 0-33, amber 34-39 (3 s), red 40-79.</summary>
+        private static int SimPhase(int step) => step % 80;
+        private static bool SimRed(SimLane lane, int step) => lane.Light && SimPhase(step) >= 40;
+        /// <summary>The job's LightStopsInWindow: red or amber (Game.Net.LaneSignalType Stop / SafeStop).</summary>
+        private static bool SimLightStops(SimLane lane, int step) =>
+            lane.Light && BoxDriving.LightStopsInWindow(SimPhase(step) >= 40 ? WholePathRule.SignalStop : SimPhase(step) >= 34 ? WholePathRule.SignalSafeStop : 4);
+        /// <summary>The model's road ends this far past the junction; the stop-and-go hold is there (queues stay visible).</summary>
+        private const float SimDownstream = 60f;
+
+        /// <summary>
+        /// The box room test for a vehicle entering [b0, b1] (0.4.10 rule when 'robust', else 0.4.9: moving credit, no further
+        /// box / light in the window): vehicles ahead inside the box take room first; vehicles past it by rear position.
+        /// </summary>
+        private static bool SimRoom(SimLane lane, List<SimVehicle> vs, SimVehicle me, float b0, float b1, int step, bool robust)
+        {
+            RoomScan scan = RoomScan.Begin(me.Length, SimMargin);
+            scan.FreeNow = robust;
+            var past = new List<SimVehicle>();
+            foreach (SimVehicle o in vs)
+            {
+                if (o == me || o.Front <= me.Front) continue;
+                float rear = o.Front - o.Length;
+                if (rear < b1 && o.Front > b0) scan.AddQueued(o.Length);
+                else if (rear >= b1) past.Add(o);
+            }
+            past.Sort((x, y) => x.Front.CompareTo(y.Front));
+            var further = new List<(float b0, float b1)>();
+            foreach (var b in SimBands(lane, me.Length)) if (b.b0 > b1 + 1e-3f) further.Add(b);
+            var applied = new bool[further.Count];
+            bool lightSeen = false;
+            void Extensions()
+            {
+                if (!robust) return;
+                bool again = true;
+                while (again && !scan.Blocked)
+                {
+                    again = false;
+                    for (int i = 0; i < further.Count; i++)
+                    {
+                        if (applied[i]) continue;
+                        if (BoxDriving.BandInWindow(further[i].b0, further[i].b1, b1, 1e9f, 1f, 0f, scan.Reach, out float pastEnd) || further[i].b0 - b1 < scan.Reach)
+                        {
+                            applied[i] = true;
+                            scan.ExtendPast(further[i].b1 - b1);
+                            again = true;
+                        }
+                    }
+                    if (!lightSeen && lane.Light && lane.End >= b1 && lane.End - b1 < scan.Reach)
+                    {
+                        lightSeen = true;
+                        if (SimLightStops(lane, step)) scan.Block();
+                    }
+                }
+            }
+            Extensions();
+            foreach (SimVehicle o in past)
+            {
+                if (scan.Blocked) break;
+                float credit = o.Speed > 0.01f ? o.Speed * o.Speed / (2f * 4f) + o.Speed * 0.5f : 0f;
+                scan.Add(o.Front - o.Length - b1, o.Length, credit, o.Id, 1);
+                Extensions();
+            }
+            return scan.HasRoom;
+        }
+
+        private static (int violations, int residual, bool drained, int served, int entered, int exited) SimRun(SimLane lane, int seed, bool robust, int steps, int drainSteps)
+        {
+            var rnd = new Random(seed);
+            var vs = new List<SimVehicle>();
+            var yardDwell = new List<int>();
+            for (int i = 0; i < lane.Yard; i++) yardDwell.Add(rnd.Next(5, 40));
+            float[] lengths = { 4.2f, 4.2f, 4.2f, 6.5f, 6.5f, 12f, 16.5f };
+            int nextId = 1, violations = 0, residual = 0, served = 0, entered = 0, exited = 0;
+            for (int step = 0; step < steps + drainSteps; step++)
+            {
+                bool demand = step < steps;
+                bool heavy = seed > 12;   // seeds 13-20: a heavy jam (the exit opens 12 % of the time, more demand)
+                bool sinkOpen = !demand || rnd.NextDouble() < (heavy ? 0.12 : 0.35);
+                vs.Sort((x, y) => y.Front.CompareTo(x.Front));   // front first
+                SimVehicle ahead = null;
+                foreach (SimVehicle v in vs)
+                {
+                    float limit = sinkOpen ? 1e9f : lane.JunctionEnd + SimDownstream;
+                    if (ahead != null) limit = Math.Min(limit, ahead.Front - ahead.Length - 1f);
+                    if (SimRed(lane, step) && v.Front <= lane.End + 1e-3f) limit = Math.Min(limit, lane.End);
+                    v.WaitingToEnter = false;
+                    foreach (var band in SimBands(lane, v.Length))
+                    {
+                        if (v.Front > band.b0 + 1e-3f) continue;          // inside or past: carry on (Classify Inside)
+                        bool entering = v.Entrant && lane.Drive > band.b0 && lane.Drive < band.b1;
+                        if (entering)
+                        {
+                            if (!v.Reserved)
+                            {
+                                if (lane.Yard + Reserved(vs) < lane.YardCap) v.Reserved = true;
+                                else { limit = Math.Min(limit, BoxDriving.EnteringEntry(0f, band.b0) - 0.5f); v.WaitingToEnter = true; }
+                            }
+                        }
+                        else if (!SimRoom(lane, vs, v, band.b0, band.b1, step, robust)) limit = Math.Min(limit, band.b0 - 0.5f);
+                        break;                                                // the next box ahead only
+                    }
+                    float move = Math.Max(0f, Math.Min(SimVmax * SimDt, limit - v.Front));
+                    foreach (var pb in lane.Painted)
+                        if (v.Front <= pb.a && v.Front + move > pb.a) v.EnteredOnGreen = lane.Light && !SimLightStops(lane, step);
+                    v.Speed = move / SimDt;
+                    v.Front += move;
+                    ahead = v;
+                }
+                // turn in / leave the model
+                for (int i = vs.Count - 1; i >= 0; i--)
+                {
+                    SimVehicle v = vs[i];
+                    if (v.Entrant && v.Reserved && v.Front >= lane.Drive) { vs.RemoveAt(i); lane.Yard++; yardDwell.Add(rnd.Next(5, 40)); entered++; continue; }
+                    if (v.Front > lane.JunctionEnd + SimDownstream + 0.5f) { vs.RemoveAt(i); served++; }
+                }
+                // the yard's exit (one-way): gives way, room free now past the box it joins into
+                if (lane.ExitJoin >= 0f)
+                {
+                    for (int k = 0; k < yardDwell.Count; k++) yardDwell[k]--;
+                    int ready = yardDwell.FindIndex(d => d <= 0);
+                    if (ready >= 0)
+                    {
+                        var me = new SimVehicle { Id = nextId, Front = lane.ExitJoin, Length = 6.5f, Speed = 2f };
+                        bool clear = true;
+                        foreach (SimVehicle o in vs)
+                        {
+                            float rear = o.Front - o.Length;
+                            if (o.Front > lane.ExitJoin - me.Length - 1f && rear < lane.ExitJoin + 1f) clear = false;          // body on the join
+                            else if (o.Speed > 0.1f && o.Front > lane.ExitJoin - 20f && o.Front <= lane.ExitJoin) clear = false; // approaching
+                            else if (o.Speed <= 0.1f && !o.WaitingToEnter && o.Front > lane.ExitJoin - ExitGiveWay.PresentMetres && o.Front <= lane.ExitJoin) clear = false; // G7 present; G15: entrants not
+                        }
+                        if (clear)
+                        {
+                            foreach (var band in SimBands(lane, me.Length))
+                            {
+                                if (lane.ExitJoin < band.b0 || lane.ExitJoin > band.b1) continue;
+                                if (!SimRoom(lane, vs, me, lane.ExitJoin, band.b1, step, robust)) clear = false;
+                            }
+                        }
+                        if (clear) { nextId++; vs.Add(me); yardDwell.RemoveAt(ready); lane.Yard--; exited++; }
+                    }
+                }
+                // demand
+                if (demand && rnd.NextDouble() < (heavy ? 0.25 : 0.18))
+                {
+                    float len = lengths[rnd.Next(lengths.Length)];
+                    float lastRear = 1e9f;
+                    foreach (SimVehicle o in vs) lastRear = Math.Min(lastRear, o.Front - o.Length);
+                    if (lastRear > len + 2f)
+                        vs.Add(new SimVehicle { Id = nextId++, Front = 0f, Length = len, Speed = SimVmax, Entrant = lane.Drive >= 0f && len >= 6.5f && rnd.NextDouble() < 0.4 });
+                }
+                // the invariant: no part of a STANDING vehicle in a painted box
+                foreach (SimVehicle v in vs)
+                {
+                    if (v.Speed > 0.01f || v.Front < 0.5f) continue;
+                    foreach (var b in lane.Painted)
+                        if (v.Front > b.a + 0.01f && v.Front - v.Length < b.b - 0.01f)
+                        {
+                            // known residual (PROBE 20.6): the first vehicle at a red light that entered the box on green and
+                            // met amber / red before the line (the light's remaining green is not read)
+                            if (lane.Light && SimRed(lane, step) && v.EnteredOnGreen) { residual++; break; }
+                            violations++;
+                            break;
+                        }
+                    if (lane.JunctionBoxed && v.Front > lane.End + 0.01f && v.Front - v.Length < lane.JunctionEnd - 0.01f) violations++;
+                }
+            }
+            bool drained = vs.Count == 0 && lane.Yard == 0 && yardDwell.Count == 0;
+            return (violations, residual, drained, served, entered, exited);
+        }
+
+        private static int Reserved(List<SimVehicle> vs)
+        {
+            int n = 0;
+            foreach (SimVehicle v in vs) if (v.Reserved) n++;
+            return n;
+        }
+
+        private static SimLane Alderwood(double gap) => new SimLane
+        {
+            Name = "Alderwood", End = 110f, JunctionEnd = 124f, JunctionBoxed = true,
+            Painted = SimPaint(new List<(double, double)> { (34.7, 42.7), (45.5, 53.5) }, gap),
+            Drive = 38.7f, ExitJoin = 49.5f, YardCap = 3, Yard = 3,
+        };
+
+        private static SimLane Alderbrook(double gap) => new SimLane
+        {
+            Name = "Alderbrook", End = 168.1f, JunctionEnd = 182f, Light = true,
+            Painted = SimPaint(new List<(double, double)> { (6.7, 14.7), (48.0, 56.0), (57.3, 65.3), (107.1, 115.1), (151.7, 159.7) }, gap),
+        };
+
+        private static void BoxScenarioTests()
+        {
+            Check(Alderwood(ExitBands.MergeGapMetres).Painted.Count == 1 && Alderwood(2.0).Painted.Count == 2, "paint: No. 40's boxes are one box at 6 m (G20), two at 0.4.9's 2 m");
+            Check(Alderbrook(ExitBands.MergeGapMetres).Painted.Count == 4, "paint: Alderbrook's 193433 + 843726 boxes one box (110.0..127.3 m along = 48.0..65.3 m here)");
+            int totalViol = 0, oldViol = 0, residual = 0, oldResidual = 0, served = 0, entered = 0, exited = 0;
+            bool allDrained = true;
+            for (int seed = 1; seed <= 20; seed++)
+            {
+                foreach (bool wood in new[] { true, false })
+                {
+                    var r = SimRun(wood ? Alderwood(ExitBands.MergeGapMetres) : Alderbrook(ExitBands.MergeGapMetres), seed, true, 2400, 2400);
+                    totalViol += r.violations;
+                    residual += r.residual;
+                    allDrained &= r.drained;
+                    served += r.served; entered += r.entered; exited += r.exited;
+                    if (!r.drained || r.violations > 0) Console.WriteLine($"  scenario {(wood ? "Alderwood" : "Alderbrook")} seed {seed}: violations {r.violations}, drained {r.drained}");
+                    var o = SimRun(wood ? Alderwood(2.0) : Alderbrook(2.0), seed, false, 2400, 2400);
+                    oldViol += o.violations;
+                    oldResidual += o.residual;
+                }
+            }
+            Console.WriteLine($"  box scenario: 0.4.10 rules: {served} vehicles through, {entered} turned into No. 40, {exited} left it, standing-in-box vehicle-steps {totalViol} (+ {residual} light-change residual); 0.4.9 rules: {oldViol} (+ {oldResidual})");
+            Check(served > 1000 && entered > 50 && exited > 50, "the scenario moves traffic (through, into and out of the yard)");
+            Check(totalViol == 0, $"0.4.10: no standing vehicle has any part inside a painted box (car, van, bus, artic; through, entering, leaving; stop-and-go exit; red light) ({totalViol})");
+            Check(allDrained, "0.4.10: no deadlock: with the demand off everything drains (lane empty, No. 40's yard turned over and empty)");
+            Check(residual < oldResidual + oldViol, $"the light-change residual (first vehicle at a red line, entered on green) is rare next to 0.4.9 ({residual})");
+            Check(oldViol > 0, $"the same scenes under 0.4.9's rules (moving credit, 2 m paint merge, no light / further box in the window) leave vehicles standing in boxes ({oldViol})");
+        }
+
+        private static void BoxWindowUnitTests()
+        {
+            // BandInWindow: a later lane's band [0.2, 0.4] of a 50 m lane entered at 0, the path entering it 3 m into the window
+            Check(BoxDriving.BandInWindow(0.2f, 0.4f, 0f, 1f, 50f, 3f, 14f, out float pe) && Math.Abs(pe - 23f) < 1e-4f, "a further box starting inside the reach: room needed past its end (23 m)");
+            Check(!BoxDriving.BandInWindow(0.4f, 0.6f, 0f, 1f, 50f, 3f, 14f, out _), "a further box starting beyond the reach: ignored");
+            Check(!BoxDriving.BandInWindow(0.0f, 0.1f, 0.2f, 1f, 50f, 0f, 14f, out _), "a box behind where the path enters the lane: ignored");
+            Check(BoxDriving.BandInWindow(0.0f, 0.3f, 0.1f, 1f, 50f, 0f, 14f, out float pe2) && Math.Abs(pe2 - 10f) < 1e-4f, "the path enters the lane inside a box: room past its end");
+            Check(BoxDriving.LightStopsInWindow(WholePathRule.SignalStop) && BoxDriving.LightStopsInWindow(WholePathRule.SignalSafeStop) && !BoxDriving.LightStopsInWindow(4) && !BoxDriving.LightStopsInWindow(0) && !BoxDriving.LightStopsInWindow(3),
+                "red and amber inside the window stop the car there (no room now); green, yield-green and no signal do not");
+            RoomScan r = RoomScan.Begin(16.5f, 1f);
+            r.FreeNow = true;
+            r.AddQueued(4.2f);
+            Check(Math.Abs(r.Reach - (17.5f + 5.2f)) < 1e-4f, "reach = room needed + vehicles queued in the box ahead");
+            // review F2: a box over the half-way point of a two-piece edge: piece 1's band ends at its lane end; on the next
+            // lane (piece 2, on the path) the rest of the painted window starts at 0: BandInWindow extends the room past it
+            Check(LaneWindow.FromOffsets(0.9f, 1f, 80f, false, out float p0, out float p1) && p1 == 1f, "piece 1: the box clipped at its lane end");
+            Check(BoxDriving.BandInWindow(0f, 0.1f, 0f, 1f, 80f, 0f, 5.4f, out float over) && Math.Abs(over - 8f) < 1e-4f, "piece 2: the rest of the box (8 m) lies in the window: room needed past the PAINTED end, not the piece end");
+            // ExitBoxWindows.Assemble (review F5): joint boxes the paint accepts, singles otherwise
+            uint all = MedianSplit.AllCarriageways;
+            var w = new List<ExitWindow> { new ExitWindow(1, all, 0, 8), new ExitWindow(1, all, 10, 18), new ExitWindow(1, all, 40, 48), new ExitWindow(2, 0x1, 0, 8), new ExitWindow(2, 0x2, 3, 11) };
+            var acc = ExitBoxWindows.Assemble(w, ExitBands.MergeGapMetres, (m, f, t) => true);
+            Check(acc.Count == 4 && acc[0].Members.Count == 2 && acc[0].From == 0 && acc[0].To == 18, "assemble: 2 m apart = one box; 22 m apart and across a median = their own");
+            var refused = ExitBoxWindows.Assemble(w, ExitBands.MergeGapMetres, (m, f, t) => false);
+            Check(refused.Count == 5, "assemble: a refused joint window (marking / mouth) keeps every box its own");
+
+            // job wiring (source): the same rules as the model above
+            string root = RepoRoot();
+            string wj = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Stage2", "JRWholeJunction.cs"));
+            string it = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Vanilla", "JRCarLaneSpeedIterator.cs"));
+            string nav = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Vanilla", "JRCarNavigationSystem.cs"));
+            Check(wj.Contains("if (freeNow && !inBox) FurtherBoxes(ref scan, nav, navInverse, navCurve, read, ref carLanes, ref curves);")
+                && wj.Contains("BoxDriving.LightStopsInWindow((int)sig.m_Signal)") && wj.Contains("scan.ExtendPast(read + span);") && wj.Contains("scan.ExtendPast(pastEnd);"),
+                "job: box room windows extend past a further box / boxed junction and stop at a red / amber light (later path lanes)");
+            Check(wj.Contains("if (freeNow && m_BoxEntrances && m_BoxEdges != null && m_EdgeLaneData.HasComponent(lane)") && wj.Contains("BoxDriving.BandInWindow(sameBands[i].x, sameBands[i].y, fromDriving, 1f, length, 0f, scan.Reach, out float pastEnd)"),
+                "job: a further box on the same lane inside the reach");
+            int emergency = 0, at = 0;
+            while ((at = it.IndexOf("if (m_JR.m_BoxRule && !JunctionRules.Core.ExitGiveWay.IsEmergency(m_Priority))", at, StringComparison.Ordinal)) >= 0) { emergency++; at++; }
+            Check(emergency == 3, "on-duty emergency vehicles pass boxes (S2-28, S2-28b, S2-37), as at exits");
+            Check(nav.Contains("ref m_JRBoxEdges, m_LaneSignalData);"), "the job gets the lane signals for the light-in-window rule");
+        }
+    }
+}
