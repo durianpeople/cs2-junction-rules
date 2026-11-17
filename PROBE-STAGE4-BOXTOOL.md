@@ -1,4 +1,11 @@
-# Probe kit: Junction Rules 0.4.12-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits and entrances; vehicles leaving and turning into buildings give way; merged boxes; median; markings hidden; gaps G1-G21)
+# Probe kit: Junction Rules 0.4.13-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits and entrances; vehicles leaving and turning into buildings give way; merged boxes; median; markings hidden; gaps G1-G21)
+
+**0.4.13-probe (JR-T-019: yellow box API v1), what changed since 0.4.12 (section 23):** no behaviour change for cars,
+paint or the Ctrl+Y tool. New public `JunctionRules.Api.JunctionRulesApi` (List / Preview / Add / Remove, JSON strings,
+YBOX_API_CONTRACT v1) so the bridge / crew tools can list, preview, add and remove yellow boxes with the tool's own
+rules and refusal texts. The tool's pick, shape solve and click writes moved unchanged into `Boxes/BoxTargeting.cs`,
+which the tool and the API both call (one path). No change to the copied game code (`docs/vanilla_copy_check_0.4.13.txt`:
+0 unexplained differences, 42 marked blocks / 328 lines as 0.4.12). Carries 0.4.12 and everything before.
 
 **0.4.12-probe (JR-T-018: 0.4.11 live gap G26), what changed since 0.4.11 (section 22):** a yellow box never goes
 over a median. Exit and entrance boxes now stop 0.5 m before ANY median, barrier or raised / planted strip between the
@@ -107,13 +114,13 @@ differences). Also: the T-junction through-side kerb fix (section 6) and the ent
 0.3.6 (JR-T-008, people pass a car blocking their crossing; merged from 784ba28) and everything before it
 (PROBE-STAGE3-PAINT.md).
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.4.12-probe/` (JR-T-018, branch jr-t-018; managed build only
+Build to install: `~/Code/cs2-junction-rules/.staged/0.4.13-probe/` (JR-T-019, branch jr-t-019; managed build only
 until main does the Burst build, see its `STALE.md`; the block below refuses on the `0000...` placeholder sums and while
-`STALE.md` exists). 0.4.11-probe (installed 17 Nov evening, `.staged/0.4.11-probe`, Burst from 81197d9, sums in commit
-1483819) is the rollback; never write into `.staged/0.4.11-probe` or older. Never install the old `.staged/0.4.4-probe`
-(the paused JR-T-011 managed build). While `.staged/0.4.12-probe` holds a `STALE.md` it is a managed build only: main
-does the Burst build in `STALE.md` (game closed, at the owner's quit), then puts the five sums into the install block
-below.
+`STALE.md` exists). 0.4.12-probe (installed 17 Nov late evening, `.staged/0.4.12-probe`, Burst from 9b51bf9, sums in
+commit 1558c66) is the rollback; never write into `.staged/0.4.12-probe` or older. Never install the old
+`.staged/0.4.4-probe` (the paused JR-T-011 managed build). While `.staged/0.4.13-probe` holds a `STALE.md` it is a
+managed build only: main does the Burst build in `STALE.md` (game closed, at the owner's quit), then puts the five sums
+into the install block below.
 
 Built for game **1.6.4f1 (1097.158a)** only (same version gate: on another version saved boxes are not painted and the
 copy does not run; the boxes stay in the save).
@@ -124,27 +131,27 @@ copy does not run; the boxes stay in the save).
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.4.12-probe || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.4.13-probe || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-ea5742e5a16a073d98187af96b52ac982f484aae3eef7e53582b7118a6f46051  JunctionRules.dll
-c9b904946fd8d911a3f2550e6a06b3dfaa05c9af90e47c27579b43237d8fb996  JunctionRules.pdb
-9e8f8a397f70bbeb121ef7224981278773595c1fe2ce7e31de01d4c4df2b65bf  JunctionRules.mjs
-d82cafceda2fc9a7917d9b767254a65f9d317863cd635c391e9cc1f2ebcd6aca  JunctionRules_win_x86_64.dll
-8c015f7f98e386c50a1562a3eee8ce70e5aa36ec1824c8acba08215d0a6d01ce  JunctionRules_win_x86_64.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.mjs
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
   fi
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules.mjs JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
-  echo "installed 0.4.12-probe"
+  echo "installed 0.4.13-probe"
 )
 ```
 
-Rollback: to 0.4.11 (JR-T-017, Burst from 81197d9, installed 17 Nov evening; G26 not fixed): the same block with `.staged/0.4.11-probe` and its sums (commit 1483819: dll 4380d351..., pdb b3597376..., mjs 9e8f8a39..., win dll 1ea6cc93..., win pdb 9c0d25af...). To 0.4.10 (JR-T-016, Burst from 9ea1ac4, installed 17 Nov afternoon; G21 not fixed): the same block with `.staged/0.4.10-probe` and its sums (commit 5ca57b6: dll 15b7467d..., pdb aa74dbd7..., mjs 9e8f8a39..., win dll 203e1ef0..., win pdb fdce39e2...). To 0.4.9 (JR-T-015, Burst from e6c7dd9, installed 17 Nov ~midday; G18 / G19 not fixed): the same block with `.staged/0.4.9-probe` and its sums (commit 84a78fe: dll cf74c32c..., pdb b200ce6b..., mjs 9e8f8a39..., win dll b2d18ddc..., win pdb 1c39bab0...). To 0.4.8 (JR-T-014, Burst from 8fca058, installed 17 Nov 07:5x; G12-G15 not fixed): the same block with `.staged/0.4.8-probe` and its sums (commit 242618d: dll 106bd828..., pdb 01c5735e..., mjs 9e8f8a39..., win dll d3178e58..., win pdb 8b27cc25...). To 0.4.7 (JR-T-013m, Burst from cd6a1eb, installed 17 Nov; no G7 sidewalk rule, no entrance boxes): the same block with `.staged/0.4.7-probe` and its sums (commit 3854a23). To 0.4.6: the same block with `.staged/0.4.6-probe` and its sums (commit 8bf6cf2). To 0.4.5 (JR-T-012 lot-exit build, Burst from 9639e71, installed 16 Nov): the same block with `.staged/0.4.5-probe` and its sums (commit bb676cd). To 0.4.4 (JR-T-012 first build, Burst from ba75f0b, installed 16 Nov): the same block with `.staged/0.4.4-probe-jr012` and its sums (commit 853ea2b). To 0.4.3 (installed 16 Nov, Burst from a14445d): the same block with `.staged/0.4.3-probe` and its sums (commit 1441805). To 0.4.2 (the JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
+Rollback: to 0.4.12 (JR-T-018, Burst from 9b51bf9, installed 17 Nov late evening; no API): the same block with `.staged/0.4.12-probe` and its sums (commit 1558c66: dll ea5742e5..., pdb c9b90494..., mjs 9e8f8a39..., win dll d82cafce..., win pdb 8c015f7f...). To 0.4.11 (JR-T-017, Burst from 81197d9, installed 17 Nov evening; G26 not fixed): the same block with `.staged/0.4.11-probe` and its sums (commit 1483819: dll 4380d351..., pdb b3597376..., mjs 9e8f8a39..., win dll 1ea6cc93..., win pdb 9c0d25af...). To 0.4.10 (JR-T-016, Burst from 9ea1ac4, installed 17 Nov afternoon; G21 not fixed): the same block with `.staged/0.4.10-probe` and its sums (commit 5ca57b6: dll 15b7467d..., pdb aa74dbd7..., mjs 9e8f8a39..., win dll 203e1ef0..., win pdb fdce39e2...). To 0.4.9 (JR-T-015, Burst from e6c7dd9, installed 17 Nov ~midday; G18 / G19 not fixed): the same block with `.staged/0.4.9-probe` and its sums (commit 84a78fe: dll cf74c32c..., pdb b200ce6b..., mjs 9e8f8a39..., win dll b2d18ddc..., win pdb 1c39bab0...). To 0.4.8 (JR-T-014, Burst from 8fca058, installed 17 Nov 07:5x; G12-G15 not fixed): the same block with `.staged/0.4.8-probe` and its sums (commit 242618d: dll 106bd828..., pdb 01c5735e..., mjs 9e8f8a39..., win dll d3178e58..., win pdb 8b27cc25...). To 0.4.7 (JR-T-013m, Burst from cd6a1eb, installed 17 Nov; no G7 sidewalk rule, no entrance boxes): the same block with `.staged/0.4.7-probe` and its sums (commit 3854a23). To 0.4.6: the same block with `.staged/0.4.6-probe` and its sums (commit 8bf6cf2). To 0.4.5 (JR-T-012 lot-exit build, Burst from 9639e71, installed 16 Nov): the same block with `.staged/0.4.5-probe` and its sums (commit bb676cd). To 0.4.4 (JR-T-012 first build, Burst from ba75f0b, installed 16 Nov): the same block with `.staged/0.4.4-probe-jr012` and its sums (commit 853ea2b). To 0.4.3 (installed 16 Nov, Burst from a14445d): the same block with `.staged/0.4.3-probe` and its sums (commit 1441805). To 0.4.2 (the JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
 its loader, so exit boxes fall back to one entrance box per building): the same block with `.staged/0.4.2-probe` and
 its sums (full sums in commit c781df0). To 0.4.1 (boxes kept, box driving rule gone): the same block with `.staged/0.4.1-probe` and its sums
 (dll af5b1322..., pdb db04729f..., mjs 9e8f8a39..., win dll 5acf0104..., win pdb d5762071...; full sums in the 0.4.1 commit 07cc519)
@@ -2204,3 +2211,81 @@ and the counter.
 | 30-1 | The bottom police car's case at 621408 (exit lane queued past the box) | enters and waits in the box; `entered ... exception` +1 (and `tail on a zebra` +1 if its tail lies on the crossing) |
 | 30-2 | People arrive at the crossing under a waiting admitted car | they pass it after 2 s; a car about to move onto a person on the crossing stops |
 | 30-3 | A same-exit case whose footprint covers another lane's path | waits before the box |
+
+## 23. 0.4.13-probe: JunctionRulesApi v1 (JR-T-019)
+
+Contract: `~/.claude/skills/cs2-city-ops/technical/briefs/YBOX_API_CONTRACT.md` (v1, Technical 17 Nov 2026). Owner
+request: crew agents list, add and remove yellow boxes through the normal tool stack with the SAME rules and refusal
+reasons as the Ctrl+Y tool; boxes only where the owner or a plan asks (the API never boxes on its own).
+
+Install: the section 1 block (now `.staged/0.4.13-probe`, placeholder sums `0000...` and a `STALE.md` until main's Burst
+build from the jr-t-019 commit; rollback 0.4.12 as written there).
+
+### 23.1 What it offers
+
+Public static class `JunctionRules.Api.JunctionRulesApi` (assembly JunctionRules; the bridge finds it by reflection):
+
+| Member | What |
+|---|---|
+| `const int ApiVersion = 1` | bumped only on a breaking change |
+| `string ModVersion { get; }` | `"0.4.13-probe"` (assembly informational version without the SDK's `+commit`) |
+| `bool IsReady { get; }` | JR loaded (not disabled / disposed), game world, yellow box tool registered, city loaded |
+| `string List(string filterJson)` | `{}` / `{"x","z","radius"}` / `{"minX","minZ","maxX","maxZ"}` (box centre inside) |
+| `string Preview(string targetJson)` | never changes the world; says `would`: add / remove / refuse (+ error, reason) |
+| `string Add(string targetJson)` / `Remove(...)` | the tool's click path, explicit direction |
+
+Targets (exactly one form): `{"node":I}`, `{"node":{"index":I,"version":V}}`, `{"building":I}` (+ `"exit":k`),
+`{"x":X,"z":Z}`. Exit index k counts the building's real car accesses in the tool's order (exits first, then
+entrances), as List and `ambiguous_exit` print them. `{"building":I}` without `exit` = the only exit; several exits =
+`ambiguous_exit` (with the list); entrances only = `entrance_derived`. A sub-building / extension id stands for its main
+building (the tool's rule). Error codes: `not_ready`, `bad_target`, `not_found`, `not_boxable` (reason = the tool's text:
+the selection rule's `why`, `no box shape can be built here: ...`, `the building already has 50 exit boxes`),
+`already_boxed`, `not_boxed`, `ambiguous_exit`, `entrance_derived`, `internal` (exception text; the API never throws).
+
+Results carry the target (node / building + exit), `outline` (the target's own box, world x/z), `areaM2`,
+`groupRings` (the merged rings the tool's hover draws), `mergedGroup` (the other boxes drawn as one with it: overlap /
+touch / bridge merge and the < 6 m joint exit boxes; entries are callable targets), `notes` (shape solver notes).
+List: one entry per saved junction box, per saved exit key (a lot-front marker key is listed with an empty outline and a
+note) and per DERIVED entrance box of a boxed building (`derived: true`); outlines from the paint's drawn boxes
+(`MergedBoxes`), solved on demand by the tool's solver when the paint has not drawn them.
+
+### 23.2 One path for the tool and the API
+
+`Boxes/BoxTargeting.cs` now holds the tool's former private code, moved unchanged: the hover pick (`Resolve`,
+`JunctionTarget`, `NearestExitOnRoad`, `NearestExitOfBuilding`, `ExitTarget`, the G10 no-access / fallback target), the
+log label (`What`), the shape solve with the merged group (`Solve`; `Core MergedBoxes.HoverGroup` = `HoverRings` plus the
+group's other members), the F3 no-shape rule (`ApplyShapeRule`) and the click's writes (`Apply`). What a call does is
+`Core/BoxCommand.Decide` (tool: Toggle, API: Add / Remove; unit-tested). The tool keeps only the raycast, its hover cache,
+the drawing and the input; the API borrows the tool system's own `BoxTargeting` instance. API x/z: the tool needs the
+cursor's raycast, so the API stands in for it with a point test in the same order of what a ray straight down would hit
+with the tool's masks (road edge carriageway, then road node area, then a building's prefab bounds), then runs the same
+`Resolve`.
+
+Timing: synchronous on the main thread (a call from another thread gets `internal`). The writes are the tool's
+(`BoxStore`, immediate EntityManager component changes), so `applied: "immediate"`: List shows the box at once; the paint
+and the driving rule pick it up on their next update (one frame), when the merged outlines are republished.
+
+### 23.3 Tests
+
+`ApiTests.cs` (7 groups): every target form and 24 bad targets, filters, the result JSON shape (error, target result,
+refused preview, list, ambiguous_exit), the refusal mapping (tool click and API add give the SAME reason text; F3 shape
+text; already_boxed / not_boxed / entrance_derived; the tool's toggle matrix unchanged), exit picking, not_ready reasons,
+JSON reader / writer, exit key round trip, and repo pins that the tool and the API call the same `BoxTargeting`
+methods and neither keeps its own BoxStore / selection / shape calls. Two older repo pins (F3 rule, merged hover) now
+point at `BoxTargeting.cs`.
+
+### 23.4 In-game checks (main / owner)
+
+| # | Do | Expect |
+|---|---|---|
+| 31-1 | `List({})` (bridge `cs2_yellow_boxes`) with the city loaded | one entry per box the Ctrl+Y tool shows orange (junctions, each boxed exit, derived entrances with `derived: true`); outlines match the painted boxes; merged neighbours name each other in `mergedGroup` |
+| 31-2 | `Preview` a junction the tool refuses (e.g. a roundabout, a mid-road node, a highway) | `boxable: false`, `would: "refuse"`, reason word for word the tool's log line `not selectable (...)` for the same node |
+| 31-3 | `Add({"node":I})` on a free junction, then open Ctrl+Y and hover it | `changed: true, applied: "immediate"`; the box is painted next frame; the tool hovers it orange; Remove via the tool works |
+| 31-4 | Save, quit to menu, load the save; `List({})` | the API-added box is still there (same saved component as a tool box) |
+| 31-5 | `Add({"building":I})` on a building with two exits | `ambiguous_exit` listing both; `Add` with `"exit":k` boxes that one; `Remove` on an entrance index -> `entrance_derived` |
+| 31-6 | Disable Junction Rules in the mod list (or call before a city is loaded) | bridge says `jr_missing` / `not_ready`; never an exception |
+| 31-7 | `Preview({"x":..,"z":..})` at the point where the tool hovers a junction / exit | the same target as the tool's hover (point pick is a stand-in for the cursor raycast; report any mismatch) |
+
+Unproven in game: everything above (managed build only, offline tests). Point pick vs the real raycast at overlapping
+objects (bridges, buildings over roads) may differ; mid-frame structural writes from the bridge's system are the same
+EntityManager calls the tool makes in ToolUpdate.
