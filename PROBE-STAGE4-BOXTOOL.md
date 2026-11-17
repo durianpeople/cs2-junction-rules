@@ -1481,11 +1481,55 @@ light for green itself, with the game's own request. Model: without it 19 of 20 
 all 20 do.
 
 **Model result (BoxScenarioTests).** Each vehicle kind has its own braking and acceleration, the light is
-demand-driven, and there are 20 seeds incl. heavy jams. Front bumper past a line while held: **0**. Standing in a
-painted box: **0**, apart from the light-change residual (20.6 a), which is 1465 vehicle-steps against 18702 under
-0.4.9's rules at the same light. Everything drains.
+demand-driven, and there are 20 seeds incl. heavy jams; final figures after the chain rule in 20.8.
 
 | # | Do | Expect |
 |---|---|---|
 | 20-8 | Timing line | `front bumper past a box line while held 0` always; `standing inside a box` small |
 | 20-9 | A quiet signalised approach with a box just before the light (Alderbrook north, bus / artic) | the held vehicle gets green (no endless red) |
+
+### 20.8 Owner: chains of boxes (merged or separate, per vehicle length)
+
+**The rule.** For each vehicle, walk the boxes along its path. A gap between two boxes is a place it may stop only if
+the gap fits its whole length (trailers included) plus the margin. If it does not, the boxes are one for that vehicle:
+it may not enter the FIRST box unless it has free room for its whole length past the LAST box of the chain, or in a
+later gap that does fit it. This holds whatever the paint did. It is never shorter than the paint's 6 m: a gap under
+6 m is painted yellow, so no vehicle stops in it.
+
+Example, a car (4.2 m, needs 5.2 m) and an artic (16.5 m, needs 17.5 m):
+
+| Gap between two 8 m boxes | Car | Artic |
+|---|---|---|
+| 2.8 m (painted as one box) | one box | one box |
+| 6 m | may wait in the gap | one box: room past the second |
+| 12 m | may wait in the gap | one box: room past the second |
+| 25 m | may wait in the gap | may wait in the gap |
+
+**How.** On the same lane, the vehicle's boxes closer than its length + margin are one (ExitBands.Chain). On the next
+lanes, a box or boxed junction starting before the car's own room ends extends the room past it (RoomScan.ExtendPast);
+the room window includes the vehicles queued in the box ahead of it.
+
+**Three changes made while proving it:**
+1. A gap of exactly length + margin fits (it was counted as too short).
+2. A vehicle STANDING ahead inside the box / chain, or before its line, now keeps the car out (free now). A moving one
+   still goes first. Exception (Highway Code 174): a right-turner with the UK exception may wait behind other vehicles
+   waiting to turn right.
+3. Two fixes in the shared room scan (both also in the job):
+   - `Reach` counted vehicles already past the box, which pulled in boxes the car could never be made to stop at
+     (spurious holds). It now counts only vehicles still in or before the box.
+   - A red / amber light is now a standing obstacle at its line, after the vehicles queued in front of it. The room is
+     the space before the line minus them; before, the light only counted when it fell inside the car's own reach.
+
+**Tests:** ChainTests (car vs artic at 2.8 / 6 / 12 / 25 m; boundaries at 17.5 m for the artic and 6 m for the car;
+three boxes with gaps 3 + 10 m; a merged group plus a box 8 m after it; chains across lanes; a vehicle standing in a
+gap that fits or does not). The scenario model gained a chained road (gaps 2.8 / 6.1 / 12 / 25 m, then a boxed
+junction).
+
+**Final model result** (Alderwood No. 40, Alderbrook, the chained road; car / van / bus / artic; 20 seeds incl.
+heavy jams):
+- Front bumper past a line while held: **0**.
+- Vehicles standing in a painted box: **0**, apart from the light-change residual (20.6 a): 6924 vehicle-steps, all at
+  Alderbrook's light 8.4 m past a box, against 19192 under 0.4.9's rules. These are cars let in on green that the amber
+  then caught before the line. The game's amber is kept: stop if you safely can.
+- Everything drains.
+
