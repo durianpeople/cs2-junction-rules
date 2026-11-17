@@ -70,12 +70,16 @@ namespace JunctionRules.Stage2
             float drive = VehicleUtils.GetMaxDriveSpeed(car, laneData);
             if (laneConditions.TryGetComponent(lane, out LaneCondition condition)) VehicleUtils.ModifyDriveSpeed(ref drive, condition);
             float ownLength = m_VehicleLength > 0f ? m_VehicleLength : 4f;
-            int crossings = 0;
+            int crossings = 0, zebraCrossings = 0;
             for (int i = 0; i < overlaps.Length; i++)
             {
                 LaneOverlap o = overlaps[i];
                 // Review F2: a true crossing of a track (tram / train) is not judged here: keep the stock hold.
                 if (StockRoomSkip.CrossesTrack((int)o.m_Flags)) return false;
+                // 0.4.12 G29 review F1: stock CheckSpace also counts a zebra (a pedestrian overlap without merge / unsafe / water
+                // flags) as a crossing, so at a G22-admitted boxed lane whose only crossing is a zebra (the cop's own approach
+                // zebra) the stock hold fires with no car lane to judge. People there are the zebra rule's (own hold), not judged here.
+                if (sameExit && StockRoomSkip.IsCrossedLane((int)o.m_Flags, true) && !carLanes.HasComponent(o.m_Other)) { zebraCrossings++; continue; }
                 if (!StockRoomSkip.IsCrossedLane((int)o.m_Flags, carLanes.HasComponent(o.m_Other))) continue;
                 if (!curves.TryGetComponent(o.m_Other, out Curve otherCurve)) continue;
                 if (++crossings > ExitGiveWay.MaxConflictLanes) return false;   // conservative: too much to judge
@@ -86,8 +90,8 @@ namespace JunctionRules.Stage2
                 float delta = ArrivalTime.Compute(ref motion, dist, currentSpeed, drive, 0f, timeStep);
                 if (ConflictBusy(o.m_Other, otherCurve, oS, oE, delta, ref reads, ref budget) || budget.m_CapHit) return false;
             }
-            if (crossings == 0) return false;   // nothing crossed: the stock hold had another reason (stays)
-            if (Counting) { m_StockRoomSkipped = true; m_StockSkipBoxed = boxed; }
+            if (crossings + zebraCrossings == 0) return false;   // nothing crossed: the stock hold had another reason (stays)
+            if (Counting) { m_StockRoomSkipped = true; m_StockSkipBoxed |= boxed; }   // review F4: any boxed skip this update
             return true;
         }
     }

@@ -40,10 +40,14 @@ namespace JunctionRules.Tests
             Check(free.Contains("waits for nothing named") && !free.Contains("exception"), "G29 nose trace without a named blocker / G22");
             Check(ExitGiveWay.BoxNoseKind < ExitGiveWay.EventKinds && (long)ExitGiveWay.EventKinds * ExitGiveWay.EventKindStride < int.MaxValue, "G29 nose episodes: own event kind, keys fit");
             Check(Stage2Counters.BoxNoseAtLight == Stage2Counters.Count - 1 && Stage2Counters.StockRoomHoldSkippedBoxed == Stage2Counters.Count - 2, "G29 two new counters at the end");
+            // review F1: a pedestrian overlap without merge / unsafe / water flags is a crossing for stock CheckSpace too
+            Check(StockRoomSkip.IsCrossedLane(0, true) && !StockRoomSkip.IsCrossedLane(0x1, true), "G29 review F1: a plain zebra overlap is a true crossing (merge-flagged ones are not)");
             string root = RepoRoot();
             string sr = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRStockRoom.cs"));
             string yb = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRYellowBox.cs"));
             string copy = File.ReadAllText(Path.Combine(root, "JunctionRules", "Vanilla", "JRCarLaneSpeedIterator.cs"));
+            Check(sr.Contains("if (sameExit && StockRoomSkip.IsCrossedLane((int)o.m_Flags, true) && !carLanes.HasComponent(o.m_Other)) { zebraCrossings++; continue; }")
+                  && sr.Contains("if (crossings + zebraCrossings == 0) return false;"), "repo (review F1): a G22-admitted boxed lane whose only crossing is a zebra still gets the skip (people: the zebra rule)");
             Check(sr.Contains("&& SameExitAdmits(lane, boxOwner.m_Owner, laneLength, inverse, 0f, self,") && sr.Contains("StockRoomSkip.Applies(RuleOn, m_ExitLookups, (uint)laneData.m_Flags, m_NodeLaneData.HasComponent(lane), boxed, sameExit)"),
                 "repo: S2-54's job side asks G22 at a boxed junction");
             Check(copy.Contains("m_JR.SkipStockRoomHold(lane, componentData2, componentData.m_Length, num2, flag2, m_PrefabCar, m_CurrentSpeed, m_TimeStep, m_Entity, ref m_LaneConditionData,"),

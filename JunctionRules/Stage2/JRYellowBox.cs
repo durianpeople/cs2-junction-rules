@@ -143,7 +143,6 @@ namespace JunctionRules.Stage2
                             m_BoxNose = true;
                             m_NoseOwner = owner.m_Owner;
                             m_NoseFront = -fl;
-                            m_NoseSameExitEligible = sameExitChecked && sameExitOk;
                         }
                     }
                 }
@@ -200,7 +199,6 @@ namespace JunctionRules.Stage2
                         m_BoxNose = true;
                         m_NoseOwner = edgeOwner.m_Owner;   // 0.4.12 (G29 trace): the road edge of the exit / entrance box
                         m_NoseFront = -f0;
-                        m_NoseSameExitEligible = false;
                     }
                 }
                 BoxDriving.EntranceRole role = BoxDriving.Role(start, end, b0, b1, out float entry);

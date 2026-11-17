@@ -2141,6 +2141,11 @@ the line of the box at N (same-exit-lane exception admits it); waits for B` line
 default), so the next session names each one; the behaviour fix follows from that. The G22 standing counter (64 =
 one car all window) is a legitimate stander. Tests `G29Tests`; counters +2 at the end.
 
+Review (Sonnet, APPROVE WITH FIXES; diagnosis confirmed) applied: F1 stock CheckSpace also counts a plain zebra as a
+crossing, so at a G22-admitted boxed lane whose only crossing is a zebra (the cop's own approach zebra) the skip now
+applies too (people there are the zebra rule's own hold); F2 the dead "exception admits it" trace flag removed; F3 the
+nose trace only with the exit trace on; F4 the boxed skip counted when any skip in the update was boxed.
+
 | # | Do | Expect |
 |---|---|---|
 | 29-1 | A yielding car turning into a full lane at a box junction, footprint clear (the cop's case at 621408) | it enters and waits in the box; `entered a box under the same-exit-lane exception` > 0; `stock room hold skipped (... boxed ...)` > 0 |

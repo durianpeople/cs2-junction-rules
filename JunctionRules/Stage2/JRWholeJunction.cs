@@ -339,7 +339,6 @@ namespace JunctionRules.Stage2
         /// <summary>0.4.12 (G29 nose trace): the box (node, or the road edge of an exit band) and how far the front stood past its line.</summary>
         private Entity m_NoseOwner;
         private float m_NoseFront;
-        private bool m_NoseSameExitEligible;
         /// <summary>G15b (final review): this car-step a room scan was blocked by a vehicle standing across the lane from a driveway.</summary>
         private bool m_SideHeld;
         /// <summary>0.4.10 (G19, probe): the last HasRoomPast with freeNow found no room only because a moving queue no longer counts.</summary>
@@ -1813,9 +1812,10 @@ namespace JunctionRules.Stage2
             {
                 Add(counters, Stage2Counters.BoxNosePast, 1);   // owner nose rule: must be 0
                 // 0.4.12 (G29): one NOTABLE trace line per nose episode naming the car, the box and what holds it
-                if (ExitEvent(eventTable, entity, frame, ExitGiveWay.BoxNoseKind))
+                // (review F3: only with the exit trace on; "waits for" = the vehicle's binding hold's blocker this update, if any)
+                if (m_TraceOn && ExitEvent(eventTable, entity, frame, ExitGiveWay.BoxNoseKind))
                     TraceWrite(m_TraceRing, entity, m_LastBlocker, ExitTrace.Pack(ExitTrace.Event.BoxNose, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, ExitGiveWay.Decision.Go,
-                        m_NoseSameExitEligible ? ExitTrace.ReasonSameExitEligible : 0, true), frame, m_NoseOwner, math.float2(m_NoseFront, 0f));
+                        0, true), frame, m_NoseOwner, math.float2(m_NoseFront, 0f));
             }
             if (m_BoxNoseLight && !turnSpot && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.BoxNoseAtLight, 1);   // 0.4.12 (G29): game's amber rule, apart
             if (m_BoxStoodInside && !turnSpot && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.BoxStoodInside, 1);
