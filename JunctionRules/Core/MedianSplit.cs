@@ -48,13 +48,30 @@ namespace JunctionRules.Core
         public bool IsCar => (Flags & MedianSplit.LaneRoad) != 0 && (Flags & MedianSplit.LaneBicyclesOnly) == 0 && (Flags & MedianSplit.LanePedestrian) == 0;
     }
 
+    /// <summary>
+    /// 0.4.12 (JR-T-018, G26): one median / divider piece of an edge composition (composition metres, x &lt; 0 = the edge's
+    /// left): a NetCompositionPiece whose m_PieceFlags carry BlockTraffic (NetDividerPiece.m_BlockTraffic), above ground,
+    /// from m_Offset.x - m_Size.x / 2 to m_Offset.x + m_Size.x / 2.
+    /// </summary>
+    public struct DividerInfo
+    {
+        public double Lo, Hi;
+        public DividerInfo(double lo, double hi) { Lo = Math.Min(lo, hi); Hi = Math.Max(lo, hi); }
+    }
+
     /// <summary>The building side's part of the carriageway (composition metres) and the carriageways it covers.</summary>
     public struct SideSpanResult
     {
         /// <summary>Composition x range of the box across the road (kerb to median, or kerb to kerb).</summary>
         public double Lo, Hi;
-        /// <summary>A median was found and the box stops at it.</summary>
+        /// <summary>A median was found and the box stops at it (on the far side, the near side or both).</summary>
         public bool Divided;
+        /// <summary>0.4.12: a median lies between the building's kerb and the exit's carriageway (the box starts past it).</summary>
+        public bool NearCut;
+        /// <summary>0.4.12: a median lies past the exit's carriageway (the box stops before it).</summary>
+        public bool FarCut;
+        /// <summary>0.4.12: the median edges came from the divider pieces (false = from the gap between the lanes).</summary>
+        public bool FromPieces;
         /// <summary>Bit c set = carriageway index c is inside the box (all bits = undivided / unknown).</summary>
         public uint CarriagewayMask;
     }
@@ -80,14 +97,30 @@ namespace JunctionRules.Core
         /// <summary>A car lane with this CarLane.m_CarriagewayGroup lies inside a band of this mask (low byte = composition carriageway).</summary>
         public static bool InMask(uint mask, int carriagewayGroup) => (mask & Bit(carriagewayGroup & 0xFF)) != 0;
 
+        /// <summary>0.4.4 entry point: no divider pieces (median edges from the lane gap), no margin.</summary>
+        public static bool SideSpan(IList<CompositionLaneInfo> lanes, bool leftSide, out SideSpanResult r) => SideSpan(lanes, null, leftSide, 0, out r);
+
         /// <summary>
         /// The building side's span. leftSide = the building is on the composition's left (x &lt; 0). False (full span,
         /// all carriageways) when there are no carriageway lanes.
+        /// 0.4.12 (JR-T-018, G26, owner 17 Nov 2026: "the box must be bound by ANY median and never go over it"): the game
+        /// starts a new carriageway index only at a BlockTraffic piece (NetCompositionHelpers.AddCompositionLanes 1207-1212),
+        /// so two lane groups with different indices ALWAYS have a median / barrier / divider between them, whatever the
+        /// directions. 0.4.4-0.4.11 cut only where the far lanes ran the other way, so a ONE-WAY road with a raised centre
+        /// median (Sunset Street, RoadBuilder prefab re9b1ba39-..., edge 1155147: Car Drive 3 | Median Piece 2 | Car Drive 3,
+        /// both car pieces Invert + FlipLanes = the same direction) was painted kerb to kerb across the median. Now: the
+        /// exit's carriageway is the first one holding a car lane, from the building's kerb inward; the box covers that
+        /// carriageway only, from the building's kerb (or, when a divider lies between the kerb and it - e.g. a bike track
+        /// behind a divider - from that divider's far edge + margin) to the next divider's near edge - margin (or the far
+        /// kerb when there is none). Median edges from 'dividers' (the BlockTraffic pieces) when one lies in the gap
+        /// between the two lane groups, else from the lane edges. Painted centre lines, a two-way centre turn lane and
+        /// hatching are no median: they never change the carriageway index.
         /// </summary>
-        public static bool SideSpan(IList<CompositionLaneInfo> lanes, bool leftSide, out SideSpanResult r)
+        public static bool SideSpan(IList<CompositionLaneInfo> lanes, IList<DividerInfo> dividers, bool leftSide, double margin, out SideSpanResult r)
         {
             r = new SideSpanResult { CarriagewayMask = AllCarriageways };
             if (lanes == null) return false;
+            if (!(margin >= 0) || double.IsInfinity(margin)) margin = 0;
             var groups = new SortedDictionary<int, Group>();
             double lo = double.MaxValue, hi = double.MinValue;
             foreach (CompositionLaneInfo l in lanes)
@@ -110,38 +143,79 @@ namespace JunctionRules.Core
             // from the building's kerb inward
             var order = new List<Group>(groups.Values);
             order.Sort((x, y) => leftSide ? x.Lo.CompareTo(y.Lo) : y.Hi.CompareTo(x.Hi));
-            bool? sideFwd = null;
-            uint mask = 0;
-            double edge = 0;
-            bool cut = false;
-            foreach (Group g in order)
+            int exit = order.FindIndex(g => g.Fwd || g.Back);
+            if (exit < 0) return true;                                   // no car lane at all: nothing to bound
+            Group eg = order[exit];
+            r.CarriagewayMask = Bit(eg.Index);
+            r.FromPieces = true;
+            // composition-left side: x grows inward; right side: x shrinks inward
+            if (exit > 0)
             {
-                bool cars = g.Fwd || g.Back;
-                if (cars && g.Fwd && g.Back) break;                       // both directions together: undivided from here on, no cut
-                if (cars && sideFwd.HasValue && g.Fwd != sideFwd.Value) { cut = true; break; }   // past the median
-                if (cars && !sideFwd.HasValue) sideFwd = g.Fwd;
-                mask |= Bit(g.Index);
-                edge = leftSide ? g.Hi : g.Lo;
+                Median(order[exit - 1], eg, leftSide, dividers, out double mLo, out double mHi, out bool pieces);
+                r.FromPieces &= pieces;
+                r.NearCut = true;
+                if (leftSide) r.Lo = mHi + margin; else r.Hi = mLo - margin;
             }
-            if (!cut) return true;
-            r.Divided = true;
-            r.CarriagewayMask = mask;
-            if (leftSide) r.Hi = edge; else r.Lo = edge;
+            else { if (leftSide) r.Lo = lo; else r.Hi = hi; }
+            if (exit < order.Count - 1)
+            {
+                Median(eg, order[exit + 1], leftSide, dividers, out double mLo, out double mHi, out bool pieces);
+                r.FromPieces &= pieces;
+                r.FarCut = true;
+                if (leftSide) r.Hi = mLo - margin; else r.Lo = mHi + margin;
+            }
+            else { if (leftSide) r.Hi = hi; else r.Lo = lo; }
+            r.Divided = r.NearCut || r.FarCut;
+            if (!r.Divided) { r.FromPieces = false; r.CarriagewayMask = AllCarriageways; }
+            // never a reversed span: a carriageway narrower than its margins keeps a zero-width span (the box builder then
+            // refuses it: no box rather than one on the median)
+            if (r.Hi < r.Lo) { double m = (r.Lo + r.Hi) * 0.5; r.Lo = r.Hi = m; }
             return true;
         }
-    
+
+        /// <summary>
+        /// The median between two neighbouring lane groups ('outer' nearer the building's kerb): the union of the divider
+        /// pieces lying in the gap between them (centre within the gap, 0.25 m slack), else the gap itself (pieces false).
+        /// </summary>
+        private static void Median(Group outer, Group inner, bool leftSide, IList<DividerInfo> dividers, out double lo, out double hi, out bool pieces)
+        {
+            double gLo = leftSide ? outer.Hi : inner.Hi, gHi = leftSide ? inner.Lo : outer.Lo;
+            if (gHi < gLo) { double t = gLo; gLo = gHi; gHi = t; }
+            lo = double.MaxValue; hi = double.MinValue;
+            pieces = false;
+            if (dividers != null)
+                foreach (DividerInfo d in dividers)
+                {
+                    if (!CarriagewayOutline.IsFinite(d.Lo) || !CarriagewayOutline.IsFinite(d.Hi)) continue;
+                    double c = (d.Lo + d.Hi) * 0.5;
+                    if (c < gLo - 0.25 || c > gHi + 0.25) continue;
+                    lo = Math.Min(lo, d.Lo); hi = Math.Max(hi, d.Hi);
+                    pieces = true;
+                }
+            if (!pieces) { lo = gLo; hi = gHi; }
+        }
+
         /// <summary>
         /// The exit box's kerb insets from the composition edges (composition left / right): undivided = the footways as
-        /// before (stop-bay heuristic kept); divided = the building side keeps its footway, the far side moves to the median
-        /// kerb (half + Lo on the left, half - Hi on the right).
+        /// before (stop-bay heuristic kept); divided = the far side moves to the median's near edge (half + Lo on the
+        /// left, half - Hi on the right); 0.4.12: a median between the building's kerb and the exit's carriageway moves the
+        /// building side in to past it as well.
         /// </summary>
         public static void Insets(double half, double footLeft, double footRight, SideSpanResult span, bool leftSide, out double insetLeft, out double insetRight)
         {
             insetLeft = footLeft;
             insetRight = footRight;
             if (!span.Divided) return;
-            if (leftSide) insetRight = Math.Max(footRight, half - span.Hi);
-            else insetLeft = Math.Max(footLeft, half + span.Lo);
+            if (leftSide)
+            {
+                if (span.FarCut || !span.NearCut) insetRight = Math.Max(footRight, half - span.Hi);
+                if (span.NearCut) insetLeft = Math.Max(footLeft, half + span.Lo);
+            }
+            else
+            {
+                if (span.FarCut || !span.NearCut) insetLeft = Math.Max(footLeft, half + span.Lo);
+                if (span.NearCut) insetRight = Math.Max(footRight, half - span.Hi);
+            }
         }
     }
 }

@@ -386,3 +386,8 @@ gets the game's own creep past (CheckPedestrian's distance test) instead of hold
 the exit / entry gap scans no longer count a vehicle standing in a queue held by a red / amber light as "present".
 G23 owner follow-up (0.4.11): new block S2-53 (4 lines, table above): 41 blocks, 322 lines inside. Main thread: the watch pick takes the junction nearest the camera's aim point within 25 m (was: within 8 m of the centre line); watch lines name the blocker's position (person: lane, walking speed, waiting for a walk signal).
 G25 (0.4.11, owner option c): new block S2-54 (6 lines, table above): 42 blocks, 328 lines inside.
+
+0.4.12-probe (JR-T-018: G26, a yellow box never goes over a median). No copy change: 42 blocks, 328 lines as 0.4.11
+(`docs/vanilla_copy_check_0.4.12.txt`: 0 unexplained differences). Box shapes only (`Core/MedianSplit.cs`,
+`Core/MedianNose.cs`, `Boxes/BoxShapes.cs`, `CrosswalkStrip.Median`); the driving rule reads the same shape and mask.
+PROBE section 22.

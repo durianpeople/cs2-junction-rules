@@ -1,4 +1,13 @@
-# Probe kit: Junction Rules 0.4.11-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits and entrances; vehicles leaving and turning into buildings give way; merged boxes; median; markings hidden; gaps G1-G21)
+# Probe kit: Junction Rules 0.4.12-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits and entrances; vehicles leaving and turning into buildings give way; merged boxes; median; markings hidden; gaps G1-G21)
+
+**0.4.12-probe (JR-T-018: 0.4.11 live gap G26), what changed since 0.4.11 (section 22):** a yellow box never goes
+over a median. Exit and entrance boxes now stop 0.5 m before ANY median, barrier or raised / planted strip between the
+road's lanes, also on a ONE-WAY road (0.4.4-0.4.11 cut only where the lanes past the median ran the other way, so the
+box at building 77236 on Sunset Street was painted kerb to kerb across the raised centre median); the box and the
+driving rule cover only the building's own lanes. Junction boxes keep 0.5 m clear of every median nose at their arms
+(like a zebra: the mouth is held back past it); a junction whose median runs on through it, and a saved roundabout
+box (centre island), get no box. No change to the copied game code (`docs/vanilla_copy_check_0.4.12.txt`: 0 unexplained
+differences, 42 marked blocks / 328 lines as 0.4.11). Carries 0.4.11 and everything before.
 
 **0.4.11-probe (JR-T-017: 0.4.10 live gap G21), what changed since 0.4.10 (section 21):** a vehicle turning INTO a
 building across traffic (a right turn in, left-hand traffic) now gives way like a vehicle leaving one: it waits in its
@@ -98,9 +107,13 @@ differences). Also: the T-junction through-side kerb fix (section 6) and the ent
 0.3.6 (JR-T-008, people pass a car blocking their crossing; merged from 784ba28) and everything before it
 (PROBE-STAGE3-PAINT.md).
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.4.10-probe/` (JR-T-016, branch jr-t-016; managed build only until main does the Burst build, see its `STALE.md`; the block below refuses on the `0000...` placeholder sums and while `STALE.md` exists). 0.4.9-probe (installed 17 Nov ~midday, `.staged/0.4.9-probe`, Burst from e6c7dd9, sums in commit 84a78fe) is the rollback; never write into `.staged/0.4.9-probe`, `.staged/0.4.8-probe` or `.staged/0.4.7-probe`. Never install the old `.staged/0.4.4-probe` (the paused JR-T-011 managed build). While `.staged/0.4.10-probe` holds a `STALE.md` it is a managed
-build only: main does the Burst build in `STALE.md` (game closed, at the owner's quit), then puts the five sums into the
-install block below. Until then the block refuses (placeholder sums `0000...`).
+Build to install: `~/Code/cs2-junction-rules/.staged/0.4.12-probe/` (JR-T-018, branch jr-t-018; managed build only
+until main does the Burst build, see its `STALE.md`; the block below refuses on the `0000...` placeholder sums and while
+`STALE.md` exists). 0.4.11-probe (installed 17 Nov evening, `.staged/0.4.11-probe`, Burst from 81197d9, sums in commit
+1483819) is the rollback; never write into `.staged/0.4.11-probe` or older. Never install the old `.staged/0.4.4-probe`
+(the paused JR-T-011 managed build). While `.staged/0.4.12-probe` holds a `STALE.md` it is a managed build only: main
+does the Burst build in `STALE.md` (game closed, at the owner's quit), then puts the five sums into the install block
+below.
 
 Built for game **1.6.4f1 (1097.158a)** only (same version gate: on another version saved boxes are not painted and the
 copy does not run; the boxes stay in the save).
@@ -111,27 +124,27 @@ copy does not run; the boxes stay in the save).
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.4.11-probe || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.4.12-probe || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-4380d351b15a1a447c97cefc0c4b836e0685611e63dc814436260520ef88c33f  JunctionRules.dll
-b35973769fc6ec410a5c74c5f7f8d2c5f5a351104bfb773320285d552c291df6  JunctionRules.pdb
-9e8f8a397f70bbeb121ef7224981278773595c1fe2ce7e31de01d4c4df2b65bf  JunctionRules.mjs
-1ea6cc938785732e108974fb4b0988f04ad121afe7b1da3b43b019f14a87ce9c  JunctionRules_win_x86_64.dll
-9c0d25afd810b07c0490f1d73934d84db8dff2f70bcec374d41ab211775f8975  JunctionRules_win_x86_64.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.mjs
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
   fi
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules.mjs JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
-  echo "installed 0.4.11-probe"
+  echo "installed 0.4.12-probe"
 )
 ```
 
-Rollback: to 0.4.10 (JR-T-016, Burst from 9ea1ac4, installed 17 Nov afternoon; G21 not fixed): the same block with `.staged/0.4.10-probe` and its sums (commit 5ca57b6: dll 15b7467d..., pdb aa74dbd7..., mjs 9e8f8a39..., win dll 203e1ef0..., win pdb fdce39e2...). To 0.4.9 (JR-T-015, Burst from e6c7dd9, installed 17 Nov ~midday; G18 / G19 not fixed): the same block with `.staged/0.4.9-probe` and its sums (commit 84a78fe: dll cf74c32c..., pdb b200ce6b..., mjs 9e8f8a39..., win dll b2d18ddc..., win pdb 1c39bab0...). To 0.4.8 (JR-T-014, Burst from 8fca058, installed 17 Nov 07:5x; G12-G15 not fixed): the same block with `.staged/0.4.8-probe` and its sums (commit 242618d: dll 106bd828..., pdb 01c5735e..., mjs 9e8f8a39..., win dll d3178e58..., win pdb 8b27cc25...). To 0.4.7 (JR-T-013m, Burst from cd6a1eb, installed 17 Nov; no G7 sidewalk rule, no entrance boxes): the same block with `.staged/0.4.7-probe` and its sums (commit 3854a23). To 0.4.6: the same block with `.staged/0.4.6-probe` and its sums (commit 8bf6cf2). To 0.4.5 (JR-T-012 lot-exit build, Burst from 9639e71, installed 16 Nov): the same block with `.staged/0.4.5-probe` and its sums (commit bb676cd). To 0.4.4 (JR-T-012 first build, Burst from ba75f0b, installed 16 Nov): the same block with `.staged/0.4.4-probe-jr012` and its sums (commit 853ea2b). To 0.4.3 (installed 16 Nov, Burst from a14445d): the same block with `.staged/0.4.3-probe` and its sums (commit 1441805). To 0.4.2 (the JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
+Rollback: to 0.4.11 (JR-T-017, Burst from 81197d9, installed 17 Nov evening; G26 not fixed): the same block with `.staged/0.4.11-probe` and its sums (commit 1483819: dll 4380d351..., pdb b3597376..., mjs 9e8f8a39..., win dll 1ea6cc93..., win pdb 9c0d25af...). To 0.4.10 (JR-T-016, Burst from 9ea1ac4, installed 17 Nov afternoon; G21 not fixed): the same block with `.staged/0.4.10-probe` and its sums (commit 5ca57b6: dll 15b7467d..., pdb aa74dbd7..., mjs 9e8f8a39..., win dll 203e1ef0..., win pdb fdce39e2...). To 0.4.9 (JR-T-015, Burst from e6c7dd9, installed 17 Nov ~midday; G18 / G19 not fixed): the same block with `.staged/0.4.9-probe` and its sums (commit 84a78fe: dll cf74c32c..., pdb b200ce6b..., mjs 9e8f8a39..., win dll b2d18ddc..., win pdb 1c39bab0...). To 0.4.8 (JR-T-014, Burst from 8fca058, installed 17 Nov 07:5x; G12-G15 not fixed): the same block with `.staged/0.4.8-probe` and its sums (commit 242618d: dll 106bd828..., pdb 01c5735e..., mjs 9e8f8a39..., win dll d3178e58..., win pdb 8b27cc25...). To 0.4.7 (JR-T-013m, Burst from cd6a1eb, installed 17 Nov; no G7 sidewalk rule, no entrance boxes): the same block with `.staged/0.4.7-probe` and its sums (commit 3854a23). To 0.4.6: the same block with `.staged/0.4.6-probe` and its sums (commit 8bf6cf2). To 0.4.5 (JR-T-012 lot-exit build, Burst from 9639e71, installed 16 Nov): the same block with `.staged/0.4.5-probe` and its sums (commit bb676cd). To 0.4.4 (JR-T-012 first build, Burst from ba75f0b, installed 16 Nov): the same block with `.staged/0.4.4-probe-jr012` and its sums (commit 853ea2b). To 0.4.3 (installed 16 Nov, Burst from a14445d): the same block with `.staged/0.4.3-probe` and its sums (commit 1441805). To 0.4.2 (the JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
 its loader, so exit boxes fall back to one entrance box per building): the same block with `.staged/0.4.2-probe` and
 its sums (full sums in commit c781df0). To 0.4.1 (boxes kept, box driving rule gone): the same block with `.staged/0.4.1-probe` and its sums
 (dll af5b1322..., pdb db04729f..., mjs 9e8f8a39..., win dll 5acf0104..., win pdb d5762071...; full sums in the 0.4.1 commit 07cc519)
@@ -1950,3 +1963,91 @@ Review (Sonnet, APPROVE WITH FIXES) applied: the turner's own time uses the scal
 the whole-junction rule); a junction lane that also crosses a tram / train track keeps the stock hold. Gating: needs the
 Whole junction rule and "Vehicles leaving buildings give way" (its lookups feed the scan), both default on; with "Cars obey
 yellow boxes" off every junction counts as unboxed.
+
+## 22. 0.4.12: a yellow box never goes over a median (JR-T-018, gap G26)
+
+Paint and driving (the driving rule reads the same box shape and the same carriageway set, `Boxes/DrivingBands.cs`).
+Evidence: 0.4.11 live log 17 Nov 20:21:47 (`saved exit box (building Entity(77236:1), exit Driveway@(25.4, 21.3))... box
+on edge Entity(1155147:1) at (83.891, 605.252, 432.302), 8.0 m x kerb to kerb`, no median note), owner shot 9e8c66dc,
+read-only `cs2_road_outline` / `cs2_junction_lanes` / `cs2_prefab_components` 17 Nov ~20:25 (game then quit 20:30),
+the Carto export of 17 Nov 19:13, decompile 2026-11-13 (`~/Code/decomp/yb-2026-11-13/full`) and RoadBuilder
+(`~/Code/decomp/roadbuilder`).
+
+### 22.1 What happened
+
+Sunset Street edge 1155147 is a RoadBuilder road (`re9b1ba39-07e6-4799-a6b5-931265703461-76561198022823782`, Carto name
+`S-XMX-|S 16m`): Sidewalk 4 (x -6.25) | Car Drive 3 (x -2.5) | **Median Piece 2** (x 0, 2 m, `BlockTraffic,
+BlockCrosswalk`) | Car Drive 3 (x 2.5) | Sidewalk 4 (x 6.25). Both car pieces carry `Invert + FlipLanes`, so both lanes
+run the same way: it is a ONE-WAY road with a raised centre median (node 621408: 2 lanes in, 0 out). The 0.4.4 median
+rule (#17, `Core/MedianSplit.cs`) found the two carriageways but cut only where the far one's lanes ran AGAINST the
+building side's, so it saw "no median" and painted the box kerb to kerb across the strip.
+
+### 22.2 How the game marks a median (cites)
+
+- A median / barrier / planted or platform strip is a net piece with `NetDividerPiece`; `m_BlockTraffic` gives the
+  composition piece `NetPieceFlags.BlockTraffic` (`NetInitializeSystem.cs` 1276-1286). RoadBuilder's own "is median" is
+  the same test (`RoadBuilder.Utilities/NetworkConfigExtensionsUtil.IsMedian`: a section with a `NetDividerPiece` whose
+  `m_BlockTraffic` is true; RoadBuilder sets it on its median sections, `RoadBuilderNetSectionsSystem.cs` 976).
+- `NetCompositionHelpers.AddCompositionLanes` starts a new carriageway index only at a BlockTraffic piece that follows
+  lanes (1207-1212), whatever the directions; every lane gets that index (`NetCompositionLane.m_Carriageway`, 1444) and
+  the edge car lanes carry it on (`CarLane.m_CarriagewayGroup`, `LaneSystem.cs` 4153).
+- Painted centre lines, a two-way centre turn lane and hatching are lane markings / lanes, not pieces with
+  BlockTraffic: they never change the index and are no median for the box (they may lie under a box, owner G24 list).
+- At a junction the median ends in a nose: the NODE composition of that arm carries "Median Intersection Piece 2" (flat
+  road surface, no BlockTraffic: drivable) and **"Median End Piece 2"** (`BlockTraffic | PreserveShape`, NetPieceData
+  `m_Width 2, m_Length 0.6`, mesh z -0.3..0.3; "Median End Piece 5": 5 x 1.6). Read-only at node 621408 for both Sunset
+  Street arms. A BlockTraffic piece WITHOUT PreserveShape on a node end = the median runs on through the junction (no
+  median break).
+
+### 22.3 Now
+
+1. **Exit and entrance boxes** (`Core/MedianSplit.SideSpan`, `Boxes/BoxShapes.MedianSide` / `Dividers`): lane groups
+   ordered from the building's kerb inward; the exit's carriageway = the first one with a car lane. The box covers that
+   carriageway only: from the building's kerb (as before) to the next median's near edge **- 0.5 m** (the marking margin
+   slider). The median's edges come from its BlockTraffic piece(s) in the gap between the two lane groups (else from the
+   lane edges). Every median counts: dual carriageways (as 0.4.4, now 0.5 m off instead of flush), one-way roads with a
+   median (G26), a tram reservation with kerbs (the box stops before it; tracks on the road itself are inside the
+   carriageway and stay boxed), planted / platform / barrier medians. A divider between the kerb and the exit's lanes (a
+   protected bike track) moves the box's near side in past it (+ 0.5 m). The carriageway mask (driving) is the exit's
+   carriageway only. Log: `... kerb to median ...; notes: divided road: box on the building's side only (..., stops 0.5 m
+   before the median, median edges from its pieces)`.
+2. **The far carriageway gets no box from that exit.** An exit never really crosses a median inside one edge: the edge
+   composition is the same along the whole edge, so the median is continuous there; a gap in a median exists only at a
+   node (median break), which is a junction (junction box rules). A building on the other side of the median gets its own
+   box on its own side (the two never merge, `BoxMerge.MayJoin`, 0.4.4).
+3. **Junction boxes** (`BoxShapes.MedianNoses`, `Core/MedianNose.cs`): each arm's nose (node-end BlockTraffic |
+   PreserveShape piece) becomes a strip across the median at the mouth, as long as the piece (`m_Size.z` =
+   `NetPieceData.m_Length`), fed to the shape exactly like a zebra / stop line (`CrosswalkStrip.Median`): the box keeps
+   0.5 m clear of it, and a nose past the kerb lines holds that arm's mouth back (G24 machinery, priority arms too). A
+   median running on through the junction: no box (`arm N: a median runs on through the junction ...`). A saved box on a
+   roundabout (centre island): no box (the tool already refused new ones).
+4. Paint = driving: no box drawn = no box driven; the exit band window and carriageway mask come from the same shape.
+
+### 22.4 Saved boxes re-checked (0.4.11 log + read-only outlines, game closed at 20:30 so the junctions from the Carto export)
+
+- Exit / entrance boxes: only **1155147** (building 77236 exit; Sunset Street, one-way + median) was wrong: rebuilt at
+  load on the building's side only (2.75 m across: kerb at 4.25 m from the centre to 0.5 m off the median at 1 m).
+  **663337** (building 384177, Ironplace Avenue, Medium Road Divided) was already kerb to median: now 0.5 m narrower
+  (median edge 1.0 -> 1.5 m). All other saved exit / entrance boxes (73431, 380824, 383778, 384325, 834051, 953627,
+  988860, 988889) are on roads without a median piece: unchanged.
+- Junction boxes with a median arm: **621408** (Sunset Street x Mistwood Lane x Lilac Street; live geometry test without its
+  zebras / stop lines: the box covers both noses without the nose input, keeps 0.50 m with it; the real 0.4.11 box had
+  its Sunset mouths moved 1.71 / 1.75 m in for other reasons, so it probably cleared the 0.6 m noses already: owner eye), **164607** (Ironplace `S-XXM|XX-S` x Crescent), **623018** and
+  **830865** (Ironplace Four-Lane Divided Road). They rebuild at load; their mouths on the Ironplace arms may move back up
+  to ~1.1 m (0.6 m nose + 0.5 m) where the old box reached the nose. The other 30 junction boxes have no median arm
+  (RoadBuilder `|` in a lane code is the centre line, `M` the median): unchanged.
+
+### 22.5 Tests
+
+`G26ExitTests` (Sunset Street's real composition both sides, box 2.75 m and >= 0.5 m off the median, never across the
+centre; Ironplace 1.5 m; undivided Alderbrook / Victoria / centre turn lane unchanged; bike track behind a divider; tram
+reservation; margin wider than the carriageway; pieces outside the gap ignored), `G26JunctionTests` (node 621408 live
+fixture `LiveFixtures621408.cs`: two noses, 0.50 m clear, none inside; median through = no box; fallback length, middle
+offset), `G26RepoTests`; `MedianSplitTests` D3 updated (same-direction carriageways now cut). 3116 tests pass.
+
+| # | Do | Expect |
+|---|---|---|
+| 26-1 | Building 77236's exit box on Sunset Street (83.9, 432.3) | box on the building's lane only, 0.5 m short of the raised centre strip; log `kerb to median ... stops 0.5 m before the median, median edges from its pieces` |
+| 26-2 | Junction box at 621408 (Sunset St end) | no hatch / border on the two median noses; note `2 median nose(s) at the mouths` |
+| 26-3 | Ironplace Avenue boxes (exit 384177, junctions 164607 / 623018 / 830865) | 0.5 m gap to the median / nose; no box missing (if one is refused, the log says why) |
+| 26-4 | Cars on Sunset Street's far lane past the 77236 box | not held by that box (only the building's lane is boxed) |

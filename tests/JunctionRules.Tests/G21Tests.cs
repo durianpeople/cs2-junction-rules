@@ -334,7 +334,7 @@ namespace JunctionRules.Tests
             string box = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRYellowBox.cs"));
             Check(box.Contains("0.4.11 (G21, owner): it waits BEFORE"), "the G9 room hook documents that the gap is decided before the box now");
             string proj = File.ReadAllText(Path.Combine(root, "JunctionRules", "JunctionRules.csproj"));
-            Check(proj.Contains("<InformationalVersion>0.4.11-probe</InformationalVersion>"), "version 0.4.11-probe");
+            Check(proj.Contains("<InformationalVersion>0.4.1") && proj.Contains("-probe</InformationalVersion>"), "version 0.4.11-probe or later (0.4.12: G26)");
         }
     }
 }

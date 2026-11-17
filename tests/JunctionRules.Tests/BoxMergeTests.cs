@@ -269,12 +269,14 @@ namespace JunctionRules.Tests
             Check(Math.Abs(u.Lo - (parkOn ? -7 : -5)) < 1e-9 && Math.Abs(u.Hi - 5) < 1e-9, $"D3 undivided: full kerb-to-kerb span ({u.Lo}..{u.Hi})");
             MedianSplit.Insets(10, 3, 5, u, false, out iL, out iR);
             Check(iL == 3 && iR == 5, "D3 undivided insets unchanged");
-            // a centre turn lane (two-way) in its own carriageway group never cuts
-            var turn = new List<CompositionLaneInfo>(und.GetRange(0, 3)) { new CompositionLaneInfo(1.5, 3, 1, MedianSplit.LaneRoad | MedianSplit.LaneTwoway), new CompositionLaneInfo(4.5, 3, 2, MedianSplit.LaneRoad) };
+            // a centre turn lane (two-way) is painted: the game keeps it in the same carriageway (a new carriageway index only
+            // at a BlockTraffic piece, NetCompositionHelpers 1207-1212), so it never cuts
+            var turn = new List<CompositionLaneInfo>(und.GetRange(0, 3)) { new CompositionLaneInfo(1.5, 3, 0, MedianSplit.LaneRoad | MedianSplit.LaneTwoway), new CompositionLaneInfo(4.5, 3, 0, MedianSplit.LaneRoad) };
             Check(MedianSplit.SideSpan(turn, false, out SideSpanResult t) && !t.Divided, "D3 two-way centre lane: no cut");
-            // a one-way divided pair (both carriageways the same way) is no median for the box
+            // 0.4.12 (G26, owner: ANY median): a one-way divided pair (both carriageways the same way) IS cut at the median
+            // (0.4.4-0.4.11: no cut, Sunset Street 1155147 painted across its median)
             var oneway = new List<CompositionLaneInfo> { new CompositionLaneInfo(-2.5, 3, 0, MedianSplit.LaneRoad), new CompositionLaneInfo(2.5, 3, 1, MedianSplit.LaneRoad) };
-            Check(MedianSplit.SideSpan(oneway, false, out SideSpanResult ow) && !ow.Divided, "D3 same-direction carriageways: no cut");
+            Check(MedianSplit.SideSpan(oneway, false, out SideSpanResult ow) && ow.Divided && Math.Abs(ow.Lo - 1) < 1e-9 && ow.CarriagewayMask == MedianSplit.Bit(1), "D3 same-direction carriageways: cut at the median (G26)");
             // protected bike track behind a divider never stops the box
             var bike = new List<CompositionLaneInfo>(IronplaceLanes()) { new CompositionLaneInfo(11.5, 2, 2, MedianSplit.LaneRoad | MedianSplit.LaneBicyclesOnly) };
             Check(MedianSplit.SideSpan(bike, false, out SideSpanResult bk) && bk.Divided && Math.Abs(bk.Lo - 1) < 1e-9 && (bk.CarriagewayMask & MedianSplit.Bit(1)) != 0, "D3 bike track carriageway does not stop the box before the median");

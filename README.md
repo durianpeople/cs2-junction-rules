@@ -35,6 +35,12 @@ oncoming straight, and the straight car no longer waits for the turner's reserva
 Analysis, per-case behaviour and owner rulings: `docs/STAGE2-ANALYSIS.md`;
 code changes: DEVIATIONS.md section S2; in-game test: PROBE-STAGE2.md.
 
+0.4.12-probe (JR-T-018, gap G26; PROBE-STAGE4-BOXTOOL.md section 22): a yellow box never goes over a median. Exit /
+entrance boxes stop 0.5 m before ANY median (every composition piece the game marks BlockTraffic: raised, planted,
+platform, barrier, tram reservation kerbs; also on one-way roads) and cover / drive only the building's own lanes;
+junction boxes keep 0.5 m clear of median noses (mouth held back as for a zebra); no box where a median runs through a
+junction or on a roundabout island. No copy change.
+
 0.4.2-probe (JR-T-010; PROBE-STAGE4-BOXTOOL.md section 11): new setting **Cars obey yellow boxes** (default on;
 off = 0.4.1). At the boxes placed with the tool (junctions and building entrances), a vehicle does not enter the box
 unless there is room for its whole length (trailers included) past it, the zebra rule's room measure (a moving queue

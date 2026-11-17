@@ -50,8 +50,14 @@ namespace JunctionRules.Core
         public double Width;
         /// <summary>0.4.2: true for a stop / give-way line, false for a zebra (notes only).</summary>
         public bool StopLine;
-        public CrosswalkStrip(V2 a, V2 b, double width) { A = a; B = b; Width = width; StopLine = false; }
-        public CrosswalkStrip(V2 a, V2 b, double width, bool stopLine) { A = a; B = b; Width = width; StopLine = stopLine; }
+        /// <summary>
+        /// 0.4.12 (JR-T-018, G26): true for a median nose / island strip (BoxShapes.MedianNoses): the box keeps the same
+        /// margin clear of it as of a zebra / stop / give-way line and its mouth is held clear of it (never on a median).
+        /// </summary>
+        public bool Median;
+        public CrosswalkStrip(V2 a, V2 b, double width) { A = a; B = b; Width = width; StopLine = false; Median = false; }
+        public CrosswalkStrip(V2 a, V2 b, double width, bool stopLine) { A = a; B = b; Width = width; StopLine = stopLine; Median = false; }
+        public CrosswalkStrip(V2 a, V2 b, double width, bool stopLine, bool median) { A = a; B = b; Width = width; StopLine = stopLine; Median = median; }
     }
 
     /// <summary>
@@ -655,7 +661,7 @@ namespace JunctionRules.Core
             }
             res.StopDistance = StopDistances(kerbs, centre, ok, res.Notes, margin);
             // 0.4.11 (G24): the same distances from the zebras alone (stop / give-way lines left out), to tell a ZEBRA past the kerb lines.
-            var zebrasOnly = ok.FindAll(c => !c.StopLine);
+            var zebrasOnly = ok.FindAll(c => !c.StopLine && !c.Median);
             double[] zebraStop = StopDistances(kerbs, centre, zebrasOnly, null, margin);
             var minShift = new double[kerbs.Count];
             for (int i = 0; i < kerbs.Count; i++)

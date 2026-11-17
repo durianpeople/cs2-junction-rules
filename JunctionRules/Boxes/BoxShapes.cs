@@ -159,9 +159,23 @@ namespace JunctionRules.Boxes
             }
             s.Arms = arms.Count;
             if (arms.Count < 2) { s.Failure = $"{arms.Count} arm(s)"; return s; }
+            if (s.Roundabout)
+            {
+                // 0.4.12 (G26, owner: a box never paints over a median nose or ISLAND): the outline from the outer curves would
+                // cover the roundabout's centre island (the tool already refuses roundabouts, BoxSelection; this keeps a saved
+                // one from being painted / driven)
+                s.Failure = "roundabout: the box would cover the centre island (never on a median or island)";
+                return s;
+            }
             var markings = MarkedCrossings(em, node, out int unmarked);
-            int zebras = markings.Count, stopLines = 0;
+            int zebras = markings.Count, stopLines = 0, noses = 0;
             foreach (Entity e in armEdges) stopLines += StopLines(em, e, markings, em.GetComponentData<Edge>(e).m_Start == node);
+            for (int k = 0; k < armEdges.Count; k++)
+            {
+                noses += MedianNoses(em, armEdges[k], node, markings, out string through);
+                if (through != null) { s.Failure = $"arm {k + 1}: {through} (never on a median)"; return s; }
+            }
+            if (noses > 0) s.Notes.Add($"{noses} median nose(s) at the mouths: kept clear like a marking (+ margin)");
             ReadLanes(em, node, arms, out bool signals, out List<LanePath> paths, out ArmLaneCounts[] counts);
             // 0.4.3 (owner ruling 3): a building's own access road arm yields unless the signs say otherwise
             var signed = new List<bool>(arms.Count);
@@ -306,7 +320,9 @@ namespace JunctionRules.Boxes
             else AddOnce(s.Notes, "no edge geometry: footway sides assumed");
             // 0.4.4: divided road = the building's side only, kerb to median (Core/MedianSplit, composition frame)
             V2 hold = new V2(a.Point.x, a.Point.z);
-            if (side.HasValue && MedianSide(em, e, a.T, side.Value, out SideSpanResult span, out bool buildingCompLeft) && span.Divided)
+            // 0.4.12 (G26): ANY median bounds it (also on a one-way road), 'margin' clear of the median's real edge (the
+            // divider piece), and a divider between the kerb and the exit's carriageway moves the near side in past it
+            if (side.HasValue && MedianSide(em, e, a.T, side.Value, margin, out SideSpanResult span, out bool buildingCompLeft) && span.Divided)
             {
                 MedianSplit.Insets(half, footL, footR, span, buildingCompLeft, out footL, out footR);
                 s.Divided = true;
@@ -316,7 +332,9 @@ namespace JunctionRules.Boxes
                 V2 leftDir = new V2(tn.x, tn.z).Normalized.Left;
                 double xm = (span.Lo + span.Hi) * 0.5;
                 hold = hold + leftDir * (compLeftIsGeomLeft ? -xm : xm);
-                s.Notes.Add($"divided road: box on the building's side only ({(buildingCompLeft ? "composition left" : "composition right")}, x {span.Lo:0.00}..{span.Hi:0.00} m, carriageways 0x{span.CarriagewayMask:X})");
+                s.Notes.Add($"divided road: box on the building's side only ({(buildingCompLeft ? "composition left" : "composition right")}, x {span.Lo:0.00}..{span.Hi:0.00} m, carriageways 0x{span.CarriagewayMask:X}"
+                    + (span.FarCut ? $", stops {margin:0.0} m before the median" : "") + (span.NearCut ? $", starts {margin:0.0} m past a median between the kerb and the exit's lanes" : "")
+                    + (span.FromPieces ? ", median edges from its pieces" : ", median edges from the lane gap") + ")");
             }
             double gl = (compLeftIsGeomLeft ? footL : footR) + kerbInset, gr = (compLeftIsGeomLeft ? footR : footL) + kerbInset;
             // markings on this stretch: zebras at both end nodes, stop / give-way lines on the edge
@@ -464,7 +482,14 @@ namespace JunctionRules.Boxes
         /// m_Flags). 'side' = a point on the building's side; compLeft = that side is the composition's left (x &lt; 0), the
         /// same frame test as Entrance (EdgeGeometry m_Start.m_Left.a against the curve tangent). False = no composition.
         /// </summary>
-        internal static bool MedianSide(EntityManager em, Entity edge, float t, V2 side, out SideSpanResult span, out bool compLeft)
+        internal static bool MedianSide(EntityManager em, Entity edge, float t, V2 side, out SideSpanResult span, out bool compLeft) =>
+            MedianSide(em, edge, t, side, 0, out span, out compLeft);
+
+        /// <summary>
+        /// 0.4.12 (JR-T-018, G26): as above with the median pieces (Dividers) and 'margin' kept clear of a median's edge
+        /// (Core/MedianSplit.SideSpan).
+        /// </summary>
+        internal static bool MedianSide(EntityManager em, Entity edge, float t, V2 side, double margin, out SideSpanResult span, out bool compLeft)
         {
             span = new SideSpanResult { CarriagewayMask = MedianSplit.AllCarriageways };
             compLeft = true;
@@ -491,7 +516,72 @@ namespace JunctionRules.Boxes
                 NetLaneData ld = em.GetComponentData<NetLaneData>(l.m_Lane);
                 info.Add(new CompositionLaneInfo(l.m_Position.x, ld.m_Width, l.m_Carriageway, (int)(l.m_Flags | ld.m_Flags)));
             }
-            return MedianSplit.SideSpan(info, compLeft, out span);
+            return MedianSplit.SideSpan(info, Dividers(em, ce), compLeft, margin, out span);
+        }
+
+        /// <summary>
+        /// 0.4.12 (JR-T-018, G26): a composition's median / divider pieces: NetCompositionPiece with NetPieceFlags.BlockTraffic
+        /// (set from NetDividerPiece.m_BlockTraffic, NetInitializeSystem.cs 1276-1286; the same test RoadBuilder uses for its
+        /// own "is median", NetworkConfigExtensionsUtil.IsMedian), not Underground / Overhead (pipes, cables), x from
+        /// m_Offset.x - m_Size.x / 2 to m_Offset.x + m_Size.x / 2 (composition frame, as the lanes). Live 17 Nov: Sunset
+        /// Street 1155147 "Median Piece 2" x -1..1, Ironplace Avenue 663337 "Median Piece 2" x -1..1.
+        /// </summary>
+        internal static List<DividerInfo> Dividers(EntityManager em, Entity composition)
+        {
+            var r = new List<DividerInfo>();
+            if (composition == Entity.Null || !em.HasBuffer<NetCompositionPiece>(composition)) return r;
+            DynamicBuffer<NetCompositionPiece> pieces = em.GetBuffer<NetCompositionPiece>(composition, true);
+            for (int i = 0; i < pieces.Length; i++)
+            {
+                NetCompositionPiece p = pieces[i];
+                if ((p.m_PieceFlags & NetPieceFlags.BlockTraffic) == 0) continue;
+                if ((p.m_SectionFlags & (NetSectionFlags.Underground | NetSectionFlags.Overhead)) != 0) continue;
+                r.Add(new DividerInfo(p.m_Offset.x - p.m_Size.x * 0.5, p.m_Offset.x + p.m_Size.x * 0.5));
+            }
+            return r;
+        }
+
+        /// <summary>
+        /// 0.4.12 (JR-T-018, G26, owner 17 Nov 2026: junction boxes never paint over a median nose or island). An arm's
+        /// median at the junction is its NODE composition's divider piece (NetCompositionPiece with BlockTraffic, above
+        /// ground; Composition.m_StartNode / m_EndNode). Live 17 Nov, node 621408, Sunset Street arms 953631 / 1155147: the
+        /// node end carries "Median Intersection Piece 2" (flat road surface, no BlockTraffic: drivable) and "Median End
+        /// Piece 2" (BlockTraffic | PreserveShape: the raised nose, NetPieceData m_Width 2, m_Length 0.6; mesh z -0.3..0.3;
+        /// "Median End Piece 5": 5 x 1.6). The nose is added to 'into' as a strip across the median at the mouth, as long
+        /// (along the arm) as the piece (NetCompositionPiece.m_Size.z = NetPieceData.m_Length, NetCompositionHelpers.cs
+        /// 795-797), from the mouth inward: CarriagewayOutline.StopDistances then starts the box 'margin' past its junction
+        /// side and a nose past the kerb lines holds the mouth (as a zebra). Cross position: node composition x on the
+        /// node-end halves (m_Left = [outer left, middle], m_Right = [middle, outer right], split at m_MiddleOffset; the
+        /// node mesh's own mapping, BatchMeshHelpers.cs 650-656). A BlockTraffic piece WITHOUT PreserveShape on a node end
+        /// is a median running on through the junction (no median break): 'through' names it and the caller builds no box.
+        /// Returns how many noses were added.
+        /// </summary>
+        internal static int MedianNoses(EntityManager em, Entity edge, Entity node, List<CrosswalkStrip> into, out string through)
+        {
+            through = null;
+            if (!em.HasComponent<Edge>(edge) || !em.HasComponent<Composition>(edge)) return 0;
+            bool isStart = em.GetComponentData<Edge>(edge).m_Start == node;
+            Composition comp = em.GetComponentData<Composition>(edge);
+            Entity nc = isStart ? comp.m_StartNode : comp.m_EndNode;
+            if (nc == Entity.Null || !em.HasBuffer<NetCompositionPiece>(nc) || !em.HasComponent<NetCompositionData>(nc)) return 0;
+            if (isStart ? !em.HasComponent<StartNodeGeometry>(edge) : !em.HasComponent<EndNodeGeometry>(edge)) return 0;
+            EdgeNodeGeometry g = isStart ? em.GetComponentData<StartNodeGeometry>(edge).m_Geometry : em.GetComponentData<EndNodeGeometry>(edge).m_Geometry;
+            NetCompositionData ncd = em.GetComponentData<NetCompositionData>(nc);
+            var mouth = new NodeMouth(
+                new V2(g.m_Left.m_Left.a.x, g.m_Left.m_Left.a.z), new V2(g.m_Left.m_Right.a.x, g.m_Left.m_Right.a.z),
+                new V2(g.m_Right.m_Left.a.x, g.m_Right.m_Left.a.z), new V2(g.m_Right.m_Right.a.x, g.m_Right.m_Right.a.z),
+                ncd.m_Width, ncd.m_MiddleOffset);
+            float3 tl = MathUtils.Tangent(g.m_Left.m_Right, 0f), tr = MathUtils.Tangent(g.m_Right.m_Left, 0f);
+            V2 inward = new V2(tl.x + tr.x, tl.z + tr.z).Normalized;
+            DynamicBuffer<NetCompositionPiece> pieces = em.GetBuffer<NetCompositionPiece>(nc, true);
+            var list = new List<MedianPiece>();
+            for (int i = 0; i < pieces.Length; i++)
+            {
+                NetCompositionPiece p = pieces[i];
+                if ((p.m_SectionFlags & (NetSectionFlags.Underground | NetSectionFlags.Overhead)) != 0) continue;
+                list.Add(new MedianPiece(p.m_Offset.x, p.m_Size.x, p.m_Size.z, (p.m_PieceFlags & NetPieceFlags.BlockTraffic) != 0, (p.m_PieceFlags & NetPieceFlags.PreserveShape) != 0));
+            }
+            return MedianNose.AddStrips(mouth, inward, list, into, out through);
         }
 
         /// <summary>The edge's left kerb end at this node (EdgeGeometry m_Start.m_Left.a at the start node, m_End.m_Left.d at the end).</summary>
