@@ -145,6 +145,8 @@ namespace JunctionRules.Tests
             ("G21EntryTests", G21EntryTests),
             ("G21LogTests", G21LogTests),
             ("G21RepoTests", G21RepoTests),
+            ("G22Tests", G22Tests),
+            ("G22RepoTests", G22RepoTests),
             ("BoxWindowUnitTests", BoxWindowUnitTests),
             ("BoxScenarioTests", BoxScenarioTests),
             ("ChainTests", ChainTests),

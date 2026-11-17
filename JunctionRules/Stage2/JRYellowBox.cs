@@ -117,8 +117,13 @@ namespace JunctionRules.Stage2
                 if (Counting && currentSpeed < Stage2Counters.StandingSpeed)
                 {
                     // 0.4.10 probes (not counted at the right-turn spot, AddCounts): standing on the box's lanes, and a nose in the
-                    // box (front bumper past the stop line, rear still before it)
-                    if (inBox) m_BoxStoodInside = true;
+                    // box (front bumper past the stop line, rear still before it). 0.4.11 (G22): a car standing in the box under
+                    // the same-exit-lane exception is counted apart (allowed by the owner rule).
+                    if (inBox)
+                    {
+                        if (SameExitAdmits(lane, owner.m_Owner, laneLength, inverse, start, self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes)) m_BoxSameExitStanding = true;
+                        else m_BoxStoodInside = true;
+                    }
                     float fl = BoxDriving.FrontToLine(wait, margin);
                     if (BoxDriving.NoseIn(fl, m_VehicleLength)) { m_BoxNose = true; m_BoxStoodInside = true; }
                 }
@@ -133,6 +138,13 @@ namespace JunctionRules.Stage2
                     ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, freeNow: true);
                 m_QueuedTurnersMayStand = false;
                 if (!BoxDriving.Holds(a, room)) return float.MaxValue;
+                // 0.4.11 (G22, owner): a car from the lowest-priority approach may enter although its exit lane is full when the
+                // spot where it would wait (whole body) crosses only paths into that same exit lane (Core/SameExitException.cs).
+                if (SameExitAdmits(lane, owner.m_Owner, laneLength, inverse, start, self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes))
+                {
+                    m_BoxSameExitEntry = true;
+                    return float.MaxValue;
+                }
                 NoteLightPetition(hold);   // review R1
                 if (Counting)
                 {
@@ -368,6 +380,13 @@ namespace JunctionRules.Stage2
                 ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, freeNow: true);
             m_QueuedTurnersMayStand = false;
             if (room) return float.MaxValue;
+            // 0.4.11 (G22): the same-exit-lane exception also at the UK turn spot (a turner that entered under it is not stopped
+            // there, on a footprint the exception did not check; it still gives way to oncoming traffic by the gap rule).
+            if (SameExitAdmits(lane, owner.m_Owner, length, inverse, math.max(0f, m_Stretch.CurveX), self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes))
+            {
+                m_BoxSameExitEntry = true;
+                return float.MaxValue;
+            }
             NoteLightPetition(hold);   // review R1
             if (Counting)
             {

@@ -249,7 +249,11 @@ namespace JunctionRules.Core
         public const int EntryKeptClear = FeedingScans + 64;
         /// <summary>0.4.11 review 1 F3: car-steps in which a turner could no longer stop before its spot (box line / drive start) and went on unjudged (the game's own checks). Should be small: the judgement starts while it can still stop.</summary>
         public const int EntryCommitted = FeedingScans + 65;
-        public const int Count = FeedingScans + 66;
+        /// <summary>0.4.11 (G22): vehicles (episodes) that entered a junction box under the same-exit-lane exception (exit lane full, waiting footprint crosses only paths into that exit lane).</summary>
+        public const int BoxSameExitEntries = FeedingScans + 66;
+        /// <summary>0.4.11 (G22): car-steps standing in a junction box under that exception (not counted as 'standing inside a box').</summary>
+        public const int BoxSameExitStanding = FeedingScans + 67;
+        public const int Count = FeedingScans + 68;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -420,6 +424,9 @@ namespace JunctionRules.Core
                    (boxMask >= 2 ? "; box holds only because the queue past the box was moving (free-now rule) " + deltas[BoxHeldFreeNow].ToString(ci)
                        + "; standing with the front bumper past a box line (nose in the box) " + deltas[BoxNosePast].ToString(ci) + " (must be 0)"
                        + "; standing inside a box (not at the right-turn spot) " + deltas[BoxStoodInside].ToString(ci) : "") +
+                   // 0.4.11 (G22): the owner's same-exit-lane exception.
+                   (boxMask >= 2 ? "; entered a box under the same-exit-lane exception " + deltas[BoxSameExitEntries].ToString(ci)
+                       + " (standing in a box under it " + deltas[BoxSameExitStanding].ToString(ci) + ")" : "") +
                    "; " + points;
         }
     }

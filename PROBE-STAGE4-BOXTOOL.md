@@ -1722,3 +1722,48 @@ The shot's case (a westbound car ~28 m away at ~10 m/s): 0.4.10 turned, 0.4.11 w
 | 21-4 | Timing line end | `standing held for a gap` rises on busy roads; `at the drive start inside a box` ~0 |
 | 21-5 | Busy road with a stationary oncoming queue held before the entrance box | **owner question:** the turner waits for a queued vehicle standing within 10 m of its crossing (the exits' present rule, kept for consistency). UK practice would let it turn through the box gap. If turners wait behind such queues for long, say so: the change is one condition (a standing vehicle held before that box would not count) |
 | 21-6 | Lorries turning in on a busy road | long waits are expected (whole-length clear time); queues behind a waiting turner in its own lane are expected |
+
+### 21.7 G22: the same-exit-lane box exception (owner rule 17 Nov)
+
+Owner, verbatim: "Cars from a yielding (or if everyone is yielding, then the one getting STOP is 'prioritised' vs YIELD
+exits) approach: may enter a box whose exit is blocked iff the spot where the car would wait (its whole body) only crosses
+paths into the same exit lane it is queued for." (`Core/SameExitException.cs`, `Stage2/JRSameExit.cs`, hooks in
+`JRYellowBox.BoxHold` and `BoxTurnRoomHold`; job side only, no copy change.)
+
+Reading (as main's, plus three points stated):
+- **Junction boxes only.** Exit / entrance boxes keep G9 / G21 (a vehicle turning into a building never waits in the box).
+- **Eligible approach**, from the game's own sign flags on the junction's car lanes (Stop < Yield < none / RightOfWay):
+  with a priority approach at the junction every yielding approach (YIELD and STOP) qualifies; if every approach yields,
+  only the STOP approaches when STOP and YIELD are mixed; all-STOP or all-YIELD: every approach (point 1: the owner's text
+  does not cover these; "everyone equal" is the reading). Signalled / level-crossing / roundabout junctions: never (point
+  2: conservative). U-turn (Unsafe) and drive lanes do not count when ranking (an unsigned U-turn would look like a
+  priority road).
+- **Footprint** = where it would stand with the exit lane full: front a margin before the end of its junction lane, or
+  before an exit zebra (the zebra rule never lets it stand on one), or behind a vehicle already standing ahead on its own
+  junction lane (box chains); whole length incl. trailers + the room margin behind. Every overlap of its junction lane the
+  footprint touches must be a car lane ending in the SAME exit lane (`Lane.m_EndNode` equal). Any other car lane (a
+  through path, a path to another exit lane), any pedestrian crossing (point 3: conservative), any track: the normal rule
+  (wait before the box).
+- Only the ROOM test is replaced; giving way is untouched (whole junction, turn-across, UK right-turn spot). The exception
+  is also applied at the UK turn spot's room re-check (a turner that entered under it is not held there for room on a
+  footprint nobody checked).
+- **Combination**: no-nose / free-now room still bind everyone not admitted; a car standing in the box under the exception
+  is counted apart (`standing in a box under it`), not as `standing inside a box`. Box chains: the vehicle ahead moves the
+  footprint back (judged where it would really stand). G15 deadlock tests unchanged (entrance boxes). Deadlock: the car
+  blocks only paths into the exit lane it waits for; whoever it blocks needs that same full lane: no new wait cycle
+  (test: 5000 random footprints, every admitted one touches only same-exit paths).
+
+Tests (`G22Tests`): T junction with a YIELD side road: left turn (merge only) may enter; right turn, car may enter, artic
+(18.5 m) may not (its body reaches back over the westbound through path); a vehicle already waiting ahead pushes the
+footprint back over the through path (may not); exit zebra (footprint before it, may enter; on it, never); 4-way straight
+across: car may enter, 8 m van may not (crosses the opposite side road's right turn); a footprint on a through path to
+another exit: may not. Eligibility: T (YIELD yes, priority no), priority + YIELD + STOP (both), all-yield STOP vs YIELD
+(STOP only), all-STOP / all-YIELD (all), signals (never).
+
+Timing line (box rule on), at the end: `entered a box under the same-exit-lane exception N (standing in a box under it M)`.
+
+| # | Do | Expect |
+|---|---|---|
+| 22-1 | A boxed T with a YIELD side road and a queue in the exit lane | short side-road cars turning left (and right where the merge is the only thing under them) enter and queue; lorries wait at the line; the priority road is never blocked |
+| 22-2 | All-way junction with STOP and YIELD arms | only STOP-arm cars use the exception |
+| 22-3 | Timing line | the exception count rises where queues form; `standing inside a box` does not rise from it |

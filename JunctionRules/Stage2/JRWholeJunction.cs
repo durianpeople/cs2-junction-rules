@@ -300,6 +300,8 @@ namespace JunctionRules.Stage2
         /// <summary>G21 (counting): the entry gap hold (before the box line or at the drive start).</summary>
         private bool m_HasEntryGap;
         private float m_EntryGapSpeed;
+        /// <summary>G22 (counting): this car-step the same-exit-lane exception let the car into / on through a junction box without exit room; standing in a box under it.</summary>
+        private bool m_BoxSameExitEntry, m_BoxSameExitStanding;
         /// <summary>G21 review 1 (counting): the turn-in spot moved back to keep another drive's crossing clear; committed without a hold (could not stop before its spot).</summary>
         private bool m_EntryKeptClear, m_EntryCommitted;
         /// <summary>G21 box rule: the curve lookup kept by BoxHold (S2-28) for BeginLane's WayInBoxed.</summary>
@@ -1731,6 +1733,9 @@ namespace JunctionRules.Stage2
             if (m_EntryJudgedOther) Add(counters, Stage2Counters.EntryJudgedOther, 1);
             if (m_EntryWholePathSkipped) Add(counters, Stage2Counters.EntryBoxedWayWholePathSkipped, 1);
             if (m_EntryKeptClear) Add(counters, Stage2Counters.EntryKeptClear, 1);
+            // 0.4.11 (G22): entries under the same-exit-lane exception (one per vehicle episode), standing in a box under it (car-steps)
+            if (m_BoxSameExitEntry && ExitEvent(eventTable, entity, frame, ExitGiveWay.SameExitEntryKind)) Add(counters, Stage2Counters.BoxSameExitEntries, 1);
+            if (m_BoxSameExitStanding && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.BoxSameExitStanding, 1);
             if (m_EntryCommitted) Add(counters, Stage2Counters.EntryCommitted, 1);
             if (Stage2Counters.IsStandingOn(m_HasEntryGap, m_EntryGapSpeed, finalMaxSpeed, currentSpeed))
             {
