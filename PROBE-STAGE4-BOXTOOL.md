@@ -1452,3 +1452,40 @@ mouth-margin question: tell main if one shows up. (c) A bus stopping at a stop i
 is the bus's target). (d) The free-now counter (20.2) is an upper bound (review F6). (e) The driving list now caches
 each box's window by its own inputs (road, mouths, crossings / stop lines, exit point). A failure there keeps the last
 good boxes and logs once (review F1).
+
+### 20.7 Owner: "if the car can't clear the whole thing, the car should not enter the box" (hard invariant)
+
+**Where the front bumper stops.** The game measures the distance to a stop point from the vehicle's FRONT BUMPER (the
+copy's IterateFirstLane: `num2 = m_Distance - bounds.max.z`; for an artic the tractor's front). A box hold stops the
+front 0.9 m (car) before the painted line. A car is held only if it can still stop there: the game's can-stop test,
+braking distance <= distance to the line. A car that cannot stop any more is already committed and carries on. A
+property test (20000 random approaches) proves it: every car the rule can hold can stop with its front at or before
+the line, and a car whose front is past the line is never "held" there. The only exception is the UK right-turn spot
+(owner setting).
+
+**Deciding early enough.** The room test runs from the moment the car must start braking for the line. Two changes
+make sure the room it sees then is still there when it arrives:
+1. Vehicles ahead of it count as going first: those in the box, and now also those between the car and the line. A car
+   following another into a box gets room only for both.
+2. A light past the box: a red / amber light inside the room = no room (20.5).
+
+**Counters (end of the timing line):** `front bumper past a box line while held N (must be 0)`, and
+`standing inside a box (not at the right-turn spot) N`. The second is what the owner would see as "a car stopped in
+the box"; expected ~0, with only the residuals of 20.6 able to cause it.
+
+**Review R1 (final Sonnet review): the light request.** A signal changes only to a group a car has asked for, and a car
+asks only when its look-ahead reaches the signal's lane (TrafficLightSystem.GetNextSignalGroup; the copy's
+IterateNextLane `needSignal`). A car held before a box for the light never got that far (its look-ahead ends at its
+hold), so on a quiet approach nobody asked: the light would never turn green. New block S2-52: such a car asks that
+light for green itself, with the game's own request. Model: without it 19 of 20 Alderbrook runs never drain; with it
+all 20 do.
+
+**Model result (BoxScenarioTests).** Each vehicle kind has its own braking and acceleration, the light is
+demand-driven, and there are 20 seeds incl. heavy jams. Front bumper past a line while held: **0**. Standing in a
+painted box: **0**, apart from the light-change residual (20.6 a), which is 1465 vehicle-steps against 18702 under
+0.4.9's rules at the same light. Everything drains.
+
+| # | Do | Expect |
+|---|---|---|
+| 20-8 | Timing line | `front bumper past a box line while held 0` always; `standing inside a box` small |
+| 20-9 | A quiet signalised approach with a box just before the light (Alderbrook north, bus / artic) | the held vehicle gets green (no endless red) |
