@@ -302,6 +302,8 @@ namespace JunctionRules.Stage2
         private float m_EntryGapSpeed;
         /// <summary>G21 (counting): of those, held at the drive start INSIDE a box (could no longer stop before the box line).</summary>
         private bool m_EntryGapInBox;
+        /// <summary>G21 (counting, owner: every access): of the judged / held, at an UNBOXED access; judged at a gate / lot / parking way in.</summary>
+        private bool m_EntryJudgedUnboxed, m_EntryGapUnboxed, m_EntryJudgedOther;
         /// <summary>G21 (counting): an entrant's scan did not wait for a standing vehicle that itself waits to turn in.</summary>
         private bool m_EntryEntrantIgnored;
         /// <summary>G17: the vehicle the current hook's hold waits for (HoldBlocker).</summary>
@@ -1710,10 +1712,13 @@ namespace JunctionRules.Stage2
             if (m_ExitEntrantIgnored) Add(counters, Stage2Counters.ExitEntrantIgnored, 1);   // 0.4.9 (G15)
             // 0.4.11 (G21): turning into a building gives way (car-steps; the event table's EntryGapHeldKind is the driving record)
             if (m_EntryJudged) Add(counters, Stage2Counters.EntryJudged, 1);
+            if (m_EntryJudgedUnboxed) Add(counters, Stage2Counters.EntryJudgedUnboxed, 1);
+            if (m_EntryJudgedOther) Add(counters, Stage2Counters.EntryJudgedOther, 1);
             if (Stage2Counters.IsStandingOn(m_HasEntryGap, m_EntryGapSpeed, finalMaxSpeed, currentSpeed))
             {
                 Add(counters, Stage2Counters.EntryGapHeld, 1);
                 if (m_EntryGapInBox) Add(counters, Stage2Counters.EntryGapHeldInBox, 1);
+                if (m_EntryGapUnboxed) Add(counters, Stage2Counters.EntryGapHeldUnboxed, 1);
             }
             if (m_EntryEntrantIgnored) Add(counters, Stage2Counters.EntryEntrantIgnored, 1);
             if (Stage2Counters.IsBinding(m_HasBoxFreeNow, m_BoxFreeNowSpeed, finalMaxSpeed)) Add(counters, Stage2Counters.BoxHeldFreeNow, 1);   // 0.4.10 (G19)

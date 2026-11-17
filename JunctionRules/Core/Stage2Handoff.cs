@@ -237,7 +237,13 @@ namespace JunctionRules.Core
         public const int EntryGapHeldInBox = FeedingScans + 58;
         /// <summary>0.4.11 (G21): car-steps in which an entrant's gap scan did not wait for a standing vehicle that itself waits to turn into a building.</summary>
         public const int EntryEntrantIgnored = FeedingScans + 59;
-        public const int Count = FeedingScans + 60;
+        /// <summary>0.4.11 (G21, owner: every access, boxed or not): of the judged car-steps, at an UNBOXED access.</summary>
+        public const int EntryJudgedUnboxed = FeedingScans + 60;
+        /// <summary>0.4.11 (G21): of the standing held car-steps, at an UNBOXED access (waits where the way in leaves its lane).</summary>
+        public const int EntryGapHeldUnboxed = FeedingScans + 61;
+        /// <summary>0.4.11 (G21): judged car-steps at a gate / lot / building parking way in that crosses a road lane (expected rare: the game ties those to the nearest lane).</summary>
+        public const int EntryJudgedOther = FeedingScans + 62;
+        public const int Count = FeedingScans + 63;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -396,8 +402,9 @@ namespace JunctionRules.Core
                    // 0.4.11 (G21): vehicles turning into buildings give way (same setting).
                    (exitMask >= 2
                        ? "; turning into buildings: judged for a gap " + deltas[EntryJudged].ToString(ci) +
+                         " (unboxed " + deltas[EntryJudgedUnboxed].ToString(ci) + ", gate / lot / parking " + deltas[EntryJudgedOther].ToString(ci) + ")" +
                          ", standing held for a gap " + deltas[EntryGapHeld].ToString(ci) +
-                         " (of them at the drive start inside a box " + deltas[EntryGapHeldInBox].ToString(ci) + ")" +
+                         " (unboxed " + deltas[EntryGapHeldUnboxed].ToString(ci) + "; at the drive start inside a box " + deltas[EntryGapHeldInBox].ToString(ci) + ")" +
                          ", not waiting for another vehicle waiting to turn in " + deltas[EntryEntrantIgnored].ToString(ci)
                        : "") +
                    // 0.4.10 (G19): newest, at the end.

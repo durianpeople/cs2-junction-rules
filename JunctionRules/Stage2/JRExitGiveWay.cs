@@ -246,14 +246,25 @@ namespace JunctionRules.Stage2
         }
 
         /// <summary>
-        /// 0.4.11 (JR-T-017, G21; Core/EntryGiveWay.cs): the hold for a vehicle on a ROAD lane whose next path lane is a drive's
-        /// way IN (SideConnection without Yield, laid by LaneSystem.CreateEdgeConnectionLane from this lane). Reached through the
-        /// S2-29 call (CheckOverlappingLanes of every lane the iterator walks, the current lane included), so the decision is
-        /// taken while the vehicle is still on its own lane with every stock lookup at hand: no new copy block. Spot = the
-        /// painted box line when the way in leaves inside a box on this lane (the band containing the drive start, LaneBands,
-        /// the paint's own windows), else where the way in leaves this lane. The crossed road lanes of the way in (its
-        /// LaneOverlap entries, not the lane it leaves) are judged as an exit's crossed lanes, with the time to CLEAR each with
-        /// the whole vehicle. Returns the speed limit or float.MaxValue; the blocker is the road vehicle it gives way to.
+        /// 0.4.11 (JR-T-017, G21; Core/EntryGiveWay.cs): the hold for a vehicle on a ROAD lane whose next path lane is a way
+        /// INTO a building. Owner (17 Nov): every building access, boxed or not; the box only adds "wait before the box" and
+        /// "room in the entrance". Two kinds of way in:
+        /// <list type="bullet">
+        /// <item>A drive's way in (SideConnection without Yield, laid by LaneSystem.CreateEdgeConnectionLane from EVERY road
+        /// lane, the far one too: the G21 case). Crossed lanes = its own LaneOverlap entries with road car lanes (not the
+        /// lane it leaves).</item>
+        /// <item>A building's Connection lane (car park gate), a lot's Area lane or a building's parking lane (navigation flags
+        /// Connection / Area / ParkingSpace). The game ties these to ONE road lane, the nearest (Game.Net/LaneConnectionSystem
+        /// 291-306, Game.Pathfind/LanesModifiedSystem 369-378), and spawn-point targets only to lanes of the same direction
+        /// (Game.Pathfind/PathfindTargetSeeker 1483-1486), so they normally cross nothing; where the building-side end of the
+        /// way in lies beyond another road lane anyway, that lane is crossed (lateral geometry, as the exits' ExitJoinWaits).</item>
+        /// </list>
+        /// Reached through the S2-29 call (CheckOverlappingLanes of every lane the iterator walks, the current lane included),
+        /// so the decision is taken while the vehicle is still on its own lane: no new copy block. Spot = the painted box line
+        /// when the way in leaves inside a box on this lane (LaneBands, the paint's own windows), else where the way in leaves
+        /// this lane (unboxed accesses: the same judgement there). Crossed lanes are judged as an exit's crossed lanes with
+        /// the time to CLEAR each with the whole vehicle. Returns the speed limit or float.MaxValue; the blocker is the road
+        /// vehicle it gives way to.
         /// </summary>
         private float EntryRoadHold(Entity lane, Game.Net.CarLane own, float curveX, float length, float origDistance, float margin, bool inverse,
             int priority, CarData car, float currentSpeed, float timeStep, float safeTimeStep, Bounds1 speedRange, float currentMax, Entity self,
@@ -265,22 +276,49 @@ namespace JunctionRules.Stage2
             // A drive lane itself (a way in or out) is never the lane a vehicle turns in from; only a path that continues onto a way in.
             if ((own.m_Flags & Game.Net.CarLaneFlags.SideConnection) != 0 || !m_HasPath) return float.MaxValue;
             if (!PathLaneAfter(lane, out CarNavigationLane nextNav)) return float.MaxValue;
-            Entity drive = nextNav.m_Lane;
-            if (!carLanes.TryGetComponent(drive, out Game.Net.CarLane driveLane) || !EntryGiveWay.IsDrivewayEntryLane((uint)driveLane.m_Flags)) return float.MaxValue;
+            Entity way = nextNav.m_Lane;
+            bool isDrive = false;
+            Game.Net.CarLane wayLane = default;
+            if ((nextNav.m_Flags & EntryOtherFlags) != 0)
+            {
+                // Gate / parking must belong to a building; a lot's area lane needs no owner chain (as the exits).
+                if ((nextNav.m_Flags & Game.Vehicles.CarLaneFlags.Area) == 0 && !LeavesBuilding(way)) return float.MaxValue;
+            }
+            else if (carLanes.TryGetComponent(way, out wayLane) && EntryGiveWay.IsDrivewayEntryLane((uint)wayLane.m_Flags)) isDrive = true;
+            else return float.MaxValue;
             if (!EntryGiveWay.Applies(true, priority)) return float.MaxValue;   // on-duty emergency vehicle: stock
-            if (!overlapData.TryGetBuffer(drive, out DynamicBuffer<LaneOverlap> driveOverlaps) || driveOverlaps.Length == 0) return float.MaxValue;
-            if (!curves.TryGetComponent(lane, out Curve roadCurve) || !curves.TryGetComponent(drive, out Curve driveCurve)) return float.MaxValue;
-            // The crossed road lanes of the way in. None (a turn in that only leaves its own lane: left in, left-hand traffic): no wait.
+            if (!curves.TryGetComponent(lane, out Curve roadCurve) || !curves.TryGetComponent(way, out Curve wayCurve)) return float.MaxValue;
+            // Where the way in leaves this lane and where it ends (the building side).
+            float3 leavePoint, sidePoint;
+            if (isDrive) { leavePoint = wayCurve.m_Bezier.a; sidePoint = wayCurve.m_Bezier.d; }
+            else
+            {
+                float da = MathUtils.Distance(roadCurve.m_Bezier.xz, wayCurve.m_Bezier.a.xz, out _);
+                float dd = MathUtils.Distance(roadCurve.m_Bezier.xz, wayCurve.m_Bezier.d.xz, out _);
+                leavePoint = da <= dd ? wayCurve.m_Bezier.a : wayCurve.m_Bezier.d;
+                sidePoint = da <= dd ? wayCurve.m_Bezier.d : wayCurve.m_Bezier.a;
+            }
+            MathUtils.Distance(roadCurve.m_Bezier.xz, leavePoint.xz, out float tLeave);
+            // The crossed road lanes. None (a left turn in, left-hand traffic; a gate on its own lane): no wait.
+            DynamicBuffer<LaneOverlap> wayOverlaps = default;
+            FixedList128Bytes<Entity> geoLanes = default;
+            FixedList64Bytes<float> geoAt = default, geoLateral = default;
             bool any = false;
-            for (int i = 0; i < driveOverlaps.Length && !any; i++) any = EntryConflict(driveOverlaps[i], lane, ref carLanes, out _, out _);
+            if (isDrive)
+            {
+                if (!overlapData.TryGetBuffer(way, out wayOverlaps) || wayOverlaps.Length == 0) return float.MaxValue;
+                for (int i = 0; i < wayOverlaps.Length && !any; i++) any = EntryConflict(wayOverlaps[i], lane, ref carLanes, out _, out _);
+            }
+            else
+            {
+                any = EntryGeometricCrossings(lane, roadCurve, tLeave, sidePoint, ref carLanes, ref curves, ref geoLanes, ref geoAt, ref geoLateral);
+            }
             if (!any) return float.MaxValue;
-            // Where the way in leaves this lane: its curve starts on this lane's curve (LaneSystem 3794-3803: Position(curve, t2)).
-            MathUtils.Distance(roadCurve.m_Bezier.xz, driveCurve.m_Bezier.a.xz, out float tLeave);
             float start = StretchGeometry.ToDriving(curveX, inverse);
             float leave = StretchGeometry.ToDriving(tLeave, inverse);
             if (leave < start - WholePathRule.SpotEpsilon) return float.MaxValue;
             float driveStartWait = origDistance + length * (leave - start);
-            // The box: the painted band on this lane that contains the drive start (the paint's own windows, 0.4.10 LaneWindow).
+            // The box: the painted band on this lane that contains the leave point (the paint's own windows, 0.4.10 LaneWindow).
             bool boxed = false, inBox = false;
             float boxLineWait = 0f, bandStart = 0f;
             if (m_BoxRule && m_BoxEntrances && m_BoxLookups && m_EdgeLaneData.HasComponent(lane) && m_OwnerData.TryGetComponent(lane, out Owner edgeOwner)
@@ -305,7 +343,8 @@ namespace JunctionRules.Stage2
             float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, wait > 0f ? wait : 0f, safeTimeStep), speedRange);
             // Cheap for a queue: further back than JudgeNearMetres and held harder by something else = not yet.
             if (!ExitGiveWay.MustJudge(hold, currentMax, wait)) return float.MaxValue;
-            float driveSpeed = VehicleUtils.GetMaxDriveSpeed(car, driveLane);   // the way in's own limit and bend (curviness)
+            // The way in's own limit and bend (a drive lane), else the road lane's (a gate / lot / parking connection).
+            float driveSpeed = VehicleUtils.GetMaxDriveSpeed(car, isDrive ? wayLane : own);
             ExitReads reads = default;
             reads.m_Self = self;
             reads.m_OwnLane = lane;
@@ -323,26 +362,46 @@ namespace JunctionRules.Stage2
             GameMotion motion = default;
             motion.m_Car = car;
             float ownLength = m_VehicleLength > 0f ? m_VehicleLength : 4f;
-            float toDriveStart = driveStartWait + margin;   // front to the drive start (the stop margin added back)
+            float toDriveStart = driveStartWait + margin;   // front to the leave point (the stop margin added back)
             bool busy = false;
-            int judged = 0;
             m_EntryScan = true;
-            for (int i = 0; i < driveOverlaps.Length && !busy && !budget.m_CapHit; i++)
+            if (isDrive)
             {
-                LaneOverlap o = driveOverlaps[i];
-                if (!EntryConflict(o, lane, ref carLanes, out float s, out float e)) continue;
-                if (++judged > ExitGiveWay.MaxConflictLanes) break;
-                if (!curves.TryGetComponent(o.m_Other, out Curve otherCurve)) continue;
-                float a = o.m_OtherStart * WholePathRule.ByteToOffset, b = o.m_OtherEnd * WholePathRule.ByteToOffset;
-                float oS = math.min(a, b) * otherCurve.m_Length, oE = math.max(a, b) * otherCurve.m_Length;
-                float dist = EntryGiveWay.ClearMetres(toDriveStart, driveCurve.m_Length * s, driveCurve.m_Length * (e - s), ownLength);
-                float delta = ArrivalTime.Compute(ref motion, dist, currentSpeed, driveSpeed, 0f, timeStep);
-                busy = ConflictBusy(o.m_Other, otherCurve, oS, oE, delta, ref reads, ref budget);
+                int judged = 0;
+                for (int i = 0; i < wayOverlaps.Length && !busy && !budget.m_CapHit; i++)
+                {
+                    LaneOverlap o = wayOverlaps[i];
+                    if (!EntryConflict(o, lane, ref carLanes, out float s, out float e)) continue;
+                    if (++judged > ExitGiveWay.MaxConflictLanes) break;
+                    if (!curves.TryGetComponent(o.m_Other, out Curve otherCurve)) continue;
+                    float a = o.m_OtherStart * WholePathRule.ByteToOffset, b = o.m_OtherEnd * WholePathRule.ByteToOffset;
+                    float oS = math.min(a, b) * otherCurve.m_Length, oE = math.max(a, b) * otherCurve.m_Length;
+                    float dist = EntryGiveWay.ClearMetres(toDriveStart, wayCurve.m_Length * s, wayCurve.m_Length * (e - s), ownLength);
+                    float delta = ArrivalTime.Compute(ref motion, dist, currentSpeed, driveSpeed, 0f, timeStep);
+                    busy = ConflictBusy(o.m_Other, otherCurve, oS, oE, delta, ref reads, ref budget);
+                }
+            }
+            else
+            {
+                for (int i = 0; i < geoLanes.Length && !busy && !budget.m_CapHit; i++)
+                {
+                    Entity c = geoLanes[i];
+                    if (!curves.TryGetComponent(c, out Curve cc)) continue;
+                    float cm = geoAt[i] * cc.m_Length;
+                    float dist = EntryGiveWay.ClearMetres(toDriveStart, geoLateral[i] - ExitCrossHalfWidth, 2f * ExitCrossHalfWidth, ownLength);
+                    float delta = ArrivalTime.Compute(ref motion, dist, currentSpeed, driveSpeed, 0f, timeStep);
+                    busy = ConflictBusy(c, cc, cm - ExitCrossHalfWidth, cm + ExitCrossHalfWidth, delta, ref reads, ref budget);
+                }
             }
             m_EntryScan = false;
             if (Counting && budget.m_CapHit) m_ExitCapHit = true;
             NoteBudget(budget);
-            if (Counting) m_EntryJudged = true;
+            if (Counting)
+            {
+                m_EntryJudged = true;
+                if (!boxed) m_EntryJudgedUnboxed = true;
+                if (!isDrive) m_EntryJudgedOther = true;
+            }
             if (!EntryGiveWay.Holds(true, spot, !busy)) return float.MaxValue;
             // Waiting to turn in: other entrants' gap scans do not treat this standing vehicle as present (no facing-entrances loop).
             NoteEntryGapHeld(self);
@@ -353,8 +412,42 @@ namespace JunctionRules.Stage2
             {
                 Min(ref m_HasEntryGap, ref m_EntryGapSpeed, hold);
                 if (boxed && spot == EntryGiveWay.Spot.DriveStart) m_EntryGapInBox = true;
+                if (!boxed) m_EntryGapUnboxed = true;
             }
             return hold;
+        }
+
+        /// <summary>0.4.11 (G21): navigation flags of a way into a building that is not a drive lane (gate, lot, building parking).</summary>
+        private const Game.Vehicles.CarLaneFlags EntryOtherFlags = Game.Vehicles.CarLaneFlags.Connection | Game.Vehicles.CarLaneFlags.Area | Game.Vehicles.CarLaneFlags.ParkingSpace;
+
+        /// <summary>
+        /// 0.4.11 (G21): the car lanes of the road edge that lie between the vehicle's own lane (at the leave point tLeave) and
+        /// the building-side end of its way in, by lateral offset (Core EntryGiveWay.CrossedLateral). Not its own lane, not a
+        /// drive lane. Up to ExitGiveWay.MaxConflictLanes: lane, its curve position nearest the leave point, its lateral metres.
+        /// </summary>
+        private bool EntryGeometricCrossings(Entity lane, Curve roadCurve, float tLeave, float3 sidePoint, ref ComponentLookup<Game.Net.CarLane> carLanes,
+            ref ComponentLookup<Curve> curves, ref FixedList128Bytes<Entity> lanes, ref FixedList64Bytes<float> at, ref FixedList64Bytes<float> lateralOut)
+        {
+            if (!m_OwnerData.TryGetComponent(lane, out Owner roadOwner) || !m_SubLanes.TryGetBuffer(roadOwner.m_Owner, out DynamicBuffer<Game.Net.SubLane> roadLanes)) return false;
+            float3 leave = MathUtils.Position(roadCurve.m_Bezier, tLeave);
+            float3 tangent = MathUtils.Tangent(roadCurve.m_Bezier, tLeave);
+            float2 normal = math.normalizesafe(new float2(-tangent.z, tangent.x));
+            float sideLateral = math.dot(sidePoint.xz - leave.xz, normal);
+            float sign = sideLateral >= 0f ? 1f : -1f;
+            sideLateral *= sign;
+            for (int i = 0; i < roadLanes.Length && lanes.Length < ExitGiveWay.MaxConflictLanes; i++)
+            {
+                Entity c = roadLanes[i].m_SubLane;
+                if (c == lane || !carLanes.TryGetComponent(c, out Game.Net.CarLane cl) || (cl.m_Flags & Game.Net.CarLaneFlags.SideConnection) != 0) continue;
+                if (!curves.TryGetComponent(c, out Curve cc)) continue;
+                MathUtils.Distance(cc.m_Bezier.xz, leave.xz, out float tc);
+                float lateral = math.dot(MathUtils.Position(cc.m_Bezier, tc).xz - leave.xz, normal) * sign;
+                if (!EntryGiveWay.CrossedLateral(lateral, sideLateral)) continue;
+                lanes.Add(c);
+                at.Add(tc);
+                lateralOut.Add(lateral);
+            }
+            return lanes.Length > 0;
         }
 
         /// <summary>0.4.11 (G21): an overlap of a drive's way in that the entry give-way judges (Core EntryGiveWay.IsCrossedRoad), driving coordinates of the way in.</summary>

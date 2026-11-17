@@ -1640,9 +1640,17 @@ gap that was long enough to reach the lane but not to clear it.
 `Stage2/JRExitGiveWay.cs EntryRoadHold` (rule in `Core/EntryGiveWay.cs`), reached through the existing S2-29 call with
 the ROAD lane (every lane the vehicle's look-ahead walks, its current lane included): no new copy block.
 
-1. Only a path whose next lane is a way in (`SideConnection` without `Yield`); on-duty emergency vehicles: stock.
-2. The lanes judged: the way in's overlaps with road car lanes it CROSSES (not the lane it leaves: a merge at its start;
-   not another drive lane; not water). None (a left turn in, left-hand traffic) = no wait.
+1. **Every building access, boxed or not (owner, 17 Nov).** The box only adds "wait before the box" and "room in the
+   entrance". A path whose next lane is a way in: a drive's way in (`SideConnection` without `Yield`; the G21 case, laid
+   from every road lane, the far one too), or a building's car park gate (`Connection`), a lot (`Area`) or a building's
+   parking lane. On-duty emergency vehicles: stock.
+2. The lanes judged. Drive: the way in's overlaps with road car lanes it CROSSES (not the lane it leaves: a merge at its
+   start; not another drive lane; not water). Gate / lot / parking: the game ties these to the ONE nearest road lane
+   (`LaneConnectionSystem` 291-306, `LanesModifiedSystem` 369-378) and spawn-point targets only to lanes of the same
+   direction (`PathfindTargetSeeker` 1483-1486), so they normally cross nothing; where the building-side end of the way in
+   lies beyond another road lane anyway, that lane is crossed (lateral geometry, as the exits). None (a left turn in,
+   left-hand traffic; a gate on its own side) = no wait. A building road meeting the public road at a JUNCTION is a
+   junction turn: the Whole junction rule and the 0.2.4 turn-across rule decide it (unchanged).
 3. Where it waits: the painted box line when the way in leaves inside a box on that lane (0.4.10 painted windows,
    `LaneBands`), else where the way in leaves its own lane (the drive start: the whole vehicle is still in its own lane).
    If it can no longer stop before the box line it is judged at the drive start (counter `of them at the drive start
@@ -1666,19 +1674,20 @@ standing facing-entrant scenes, no mutual wait.
 gap 2..150 m and 1..22 m/s, 3278 scenes; "unsafe go" = the oncoming vehicle reaches the lane before the turner has
 cleared it):
 
-| Turner | 0.4.10 own time used | 0.4.10 unsafe goes | 0.4.11 own time used | 0.4.11 unsafe goes |
-|---|---|---|---|---|
-| car 4.5 m | reach 0.60 s | 0 | clear from the box line 4.07 s | 0 |
-| van 6.5 m | reach 0.79 s | 149 | 4.88 s | 0 |
-| artic 18.5 m | reach 1.09 s | 858 | 7.98 s | 0 |
+| Turner | 0.4.10 own time used | 0.4.10 unsafe goes | 0.4.11 boxed: clear from the box line | unboxed: clear from the drive start | 0.4.11 unsafe goes (both) |
+|---|---|---|---|---|---|
+| car 4.5 m | reach 0.60 s | 0 | 4.07 s | 3.40 s | 0 |
+| van 6.5 m | reach 0.79 s | 149 | 4.88 s | 4.21 s | 0 |
+| artic 18.5 m | reach 1.09 s | 858 | 7.98 s | 7.32 s | 0 |
 
 The shot's case (a westbound car ~28 m away at ~10 m/s): 0.4.10 turned, 0.4.11 waits before the box. Price: more waiting
 (the van waits in more scenes than in 0.4.10), most for lorries on a busy road.
 
 ### 21.5 Log and counters
 
-- Timing line (exit setting on), at the end: `turning into buildings: judged for a gap N, standing held for a gap M (of
-  them at the drive start inside a box K), not waiting for another vehicle waiting to turn in J`.
+- Timing line (exit setting on), at the end: `turning into buildings: judged for a gap N (unboxed U, gate / lot / parking
+  G), standing held for a gap M (unboxed V; at the drive start inside a box K), not waiting for another vehicle waiting to
+  turn in J`. G is expected ~0 (see 21.4 item 2); non-zero = a gate / lot whose way in crosses a lane (now judged).
 - Entrance log (boxed entrances, always on): sample `held before the box (way in has room; waits for a gap in the traffic
   its turn crosses)`, notable `held before the box 30 s waiting for a gap ...`, summary `X held before the box for a gap
   in the traffic their turn crosses (Y over 30 s)`. The 0.4.10 notable `stands in the box 30 s (way in has room: waiting

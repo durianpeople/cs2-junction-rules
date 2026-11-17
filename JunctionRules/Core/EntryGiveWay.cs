@@ -72,6 +72,15 @@ namespace JunctionRules.Core
             return WholePathRule.IsYieldChecked(overlapFlags, false);
         }
 
+        /// <summary>
+        /// 0.4.11 (owner: every building access): a road lane lies between the vehicle's own lane and the building-side end of a
+        /// gate / lot / parking way in, by lateral offset across the road at the leave point (metres, positive towards the
+        /// building side): crossed when it is clearly beside its own lane (more than ExitGiveWay.JoinTolerance) and nearer
+        /// than the building-side end.
+        /// </summary>
+        public static bool CrossedLateral(float laneLateral, float buildingSideLateral) =>
+            laneLateral > ExitGiveWay.JoinTolerance && laneLateral < buildingSideLateral;
+
         public enum Spot : byte
         {
             /// <summary>Committed: past the drive start or unable to stop before it (the game's own checks).</summary>
