@@ -1443,9 +1443,11 @@ namespace JunctionRules.Stage2
                 if (((int)o.m_Flags & WholePathRule.Water) != 0) continue;
                 float a = o.m_ThisStart * WholePathRule.ByteToOffset, b = o.m_ThisEnd * WholePathRule.ByteToOffset;
                 float s = inverse ? 1f - b : a, e = inverse ? 1f - a : b;
-                if (pedestrianLanes.HasComponent(o.m_Other))
+                if (pedestrianLanes.TryGetComponent(o.m_Other, out Game.Net.PedestrianLane wp))
                 {
-                    if (e * wayOutLength > walkEnd) walkEnd = e * wayOutLength;
+                    // 0.4.12 (owner decision): the footprint may lie over the drive's sidewalk band / a non-zebra crossing;
+                    // only a zebra limits it (walkEnd). walkStart (any pavement) still marks "front on the pavement" for the latch.
+                    if (PedestrianBlocksAsZebra(o.m_Other, (int)wp.m_Flags, ref curves) && e * wayOutLength > walkEnd) walkEnd = e * wayOutLength;
                     if (walkStart < 0f || s * wayOutLength < walkStart) walkStart = s * wayOutLength;
                     continue;
                 }
@@ -1484,6 +1486,7 @@ namespace JunctionRules.Stage2
                 {
                     LaneOverlap o = jo[i];
                     if (o.m_Other == wayOut || ((int)o.m_Flags & WholePathRule.Water) != 0) continue;
+                    if (pedestrianLanes.TryGetComponent(o.m_Other, out Game.Net.PedestrianLane jp) && !PedestrianBlocksAsZebra(o.m_Other, (int)jp.m_Flags, ref curves)) continue;   // 0.4.12 owner: non-zebra path OK
                     StretchGeometry.ToConflict((int)o.m_Flags, o.m_ThisStart, o.m_ThisEnd, inverseJ, false, out float s, out float e);
                     if (ExitSameLane.TouchesOther(s * joinCurve.m_Length, e * joinCurve.m_Length, from, to)) return;
                 }

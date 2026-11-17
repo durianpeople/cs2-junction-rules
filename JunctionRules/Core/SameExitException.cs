@@ -94,7 +94,29 @@ namespace JunctionRules.Core
             OtherExit = 1,
             /// <summary>A pedestrian crossing / track / anything else (conservative: no).</summary>
             Other = 2,
+            /// <summary>
+            /// 0.4.12 (owner decision 17 Nov: "for this exception, it is allowed to block non-zebra and pavement pedestrian
+            /// paths"): a pedestrian path that is NOT a zebra (<see cref="BlocksAsZebra"/> false): an unmarked crossing, a
+            /// crossing on a pedestrian-street (tiled) arm, a pavement / footway path. May lie under the footprint.
+            /// </summary>
+            Pavement = 3,
         }
+
+        public const int PedCrosswalk = ZebraSections.PedestrianCrosswalk, PedUnsafe = ZebraSections.PedestrianUnsafe;   // Game.Net.PedestrianLaneFlags
+
+        /// <summary>
+        /// 0.4.12 (owner decision): a pedestrian path the same-exit-lane exception must never block = a ZEBRA: the game's marked
+        /// crosswalk (PedestrianLaneFlags.Crosswalk without Unsafe, LaneSystem.cs 8571-8580) on an arm whose node composition is
+        /// not paved with tiles (CompositionFlags.General.Tiles 0x8000000: a pedestrian street; its crosswalk lane has the
+        /// Crosswalk flag but no zebra stripes are drawn - 621408's Lilac Street arm, owner shot 9dbe8128). tiledArmKnown false
+        /// = the arm could not be read: treated as a zebra (conservative). Unmarked crossings (Unsafe) and footway / pavement
+        /// lanes (no Crosswalk flag, incl. a drive's sidewalk band) are not zebras.
+        /// </summary>
+        public static bool BlocksAsZebra(int pedestrianFlags, bool tiledArm) =>
+            (pedestrianFlags & PedCrosswalk) != 0 && (pedestrianFlags & PedUnsafe) == 0 && !tiledArm;
+
+        /// <summary>The footprint kind of a pedestrian path (0.4.12 owner decision).</summary>
+        public static Path PedestrianKind(int pedestrianFlags, bool tiledArm) => BlocksAsZebra(pedestrianFlags, tiledArm) ? Path.Other : Path.Pavement;
 
         /// <summary>The footprint [from, to] admits the car: every overlap range [s, e] (metres) it touches is a SameExit path.</summary>
         public static bool Admits<T>(float from, float to, ref T paths) where T : struct, IFootprintPaths
@@ -102,7 +124,7 @@ namespace JunctionRules.Core
             for (int i = 0; i < paths.Count; i++)
             {
                 if (!paths.Get(i, out float s, out float e, out Path kind)) continue;
-                if (e > from && s < to && kind != Path.SameExit) return false;
+                if (e > from && s < to && kind != Path.SameExit && kind != Path.Pavement) return false;
             }
             return true;
         }

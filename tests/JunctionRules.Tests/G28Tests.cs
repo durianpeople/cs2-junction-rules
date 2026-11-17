@@ -23,7 +23,7 @@ namespace JunctionRules.Tests
             bool ok = ExitSameLane.Footprint(19.0f, 47f, 25.1f, suv, margin, wayOut, walkEnd, out float jf, out float jt, out float wf);
             Check(ok && Math.Abs(jt - 24.1f) < 1e-4 && Math.Abs(jf - 19.0f) < 1e-4 && wf >= walkEnd, $"G28 live SUV 602885: admitted, front 24.1 m (1 m behind 838449's rear), tail {wayOut - wf:0.0} m back on the leaving lane, off the pavement (from {wf:0.00} >= {walkEnd})");
             // a lorry does not fit: its tail would stand on the pavement -> normal rule (waits before the pavement)
-            Check(!ExitSameLane.Footprint(19.0f, 47f, 25.1f, 12f, margin, wayOut, walkEnd, out _, out _, out _), "G28 a 12 m lorry would stand on the pavement: not admitted");
+            Check(!ExitSameLane.Footprint(19.0f, 47f, 25.1f, 12f, margin, wayOut, walkEnd, out _, out _, out _), "G28 a 12 m lorry would stand on a ZEBRA band: not admitted (0.4.12 owner decision: a plain pavement band may be blocked, PedPathTests)");
             // queue rear at the join point: the front cannot get onto the lane
             Check(!ExitSameLane.Footprint(19.0f, 47f, 19.5f, suv, margin, wayOut, walkEnd, out _, out _, out _), "G28 queue reaching back to the join point: not admitted (no room for the front)");
             // no queue on the lane: footprint at the lane end (room past the box is missing further on), whole body on the lane
