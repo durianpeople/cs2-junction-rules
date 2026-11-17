@@ -328,6 +328,8 @@ namespace JunctionRules.Stage2
         private bool m_EntryEntrantIgnored;
         /// <summary>G17: the vehicle the current hook's hold waits for (HoldBlocker).</summary>
         private Entity m_LastBlocker;
+        /// <summary>0.4.12 (G27, trace only): the exit gap scan's blocker was standing (Core ExitTrace.Standing); per judgement.</summary>
+        private bool m_LastBlockerStanding, m_DriveBlockerStanding, m_ExitBlockerStanding;
         /// <summary>G15b (final review): this car-step a room scan was blocked by a vehicle standing across the lane from a driveway.</summary>
         private bool m_SideHeld;
         /// <summary>0.4.10 (G19, probe): the last HasRoomPast with freeNow found no room only because a moving queue no longer counts.</summary>

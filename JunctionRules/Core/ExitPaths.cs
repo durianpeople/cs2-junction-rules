@@ -235,11 +235,22 @@ namespace JunctionRules.Core
         /// <summary>0.4.9 (G12): the sidewalk was crossed without a standing Go, but the decision was taken at the first road lane (could not stop before the sidewalk).</summary>
         public const int ReasonLate = 64;
 
+        /// <summary>
+        /// 0.4.12 (G27): the gap scan's blocker was a STANDING vehicle (on a lane it joins or crosses, within the present distance: a queue, not a gap):
+        /// the trace says "no room", not "gap". Stored at facts bit 41 (reasons bit 8).
+        /// </summary>
+        public const int ReasonBlockerStanding = 256;
+
+        /// <summary>0.4.12 (G27): below this speed (m/s) a blocker counts as standing for the trace.</summary>
+        public const float StandingSpeed = 0.5f;
+
+        public static bool Standing(float speed) => speed < StandingSpeed;
+
         /// <summary>Slot base index (into the ring) of sequence number seq (1-based).</summary>
         public static int SlotBase(long seq) => 1 + (int)((seq - 1) % Slots) * Words;
 
         public static long Pack(Event e, ExitPaths.Path path, ExitPaths.LaneKind kind, ExitGiveWay.Decision decision, int reasons, bool boxed) =>
-            (long)(byte)e | ((long)(byte)path << 8) | ((long)(byte)kind << 16) | ((long)(byte)decision << 24) | ((long)(reasons & 0xFF) << 32) | (boxed ? 1L << 40 : 0L);
+            (long)(byte)e | ((long)(byte)path << 8) | ((long)(byte)kind << 16) | ((long)(byte)decision << 24) | ((long)(reasons & 0xFF) << 32) | (boxed ? 1L << 40 : 0L) | ((reasons & ReasonBlockerStanding) != 0 ? 1L << 41 : 0L);
 
         public static void Unpack(long v, out Event e, out ExitPaths.Path path, out ExitPaths.LaneKind kind, out ExitGiveWay.Decision decision, out int reasons, out bool boxed)
         {
@@ -247,7 +258,7 @@ namespace JunctionRules.Core
             path = (ExitPaths.Path)(byte)(v >> 8);
             kind = (ExitPaths.LaneKind)(byte)(v >> 16);
             decision = (ExitGiveWay.Decision)(byte)(v >> 24);
-            reasons = (int)((v >> 32) & 0xFF);
+            reasons = (int)((v >> 32) & 0xFF) | (((v >> 41) & 1) != 0 ? ReasonBlockerStanding : 0);
             boxed = ((v >> 40) & 1) != 0;
         }
 
@@ -271,7 +282,9 @@ namespace JunctionRules.Core
             string decided;
             if ((reasons & ReasonEmergency) != 0) decided = "go (on-duty emergency, stock)";
             else if ((reasons & ReasonDecided) == 0) decided = path == ExitPaths.Path.Drive ? "judged before the hand-over (driveway give-way)" : "not judged";
-            else if (decision == ExitGiveWay.Decision.WaitGap) decided = (reasons & ReasonVehicleCap) != 0 ? "wait (dense traffic: vehicle cap)" : "wait (gap)";
+            else if (decision == ExitGiveWay.Decision.WaitGap) decided = (reasons & ReasonVehicleCap) != 0 ? "wait (dense traffic: vehicle cap)"
+                : (reasons & ReasonBlockerStanding) != 0 ? (boxed ? "wait (no room: a vehicle stands in its way out, at / past the box)" : "wait (no room: a vehicle stands in its way out)")
+                : "wait (gap)";
             else if (decision == ExitGiveWay.Decision.WaitBox) decided = "wait (box: no room past)";
             else if (decision == ExitGiveWay.Decision.WaitRoom) decided = "wait (no room on the lane it joins)";
             else if ((reasons & ReasonSignal) != 0) decided = "go (signalled arm)";

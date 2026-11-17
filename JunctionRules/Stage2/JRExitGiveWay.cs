@@ -194,6 +194,7 @@ namespace JunctionRules.Stage2
                 across = ExitGiveWay.CrossesThrough(math.abs(joinNav.m_CurvePosition.y - joinNav.m_CurvePosition.x) * joinSpanCurve.m_Length, ownLength);
             bool busy = false;
             int judged = 0;
+            m_LastBlockerStanding = false;
             for (int i = 0; i < overlaps.Length && !busy && !budget.m_CapHit; i++)
             {
                 LaneOverlap o = overlaps[i];
@@ -223,6 +224,11 @@ namespace JunctionRules.Stage2
                     roomJoin = HasRoomPast(lane, 1f, inverse, length, -1f, Entity.Null, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
                         ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes);
             }
+            // 0.4.12 (G27, owner: the trace must tell the truth): held by the gap scan, the box test above did not run, so the
+            // trace said "boxed no" at a boxed exit. Label only: whether the join point lies in a box band (no room scan, no
+            // light request, the decision and the hold are unchanged).
+            if (busy && m_BoxRule && hasJoin) boxed = ExitInBand(joinNav.m_Lane, joinNav.m_CurvePosition.x, ref carLanes, ref curves);
+            m_DriveBlockerStanding = busy && m_LastBlockerStanding;
             ExitGiveWay.Decision d = ExitGiveWay.Decide(true, priority, !busy, m_BoxRule, boxed, roomBox, roomJoin);
             // Review F1: with no known joined lane (no path handed in, or the drive lane is the last navigation lane) the room
             // tests could not run: the decision stands but it is not a FULL judgement (the proof counter must say so).
@@ -1035,7 +1041,7 @@ namespace JunctionRules.Stage2
                 ExitPaths.Path path = drive ? ExitPaths.Path.Drive : ExitPaths.Classify(m_ExitFromFlags, building != Entity.Null, isCar, false);
                 ExitPaths.LaneKind kind = drive ? ExitPaths.LaneKind.DriveLane : ExitPaths.Kind(m_ExitFromFlags, isCar, false);
                 TraceWrite(m_TraceRing, self, building, ExitTrace.Pack(ExitTrace.Event.LongHold, path, kind, drive ? m_DriveDecision : m_ExitDecision,
-                    ExitTrace.ReasonDecided | TraceReasons(), drive ? m_DriveBoxed : m_ExitBoxed), frame, drive ? OwnerOf(m_DriveLane) : m_ExitRoadOwner, m_ExitPoint);
+                    ExitTrace.ReasonDecided | DriveReasons(drive), drive ? m_DriveBoxed : m_ExitBoxed), frame, drive ? OwnerOf(m_DriveLane) : m_ExitRoadOwner, m_ExitPoint);
             }
             // Any exit path's Go (S2-29 drive, S2-30/32/35/36 through ExitJoinWaits or a signalled arm): read back at its hand-over;
             // a Wait is recorded too (review F2: a Go older than the last Wait does not count).
@@ -1056,7 +1062,7 @@ namespace JunctionRules.Stage2
             {
                 Entity building = ExitBuilding(currentLane);
                 TraceWrite(m_TraceRing, self, building, ExitTrace.Pack(ExitTrace.Event.Wait, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, m_DriveDecision,
-                    ExitTrace.ReasonDecided | TraceReasons(), m_DriveBoxed), frame, OwnerOf(m_DriveLane), m_ExitPoint);
+                    ExitTrace.ReasonDecided | DriveReasons(true), m_DriveBoxed), frame, OwnerOf(m_DriveLane), m_ExitPoint);
             }
         }
 
@@ -1195,8 +1201,12 @@ namespace JunctionRules.Stage2
         }
 
         private int TraceReasons() =>
-            (m_ExitDecided ? ExitTrace.ReasonDecided : 0) | (m_ExitLaneCap ? ExitTrace.ReasonLaneCap : 0) | (m_ExitVehicleCap ? ExitTrace.ReasonVehicleCap : 0)
+            (m_ExitBlockerStanding ? ExitTrace.ReasonBlockerStanding : 0) | (m_ExitDecided ? ExitTrace.ReasonDecided : 0) | (m_ExitLaneCap ? ExitTrace.ReasonLaneCap : 0) | (m_ExitVehicleCap ? ExitTrace.ReasonVehicleCap : 0)
             | (m_ExitEmergency ? ExitTrace.ReasonEmergency : 0) | (m_ExitNodeJoin ? ExitTrace.ReasonNodeJoin : 0) | (m_ExitSignalArm ? ExitTrace.ReasonSignal : 0);
+
+        /// <summary>0.4.12 (G27): the reasons of a drive-lane record: its own standing-blocker flag, not the connection judgement's.</summary>
+        private int DriveReasons(bool drive) =>
+            drive ? (TraceReasons() & ~ExitTrace.ReasonBlockerStanding) | (m_DriveBlockerStanding ? ExitTrace.ReasonBlockerStanding : 0) : TraceReasons();
 
         /// <summary>One trace record (Core ExitTrace layout): the stamp is cleared first and written last, so the main-thread reader never takes a half-written record.</summary>
         private static unsafe void TraceWrite(NativeArray<long> ring, Entity self, Entity building, long facts, uint frame, Entity roadOwner, float2 point)
@@ -1276,6 +1286,7 @@ namespace JunctionRules.Stage2
             m_ExitPoint = MathUtils.Position(roadCurve.m_Bezier, t).xz;   // trace: the join point
             float ownLength = m_VehicleLength > 0f ? m_VehicleLength : 4f;
             // The road lane it joins: it appears there with its body behind the join point (it drives on from there).
+            m_LastBlockerStanding = false;
             bool busy = ConflictBusy(road, roadCurve, joinM - ownLength, joinM + 1f, delta, ref reads, ref budget);
             Entity joinOwner = roadOwner.m_Owner;
             bool nodeJoin = !m_ExitEdgeData.HasComponent(joinOwner);
@@ -1343,6 +1354,9 @@ namespace JunctionRules.Stage2
             if (!busy && (!boxed || !m_BoxRule))
                 roomJoin = HasRoomPast(road, t, false, roadCurve.m_Length, -1f, Entity.Null, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
                     ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes);
+            // 0.4.12 (G27): label only (see the drive-lane judgement): boxed is known also when the gap scan holds the exit.
+            if (busy && m_BoxRule) boxed = ExitInBand(road, t, ref carLanes, ref curves);
+            m_ExitBlockerStanding = busy && m_LastBlockerStanding;
             d = ExitGiveWay.Decide(true, priority, !busy, m_BoxRule, boxed, room, roomJoin);
             if (d == ExitGiveWay.Decision.WaitRoom) m_DriveRoomHold = true;
             m_ExitDecided = true;
@@ -1380,6 +1394,21 @@ namespace JunctionRules.Stage2
                 e = owner.m_Owner;
                 if (m_ExitBuildingData.HasComponent(e)) return true;
             }
+            return false;
+        }
+
+        /// <summary>
+        /// 0.4.12 (G27): does curve position t of this road lane lie in a box band (the same band set as ExitBandBlocks)? For
+        /// the trace only: no room scan, no light request, no blocker named.
+        /// </summary>
+        private unsafe bool ExitInBand(Entity road, float t, ref ComponentLookup<Game.Net.CarLane> carLanes, ref ComponentLookup<Curve> curves)
+        {
+            if (!m_BoxLookups || !m_BoxEntrances || !m_EdgeLaneData.HasComponent(road) || !m_OwnerData.TryGetComponent(road, out Owner edgeOwner)
+                || !curves.TryGetComponent(road, out Curve c)) return false;
+            int carriageway = carLanes.TryGetComponent(road, out Game.Net.CarLane roadCarLane) ? roadCarLane.m_CarriagewayGroup : 0;
+            if (!LaneBands(road, edgeOwner.m_Owner, c.m_Length, false, carriageway, ref curves, out FixedList128Bytes<float2> merged)) return false;
+            for (int m = 0; m < merged.Length; m++)
+                if (t >= merged[m].x - WholePathRule.SpotEpsilon && t <= merged[m].y + WholePathRule.SpotEpsilon) return true;
             return false;
         }
 
@@ -1674,7 +1703,7 @@ namespace JunctionRules.Stage2
                 // 0.4.11 (G21): an entrant's scan (m_EntryScan) also lets a standing vehicle that waits for a gap to turn in go unseen
                 // (two facing entrances would otherwise wait for each other); exits still wait for it (it stands in the lane they join).
                 if (entering && Counting) { if (m_EntryScan) m_EntryEntrantIgnored = true; else m_ExitEntrantIgnored = true; }
-                if (ExitGiveWay.VehicleBlocks(gap, occupies, speed, braking, delta, entering)) { m_LastBlocker = e; return true; }   // 0.4.9 (G17): the exit's blocker
+                if (ExitGiveWay.VehicleBlocks(gap, occupies, speed, braking, delta, entering)) { m_LastBlocker = e; m_LastBlockerStanding = ExitTrace.Standing(speed); return true; }   // 0.4.9 (G17): the exit's blocker; 0.4.12 (G27): standing or moving, for the trace
             }
             return false;
         }

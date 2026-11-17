@@ -6,7 +6,7 @@ road's lanes, also on a ONE-WAY road (0.4.4-0.4.11 cut only where the lanes past
 box at building 77236 on Sunset Street was painted kerb to kerb across the raised centre median); the box and the
 driving rule cover only the building's own lanes. Junction boxes keep 0.5 m clear of every median nose at their arms
 (like a zebra: the mouth is held back past it); a junction whose median runs on through it, and a saved roundabout
-box (centre island), get no box. No change to the copied game code (`docs/vanilla_copy_check_0.4.12.txt`: 0 unexplained
+box (centre island), get no box. G27: the exit trace says `boxed yes` and `no room` (not `gap`) when a standing queue holds a boxed exit (labels only). No change to the copied game code (`docs/vanilla_copy_check_0.4.12.txt`: 0 unexplained
 differences, 42 marked blocks / 328 lines as 0.4.11). Carries 0.4.11 and everything before.
 
 **0.4.11-probe (JR-T-017: 0.4.10 live gap G21), what changed since 0.4.10 (section 21):** a vehicle turning INTO a
@@ -2043,7 +2043,7 @@ building side's, so it saw "no median" and painted the box kerb to kerb across t
 centre; Ironplace 1.5 m; undivided Alderbrook / Victoria / centre turn lane unchanged; bike track behind a divider; tram
 reservation; margin wider than the carriageway; pieces outside the gap ignored), `G26JunctionTests` (node 621408 live
 fixture `LiveFixtures621408.cs`: two noses, 0.50 m clear, none inside; median through = no box; fallback length, middle
-offset), `G26RepoTests`; `MedianSplitTests` D3 updated (same-direction carriageways now cut). 3116 tests pass.
+offset), `G26RepoTests`, `G27TraceTests`; `MedianSplitTests` D3 updated (same-direction carriageways now cut). 3123 tests pass.
 
 | # | Do | Expect |
 |---|---|---|
@@ -2051,3 +2051,21 @@ offset), `G26RepoTests`; `MedianSplitTests` D3 updated (same-direction carriagew
 | 26-2 | Junction box at 621408 (Sunset St end) | no hatch / border on the two median noses; note `2 median nose(s) at the mouths` |
 | 26-3 | Ironplace Avenue boxes (exit 384177, junctions 164607 / 623018 / 830865) | 0.5 m gap to the median / nose; no box missing (if one is refused, the log says why) |
 | 26-4 | Cars on Sunset Street's far lane past the 77236 box | not held by that box (only the building's lane is boxed) |
+
+### 22.6 G27: the exit trace tells the truth at a boxed exit (labels only)
+
+Owner 17 Nov: SUV 602885 leaving building 77236 at (72.4, 427.1) waited correctly (the lane past its box held a stopped
+queue, first car 838449 at (84.8, 423.8), ~3 m past the box end), but the trace said `NOTABLE held 25 s+ ... decision wait
+(gap) boxed no` (20:22:42) although the exit is boxed. Cause: both exit judgements (drive lane, `JRExitGiveWay` drive
+hold; connection / gate / lot, the join judgement) ran the box test only when the gap scan was clear, and a vehicle
+STANDING within 10 m on the lane it joins (or crosses) makes the gap scan busy (the 0.4.4 present rule), so `boxed`
+stayed false and the reason read "gap". Now (trace only; the decision, the hold and who waits are unchanged): when the gap
+scan holds the exit, `boxed` comes from the same band set (`ExitInBand`: no room scan, no light request, no blocker
+named), and a standing blocker is logged as `wait (no room: a vehicle stands in its way out, at / past the box)` (unboxed:
+without the last part); a moving one still reads `wait (gap)`. New trace bit (facts bit 41, `ReasonBlockerStanding`,
+blocker speed < 0.5 m/s); the drive-lane lines use the drive judgement's own flags. Tests `G27TraceTests`.
+
+| # | Do | Expect |
+|---|---|---|
+| 27-1 | A held exit at a saved exit box behind a standing queue (77236 on Sunset Street) | trace `decision wait (no room: a vehicle stands in its way out, at / past the box) boxed yes` |
+| 27-2 | A held exit with moving traffic, unboxed | `wait (gap) boxed no` as before |

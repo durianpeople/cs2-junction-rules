@@ -230,3 +230,39 @@ namespace JunctionRules.Tests
         }
     }
 }
+
+namespace JunctionRules.Tests
+{
+    /// <summary>
+    /// 0.4.12 (JR-T-018, gap G27, owner 17 Nov): SUV 602885 leaving building 77236 at (72.4, 427.1) waited correctly (the lane
+    /// past its box held a stopped queue, first car 838449 ~3 m past the box end) but the trace said "NOTABLE held 25 s+ ...
+    /// decision wait (gap) boxed no" at 20:22:42 although the exit is boxed (edge 1155147). Cause: the box test ran only when
+    /// the gap scan was clear, and a standing vehicle within the present distance makes the gap scan busy. Fix (labels only):
+    /// boxed from the band set also when held by the gap scan; a standing blocker is logged as "no room".
+    /// </summary>
+    internal static partial class Program
+    {
+        private static void G27TraceTests()
+        {
+            long f = ExitTrace.Pack(ExitTrace.Event.LongHold, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, ExitGiveWay.Decision.WaitGap,
+                ExitTrace.ReasonDecided | ExitTrace.ReasonBlockerStanding, true);
+            ExitTrace.Unpack(f, out var e, out var path, out var kind, out var d, out int reasons, out bool boxed);
+            Check(e == ExitTrace.Event.LongHold && path == ExitPaths.Path.Drive && d == ExitGiveWay.Decision.WaitGap && boxed
+                  && (reasons & ExitTrace.ReasonBlockerStanding) != 0 && (reasons & ExitTrace.ReasonDecided) != 0, "G27 pack / unpack keeps the standing-blocker bit and boxed");
+            string line = ExitTrace.Format(ExitTrace.PackEntity(602885, 1), ExitTrace.PackEntity(77236, 1), f, ((long)1155147 << 32) | 36843900u, ExitTrace.PackPoint(72.4f, 427.1f));
+            Check(line.Contains("NOTABLE held") && line.Contains("decision wait (no room: a vehicle stands in its way out, at / past the box)") && line.Contains("boxed yes"),
+                "G27 the owner's SUV line now reads no room + boxed yes: " + line);
+            long g = ExitTrace.Pack(ExitTrace.Event.Wait, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, ExitGiveWay.Decision.WaitGap, ExitTrace.ReasonDecided, false);
+            string gl = ExitTrace.Format(1, 0, g, 0);
+            Check(gl.Contains("decision wait (gap)") && gl.Contains("boxed no"), "G27 a moving blocker at an unboxed exit still reads wait (gap): " + gl);
+            ExitTrace.Unpack(ExitTrace.Pack(ExitTrace.Event.Wait, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, ExitGiveWay.Decision.Go, 0xFF, false), out _, out _, out _, out _, out int r2, out bool b2);
+            Check(r2 == 0xFF && !b2, "G27 the old eight reason bits and boxed are unchanged by the new bit");
+            Check(ExitTrace.Standing(0f) && !ExitTrace.Standing(2f), "G27 standing below 0.5 m/s");
+            string src = System.IO.File.ReadAllText(System.IO.Path.Combine(RepoRoot(), "JunctionRules", "Stage2", "JRExitGiveWay.cs"));
+            Check(src.Contains("if (busy && m_BoxRule && hasJoin) boxed = ExitInBand(joinNav.m_Lane, joinNav.m_CurvePosition.x, ref carLanes, ref curves);")
+                  && src.Contains("if (busy && m_BoxRule) boxed = ExitInBand(road, t, ref carLanes, ref curves);"),
+                "G27 repo: both exit judgements know 'boxed' also when the gap scan holds the exit (label only, decision unchanged)");
+            Check(src.Contains("ExitTrace.ReasonDecided | DriveReasons(drive), drive ? m_DriveBoxed : m_ExitBoxed)"), "G27 repo: the drive-lane long-hold line uses the drive judgement's own flags");
+        }
+    }
+}
