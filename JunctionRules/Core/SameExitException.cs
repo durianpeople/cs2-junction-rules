@@ -82,6 +82,10 @@ namespace JunctionRules.Core
             from = to - (ownLength > 0f ? ownLength : 0f) - margin;
         }
 
+        /// <summary>Review 3 F2: the whole footprint lies on the junction lane (none of the body back on the approach).</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool WithinLane(float from) => from >= 0f;
+
         public enum Path : byte
         {
             /// <summary>A car lane into the same exit lane (ok).</summary>

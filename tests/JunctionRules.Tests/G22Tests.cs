@@ -31,7 +31,7 @@ namespace JunctionRules.Tests
         private static bool G22Admit(float laneLen, float zebra, float rearAhead, float ownLen, G22Paths paths)
         {
             SameExitException.Footprint(laneLen, zebra, rearAhead, ownLen, 1f, out float from, out float to);
-            return SameExitException.Admits(from, to, ref paths);
+            return SameExitException.WithinLane(from) && SameExitException.Admits(from, to, ref paths);
         }
 
         private static void G22Tests()
@@ -79,6 +79,10 @@ namespace JunctionRules.Tests
             var throughAtEnd = G22P((15f, 22f, Other));
             Check(!G22Admit(22f, none, none, 4.5f, throughAtEnd), "a footprint touching a priority through path to another exit lane: waits before the box");
 
+            // Review 3 F2: a footprint reaching back before the junction lane (rear on the approach) is never admitted, even over same-exit paths only.
+            var shortLane = G22P((0f, 8f, Same));
+            Check(!G22Admit(8f, none, none, 6.5f, shortLane) && G22Admit(12f, none, none, 6.5f, G22P((0f, 12f, Same))), "an 8 m junction lane cannot hold a 6.5 m van + margins: no exception; a 12 m one can");
+            Check(!SameExitException.WithinLane(-0.1f) && SameExitException.WithinLane(0f), "WithinLane boundary");
             // --- deadlock property: whatever its footprint touches needs the same full exit lane ---
             var rnd = new Random(2222);
             int admitted = 0, bad = 0;

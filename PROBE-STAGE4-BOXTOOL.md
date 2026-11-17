@@ -1876,3 +1876,13 @@ way, unchanged.
 | 24-1 | Capper Street x Lilac Street after load | the box stops 0.5 m short of all four zebras, also on the Capper Street arms |
 | 24-2 | Log after load, the six nodes above | no zebra arm with `box starts at the mouth` (a give-way-line arm may keep it); any `no box clear of the zebra(s)` = report (that junction lost its box) |
 | 24-3 | Lane dashes / arrows / centre lines inside a box | allowed under the box (hidden with the setting on) |
+
+### 21.11 Review 3 (Sonnet) fixes
+
+- G22: only a STANDING vehicle ahead moves the footprint back (a rolling one stops further on: the stricter lane-end
+  footprint is used); a footprint reaching back before the junction lane (rear on the approach, where that lane's zebra /
+  bands are not checked) is never admitted; a car admitted by the exception never counts as a nose in the box; leader
+  rear in driving coordinates on either lane direction, same-direction leaders only.
+- Doc of CrossingPush.PedestrianSpeed restored to its method.
+- Checked and confirmed by the review against the decompile: signs on junction lanes (LaneSystem.CreateNodeLane), same
+  exit lane = Lane.m_EndNode, the S2-08b root cause, LaneEndsAtRed semantics.

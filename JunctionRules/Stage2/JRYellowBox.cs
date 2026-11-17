@@ -121,11 +121,14 @@ namespace JunctionRules.Stage2
                     // the same-exit-lane exception is counted apart (allowed by the owner rule).
                     if (inBox)
                     {
-                        if (SameExitAdmits(lane, owner.m_Owner, laneLength, inverse, start, self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes)) m_BoxSameExitStanding = true;
+                        if (SameExitAdmits(lane, owner.m_Owner, laneLength, inverse, start, self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes, ref moving)) m_BoxSameExitStanding = true;
                         else m_BoxStoodInside = true;
                     }
                     float fl = BoxDriving.FrontToLine(wait, margin);
-                    if (BoxDriving.NoseIn(fl, m_VehicleLength)) { m_BoxNose = true; m_BoxStoodInside = true; }
+                    // Review 3 F3: a car admitted by the G22 exception is counted apart, never as a nose in the box.
+                    if (BoxDriving.NoseIn(fl, m_VehicleLength) && !m_BoxSameExitStanding
+                        && !SameExitAdmits(lane, owner.m_Owner, laneLength, inverse, start, self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes, ref moving))
+                    { m_BoxNose = true; m_BoxStoodInside = true; }
                 }
                 BoxDriving.Approach a = BoxDriving.Classify(inBox, wait, margin, VehicleUtils.GetBrakingDistance(car, currentSpeed, timeStep));
                 if (a != BoxDriving.Approach.Check) return float.MaxValue;
@@ -140,7 +143,7 @@ namespace JunctionRules.Stage2
                 if (!BoxDriving.Holds(a, room)) return float.MaxValue;
                 // 0.4.11 (G22, owner): a car from the lowest-priority approach may enter although its exit lane is full when the
                 // spot where it would wait (whole body) crosses only paths into that same exit lane (Core/SameExitException.cs).
-                if (SameExitAdmits(lane, owner.m_Owner, laneLength, inverse, start, self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes))
+                if (SameExitAdmits(lane, owner.m_Owner, laneLength, inverse, start, self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes, ref moving))
                 {
                     m_BoxSameExitEntry = true;
                     return float.MaxValue;
@@ -382,7 +385,7 @@ namespace JunctionRules.Stage2
             if (room) return float.MaxValue;
             // 0.4.11 (G22): the same-exit-lane exception also at the UK turn spot (a turner that entered under it is not stopped
             // there, on a footprint the exception did not check; it still gives way to oncoming traffic by the gap rule).
-            if (SameExitAdmits(lane, owner.m_Owner, length, inverse, math.max(0f, m_Stretch.CurveX), self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes))
+            if (SameExitAdmits(lane, owner.m_Owner, length, inverse, math.max(0f, m_Stretch.CurveX), self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes, ref moving))
             {
                 m_BoxSameExitEntry = true;
                 return float.MaxValue;

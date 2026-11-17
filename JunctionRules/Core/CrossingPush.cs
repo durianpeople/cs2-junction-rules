@@ -61,15 +61,6 @@ namespace JunctionRules.Core
         }
 
         /// <summary>
-        /// The speed the car uses for one person after the game's own check: the game's value, or with the setting on and
-        /// a push reason, the full-stop braking speed (the game's walking-person value). fullStop &lt;= stock always
-        /// (the creep adds 3 m/s squared under the root and floors at 3), so this only ever lowers the limit.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float PedestrianSpeedInPath(bool settingOn, PushReason reason, bool personInPath, float stockSpeed, float fullStopSpeed) =>
-            personInPath ? PedestrianSpeed(settingOn, reason, stockSpeed, fullStopSpeed) : stockSpeed;
-
-        /// <summary>
         /// 0.4.11 (JR-T-017, gap G23, owner live 17 Nov: "what makes this car not want to come out on green?", Crescent St x
         /// Eastgate Lane): the game's CheckPedestrian also brakes for a person who is NOT on the car's way over the crossing
         /// but stands within the car's half width + the person's size of it (2026-11-13 copy, CheckPedestrian: targetOffset
@@ -118,9 +109,19 @@ namespace JunctionRules.Core
         /// <summary>0.4.11 (G23): metres either side of the car's range on the crossing within which a standing person counts as on its way.</summary>
         public const float InPathToleranceMetres = 0.5f;
 
+        /// <summary>
+        /// The speed the car uses for one person after the game's own check: the game's value, or with the setting on and
+        /// a push reason, the full-stop braking speed (the game's walking-person value). fullStop &lt;= stock always
+        /// (the creep adds 3 m/s squared under the root and floors at 3), so this only ever lowers the limit.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float PedestrianSpeed(bool settingOn, PushReason reason, float stockSpeed, float fullStopSpeed) =>
             settingOn && reason != PushReason.None && fullStopSpeed < stockSpeed ? fullStopSpeed : stockSpeed;
+
+        /// <summary>0.4.11 (G23): <see cref="PedestrianSpeed"/> only for a person on the car's way (<see cref="PersonInPath"/>); beside it, the game's value.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float PedestrianSpeedInPath(bool settingOn, PushReason reason, bool personInPath, float stockSpeed, float fullStopSpeed) =>
+            personInPath ? PedestrianSpeed(settingOn, reason, stockSpeed, fullStopSpeed) : stockSpeed;
 
         /// <summary>
         /// The m_Ignore entity the game's UpdateMaxSpeed gets for one object on an overlapping lane: unchanged, or none

@@ -25,7 +25,7 @@ namespace JunctionRules.Stage2
         private bool SameExitAdmits(Entity lane, Entity node, float laneLength, bool inverse, float start, Entity self,
             ref ComponentLookup<Game.Net.CarLane> carLanes, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves,
             ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<ObjectGeometryData> geometries,
-            ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
+            ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes, ref ComponentLookup<Moving> moving)
         {
             if (!carLanes.TryGetComponent(lane, out Game.Net.CarLane own) || !m_SubLanes.TryGetBuffer(node, out DynamicBuffer<Game.Net.SubLane> subs)) return false;
             uint ownFlags = (uint)own.m_Flags;
@@ -60,13 +60,23 @@ namespace JunctionRules.Stage2
                     Entity e = objects[i].m_LaneObject;
                     if (e == self || (controllers.TryGetComponent(e, out Controller c) && c.m_Controller == self)) continue;
                     if (!prefabRefs.TryGetComponent(e, out PrefabRef pr)) continue;
+                    // Review 3 F4: same direction only (a vehicle driving the lane against the car is no leader).
+                    bool against = inverse ? objects[i].m_CurvePosition.y > objects[i].m_CurvePosition.x : objects[i].m_CurvePosition.y < objects[i].m_CurvePosition.x;
+                    if (against) continue;
+                    // Review 3 F1: only a STANDING leader moves the footprint back (a rolling one stops further on; the lane-end
+                    // footprint is the stricter test then).
+                    if (moving.TryGetComponent(e, out Moving mv) && math.lengthsq(mv.m_Velocity) >= Stage2Counters.StandingSpeed * Stage2Counters.StandingSpeed) continue;
                     float x = StretchGeometry.ToDriving(objects[i].m_CurvePosition.x, inverse) * laneLength;
                     if (x <= start * laneLength) continue;
-                    float rear = x + (geometries.TryGetComponent(pr.m_Prefab, out ObjectGeometryData g) ? (inverse ? -g.m_Bounds.max.z : g.m_Bounds.min.z) : 0f);
+                    // Review 3 F4: x is in driving coordinates, so the rear is x + bounds.min.z on either lane direction.
+                    float rear = x + (geometries.TryGetComponent(pr.m_Prefab, out ObjectGeometryData g) ? g.m_Bounds.min.z : 0f);
                     if (rear < rearAhead) rearAhead = rear;
                 }
             }
             SameExitException.Footprint(laneLength, zebra, rearAhead, m_VehicleLength > 0f ? m_VehicleLength : 4f, m_RoomMargin, out float from, out float to);
+            // Review 3 F2: a footprint reaching back before the junction lane (rear on the approach, where its zebra / bands are
+            // not checked here): no exception (conservative).
+            if (!SameExitException.WithinLane(from)) return false;
             FootprintPaths paths = default;
             paths.m_Overlaps = overlaps;
             paths.m_Inverse = inverse;

@@ -482,7 +482,7 @@ namespace JunctionRules.Tests
             Check(BoxDriving.BodyInside(-0.5f, 7.5f, 4.2f) && BoxDriving.BodyInside(-12f, -4f, 4.2f) && !BoxDriving.BodyInside(0.3f, 8.3f, 4.2f) && !BoxDriving.BodyInside(-14f, -6f, 4.2f),
                 "standing-inside probe: nose in, wholly in, front at the line (outside), rear past the far edge (outside)");
             string yb2 = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Stage2", "JRYellowBox.cs"));
-            Check(yb2.Contains("if (BoxDriving.NoseIn(fl, m_VehicleLength)) { m_BoxNose = true; m_BoxStoodInside = true; }") && yb2.Contains("if (BoxDriving.NoseIn(f0, m_VehicleLength)) m_BoxNose = true;")
+            Check(yb2.Contains("if (BoxDriving.NoseIn(fl, m_VehicleLength) && !m_BoxSameExitStanding") && yb2.Contains("{ m_BoxNose = true; m_BoxStoodInside = true; }") && yb2.Contains("if (BoxDriving.NoseIn(f0, m_VehicleLength)) m_BoxNose = true;")
                 && wj.Contains("if (m_BoxNose && !turnSpot && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.BoxNosePast, 1);")
                 && wj.Contains("|| Stage2Counters.IsStandingOn(m_HasBoxTurnRoom, m_BoxTurnRoomSpeed, finalMaxSpeed, currentSpeed);")
                 && wj.Contains("if (m_BoxStoodInside && !turnSpot && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.BoxStoodInside, 1);"),
