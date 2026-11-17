@@ -6,7 +6,7 @@
 // tools/vanilla_rules.json (and DEVIATIONS.md) and run `python3 tools/vanilla_copy.py generate`.
 // Changes applied: R-01, R-02, R-03, D-01 (see DEVIATIONS.md). Logic is otherwise the game's, unchanged.
 // Exception: hand-written code only inside '// JR-STAGE2 BEGIN <id>' ... '// JR-STAGE2 END' blocks
-// (S2-20, S2-21, S2-22, S2-23, S2-24, S2-26, S2-30, S2-31, S2-32, S2-33, S2-34, S2-35, S2-36, S2-51, S2-51b; see DEVIATIONS.md). `check` proves everything outside them is the above.
+// (S2-20, S2-21, S2-22, S2-23, S2-24, S2-26, S2-30, S2-31, S2-32, S2-33, S2-34, S2-35, S2-36, S2-51, S2-51b, S2-52; see DEVIATIONS.md). `check` proves everything outside them is the above.
 // ==== end of header; the code below is the game's, changed only as listed in DEVIATIONS.md ====
 
 using System.Runtime.CompilerServices;
@@ -1806,6 +1806,12 @@ public class JRCarNavigationSystem : GameSystemBase
 					laneIterator.m_BlockerType = BlockerType.Crossing;
 				}
 				laneIterator.m_JR.TraceWait(m_JRSafetyEvents, entity, m_SimulationFrame);
+			}
+			// JR-STAGE2 END
+			// JR-STAGE2 BEGIN S2-52: 0.4.10 (review R1) a car held before a yellow box because a red / amber light lies inside the room past the box asks that light for green itself (its look-ahead ends at the box, so it never reaches the light's lane)
+			if (laneIterator.m_JR.m_BoxRule && laneIterator.m_JR.LightPetition(laneIterator.m_MaxSpeed, out Entity jrPetitionLane))
+			{
+				m_LaneSignals.Enqueue(new CarNavigationHelpers.LaneSignal(entity, jrPetitionLane, priority));
 			}
 			// JR-STAGE2 END
 			navigation.m_MaxSpeed = laneIterator.m_MaxSpeed;

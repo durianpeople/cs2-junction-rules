@@ -216,7 +216,20 @@ namespace JunctionRules.Core
         /// free-now rule costs through traffic. An upper bound (review F6): only the first blocker's credit is tested.
         /// </summary>
         public const int BoxHeldFreeNow = FeedingScans + 53;
-        public const int Count = FeedingScans + 54;
+        /// <summary>
+        /// 0.4.10 (owner: "if the car can't clear the whole thing, the car should not enter the box"): car-steps in which a
+        /// standing car is held by a box rule (junction / exit / entrance box, entering, leaving; not the right-turn spot)
+        /// with its FRONT BUMPER past the painted box line (BoxDriving.NosePast). MUST stay 0.
+        /// </summary>
+        public const int BoxNosePast = FeedingScans + 54;
+        /// <summary>
+        /// 0.4.10 (probe): car-steps in which a STANDING car has a part of its body inside a box (junction box: on its lanes;
+        /// exit / entrance box: front past the near edge, rear not past the far edge), not counting a right-turner at its
+        /// turn spot (the UK exception). What the owner sees as "a car stopped in the box"; expected ~0 (a light that turned
+        /// amber / red after the car entered on green, a vehicle that cut into the room past the box).
+        /// </summary>
+        public const int BoxStoodInside = FeedingScans + 55;
+        public const int Count = FeedingScans + 56;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -373,7 +386,9 @@ namespace JunctionRules.Core
                          "; held exits' keep-clear requests withdrawn " + deltas[ExitKeepClearWithdrawn].ToString(ci)
                        : "") +
                    // 0.4.10 (G19): newest, at the end.
-                   (boxMask >= 2 ? "; box holds only because the queue past the box was moving (free-now rule) " + deltas[BoxHeldFreeNow].ToString(ci) : "") +
+                   (boxMask >= 2 ? "; box holds only because the queue past the box was moving (free-now rule) " + deltas[BoxHeldFreeNow].ToString(ci)
+                       + "; front bumper past a box line while held " + deltas[BoxNosePast].ToString(ci) + " (must be 0)"
+                       + "; standing inside a box (not at the right-turn spot) " + deltas[BoxStoodInside].ToString(ci) : "") +
                    "; " + points;
         }
     }

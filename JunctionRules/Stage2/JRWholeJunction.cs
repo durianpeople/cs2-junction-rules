@@ -191,6 +191,11 @@ namespace JunctionRules.Stage2
         private unsafe JRBoxEdges* m_BoxEdges;
         /// <summary>0.4.10 (sweep): the lane signals, for "a light inside the room window past a box" (SetBoxes).</summary>
         private ComponentLookup<LaneSignal> m_BoxSignalData;
+        /// <summary>0.4.10 (review R1): the signal lane whose red / amber blocked the last box room scan (Entity.Null = none).</summary>
+        private Entity m_LastLightLane;
+        /// <summary>0.4.10 (review R1): the light the car's binding box hold waits for, and that hold's speed (block S2-52 petitions it).</summary>
+        private Entity m_LightPetitionLane;
+        private float m_LightPetitionSpeed;
         /// <summary>The lane being checked (BeginLane, Whole junction) is a lane of a boxed junction: its decision is at the stop line.</summary>
         private bool m_BoxLane;
         /// <summary>Its turn spot (UK right-turn exception, driving coordinates; 2 = none) and that spot's index in the stretch spots (-1 = none).</summary>
@@ -287,6 +292,11 @@ namespace JunctionRules.Stage2
         /// <summary>0.4.10 (G19, probe): a box hold that bound this car-step was due to the free-now rule only (counter BoxHeldFreeNow).</summary>
         private bool m_HasBoxFreeNow;
         private float m_BoxFreeNowSpeed;
+        /// <summary>0.4.10 (owner nose rule, probe): a box hold that bound with the front bumper past its line (counter BoxNosePast, must be 0).</summary>
+        private bool m_HasBoxNose;
+        private float m_BoxNoseSpeed;
+        /// <summary>0.4.10 (probe): standing with a part of the body inside a box (counter BoxStoodInside; not at the right-turn spot).</summary>
+        private bool m_BoxStoodInside;
 
         /// <summary>0.4.8 trace: the exit's position (drive lane start / join point) of this update's decision.</summary>
         private float2 m_ExitPoint;
@@ -345,6 +355,7 @@ namespace JunctionRules.Stage2
             j.m_BoxJunctions = (mode & Stage2Mode.BoxJunctions) != 0;
             j.m_BoxEntrances = (mode & Stage2Mode.BoxEntrances) != 0;
             j.m_BoxTurnSpot = 2f;
+            j.m_LightPetitionSpeed = float.MaxValue;   // 0.4.10 (review R1): no light to ask for
             j.m_BoxTurnIndex = -1;
             // 0.4.4: and the exit give-way rule.
             j.m_ExitRule = (mode & Stage2Mode.ExitGiveWay) != 0;
@@ -714,7 +725,14 @@ namespace JunctionRules.Stage2
             // 0.4.10 (G19): yellow boxes count only room that is free now (no credit for a moving queue); zebras keep the credit.
             scan.FreeNow = freeNow;
             m_FreeNowHeld = false;
+            m_LastLightLane = Entity.Null;
             bool unsorted = false;
+            // 0.4.10 (owner: "if the car can't clear the whole thing, the car should not enter the box"): vehicles AHEAD of the
+            // car that have not reached the box yet go through it first and take the room past it first. Without them a car
+            // following another into a box was judged with the leader's room and could be past its braking point when the
+            // leader took it (it then rolled in unable to stop).
+            if (freeNow) AheadFirst(ref scan, lane, inverse, length, queueFrom >= 0f && queueFrom < fromDriving ? queueFrom : fromDriving, self, safeTimeStep,
+                ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted);
             if (queueFrom >= 0f && fromDriving > queueFrom)
             {
                 ScanLane(ref scan, lane, StretchGeometry.ToDriving(queueFrom, inverse), inverse, length, (fromDriving - queueFrom) * length, 0f, true, self, safeTimeStep,
@@ -773,6 +791,87 @@ namespace JunctionRules.Stage2
         }
 
         /// <summary>
+        /// 0.4.10 (ahead-first, owner nose rule): the vehicles on the car's own path between its front and the box line
+        /// (driving coordinate <paramref name="boxEntryD"/> on <paramref name="lane"/>) count as queued for the room past the
+        /// box (RoomScan.AddQueued: their length + spacing, no credit): the rest of the car's current lane ahead of it, the
+        /// path lanes before <paramref name="lane"/>, and <paramref name="lane"/> from where the path enters it up to the line.
+        /// Only vehicles ahead on the same path (downstream): no new wait points back up the road.
+        /// </summary>
+        private void AheadFirst(ref RoomScan scan, Entity lane, bool inverse, float length, float boxEntryD, Entity self, float safeTimeStep,
+            ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves, ref ComponentLookup<Moving> moving,
+            ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<ObjectGeometryData> geometries,
+            ref ComponentLookup<CarData> prefabCars, ref bool unsorted)
+        {
+            if (lane == m_CurrentLane || lane == m_CurrentLane2)
+            {
+                if (OwnPosition(lane, self, ref laneObjects, out float own, out _))
+                {
+                    float ownD = StretchGeometry.ToDriving(own, inverse);
+                    if (boxEntryD > ownD) ScanLane(ref scan, lane, own, inverse, length, (boxEntryD - ownD) * length, 0f, true, self, safeTimeStep, ref laneObjects, ref curves,
+                        ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted, wholeBefore: true);
+                }
+                return;
+            }
+            if (!m_HasPath) return;
+            int idx = -1;
+            for (int i = 0; i < m_Path.Length; i++) if (m_Path[i].m_Lane == lane) { idx = i; break; }
+            if (idx < 0 || idx > MaxRoomLanes) return;   // not on the known path (or far ahead): nothing to add
+            float enterGame = m_Path[idx].m_CurvePosition.x, enterD = StretchGeometry.ToDriving(enterGame, inverse);
+            if (boxEntryD > enterD) ScanLane(ref scan, lane, enterGame, inverse, length, (boxEntryD - enterD) * length, 0f, true, self, safeTimeStep, ref laneObjects, ref curves,
+                ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted, wholeBefore: true);
+            for (int j = 0; j < idx; j++)
+            {
+                CarNavigationLane nav = m_Path[j];
+                if (!curves.TryGetComponent(nav.m_Lane, out Curve nc)) continue;
+                bool ni = nav.m_CurvePosition.y < nav.m_CurvePosition.x;
+                ScanLane(ref scan, nav.m_Lane, nav.m_CurvePosition.x, ni, nc.m_Length, math.abs(nav.m_CurvePosition.y - nav.m_CurvePosition.x) * nc.m_Length, 0f, true, self,
+                    safeTimeStep, ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted, wholeBefore: true);
+            }
+            if (m_CurrentLane != Entity.Null && curves.TryGetComponent(m_CurrentLane, out Curve cc) && OwnPosition(m_CurrentLane, self, ref laneObjects, out float cur, out bool curInverse))
+            {
+                float rest = curInverse ? cur : 1f - cur;
+                ScanLane(ref scan, m_CurrentLane, cur, curInverse, cc.m_Length, rest * cc.m_Length, 0f, true, self, safeTimeStep, ref laneObjects, ref curves,
+                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted, wholeBefore: true);
+            }
+        }
+
+        /// <summary>
+        /// 0.4.10 (review R1): a box hold of speed <paramref name="hold"/> binds because a light inside the room window is red /
+        /// amber: remember that light, so the car asks it for green (block S2-52). A signal changes only to a group a car has
+        /// asked for, and a car asks only when its look-ahead reaches the signal's lane, which a car held before the box never
+        /// does (the iteration ends at its hold): without this a quiet approach would never get green.
+        /// </summary>
+        private void NoteLightPetition(float hold)
+        {
+            if (m_LastLightLane == Entity.Null || !(hold < m_LightPetitionSpeed)) return;
+            m_LightPetitionLane = m_LastLightLane;
+            m_LightPetitionSpeed = hold;
+        }
+
+        /// <summary>0.4.10 (review R1, block S2-52): the light to ask for green, when the box hold that waits for it is the car's binding limit.</summary>
+        public bool LightPetition(float finalMaxSpeed, out Entity lane)
+        {
+            lane = m_LightPetitionLane;
+            return lane != Entity.Null && m_LightPetitionSpeed <= finalMaxSpeed + Stage2Counters.BindingTolerance;
+        }
+
+        /// <summary>The car's own position on a lane (its LaneObject's current curve position; inverse = it drives against the curve).</summary>
+        private static bool OwnPosition(Entity lane, Entity self, ref BufferLookup<LaneObject> laneObjects, out float position, out bool inverse)
+        {
+            position = 0f;
+            inverse = false;
+            if (!laneObjects.TryGetBuffer(lane, out DynamicBuffer<LaneObject> objects)) return false;
+            for (int i = 0; i < objects.Length; i++)
+            {
+                if (objects[i].m_LaneObject != self) continue;
+                position = objects[i].m_CurvePosition.x;
+                inverse = objects[i].m_CurvePosition.y < objects[i].m_CurvePosition.x;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
         /// 0.4.10 (JR-T-016 sweep, owner: "no part of a waiting vehicle inside any painted box"): a yellow box room test reads
         /// the room window (whole vehicle + margin past the box). A car that has room there drives on and may then have to
         /// wait at the far end of that window; it must not wait in another box or with its tail in this one:
@@ -790,6 +889,8 @@ namespace JunctionRules.Stage2
             ref ComponentLookup<Game.Net.CarLane> carLanes, ref ComponentLookup<Curve> curves)
         {
             if (scan.Blocked || !(read < scan.Reach)) return;
+            // review R3: Reach is read as it stands when the path reaches this lane (vehicles on later lanes are not added yet,
+            // earlier lanes are not re-tested when it grows later): an approximation in path order, as FurtherZebras.
             float len = navCurve.m_Length;
             float span = math.abs(nav.m_CurvePosition.y - nav.m_CurvePosition.x) * len;
             if (m_NodeLaneData.HasComponent(nav.m_Lane))
@@ -798,6 +899,7 @@ namespace JunctionRules.Stage2
                     && BoxDriving.LightStopsInWindow((int)sig.m_Signal))
                 {
                     scan.Block();
+                    m_LastLightLane = nav.m_Lane;   // review R1: the car must ask this light for green (S2-52)
                     return;
                 }
                 if (m_BoxJunctions && m_OwnerData.TryGetComponent(nav.m_Lane, out Owner o) && m_BoxJunctionData.HasComponent(o.m_Owner))
@@ -999,7 +1101,7 @@ namespace JunctionRules.Stage2
         private static void ScanLane(ref RoomScan scan, Entity lane, float from, bool inverse, float laneLength, float span, float baseDistance,
             bool queued, Entity self, float safeTimeStep, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves, ref ComponentLookup<Moving> moving,
             ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<ObjectGeometryData> geometries,
-            ref ComponentLookup<CarData> prefabCars, ref bool unsorted, bool noCredit = false)
+            ref ComponentLookup<CarData> prefabCars, ref bool unsorted, bool noCredit = false, bool wholeBefore = false)
         {
             if (!laneObjects.TryGetBuffer(lane, out DynamicBuffer<LaneObject> objects) || objects.Length == 0) return;
             bool hasCurve = curves.TryGetComponent(lane, out Curve curve);
@@ -1039,6 +1141,9 @@ namespace JunctionRules.Stage2
                 if (controllers.TryGetComponent(e, out Controller c) && c.m_Controller == self) continue;
                 if (!prefabRefs.TryGetComponent(e, out PrefabRef pr) || !geometries.TryGetComponent(pr.m_Prefab, out ObjectGeometryData g)) continue;
                 if (d + g.m_Bounds.max.z < 0f || d + g.m_Bounds.min.z > span) continue;
+                // 0.4.10 (ahead-first): only vehicles whose front is not yet past the end of the span (the box line): one
+                // straddling the line is read by the box part of the scan, not twice
+                if (wholeBefore && d + g.m_Bounds.max.z > span) continue;
                 // 0.4.2: inside the box / band ahead of the car: takes exit room first (RoomScan.AddQueued).
                 if (queued)
                 {
@@ -1570,6 +1675,8 @@ namespace JunctionRules.Stage2
             if (m_ExitCapHit) Add(counters, Stage2Counters.ExitCapHits, 1);
             if (m_ExitEntrantIgnored) Add(counters, Stage2Counters.ExitEntrantIgnored, 1);   // 0.4.9 (G15)
             if (Stage2Counters.IsBinding(m_HasBoxFreeNow, m_BoxFreeNowSpeed, finalMaxSpeed)) Add(counters, Stage2Counters.BoxHeldFreeNow, 1);   // 0.4.10 (G19)
+            if (Stage2Counters.IsStandingOn(m_HasBoxNose, m_BoxNoseSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxNosePast, 1);   // 0.4.10 nose rule: must be 0
+            if (m_BoxStoodInside && !Stage2Counters.IsStandingOn(m_HasBoxTurnWait, m_BoxTurnWaitSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxStoodInside, 1);
             // 0.4.7: the cap hits by kind (lane cap: go; vehicle cap: wait).
             if (m_ExitLaneCap) Add(counters, Stage2Counters.ExitCapLanes, 1);
             if (m_ExitVehicleCap) Add(counters, Stage2Counters.ExitCapVehicles, 1);

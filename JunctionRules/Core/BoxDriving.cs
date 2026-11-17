@@ -55,6 +55,31 @@ namespace JunctionRules.Core
             return braking <= wait + margin ? Approach.Check : Approach.CannotStop;
         }
 
+        /// <summary>
+        /// 0.4.10 (owner 17 Nov 2026: "cars won't just enter its nose into the box right? if the car can't clear the whole
+        /// thing, the car should not enter the box"): the game's 'distance' at a lane point is measured from the car's FRONT
+        /// BUMPER (copy CarLaneSpeedIterator.IterateFirstLane: num2 = m_Distance - bounds.max.z + offset, the tractor's
+        /// front for an artic), and wait = distance - margin, so the front bumper's distance to the box line is
+        /// wait + margin (negative = the nose is past the line).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float FrontToLine(float wait, float margin) => wait + margin;
+
+        /// <summary>Tolerance (m) for "front bumper past the box line" (float noise of the game's own distances).</summary>
+        public const float NoseTolerance = 0.1f;
+
+        /// <summary>0.4.10: a box hold binding while the front bumper is past the line by more than the tolerance (must never happen).</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool NosePast(float frontToLine) => frontToLine < -NoseTolerance;
+
+        /// <summary>
+        /// 0.4.10 probe: a body (front bumper 'frontToStart' / 'frontToEnd' metres before the box's near / far edge, whole
+        /// length 'length') has a part inside the box: the front is past the near edge and the rear is not past the far edge.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool BodyInside(float frontToStart, float frontToEnd, float length) =>
+            frontToStart < -NoseTolerance && frontToEnd + (length > 0f ? length : 0f) > NoseTolerance;
+
         /// <summary>The car is held at the entry: before it, able to stop, and no room past the box.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool Holds(Approach a, bool hasRoom) => a == Approach.Check && !hasRoom;

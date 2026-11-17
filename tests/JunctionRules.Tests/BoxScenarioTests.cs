@@ -31,6 +31,14 @@ namespace JunctionRules.Tests
             public bool Entrant, Reserved, WaitingToEnter;
             /// <summary>Crossed a box line while the light was green (not amber / red): a later light change can catch it.</summary>
             public bool EnteredOnGreen;
+            public float Accel, Decel;
+            /// <summary>This step's binding stop was a box hold at HoldLine (the painted line).</summary>
+            public bool HeldByBox;
+            public float HoldLine;
+            public bool CommittedCounted;
+            /// <summary>At its last box line decision the vehicle could still stop before the line.</summary>
+            public bool LastCanStop = true;
+            public bool HeldForLight;
         }
 
         private sealed class SimLane
@@ -42,10 +50,23 @@ namespace JunctionRules.Tests
             public bool Light;                      // signal at End
             public List<(float a, float b)> Painted = new List<(float a, float b)>();
             public float Drive = -1f, ExitJoin = -1f; // yard: entrance drive and exit join point (-1 = none)
+            public int Phase;                         // light phase (SimPhase)
+            public bool Petition;                     // a car of this approach asked for green this step
+            public bool RequestFromBoxHold = true;    // 0.4.10 review R1 (block S2-52): a car held before a box for the light asks for it
             public int YardCap, Yard;
         }
 
         private const float SimMargin = 1f, SimDt = 0.5f, SimVmax = 8f;
+
+        /// <summary>The highest speed from which the vehicle stops within 'dist' in whole steps (as the game's GetMaxBrakingSpeed with its time step).</summary>
+        private static float SimSafeSpeed(SimVehicle v, float dist)
+        {
+            if (!(dist > 0f)) return 0f;
+            return v.Decel * (-SimDt + (float)Math.Sqrt(SimDt * SimDt + 2f * dist / v.Decel));
+        }
+
+        /// <summary>The game's can-stop test: braking from the current speed this step reaches a speed that stops within 'dist'.</summary>
+        private static bool SimCanStop(SimVehicle v, float dist) => SimSafeSpeed(v, dist) >= v.Speed - v.Decel * SimDt - 1e-4f;
 
         /// <summary>The paint: the windows chained with the merge gap (one box each chain), as the paint and DrivingBands do.</summary>
         private static List<(float a, float b)> SimPaint(List<(double a, double b)> windows, double gap)
@@ -67,21 +88,38 @@ namespace JunctionRules.Tests
             return ExitBands.Chain(all, ExitBands.HoldTouchMetres(length, SimMargin));
         }
 
-        /// <summary>Signal cycle of 80 steps (40 s): green 0-33, amber 34-39 (3 s), red 40-79.</summary>
-        private static int SimPhase(int step) => step % 80;
-        private static bool SimRed(SimLane lane, int step) => lane.Light && SimPhase(step) >= 40;
+        /// <summary>
+        /// The light as the game runs it (review R1: TrafficLightSystem.GetNextSignalGroup changes only to a group a car asked
+        /// for): green 17 s (0-33), amber 3 s (34-39), red; after at least 20 s of red (the other approach's green) it turns
+        /// green only in a step in which a car of this approach asked for it (lane.Petition).
+        /// </summary>
+        private static int SimPhase(SimLane lane) => lane.Phase;
+        private static bool SimRed(SimLane lane, int step) => lane.Light && lane.Phase >= 40;
         /// <summary>The job's LightStopsInWindow: red or amber (Game.Net.LaneSignalType Stop / SafeStop).</summary>
         private static bool SimLightStops(SimLane lane, int step) =>
-            lane.Light && BoxDriving.LightStopsInWindow(SimPhase(step) >= 40 ? WholePathRule.SignalStop : SimPhase(step) >= 34 ? WholePathRule.SignalSafeStop : 4);
+            lane.Light && BoxDriving.LightStopsInWindow(lane.Phase >= 40 ? WholePathRule.SignalStop : lane.Phase >= 34 ? WholePathRule.SignalSafeStop : 4);
+
+        private static void SimAdvanceLight(SimLane lane)
+        {
+            if (!lane.Light) return;
+            if (lane.Phase < 79) lane.Phase++;
+            else if (lane.Petition) lane.Phase = 0;   // red until asked
+        }
         /// <summary>The model's road ends this far past the junction; the stop-and-go hold is there (queues stay visible).</summary>
         private const float SimDownstream = 60f;
+        /// <summary>Vehicles enter the model this far before the lane start (at full speed), so every box line is approached with room to brake.</summary>
+        private const float SimSpawn = -40f;
 
         /// <summary>
         /// The box room test for a vehicle entering [b0, b1] (0.4.10 rule when 'robust', else 0.4.9: moving credit, no further
         /// box / light in the window): vehicles ahead inside the box take room first; vehicles past it by rear position.
         /// </summary>
-        private static bool SimRoom(SimLane lane, List<SimVehicle> vs, SimVehicle me, float b0, float b1, int step, bool robust)
+        private static bool SimRoom(SimLane lane, List<SimVehicle> vs, SimVehicle me, float b0, float b1, int step, bool robust) =>
+            SimRoom(lane, vs, me, b0, b1, step, robust, out _);
+
+        private static bool SimRoom(SimLane lane, List<SimVehicle> vs, SimVehicle me, float b0, float b1, int step, bool robust, out bool lightBlocked)
         {
+            bool lb = false;
             RoomScan scan = RoomScan.Begin(me.Length, SimMargin);
             scan.FreeNow = robust;
             var past = new List<SimVehicle>();
@@ -89,7 +127,9 @@ namespace JunctionRules.Tests
             {
                 if (o == me || o.Front <= me.Front) continue;
                 float rear = o.Front - o.Length;
-                if (rear < b1 && o.Front > b0) scan.AddQueued(o.Length);
+                // 0.4.10 ahead-first (the job's AheadFirst): every vehicle ahead not yet past the box goes through it first;
+                // 0.4.9 counted only those already inside it
+                if (rear < b1 && (robust || o.Front > b0)) scan.AddQueued(o.Length);
                 else if (rear >= b1) past.Add(o);
             }
             past.Sort((x, y) => x.Front.CompareTo(y.Front));
@@ -117,7 +157,7 @@ namespace JunctionRules.Tests
                     if (!lightSeen && lane.Light && lane.End >= b1 && lane.End - b1 < scan.Reach)
                     {
                         lightSeen = true;
-                        if (SimLightStops(lane, step)) scan.Block();
+                        if (SimLightStops(lane, step)) { scan.Block(); lb = true; }
                     }
                 }
             }
@@ -129,17 +169,18 @@ namespace JunctionRules.Tests
                 scan.Add(o.Front - o.Length - b1, o.Length, credit, o.Id, 1);
                 Extensions();
             }
+            lightBlocked = lb && !scan.HasRoom;
             return scan.HasRoom;
         }
 
-        private static (int violations, int residual, bool drained, int served, int entered, int exited) SimRun(SimLane lane, int seed, bool robust, int steps, int drainSteps)
+        private static (int violations, int residual, bool drained, int served, int entered, int exited, int nose, int enteredNoRoom) SimRun(SimLane lane, int seed, bool robust, int steps, int drainSteps)
         {
             var rnd = new Random(seed);
             var vs = new List<SimVehicle>();
             var yardDwell = new List<int>();
             for (int i = 0; i < lane.Yard; i++) yardDwell.Add(rnd.Next(5, 40));
             float[] lengths = { 4.2f, 4.2f, 4.2f, 6.5f, 6.5f, 12f, 16.5f };
-            int nextId = 1, violations = 0, residual = 0, served = 0, entered = 0, exited = 0;
+            int nextId = 1, violations = 0, residual = 0, served = 0, entered = 0, exited = 0, nose = 0, enteredNoRoom = 0;
             for (int step = 0; step < steps + drainSteps; step++)
             {
                 bool demand = step < steps;
@@ -149,30 +190,55 @@ namespace JunctionRules.Tests
                 SimVehicle ahead = null;
                 foreach (SimVehicle v in vs)
                 {
-                    float limit = sinkOpen ? 1e9f : lane.JunctionEnd + SimDownstream;
-                    if (ahead != null) limit = Math.Min(limit, ahead.Front - ahead.Length - 1f);
-                    if (SimRed(lane, step) && v.Front <= lane.End + 1e-3f) limit = Math.Min(limit, lane.End);
+                    // hard limits (physical: the vehicle ahead, the closed exit) and soft ones (stop lines: braking-limited)
+                    float hard = sinkOpen ? 1e9f : lane.JunctionEnd + SimDownstream;
+                    if (ahead != null) hard = Math.Min(hard, ahead.Front - ahead.Length - 1f);
+                    float soft = 1e9f;
+                    // the stock light: red and amber stop a car that can still stop (amber = SafeStop)
+                    if (lane.Light && SimLightStops(lane, step) && v.Front <= lane.End + 1e-3f && SimCanStop(v, lane.End - v.Front)) soft = Math.Min(soft, lane.End);
                     v.WaitingToEnter = false;
+                    v.HeldByBox = false;
+                    v.HeldForLight = false;
                     foreach (var band in SimBands(lane, v.Length))
                     {
                         if (v.Front > band.b0 + 1e-3f) continue;          // inside or past: carry on (Classify Inside)
+                        float frontToLine = band.b0 - v.Front;            // the job's FrontToLine (front bumper to the painted line)
+                        bool canStop = SimCanStop(v, frontToLine);         // the job's Classify: Check vs CannotStop
+                        v.LastCanStop = canStop;
                         bool entering = v.Entrant && lane.Drive > band.b0 && lane.Drive < band.b1;
-                        if (entering)
+                        bool lightBlocked = false;
+                        bool room = entering ? v.Reserved || lane.Yard + Reserved(vs) < lane.YardCap : SimRoom(lane, vs, v, band.b0, band.b1, step, robust, out lightBlocked);
+                        if (entering && room && !v.Reserved && canStop) v.Reserved = true;
+                        if (!room && canStop)
                         {
-                            if (!v.Reserved)
-                            {
-                                if (lane.Yard + Reserved(vs) < lane.YardCap) v.Reserved = true;
-                                else { limit = Math.Min(limit, BoxDriving.EnteringEntry(0f, band.b0) - 0.5f); v.WaitingToEnter = true; }
-                            }
+                            soft = Math.Min(soft, band.b0 - 0.5f);         // front bumper 0.5 m before the line
+                            v.HeldByBox = true;
+                            v.HoldLine = band.b0;
+                            v.HeldForLight = lightBlocked;
+                            v.WaitingToEnter = entering;
                         }
-                        else if (!SimRoom(lane, vs, v, band.b0, band.b1, step, robust)) limit = Math.Min(limit, band.b0 - 0.5f);
+                        else if (!room && !canStop && !v.CommittedCounted)
+                        {
+                            enteredNoRoom++; v.CommittedCounted = true; if (entering) v.Reserved = true;
+                        }
+                        else if (room && entering) v.Reserved = true;
                         break;                                                // the next box ahead only
                     }
-                    float move = Math.Max(0f, Math.Min(SimVmax * SimDt, limit - v.Front));
+                    float vNext = Math.Min(v.Speed + v.Accel * SimDt, SimVmax);
+                    vNext = Math.Min(vNext, SimSafeSpeed(v, soft - v.Front));
+                    vNext = Math.Max(vNext, Math.Max(0f, v.Speed - v.Decel * SimDt));   // cannot brake harder than its deceleration
+                    float move = vNext * SimDt;
+                    if (move > hard - v.Front) move = Math.Max(0f, hard - v.Front);    // physical: never into the vehicle ahead
                     foreach (var pb in lane.Painted)
-                        if (v.Front <= pb.a && v.Front + move > pb.a) v.EnteredOnGreen = lane.Light && !SimLightStops(lane, step);
+                        if (v.Front <= pb.a && v.Front + move > pb.a)
+                        {
+                            // light-change residual: crossed on green, or during amber / red only because it could no longer stop
+                            v.EnteredOnGreen = lane.Light && (!SimLightStops(lane, step) || !v.LastCanStop);
+                            v.CommittedCounted = false;
+                        }
                     v.Speed = move / SimDt;
                     v.Front += move;
+                    if (v.HeldByBox && v.Speed < 0.01f && BoxDriving.NosePast(v.HoldLine - v.Front)) nose++;
                     ahead = v;
                 }
                 // turn in / leave the model
@@ -189,7 +255,7 @@ namespace JunctionRules.Tests
                     int ready = yardDwell.FindIndex(d => d <= 0);
                     if (ready >= 0)
                     {
-                        var me = new SimVehicle { Id = nextId, Front = lane.ExitJoin, Length = 6.5f, Speed = 2f };
+                        var me = new SimVehicle { Id = nextId, Front = lane.ExitJoin, Length = 6.5f, Speed = 2f, Accel = 2f, Decel = 4.5f };
                         bool clear = true;
                         foreach (SimVehicle o in vs)
                         {
@@ -215,13 +281,18 @@ namespace JunctionRules.Tests
                     float len = lengths[rnd.Next(lengths.Length)];
                     float lastRear = 1e9f;
                     foreach (SimVehicle o in vs) lastRear = Math.Min(lastRear, o.Front - o.Length);
-                    if (lastRear > len + 2f)
-                        vs.Add(new SimVehicle { Id = nextId++, Front = 0f, Length = len, Speed = SimVmax, Entrant = lane.Drive >= 0f && len >= 6.5f && rnd.NextDouble() < 0.4 });
+                    if (lastRear > SimSpawn + len + 2f)
+                        vs.Add(new SimVehicle
+                        {
+                            Id = nextId++, Front = SimSpawn, Length = len, Speed = SimVmax, Entrant = lane.Drive >= 0f && len >= 6.5f && rnd.NextDouble() < 0.4,
+                            // car / van / bus / artic: acceleration and deceleration (m/s2)
+                            Accel = len < 5f ? 2.5f : len < 7f ? 2f : len < 13f ? 1.2f : 1f, Decel = len < 5f ? 5f : len < 7f ? 4.5f : len < 13f ? 3.5f : 3f,
+                        });
                 }
                 // the invariant: no part of a STANDING vehicle in a painted box
                 foreach (SimVehicle v in vs)
                 {
-                    if (v.Speed > 0.01f || v.Front < 0.5f) continue;
+                    if (v.Speed > 0.01f || v.Front < 0f) continue;
                     foreach (var b in lane.Painted)
                         if (v.Front > b.a + 0.01f && v.Front - v.Length < b.b - 0.01f)
                         {
@@ -233,9 +304,18 @@ namespace JunctionRules.Tests
                         }
                     if (lane.JunctionBoxed && v.Front > lane.End + 0.01f && v.Front - v.Length < lane.JunctionEnd - 0.01f) violations++;
                 }
+                // the light: who asks for green. The game: a car whose look-ahead reaches the light's lane (not one held
+                // earlier: its iteration ends at its hold). 0.4.10 S2-52: a car held before a box FOR the light asks too.
+                lane.Petition = false;
+                foreach (SimVehicle v in vs)
+                {
+                    if (v.HeldForLight) { if (lane.RequestFromBoxHold) lane.Petition = true; continue; }
+                    if (!v.HeldByBox && v.Front <= lane.End + 1e-3f && v.Front > lane.End - 40f) lane.Petition = true;
+                }
+                SimAdvanceLight(lane);
             }
             bool drained = vs.Count == 0 && lane.Yard == 0 && yardDwell.Count == 0;
-            return (violations, residual, drained, served, entered, exited);
+            return (violations, residual, drained, served, entered, exited, nose, enteredNoRoom);
         }
 
         private static int Reserved(List<SimVehicle> vs)
@@ -262,7 +342,7 @@ namespace JunctionRules.Tests
         {
             Check(Alderwood(ExitBands.MergeGapMetres).Painted.Count == 1 && Alderwood(2.0).Painted.Count == 2, "paint: No. 40's boxes are one box at 6 m (G20), two at 0.4.9's 2 m");
             Check(Alderbrook(ExitBands.MergeGapMetres).Painted.Count == 4, "paint: Alderbrook's 193433 + 843726 boxes one box (110.0..127.3 m along = 48.0..65.3 m here)");
-            int totalViol = 0, oldViol = 0, residual = 0, oldResidual = 0, served = 0, entered = 0, exited = 0;
+            int totalViol = 0, oldViol = 0, residual = 0, oldResidual = 0, served = 0, entered = 0, exited = 0, nose = 0, noRoom = 0, oldNoRoom = 0;
             bool allDrained = true;
             for (int seed = 1; seed <= 20; seed++)
             {
@@ -271,19 +351,35 @@ namespace JunctionRules.Tests
                     var r = SimRun(wood ? Alderwood(ExitBands.MergeGapMetres) : Alderbrook(ExitBands.MergeGapMetres), seed, true, 2400, 2400);
                     totalViol += r.violations;
                     residual += r.residual;
+                    nose += r.nose;
+                    noRoom += r.enteredNoRoom;
                     allDrained &= r.drained;
                     served += r.served; entered += r.entered; exited += r.exited;
                     if (!r.drained || r.violations > 0) Console.WriteLine($"  scenario {(wood ? "Alderwood" : "Alderbrook")} seed {seed}: violations {r.violations}, drained {r.drained}");
                     var o = SimRun(wood ? Alderwood(2.0) : Alderbrook(2.0), seed, false, 2400, 2400);
                     oldViol += o.violations;
                     oldResidual += o.residual;
+                    oldNoRoom += o.enteredNoRoom;
                 }
             }
-            Console.WriteLine($"  box scenario: 0.4.10 rules: {served} vehicles through, {entered} turned into No. 40, {exited} left it, standing-in-box vehicle-steps {totalViol} (+ {residual} light-change residual); 0.4.9 rules: {oldViol} (+ {oldResidual})");
+            Console.WriteLine($"  box scenario: 0.4.10 rules: {served} vehicles through, {entered} turned into No. 40, {exited} left it, standing-in-box vehicle-steps {totalViol} (+ {residual} light-change residual), front bumper past a line while held {nose}, committed while the room past the box shrank (could not stop; none ended standing) {noRoom}; 0.4.9 rules: {oldViol} (+ {oldResidual}), committed {oldNoRoom}");
+            Check(nose == 0, $"owner nose rule: no vehicle held by a box stands with its front bumper past the painted line (braking-limited approach, all vehicle kinds) ({nose})");
             Check(served > 1000 && entered > 50 && exited > 50, "the scenario moves traffic (through, into and out of the yard)");
             Check(totalViol == 0, $"0.4.10: no standing vehicle has any part inside a painted box (car, van, bus, artic; through, entering, leaving; stop-and-go exit; red light) ({totalViol})");
             Check(allDrained, "0.4.10: no deadlock: with the demand off everything drains (lane empty, No. 40's yard turned over and empty)");
             Check(residual < oldResidual + oldViol, $"the light-change residual (first vehicle at a red line, entered on green) is rare next to 0.4.9 ({residual})");
+            // review R1: without the light request of a car held before a box for the light, a quiet approach starves
+            int starvedRuns = 0, requestRuns = 0;
+            for (int seed = 1; seed <= 20; seed++)
+            {
+                SimLane noRequest = Alderbrook(ExitBands.MergeGapMetres);
+                noRequest.RequestFromBoxHold = false;
+                if (!SimRun(noRequest, seed, true, 2400, 2400).drained) starvedRuns++;
+                if (SimRun(Alderbrook(ExitBands.MergeGapMetres), seed, true, 2400, 2400).drained) requestRuns++;
+            }
+            Console.WriteLine($"  light request (review R1): without it {starvedRuns} of 20 Alderbrook runs never drain (the light is never asked for green); with it {requestRuns} of 20 drain");
+            Check(starvedRuns > 0, "review R1 reproduced: a car held before a box for a red light never asks for green (its look-ahead ends at the box): the approach starves");
+            Check(requestRuns == 20, "0.4.10 S2-52: the held car asks the light for green: every run drains");
             Check(oldViol > 0, $"the same scenes under 0.4.9's rules (moving credit, 2 m paint merge, no light / further box in the window) leave vehicles standing in boxes ({oldViol})");
         }
 
@@ -326,6 +422,35 @@ namespace JunctionRules.Tests
             while ((at = it.IndexOf("if (m_JR.m_BoxRule && !JunctionRules.Core.ExitGiveWay.IsEmergency(m_Priority))", at, StringComparison.Ordinal)) >= 0) { emergency++; at++; }
             Check(emergency == 3, "on-duty emergency vehicles pass boxes (S2-28, S2-28b, S2-37), as at exits");
             Check(nav.Contains("ref m_JRBoxEdges, m_LaneSignalData);"), "the job gets the lane signals for the light-in-window rule");
+
+            // ---- owner nose rule (17 Nov): "if the car can't clear the whole thing, the car should not enter the box"
+            // the game's distance at a lane point is from the FRONT BUMPER (copy IterateFirstLane: num2 = m_Distance - bounds.max.z)
+            Check(it.Contains("float num = -m_PrefabObjectGeometry.m_Bounds.max.z;") && it.Contains("float num2 = m_Distance + num + m_DistanceOffset;"),
+                "the box hold's distance is measured from the front bumper (tractor front for an artic): no nose overhang from the vehicle's position offset");
+            Check(BoxDriving.FrontToLine(-0.9f, 0.9f) == 0f && !BoxDriving.NosePast(0f) && !BoxDriving.NosePast(-0.05f) && BoxDriving.NosePast(-0.2f), "front to line = wait + margin; past by more than 0.1 m = nose past");
+            // property: a car the box rule can HOLD (Classify = Check) can stop with its front at or before the line; a car
+            // whose front is past the line is Inside (never held there, so 'held with the nose past' cannot arise from a hold)
+            var rr = new Random(1717);
+            bool okCheck = true, okInside = true;
+            for (int i = 0; i < 20000; i++)
+            {
+                float margin = 0.4f + (float)rr.NextDouble() * 0.5f, wait = (float)rr.NextDouble() * 40f - 5f, braking = (float)rr.NextDouble() * 30f;
+                BoxDriving.Approach ap = BoxDriving.Classify(false, wait, margin, braking);
+                float ftl = BoxDriving.FrontToLine(wait, margin);
+                if (ap == BoxDriving.Approach.Check && !(braking <= ftl + 1e-4f)) okCheck = false;
+                if (ftl < 0f && ap != BoxDriving.Approach.Inside) okInside = false;
+            }
+            Check(okCheck, "every held car (Check) can stop within its distance to the line: its front bumper stops at or before the painted line (20000 random approaches)");
+            Check(okInside, "a car whose front is past the line is never held by the box (it is inside): the nose counter can only see a game overshoot");
+            Check(BoxDriving.BodyInside(-0.5f, 7.5f, 4.2f) && BoxDriving.BodyInside(-12f, -4f, 4.2f) && !BoxDriving.BodyInside(0.3f, 8.3f, 4.2f) && !BoxDriving.BodyInside(-14f, -6f, 4.2f),
+                "standing-inside probe: nose in, wholly in, front at the line (outside), rear past the far edge (outside)");
+            string yb2 = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Stage2", "JRYellowBox.cs"));
+            Check(yb2.Contains("Min(ref m_HasBoxNose, ref m_BoxNoseSpeed, hold);") && wj.Contains("Add(counters, Stage2Counters.BoxNosePast, 1);") && wj.Contains("Add(counters, Stage2Counters.BoxStoodInside, 1);"),
+                "counters 'front bumper past a box line while held' (must be 0) and 'standing inside a box' wired");
+            // review R1: the light request
+            Check(nav.Contains("// JR-STAGE2 BEGIN S2-52:") && nav.Contains("laneIterator.m_JR.LightPetition(laneIterator.m_MaxSpeed, out Entity jrPetitionLane)")
+                && nav.Contains("m_LaneSignals.Enqueue(new CarNavigationHelpers.LaneSignal(entity, jrPetitionLane, priority));") && wj.Contains("m_LastLightLane = nav.m_Lane;"),
+                "S2-52: a car held before a box for a light asks that light for green (the game's own LaneSignal request)");
         }
     }
 }

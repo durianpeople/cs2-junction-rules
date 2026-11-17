@@ -288,6 +288,12 @@
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
         "reason": "0.4.9 (JR-T-015, G13): right after the RequestSpace reservations: restores the flags S2-51 cleared (the vehicle's own state is unchanged)."
+      },
+      "S2-52": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
+        },
+        "reason": "0.4.10 (JR-T-016, review R1): UpdateNavigationTarget, after S2-36 and before navigation.m_MaxSpeed: a car whose binding limit is a yellow box hold that waits for a red / amber light inside the room past the box enqueues the game's own signal request (CarNavigationHelpers.LaneSignal, as IterateNextLane's needSignal does) for that light's lane: its look-ahead ends at the box, so it never reaches the light's lane, and a signal changes only to a group a car has asked for (TrafficLightSystem.GetNextSignalGroup)."
       }
     }
   }
