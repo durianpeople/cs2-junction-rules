@@ -39,6 +39,11 @@ namespace JunctionRules.Tests
                 && !ex.Contains("sideObstacles: true"), "review 1: side obstacles only for traffic through a band, never in an exit's own room checks (no exit <-> entrant loop)");
             Check(yb.Contains("if (!BoxDriving.Holds(a, room)) { m_LastBlocker = keepBand; continue; }") && yb.Contains("else m_LastBlocker = keepEnter;")
                 && yb.Contains("m_LastBlocker = keepLog;") && yb.Contains("m_LastBlocker = keepF1;"), "review 2: only the binding hold's scan names the blocker");
+            Check(wj.Contains("m_SideHeld = true;") && yb.Contains("if (m_SideHeld) NoteEnteringHeld(self);") && yb.Contains("m_SideHeld = false;"),
+                "final review: a through car held behind a vehicle turning in counts as waiting to turn in for exits nearby (no through car -> entrant -> yard -> exit loop)");
+            // the loop of the final review, with the exit rule: the held through car stands 3 m before the exit conflict
+            Check(ExitGiveWay.VehicleBlocks(3f, false, 0f, 0f, 1.5f) && !ExitGiveWay.VehicleBlocks(3f, false, 0f, 0f, 1.5f, waitingToEnter: true),
+                "the exit no longer waits for that standing through car");
             Check(wj.Contains("bool against = lo.m_CurvePosition.y < lo.m_CurvePosition.x;"), "review 5: a vehicle driving a two-way driveway lane against its curve is measured the right way round");
             Check(wj.Contains("if (sideObstacles && scan.HasRoom) SideObstacles(ref scan, lane,") && wj.Contains("(other.m_Flags & Game.Net.CarLaneFlags.SideConnection) == 0) continue;"),
                 "G15b: the room-past scan also reads vehicles across the lane on overlapping driveway lanes");

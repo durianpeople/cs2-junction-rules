@@ -278,6 +278,8 @@ namespace JunctionRules.Stage2
         private bool m_ExitEntrantIgnored;
         /// <summary>G17: the vehicle the current hook's hold waits for (HoldBlocker).</summary>
         private Entity m_LastBlocker;
+        /// <summary>G15b (final review): this car-step a room scan was blocked by a vehicle standing across the lane from a driveway.</summary>
+        private bool m_SideHeld;
 
         /// <summary>0.4.8 trace: the exit's position (drive lane start / join point) of this update's decision.</summary>
         private float2 m_ExitPoint;
@@ -786,6 +788,7 @@ namespace JunctionRules.Stage2
                     float rear = against ? x - g.m_Bounds.max.z : x + g.m_Bounds.min.z, front = against ? x - g.m_Bounds.min.z : x + g.m_Bounds.max.z;
                     if (!BoxDriving.SideBodyCovers(rear, front, oS, oE)) continue;
                     scan.BlockBy(who.Index, who.Version);
+                    m_SideHeld = true;   // final review: held behind a vehicle turning in / out across the lane
                     break;
                 }
             }

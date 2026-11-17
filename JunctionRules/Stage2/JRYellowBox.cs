@@ -183,10 +183,15 @@ namespace JunctionRules.Stage2
                 // 0.4.9 (G15b, review 1): vehicles standing across the lane from a driveway count only for traffic driving THROUGH the
                 // band (Main); a vehicle leaving the drive (Leaving) never waits for one (it could be the entrant that waits for it).
                 Entity keepBand = m_LastBlocker;
+                m_SideHeld = false;
                 bool room = HasRoomPast(lane, b1, inverse, laneLength, entry, joined, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
                     ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, role == BoxDriving.EntranceRole.Main);
                 if (!BoxDriving.Holds(a, room)) { m_LastBlocker = keepBand; continue; }
                 result = hold;
+                // 0.4.9 (G15b, final review): held only because a vehicle turning into (or out of) a driveway stands across the
+                // lane: it waits for that building like an entrant, so an exit within 10 m does not wait for it (no
+                // through car -> entrant -> yard -> exit -> through car loop). On the exit's conflict it still blocks.
+                if (m_SideHeld) NoteEnteringHeld(self);
                 if (Counting)
                 {
                     if (role == BoxDriving.EntranceRole.Leaving) Min(ref m_HasEntranceLeaving, ref m_EntranceLeavingSpeed, hold);
