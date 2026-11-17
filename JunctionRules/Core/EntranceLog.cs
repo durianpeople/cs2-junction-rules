@@ -31,6 +31,8 @@ namespace JunctionRules.Core
             Go = 1,
             /// <summary>In the box (or past the point where it can stop): carries on; room = the way in had room this step.</summary>
             InBox = 2,
+            /// <summary>0.4.11 (G21): before the box, way in has room, but held for a gap in the traffic its turn crosses (on the road).</summary>
+            HeldGap = 3,
         }
 
         public static int SlotBase(long seq) => 1 + (int)((seq - 1) % Slots) * Words;
@@ -119,7 +121,8 @@ namespace JunctionRules.Core
         {
             public long Road;
             public uint First, Last, HeldFirst, StandFirst;
-            public bool Held, WentIn, NoRoom, Standing, ReportedHold, ReportedStand, Counted, SampledGo;
+            public bool Held, WentIn, NoRoom, Standing, ReportedHold, ReportedStand, Counted, SampledGo, HeldGap, ReportedHoldGap;
+            public uint HeldGapFirst;
             public float BandStart;
         }
 
@@ -129,7 +132,7 @@ namespace JunctionRules.Core
         private double m_IntervalStart = double.NaN;
         private int m_Notable, m_Samples;
         private long m_NotableDropped, m_SampleSkipped, m_Lost;
-        private long m_Turning, m_Held, m_Go, m_NoRoom, m_StoodNoRoom, m_LongStand, m_LongHold, m_Full;
+        private long m_Turning, m_Held, m_Go, m_NoRoom, m_StoodNoRoom, m_LongStand, m_LongHold, m_Full, m_HeldGap, m_LongHoldGap;
 
         public EntranceLogBook(Action<string> log) { m_Log = log; }
 
@@ -169,11 +172,28 @@ namespace JunctionRules.Core
                         Notable("held before the box " + Seconds(Since(ep.HeldFirst, frame)) + " (way in still full)", vehicle, road, bandStart, speed);
                     }
                     break;
+                case EntranceLog.Event.HeldGap:
+                    // 0.4.11 (G21): written after the room test of the same step (its Go record came first): held for the gap.
+                    if (!ep.HeldGap)
+                    {
+                        ep.HeldGap = true;
+                        ep.HeldGapFirst = frame;
+                        m_HeldGap++;
+                        Sample("held before the box (way in has room; waits for a gap in the traffic its turn crosses)", vehicle, road, bandStart, speed);
+                    }
+                    if (!ep.ReportedHoldGap && Since(ep.HeldGapFirst, frame) >= LongHoldFrames)
+                    {
+                        ep.ReportedHoldGap = true;
+                        m_LongHoldGap++;
+                        Notable("held before the box " + Seconds(Since(ep.HeldGapFirst, frame)) + " waiting for a gap in the traffic its turn crosses", vehicle, road, bandStart, speed);
+                    }
+                    break;
                 case EntranceLog.Event.Go:
-                    if (!ep.WentIn && !ep.Held && !ep.SampledGo)
+                    // 0.4.11: the room test passed; a gap hold of the same step may follow (HeldGap), so the sample says only that.
+                    if (!ep.WentIn && !ep.Held && !ep.HeldGap && !ep.SampledGo)
                     {
                         ep.SampledGo = true;
-                        Sample("let in (way in has room)", vehicle, road, bandStart, speed);
+                        Sample("way in has room", vehicle, road, bandStart, speed);
                     }
                     break;
                 case EntranceLog.Event.InBox:
@@ -210,19 +230,20 @@ namespace JunctionRules.Core
         {
             if (double.IsNaN(m_IntervalStart)) { m_IntervalStart = now; return; }
             if (now - m_IntervalStart < IntervalSeconds) return;
-            bool any = m_Turning + m_Held + m_NoRoom + m_Lost + m_Full + m_NotableDropped > 0;
+            bool any = m_Turning + m_Held + m_HeldGap + m_NoRoom + m_Lost + m_Full + m_NotableDropped > 0;
             if (any)
             {
                 var ci = CultureInfo.InvariantCulture;
                 m_Log("entrance boxes (last " + ((int)Math.Round(now - m_IntervalStart)).ToString(ci) + " s): " + m_Turning + " vehicle(s) turning in at a box, "
                       + m_Held + " held before the box (way in full), " + m_Go + " went in with room, " + m_NoRoom + " went in without room (could not stop), "
-                      + m_StoodNoRoom + " stood in the box without room, " + m_LongStand + " stood in the box over 30 s, " + m_LongHold + " held over 30 s; lines: "
+                      + m_StoodNoRoom + " stood in the box without room, " + m_LongStand + " stood in the box over 30 s, " + m_LongHold + " held over 30 s"
+                      + "; " + m_HeldGap + " held before the box for a gap in the traffic their turn crosses (" + m_LongHoldGap + " over 30 s); lines: "
                       + m_Notable + " notable (" + m_NotableDropped + " over the cap), " + m_Samples + " samples (" + m_SampleSkipped + " skipped); "
                       + m_Lost + " records lost (ring overrun), " + m_Full + " not tracked (book full)");
             }
             m_IntervalStart = now;
             m_Notable = m_Samples = 0;
-            m_NotableDropped = m_SampleSkipped = m_Lost = m_Turning = m_Held = m_Go = m_NoRoom = m_StoodNoRoom = m_LongStand = m_LongHold = m_Full = 0;
+            m_NotableDropped = m_SampleSkipped = m_Lost = m_Turning = m_Held = m_Go = m_NoRoom = m_StoodNoRoom = m_LongStand = m_LongHold = m_Full = m_HeldGap = m_LongHoldGap = 0;
             m_Stale.Clear();
             foreach (var kv in m_Vehicles) if (Since(kv.Value.Last, frame) > EpisodeGapFrames) m_Stale.Add(kv.Key);
             foreach (long k in m_Stale) m_Vehicles.Remove(k);

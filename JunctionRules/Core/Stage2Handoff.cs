@@ -229,7 +229,15 @@ namespace JunctionRules.Core
         /// amber / red after the car entered on green, a vehicle that cut into the room past the box).
         /// </summary>
         public const int BoxStoodInside = FeedingScans + 55;
-        public const int Count = FeedingScans + 56;
+        /// <summary>0.4.11 (G21): car-steps in which a vehicle about to turn INTO a building across traffic was judged for a gap (on its own lane, before the box line or the drive start).</summary>
+        public const int EntryJudged = FeedingScans + 56;
+        /// <summary>0.4.11 (G21): car-steps in which such a vehicle STOOD held for a gap in the traffic it crosses (before the box line, or at the drive start in its own lane).</summary>
+        public const int EntryGapHeld = FeedingScans + 57;
+        /// <summary>0.4.11 (G21): of those, standing at the drive start INSIDE a box (it could no longer stop before the box line; expected ~0).</summary>
+        public const int EntryGapHeldInBox = FeedingScans + 58;
+        /// <summary>0.4.11 (G21): car-steps in which an entrant's gap scan did not wait for a standing vehicle that itself waits to turn into a building.</summary>
+        public const int EntryEntrantIgnored = FeedingScans + 59;
+        public const int Count = FeedingScans + 60;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -384,6 +392,13 @@ namespace JunctionRules.Core
                    (exitMask >= 2
                        ? "; exits not waiting for a vehicle that waits to turn in " + deltas[ExitEntrantIgnored].ToString(ci) +
                          "; held exits' keep-clear requests withdrawn " + deltas[ExitKeepClearWithdrawn].ToString(ci)
+                       : "") +
+                   // 0.4.11 (G21): vehicles turning into buildings give way (same setting).
+                   (exitMask >= 2
+                       ? "; turning into buildings: judged for a gap " + deltas[EntryJudged].ToString(ci) +
+                         ", standing held for a gap " + deltas[EntryGapHeld].ToString(ci) +
+                         " (of them at the drive start inside a box " + deltas[EntryGapHeldInBox].ToString(ci) + ")" +
+                         ", not waiting for another vehicle waiting to turn in " + deltas[EntryEntrantIgnored].ToString(ci)
                        : "") +
                    // 0.4.10 (G19): newest, at the end.
                    (boxMask >= 2 ? "; box holds only because the queue past the box was moving (free-now rule) " + deltas[BoxHeldFreeNow].ToString(ci)

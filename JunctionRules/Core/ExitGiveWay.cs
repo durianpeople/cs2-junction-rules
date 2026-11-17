@@ -284,7 +284,11 @@ namespace JunctionRules.Core
         public const float AreaScanMin = 25f;
 
         /// <summary>Counter episodes (0.4.6): a vehicle's consecutive exit decisions (at most <see cref="Core.SafetyStopEvents.ContinueFrames"/> apart) are one event, per kind.</summary>
-        public const int EventKinds = 20;
+        public const int EventKinds = 21;
+
+        /// <summary>0.4.11 (G21): event kind of "held on the road before turning into a building: waits for a gap in the traffic it
+        /// crosses" (written every held update; read by other entrants' gap scans: a standing entrant is not present).</summary>
+        public const int EntryGapHeldKind = 20;
 
         /// <summary>0.4.9 (G15): event kind of "held before a box: its way INTO a building is full" (written every held update, read by exits nearby).</summary>
         public const int EnteringHeldKind = 17;

@@ -290,6 +290,20 @@ namespace JunctionRules.Stage2
         private bool m_EnteringHeld;
         /// <summary>G15 (counting): this update an exit did not wait for a standing vehicle that waits for room into a building.</summary>
         private bool m_ExitEntrantIgnored;
+        // ---- 0.4.11 (JR-T-017, G21): vehicles turning INTO a building give way (JRExitGiveWay.EntryRoadHold) ----
+        /// <summary>G21: the running gap scan is an entrant's (VehiclesBlock also skips standing vehicles that wait for a gap to turn in).</summary>
+        private bool m_EntryScan;
+        /// <summary>G21: this update's entry gap hold is already recorded in the event table.</summary>
+        private bool m_EntryGapNoted;
+        /// <summary>G21 (counting): this car-step a turn into a building was judged for a gap.</summary>
+        private bool m_EntryJudged;
+        /// <summary>G21 (counting): the entry gap hold (before the box line or at the drive start).</summary>
+        private bool m_HasEntryGap;
+        private float m_EntryGapSpeed;
+        /// <summary>G21 (counting): of those, held at the drive start INSIDE a box (could no longer stop before the box line).</summary>
+        private bool m_EntryGapInBox;
+        /// <summary>G21 (counting): an entrant's scan did not wait for a standing vehicle that itself waits to turn in.</summary>
+        private bool m_EntryEntrantIgnored;
         /// <summary>G17: the vehicle the current hook's hold waits for (HoldBlocker).</summary>
         private Entity m_LastBlocker;
         /// <summary>G15b (final review): this car-step a room scan was blocked by a vehicle standing across the lane from a driveway.</summary>
@@ -1694,6 +1708,14 @@ namespace JunctionRules.Stage2
             if (m_ExitEmergency && ExitEvent(eventTable, entity, frame, 4)) Add(counters, Stage2Counters.ExitEmergencyPass, 1);
             if (m_ExitCapHit) Add(counters, Stage2Counters.ExitCapHits, 1);
             if (m_ExitEntrantIgnored) Add(counters, Stage2Counters.ExitEntrantIgnored, 1);   // 0.4.9 (G15)
+            // 0.4.11 (G21): turning into a building gives way (car-steps; the event table's EntryGapHeldKind is the driving record)
+            if (m_EntryJudged) Add(counters, Stage2Counters.EntryJudged, 1);
+            if (Stage2Counters.IsStandingOn(m_HasEntryGap, m_EntryGapSpeed, finalMaxSpeed, currentSpeed))
+            {
+                Add(counters, Stage2Counters.EntryGapHeld, 1);
+                if (m_EntryGapInBox) Add(counters, Stage2Counters.EntryGapHeldInBox, 1);
+            }
+            if (m_EntryEntrantIgnored) Add(counters, Stage2Counters.EntryEntrantIgnored, 1);
             if (Stage2Counters.IsBinding(m_HasBoxFreeNow, m_BoxFreeNowSpeed, finalMaxSpeed)) Add(counters, Stage2Counters.BoxHeldFreeNow, 1);   // 0.4.10 (G19)
             // 0.4.10 probes; the UK right-turn spot (waiting for the oncoming gap or, review 3 F2, for exit room) is excluded
             bool turnSpot = Stage2Counters.IsStandingOn(m_HasBoxTurnWait, m_BoxTurnWaitSpeed, finalMaxSpeed, currentSpeed)

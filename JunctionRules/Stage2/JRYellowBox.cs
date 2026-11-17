@@ -249,9 +249,10 @@ namespace JunctionRules.Stage2
         /// road lane (the drive's connection lane, the drive / building lanes; up to MaxRoomLanes), read by the same RoomScan as
         /// boxes and zebras (moving vehicles credit their braking distance, standing ones do not; the unknown rest and a path
         /// that ends inside the building count as free). A lane change inside the band is not an entry (BoxDriving
-        /// .EnteringApplies). A car turning across oncoming traffic that has room enters and waits for the oncoming gap
-        /// inside the box at the game's own give-way of its connection lane (the UK in-box spot): only oncoming traffic stops
-        /// it there. Returns the speed limit or float.MaxValue.
+        /// .EnteringApplies). 0.4.8-0.4.10: a car turning across oncoming traffic that had room entered and waited for the
+        /// oncoming gap inside the box at the game's own give-way of its connection lane. 0.4.11 (G21, owner): it waits BEFORE
+        /// the box in its own lane until the traffic its turn crosses leaves a gap (JRExitGiveWay.EntryRoadHold, same road
+        /// lane, same step, after this hook); this hook keeps the room test. Returns the speed limit or float.MaxValue.
         /// </summary>
         private float EnteringHold(Entity lane, Entity road, float start, float b0, float laneLength, float wait0, float margin, CarData car, float currentSpeed,
             float timeStep, float safeTimeStep, Bounds1 speedRange, float currentMax, Entity self, ref float braking, ref ComponentLookup<Game.Net.CarLane> carLanes,

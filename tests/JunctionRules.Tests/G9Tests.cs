@@ -160,7 +160,7 @@ namespace JunctionRules.Tests
             Check(lines.Count == before, "turner waiting in the box with room (10 s): no line");
             // vehicle 4: let in, moving: one sample at most
             for (uint fr = 0; fr <= 40; fr += 4) book.Record(4, road, Pk(EntranceLog.Event.Go, true, 8f), fr, now);
-            Check(lines.Count(l => l.Contains("vehicle 4:0 let in")) == 1, "let-in decision sampled once per vehicle");
+            Check(lines.Count(l => l.Contains("vehicle 4:0 way in has room")) == 1, "let-in decision sampled once per vehicle (0.4.11 wording: the room test passed; a gap hold may follow)");
             book.Tick(now + 61, 2400);
             string sum = lines.LastOrDefault() ?? "";
             Check(sum.StartsWith("entrance boxes (last 61 s): 4 vehicle(s) turning in") && sum.Contains("1 held before the box (way in full)") && sum.Contains("1 went in without room")
