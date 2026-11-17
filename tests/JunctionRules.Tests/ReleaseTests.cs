@@ -100,7 +100,7 @@ namespace JunctionRules.Tests
             Check(longDesc.Contains("Getting started") && longDesc.Contains("Yellow boxes") && longDesc.Contains("https://github.com/durianpeople/cs2-junction-rules"), "LongDescription from the README, with getting started and the source link");
             Check(!Regex.IsMatch(longDesc, @"probe|JR-T-|\bG\d\d?\b", RegexOptions.IgnoreCase), "LongDescription has no probe wording");
             Check(r.Elements("Tag").Any(e => e.Attribute("Value")?.Value == "Code Mod"), "Tag Code Mod");
-            Check(Val("ForumLink") == "https://github.com/durianpeople/cs2-junction-rules", "ForumLink = GitHub");
+            Check(Val("ForumLink") == "", "ForumLink empty: Paradox accepts only Paradox forum URLs there (upload refused the GitHub URL); GitHub is the ExternalLink");
             Check(r.Elements("ExternalLink").Any(e => e.Attribute("Type")?.Value == "github" && e.Attribute("Url")?.Value == "https://github.com/durianpeople/cs2-junction-rules"), "ExternalLink github");
             Check(ProjectVersion(out string ver, out string info) && Val("ModVersion") == ver && info == ver, $"ModVersion {Val("ModVersion")} = csproj Version {ver} = InformationalVersion {info} (release: no suffix)");
             Check(Val("GameVersion") == "1.6.*", "GameVersion 1.6.* (game uploader format; the copy was made from 1.6.4)");

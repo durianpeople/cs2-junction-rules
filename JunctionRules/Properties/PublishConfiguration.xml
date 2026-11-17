@@ -57,8 +57,8 @@ Source code, issue tracker and design notes: https://github.com/durianpeople/cs2
 	<Screenshot Value="Properties/Screenshot5.png" />
 	<!--Tag, can be set multiple times. ModPublisher always adds "Code Mod"; it is listed here for clarity.-->
 	<Tag Value="Code Mod" />
-	<!--Link to the forum post where the mod can be discussed-->
-	<ForumLink Value="https://github.com/durianpeople/cs2-junction-rules" />
+	<!--Link to the forum post where the mod can be discussed (Paradox forum URLs only; the GitHub link is the ExternalLink below)-->
+	<ForumLink Value="" />
 	<!--Version of the mod-->
 	<ModVersion Value="1.0.0" />
 	<!--Recommended version of the base game to use the mod. "major.minor.*" as the game's own asset uploader writes it; the mod itself runs its driving copy only on 1.6.4 (version gate) and falls back to the game's driving otherwise.-->
