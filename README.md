@@ -78,6 +78,12 @@ A yellow box marks an area drivers must not stop in.
 The mod never adds a starvation timeout: a vehicle that can't go legally waits. Turn the individual rules on or off
 in the settings to suit your city.
 
+## For other mods and tools
+
+Junction Rules exposes a small public API, `JunctionRules.Api.JunctionRulesApi` (v1: List / Preview / Add / Remove,
+JSON in and out), so other mods can list, preview, add and remove yellow boxes through exactly the same rules as the
+Ctrl+Y tool. Find it by reflection (no compile-time reference needed) and check `ApiVersion` before calling.
+
 ## Settings
 
 Options → Junction Rules. The main groups:
