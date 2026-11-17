@@ -117,7 +117,16 @@ namespace JunctionRules.Core
 
         /// <summary>Two bands on one lane (driving coordinates) overlap or touch within 'tol' (driving units): one band.</summary>
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-        public static bool Touch(float a0, float a1, float b0, float b1, float tol) => b0 <= a1 + tol && a0 <= b1 + tol;
+        public static bool Touch(float a0, float a1, float b0, float b1, float tol) => Joined(a1, b0, tol) && Joined(b1, a0, tol);
+
+        /// <summary>
+        /// 0.4.10 (owner, chains of boxes: "a gap between two boxes counts as a place it may stop ONLY if the gap fits its whole
+        /// length plus margin"): the box ending at 'end' and the next starting at 'start' are one box when they overlap or
+        /// touch, or when the gap is SHORTER than 'tol' (a gap exactly tol long fits the vehicle: two boxes). 0.4.4-0.4.9
+        /// also joined a gap equal to tol.
+        /// </summary>
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+        public static bool Joined(float end, float start, float tol) => start <= end || start - end < tol;
 
         /// <summary>
         /// Indices into 'exits' of the exits that carry a box and drive as a band: each saved key matched as the paint

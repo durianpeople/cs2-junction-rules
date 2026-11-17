@@ -129,14 +129,20 @@ namespace JunctionRules.Tests
                 float rear = o.Front - o.Length;
                 // 0.4.10 ahead-first (the job's AheadFirst): every vehicle ahead not yet past the box goes through it first;
                 // 0.4.9 counted only those already inside it
-                if (rear < b1 && (robust || o.Front > b0)) scan.AddQueued(o.Length);
+                if (rear < b1 && (robust || o.Front > b0))
+                {
+                    // 0.4.10 (chains): a STANDING vehicle ahead in the box / before its line blocks (free now); a moving one goes first
+                    if (robust && o.Speed < 0.5f) scan.BlockBy(o.Id, 1);
+                    else scan.AddQueued(o.Length);
+                }
                 else if (rear >= b1) past.Add(o);
             }
+            // 0.4.10 (chains): a red / amber light is a standing obstacle at its line (the job's FurtherBoxes: RoomScan.Add at the line)
+            if (robust && lane.Light && lane.End >= b1 && SimLightStops(lane, step)) past.Add(new SimVehicle { Id = -1, Front = lane.End, Length = 0f, Speed = 0f });
             past.Sort((x, y) => x.Front.CompareTo(y.Front));
             var further = new List<(float b0, float b1)>();
             foreach (var b in SimBands(lane, me.Length)) if (b.b0 > b1 + 1e-3f) further.Add(b);
             var applied = new bool[further.Count];
-            bool lightSeen = false;
             void Extensions()
             {
                 if (!robust) return;
@@ -154,11 +160,7 @@ namespace JunctionRules.Tests
                             again = true;
                         }
                     }
-                    if (!lightSeen && lane.Light && lane.End >= b1 && lane.End - b1 < scan.Reach)
-                    {
-                        lightSeen = true;
-                        if (SimLightStops(lane, step)) { scan.Block(); lb = true; }
-                    }
+
                 }
             }
             Extensions();
@@ -169,7 +171,7 @@ namespace JunctionRules.Tests
                 scan.Add(o.Front - o.Length - b1, o.Length, credit, o.Id, 1);
                 Extensions();
             }
-            lightBlocked = lb && !scan.HasRoom;
+            lightBlocked = !scan.HasRoom && scan.BlockerIndex == -1;
             return scan.HasRoom;
         }
 
@@ -298,7 +300,7 @@ namespace JunctionRules.Tests
                         {
                             // known residual (PROBE 20.6): the first vehicle at a red light that entered the box on green and
                             // met amber / red before the line (the light's remaining green is not read)
-                            if (lane.Light && SimRed(lane, step) && v.EnteredOnGreen) { residual++; break; }
+                            if (lane.Light && SimLightStops(lane, step) && v.EnteredOnGreen) { residual++; break; }
                             violations++;
                             break;
                         }
@@ -338,25 +340,35 @@ namespace JunctionRules.Tests
             Painted = SimPaint(new List<(double, double)> { (6.7, 14.7), (48.0, 56.0), (57.3, 65.3), (107.1, 115.1), (151.7, 159.7) }, gap),
         };
 
+        /// <summary>0.4.10 (owner, chains of boxes): boxes with gaps of 2.8 m (painted as one), 6.1 m, 12 m and 25 m, then a boxed junction.</summary>
+        private static SimLane Chained(double gap) => new SimLane
+        {
+            Name = "Chained", End = 130f, JunctionEnd = 144f, JunctionBoxed = true,
+            Painted = SimPaint(new List<(double, double)> { (10, 18), (20.8, 28.8), (34.9, 42.9), (54.9, 62.9), (87.9, 95.9) }, gap),
+        };
+
         private static void BoxScenarioTests()
         {
             Check(Alderwood(ExitBands.MergeGapMetres).Painted.Count == 1 && Alderwood(2.0).Painted.Count == 2, "paint: No. 40's boxes are one box at 6 m (G20), two at 0.4.9's 2 m");
+            Check(Chained(ExitBands.MergeGapMetres).Painted.Count == 4, "paint: the chained road's 2.8 m gap is one box, the 6 / 12 / 25 m gaps stay");
             Check(Alderbrook(ExitBands.MergeGapMetres).Painted.Count == 4, "paint: Alderbrook's 193433 + 843726 boxes one box (110.0..127.3 m along = 48.0..65.3 m here)");
             int totalViol = 0, oldViol = 0, residual = 0, oldResidual = 0, served = 0, entered = 0, exited = 0, nose = 0, noRoom = 0, oldNoRoom = 0;
             bool allDrained = true;
             for (int seed = 1; seed <= 20; seed++)
             {
-                foreach (bool wood in new[] { true, false })
+                foreach (int which in new[] { 0, 1, 2 })
                 {
-                    var r = SimRun(wood ? Alderwood(ExitBands.MergeGapMetres) : Alderbrook(ExitBands.MergeGapMetres), seed, true, 2400, 2400);
+                    bool wood = which == 0;
+                    SimLane Make(double g) => which == 0 ? Alderwood(g) : which == 1 ? Alderbrook(g) : Chained(g);
+                    var r = SimRun(Make(ExitBands.MergeGapMetres), seed, true, 2400, 2400);
                     totalViol += r.violations;
                     residual += r.residual;
                     nose += r.nose;
                     noRoom += r.enteredNoRoom;
                     allDrained &= r.drained;
                     served += r.served; entered += r.entered; exited += r.exited;
-                    if (!r.drained || r.violations > 0) Console.WriteLine($"  scenario {(wood ? "Alderwood" : "Alderbrook")} seed {seed}: violations {r.violations}, drained {r.drained}");
-                    var o = SimRun(wood ? Alderwood(2.0) : Alderbrook(2.0), seed, false, 2400, 2400);
+                    if (!r.drained || r.violations > 0) Console.WriteLine($"  scenario {Make(6).Name} seed {seed}: violations {r.violations}, drained {r.drained}");
+                    var o = SimRun(Make(2.0), seed, false, 2400, 2400);
                     oldViol += o.violations;
                     oldResidual += o.residual;
                     oldNoRoom += o.enteredNoRoom;
@@ -396,6 +408,16 @@ namespace JunctionRules.Tests
             r.FreeNow = true;
             r.AddQueued(4.2f);
             Check(Math.Abs(r.Reach - (17.5f + 5.2f)) < 1e-4f, "reach = room needed + vehicles queued in the box ahead");
+            r.Add(30f, 4.2f, 0f, 9, 1);
+            Check(Math.Abs(r.Reach - (17.5f + 5.2f)) < 1e-4f, "chains fix: a vehicle PAST the box does not widen the reach (the car stops behind it; it only moves on)");
+            RoomScan lightScan = RoomScan.Begin(4.2f, 1f);
+            lightScan.FreeNow = true;
+            lightScan.Add(2f, 4.2f, 0f, 5, 1);    // a car moving towards the red light, rear 2 m past the box... blocks anyway (2 < 5.2)
+            RoomScan lightScan2 = RoomScan.Begin(4.2f, 1f);
+            lightScan2.FreeNow = true;
+            lightScan2.Add(6f, 4.2f, 0f, 5, 1);   // rear 6 m past the box: room for itself...
+            lightScan2.Add(8.4f, 0f, 0f, 0, 0);   // ...but the red light 8.4 m past the box: that car queues there: 8.4 - 5.2 = 3.2 < 5.2
+            Check(!lightScan.HasRoom && !lightScan2.HasRoom && lightScan2.BlockerIndex == 0, "a red / amber light is a standing obstacle at its line after the vehicles in front of it (Alderbrook 843722: 8.4 m)");
             // review F2: a box over the half-way point of a two-piece edge: piece 1's band ends at its lane end; on the next
             // lane (piece 2, on the path) the rest of the painted window starts at 0: BandInWindow extends the room past it
             Check(LaneWindow.FromOffsets(0.9f, 1f, 80f, false, out float p0, out float p1) && p1 == 1f, "piece 1: the box clipped at its lane end");

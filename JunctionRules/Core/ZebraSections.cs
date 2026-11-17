@@ -440,6 +440,12 @@ namespace JunctionRules.Core
         /// </summary>
         public bool HeldForMovingQueue;
 
+        /// <summary>
+        /// 0.4.10 (chains, Highway Code 174): with <see cref="FreeNow"/> a vehicle STANDING ahead inside the box blocks, except
+        /// for a right-turner with the UK exception (true here): it may wait behind other vehicles waiting to turn right.
+        /// </summary>
+        public bool QueuedMayStand;
+
         public static RoomScan Begin(float vehicleLength, float margin)
         {
             RoomScan r = default;
@@ -481,6 +487,7 @@ namespace JunctionRules.Core
         {
             if (Blocked) return;
             m_Occupied += (length > 0f ? length : 0f) + Spacing;
+            m_Queued += (length > 0f ? length : 0f) + Spacing;
             Obstacles++;
         }
 
@@ -530,10 +537,15 @@ namespace JunctionRules.Core
         /// </summary>
         /// <summary>
         /// 0.4.10 (sweep): how far past the window start the car may end up standing when it has room: the vehicles queued
-        /// ahead of it (inside the box) plus its own room. Further boxes / lights starting before this matter (JRWholeJunction
+        /// ahead of it (inside the box / before its line) plus its own room. 0.4.10 chains fix: vehicles PAST the box do not
+        /// widen it (the car stops behind them, never beyond their current rear: they only move on). Further boxes / lights starting before this matter (JRWholeJunction
         /// .FurtherBoxes).
         /// </summary>
-        public readonly float Reach => Needed + m_Occupied;
+        public readonly float Reach => Needed + m_Queued;
+
+        /// <summary>0.4.10 (chains): the length + spacing of the vehicles queued ahead INSIDE the box (AddQueued) only; vehicles
+        /// past the box are judged by their position (Add) and never widen the reach.</summary>
+        private float m_Queued;
 
         public readonly bool Done(float pathRead) => Blocked || pathRead >= Needed + m_Occupied;
 

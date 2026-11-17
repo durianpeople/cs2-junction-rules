@@ -115,9 +115,12 @@ namespace JunctionRules.Stage2
                 if (a != BoxDriving.Approach.Check) return float.MaxValue;
                 float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, wait, safeTimeStep), speedRange);
                 if (!(hold < currentMax)) return float.MaxValue;
-                // 0.4.10 (G19): room free NOW past the box (no credit for a moving queue).
+                // 0.4.10 (G19): room free NOW past the box (no credit for a moving queue). Chains: a turner with the UK exception may
+                // queue in the box behind other turners (Highway Code 174), so standing vehicles on its own path in the box do not block it.
+                m_QueuedTurnersMayStand = m_BoxTurnWait && BoxDriving.TurnerMayWait(true, (uint)carLanes[lane].m_Flags, m_BoxLeftHand);
                 bool room = HasRoomPast(lane, 1f, inverse, laneLength, 0f, owner.m_Owner, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
                     ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, freeNow: true);
+                m_QueuedTurnersMayStand = false;
                 if (!BoxDriving.Holds(a, room)) return float.MaxValue;
                 NoteLightPetition(hold);   // review R1
                 if (Counting)
@@ -348,9 +351,12 @@ namespace JunctionRules.Stage2
             float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, m_Stretch.Wait(spot), safeTimeStep), speedRange);
             if (!(hold < currentMax)) return float.MaxValue;
             if (!m_OwnerData.TryGetComponent(lane, out Owner owner)) return float.MaxValue;
-            // 0.4.10 (G19): the right-turner may wait at its in-box spot only while its exit has room free NOW.
+            // 0.4.10 (G19): the right-turner may wait at its in-box spot only while its exit has room free NOW (other turners
+            // standing ahead of it on its path in the box do not block it: Highway Code 174).
+            m_QueuedTurnersMayStand = true;
             bool room = HasRoomPast(lane, 1f, inverse, length, math.max(0f, m_Stretch.CurveX), owner.m_Owner, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
                 ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, freeNow: true);
+            m_QueuedTurnersMayStand = false;
             if (room) return float.MaxValue;
             NoteLightPetition(hold);   // review R1
             if (Counting)

@@ -191,6 +191,13 @@ namespace JunctionRules.Stage2
         private unsafe JRBoxEdges* m_BoxEdges;
         /// <summary>0.4.10 (sweep): the lane signals, for "a light inside the room window past a box" (SetBoxes).</summary>
         private ComponentLookup<LaneSignal> m_BoxSignalData;
+        /// <summary>
+        /// 0.4.10 (chains; Highway Code 174: a right-turner may wait in the box "only stopped by oncoming traffic, or by other
+        /// vehicles waiting to turn right"): set by the junction box hold for a turner with the UK exception, so a vehicle
+        /// standing ahead of it on its own turning path inside the box (another turner waiting) does not keep it out.
+        /// ScanLane is static, so the flag travels in the scan (RoomScan.QueuedMayStand, set in HasRoomPast).
+        /// </summary>
+        private bool m_QueuedTurnersMayStand;
         /// <summary>0.4.10 (review R1): the signal lane whose red / amber blocked the last box room scan (Entity.Null = none).</summary>
         private Entity m_LastLightLane;
         /// <summary>0.4.10 (review R1): the light the car's binding box hold waits for, and that hold's speed (block S2-52 petitions it).</summary>
@@ -724,6 +731,7 @@ namespace JunctionRules.Stage2
             RoomScan scan = RoomScan.Begin(m_VehicleLength, m_RoomMargin);
             // 0.4.10 (G19): yellow boxes count only room that is free now (no credit for a moving queue); zebras keep the credit.
             scan.FreeNow = freeNow;
+            scan.QueuedMayStand = m_QueuedTurnersMayStand;
             m_FreeNowHeld = false;
             m_LastLightLane = Entity.Null;
             bool unsorted = false;
@@ -888,20 +896,24 @@ namespace JunctionRules.Stage2
         private unsafe void FurtherBoxes(ref RoomScan scan, CarNavigationLane nav, bool navInverse, Curve navCurve, float read,
             ref ComponentLookup<Game.Net.CarLane> carLanes, ref ComponentLookup<Curve> curves)
         {
-            if (scan.Blocked || !(read < scan.Reach)) return;
+            if (scan.Blocked) return;
+            // 0.4.10 (chains): a red / amber light is a standing obstacle at its stop line (where the path enters its lane, 'read'
+            // metres from the window start): the vehicles between the box and the light (already added, in path order) will
+            // queue at it, so the room is the space before the line minus them (RoomScan.Add at the line, zero length).
+            if (m_NodeLaneData.HasComponent(nav.m_Lane) && m_BoxSignalData.TryGetComponent(nav.m_Lane, out LaneSignal sig)
+                && BoxDriving.LightStopsInWindow((int)sig.m_Signal))
+            {
+                scan.Add(read, 0f, 0f, 0, 0);
+                if (scan.Blocked) m_LastLightLane = nav.m_Lane;   // review R1: the car must ask this light for green (S2-52)
+                return;
+            }
+            if (!(read < scan.Reach)) return;
             // review R3: Reach is read as it stands when the path reaches this lane (vehicles on later lanes are not added yet,
             // earlier lanes are not re-tested when it grows later): an approximation in path order, as FurtherZebras.
             float len = navCurve.m_Length;
             float span = math.abs(nav.m_CurvePosition.y - nav.m_CurvePosition.x) * len;
             if (m_NodeLaneData.HasComponent(nav.m_Lane))
             {
-                if (m_BoxSignalData.TryGetComponent(nav.m_Lane, out LaneSignal sig)
-                    && BoxDriving.LightStopsInWindow((int)sig.m_Signal))
-                {
-                    scan.Block();
-                    m_LastLightLane = nav.m_Lane;   // review R1: the car must ask this light for green (S2-52)
-                    return;
-                }
                 if (m_BoxJunctions && m_OwnerData.TryGetComponent(nav.m_Lane, out Owner o) && m_BoxJunctionData.HasComponent(o.m_Owner))
                     scan.ExtendPast(read + span);
                 return;
@@ -1147,6 +1159,15 @@ namespace JunctionRules.Stage2
                 // 0.4.2: inside the box / band ahead of the car: takes exit room first (RoomScan.AddQueued).
                 if (queued)
                 {
+                    // 0.4.10 (owner, chains of boxes): in a box room test (free now) a vehicle STANDING ahead inside the box /
+                    // chain or before its line is not going to make room: no room now (named). A moving one goes first and
+                    // takes its length past the box (RoomScan.AddQueued).
+                    if (scan.FreeNow && !scan.QueuedMayStand && !(moving.TryGetComponent(e, out Moving qm) && math.lengthsq(qm.m_Velocity) >= Stage2Counters.StandingSpeed * Stage2Counters.StandingSpeed))
+                    {
+                        Entity qw = controllers.TryGetComponent(e, out Controller qc) && qc.m_Controller != Entity.Null ? qc.m_Controller : e;
+                        scan.BlockBy(qw.Index, qw.Version);
+                        continue;
+                    }
                     scan.AddQueued(MathUtils.Size(g.m_Bounds.z));
                     continue;
                 }
