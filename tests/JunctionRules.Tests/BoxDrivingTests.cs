@@ -347,8 +347,9 @@ namespace JunctionRules.Tests
             string src = Path.Combine(RepoRoot(), "JunctionRules");
             string yb = File.ReadAllText(Path.Combine(src, "Stage2", "JRYellowBox.cs"));
             // 0.4.3: one band per boxed car exit (edge + t), no building read in the job (no one-box-per-building format)
-            Check(yb.Contains("int first = bands->First(edgeOwner.m_Owner);") && yb.Contains("bands->Key(i) == edgeKey") && yb.Contains("(bands->T(i) - edgeLane.m_EdgeDelta.x) / delta"),
-                "BoxHold: one binary search to the edge's first exit band, then every exit on that edge as its own band");
+            Check(yb.Contains("int first = bands->First(edge);") && yb.Contains("bands->Key(i) == edgeKey") && yb.Contains("LaneBands(lane, edgeOwner.m_Owner, laneLength, inverse,")
+                && yb.Contains("LaneWindow.OnLane(") && !yb.Contains("m_EdgeDelta.x"),
+                "BoxHold: one binary search to the edge's first exit band, then every painted window on that edge projected onto the lane (0.4.10: no EdgeDelta mapping)");
             string ybCode = System.Text.RegularExpressions.Regex.Replace(yb, @"//.*|///.*", "");
             Check(!ybCode.Contains("m_ConnectedBuildings.TryGetBuffer") && !ybCode.Contains("m_RoadEdge") && !ybCode.Contains("m_CurvePosition") && !ybCode.Contains("m_BoxEntranceData.HasComponent"),
                 "BoxHold no longer reads Building.m_RoadEdge / m_CurvePosition or the building's box component (0.4.0-0.4.2 format)");
@@ -362,7 +363,7 @@ namespace JunctionRules.Tests
             string nav = File.ReadAllText(Path.Combine(src, "Vanilla", "JRCarNavigationSystem.cs"));
             Check(nav.Contains("jobData.m_JRBoxEdges = JunctionRules.Stage2.JRStage2Bridge.BoxEdges;") && nav.Contains("m_JREdgeLaneData, ref m_JRBoxEdges);"), "S2-23 takes the set by value (one copy per job), S2-26 hands the iterator a pointer to it");
             string sw = File.ReadAllText(Path.Combine(src, "Systems", "CarDrivingSwitchSystem.cs"));
-            Check(sw.Contains("UpdateBoxEdges((stage2Mode & Stage2Mode.BoxEntrances) != 0);") && sw.Contains("BoxFacts.BoxedExitBands(EntityManager, buildings[i], bands)")
+            Check(sw.Contains("UpdateBoxEdges((stage2Mode & Stage2Mode.BoxEntrances) != 0);") && sw.Contains("BoxFacts.BoxedExitBands(EntityManager, buildings[i], sources)") && sw.Contains("DrivingBands.Build(EntityManager, sources, out int notPainted, out int joint)")
                 && sw.Contains("BoxEdgeHandoff.Publish(bands);") && sw.Contains("version == m_BoxStoreVersion") && !sw.Contains("JunctionRules.Stage2") && !sw.Contains("m_RoadEdge"),
                 "switch system rebuilds the exit bands on the main thread when boxes change (count or BoxStore.Version) and periodically, from the saved exit keys");
             Check(sw.Contains("if (dropped != m_LastDropped)") && sw.IndexOf("if (dropped != m_LastDropped)", StringComparison.Ordinal) > sw.IndexOf("BoxEdgeHandoff.Publish(bands);", StringComparison.Ordinal)
@@ -370,7 +371,8 @@ namespace JunctionRules.Tests
                 && sw.Contains("m_LastDropped = 0;"),
                 "0.4.3 review F2: the over-limit Warn follows the Dropped count, not the hand-over Version");
             string facts = File.ReadAllText(Path.Combine(src, "Boxes", "BoxFacts.cs"));
-            Check(facts.Contains("ExitBands.Boxed(keys, c.Legacy, old, cands, out int unmatched)") && facts.Contains("new ExitBand(SortedKeys.KeyOf(x.Road.Index, x.Road.Version), x.T, mask)"), "BoxedExitBands: saved keys matched to current exits, band at the exit's road + t");
+            Check(facts.Contains("ExitBands.Boxed(keys, c.Legacy, old, cands, out int unmatched)") && facts.Contains("AddSource(em, building, exits[i], bpos, false, into)")
+                && facts.Contains("BoxSelection.ExitOk(ExitFacts(em, building, x, out Access a), out _)"), "BoxedExitBands: saved keys matched to current exits, each a source for its painted window (0.4.10)");
             string store = File.ReadAllText(Path.Combine(src, "Boxes", "BoxStore.cs"));
             Check(System.Text.RegularExpressions.Regex.Matches(store, @"Version\+\+;").Count == 5, "BoxStore bumps its version in all five writers (Add, AddExit, RemoveExit, SetExits, Remove)");
             string job = File.ReadAllText(Path.Combine(src, "Stage2", "JRWholeJunction.cs"));

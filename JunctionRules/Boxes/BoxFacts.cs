@@ -359,7 +359,7 @@ namespace JunctionRules.Boxes
         /// migrated by the paint takes the exit nearest its old access point (Core/ExitBands.Boxed). Junction exits are
         /// junction boxes on their node (driven through YellowBoxJunction), never bands. Returns the keys without an exit.
         /// </summary>
-        internal static int BoxedExitBands(EntityManager em, Entity building, List<ExitBand> into)
+        internal static int BoxedExitBands(EntityManager em, Entity building, List<DrivingBands.Source> into)
         {
             if (!Alive(em, building) || !em.HasComponent<YellowBoxEntrance>(building) || !em.HasComponent<Building>(building)) return 0;
             YellowBoxEntrance c = em.GetComponentData<YellowBoxEntrance>(building);
@@ -384,25 +384,35 @@ namespace JunctionRules.Boxes
             }
             List<int> boxed = ExitBands.Boxed(keys, c.Legacy, old, cands, out int unmatched);
             GetFrame(em, building, out V2 bpos, out _);
-            var bandExits = new List<Exit>();
-            var boxedCands = new List<ExitCandidate>();
-            foreach (int i in boxed) { bandExits.Add(exits[i]); boxedCands.Add(exits[i].C); }
-            // JR-T-014c (G9): a boxed building's entrances drive as bands too (derived, as the paint draws them)
-            var inCands = new List<ExitCandidate>(entrances.Count);
-            foreach (Exit x in entrances) inCands.Add(x.C);
-            foreach (int i in AccessRules.EntranceBoxes(inCands, boxedCands))
+            foreach (int i in boxed) AddSource(em, building, exits[i], bpos, false, into);
+            // JR-T-014c (G9): a boxed building's entrances drive as bands too, derived exactly as the paint derives them
+            // (0.4.10: Paint/YellowBoxPaintSystem.AddEntranceBoxes: EntrancesBoxed, every saved key matched to an exit of any
+            // kind for the "same place as a boxed exit" test)
+            if (entrances.Count > 0 && AccessRules.EntrancesBoxed(c.m_Exits.Length, c.Legacy))
             {
-                if (!BoxSelection.ExitOk(ExitFacts(em, building, entrances[i], out _), out _)) continue;
-                bandExits.Add(entrances[i]);
-            }
-            foreach (Exit x in bandExits)
-            {
-                if (!Alive(em, x.Road)) continue;
-                // 0.4.4 (JR-T-011): on a divided road the band holds the building side's lanes only (Core/MedianSplit)
-                uint mask = BoxShapes.MedianSide(em, x.Road, x.T, bpos, out SideSpanResult span, out _) && span.Divided ? span.CarriagewayMask : MedianSplit.AllCarriageways;
-                into.Add(new ExitBand(SortedKeys.KeyOf(x.Road.Index, x.Road.Version), x.T, mask));
+                var boxedCands = new List<ExitCandidate>();
+                for (int k = 0; k < c.m_Exits.Length; k++)
+                {
+                    int i = ExitRules.Match(c.m_Exits[k], cands);
+                    if (i >= 0) boxedCands.Add(cands[i]);
+                }
+                var inCands = new List<ExitCandidate>(entrances.Count);
+                foreach (Exit x in entrances) inCands.Add(x.C);
+                foreach (int i in AccessRules.EntranceBoxes(inCands, boxedCands)) AddSource(em, building, entrances[i], bpos, true, into);
             }
             return unmatched;
+        }
+
+        /// <summary>
+        /// 0.4.10 (G18): one boxed exit / entrance as the paint builds it (Paint/YellowBoxPaintSystem RebuildEntrance: ExitFacts,
+        /// BoxSelection.ExitOk, the building position for the median side); its window is made by Boxes/DrivingBands.cs with
+        /// the paint's own BoxShapes.Entrance. An exit the paint would not draw (invalid now) is not driven either.
+        /// </summary>
+        private static void AddSource(EntityManager em, Entity building, Exit x, V2 bpos, bool derived, List<DrivingBands.Source> into)
+        {
+            if (!Alive(em, x.Road)) return;
+            if (!BoxSelection.ExitOk(ExitFacts(em, building, x, out Access a), out _)) return;
+            into.Add(new DrivingBands.Source { Building = building, Exit = x, Access = a, BuildingPos = bpos, Derived = derived });
         }
 
         private static Exit OnRoad(EntityManager em, Entity road, float t, ExitKind kind, V2 local, string source)

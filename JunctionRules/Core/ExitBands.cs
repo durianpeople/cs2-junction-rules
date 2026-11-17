@@ -20,8 +20,27 @@ namespace JunctionRules.Core
         /// </summary>
         public uint Carriageways;
 
-        public ExitBand(long edgeKey, float t) { EdgeKey = edgeKey; T = t; Carriageways = MedianSplit.AllCarriageways; }
-        public ExitBand(long edgeKey, float t, uint carriageways) { EdgeKey = edgeKey; T = t; Carriageways = carriageways; }
+        /// <summary>
+        /// 0.4.10 (JR-T-016, G18 / G19): the PAINTED window's two end points on the edge's centre curve (world x / z; the
+        /// window of Boxes/BoxShapes.Entrance, the joint window when boxes are built as one, Core/ExitBoxWindows). The job
+        /// projects them onto each lane (Core/LaneWindow.cs): the band is exactly the painted box along the lane. A band
+        /// without a window (<see cref="HasWindow"/> false) is not driven (0.4.3-0.4.9 used t + the box length here).
+        /// </summary>
+        public float X0, Z0, X1, Z1;
+        public bool HasWindow;
+
+        public ExitBand(long edgeKey, float t) { EdgeKey = edgeKey; T = t; Carriageways = MedianSplit.AllCarriageways; X0 = Z0 = X1 = Z1 = 0f; HasWindow = false; }
+        public ExitBand(long edgeKey, float t, uint carriageways) { EdgeKey = edgeKey; T = t; Carriageways = carriageways; X0 = Z0 = X1 = Z1 = 0f; HasWindow = false; }
+
+        /// <summary>0.4.10: a band over the painted window [(x0, z0), (x1, z1)] (t = where it sorts on the edge: its middle).</summary>
+        public ExitBand(long edgeKey, float t, uint carriageways, float x0, float z0, float x1, float z1)
+        {
+            EdgeKey = edgeKey; T = t; Carriageways = carriageways; X0 = x0; Z0 = z0; X1 = x1; Z1 = z1; HasWindow = true;
+        }
+
+        /// <summary>0.4.10: the same window (members of one joint box carry the same one: kept once).</summary>
+        public bool SameWindow(ExitBand o) =>
+            HasWindow == o.HasWindow && X0 == o.X0 && Z0 == o.Z0 && X1 == o.X1 && Z1 == o.Z1;
     }
 
     /// <summary>
@@ -141,9 +160,10 @@ namespace JunctionRules.Core
             {
                 if (float.IsNaN(b.T)) continue;
                 bool dup = false;
-                // 0.4.4: same edge + near-equal t kept once per carriageway mask (two sides of a median are two bands)
+                // 0.4.4: same edge + near-equal t kept once per carriageway mask (two sides of a median are two bands).
+                // 0.4.10: and the same painted window (a joint box's members share one window and t: kept once).
                 for (int k = r.Count - 1; k >= 0 && r[k].EdgeKey == b.EdgeKey && Math.Abs(r[k].T - b.T) < SameT; k--)
-                    if (r[k].Carriageways == b.Carriageways) { dup = true; break; }
+                    if (r[k].Carriageways == b.Carriageways && r[k].SameWindow(b)) { dup = true; break; }
                 if (dup) continue;
                 r.Add(b);
             }

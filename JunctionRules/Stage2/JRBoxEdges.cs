@@ -21,6 +21,11 @@ namespace JunctionRules.Stage2
         public FixedList512Bytes<float> m_T;
         /// <summary>0.4.4: carriageway mask per band (Core ExitBand.Carriageways).</summary>
         public FixedList512Bytes<uint> m_Mask;
+        /// <summary>
+        /// 0.4.10 (JR-T-016, G18 / G19): the painted window per band, its end points on the edge's centre curve (world x / z;
+        /// Core ExitBand.X0..Z1); NaN x0 = no window (not driven). Projected onto each lane by Core/LaneWindow.cs.
+        /// </summary>
+        public FixedList512Bytes<float> m_X0, m_Z0, m_X1, m_Z1;
 
         /// <summary>
         /// JR-T-014c (G9): the always-on entrance box log ring (Core/EntranceLog.cs layout, owned by Stage2/JRStage2Bridge.cs,
@@ -41,19 +46,28 @@ namespace JunctionRules.Stage2
         /// <summary>0.4.4: carriageway mask of band i.</summary>
         public uint Mask(int i) => m_Mask[i];
 
+        /// <summary>0.4.10: band i has a painted window (else it is not driven).</summary>
+        public bool HasWindow(int i) => !float.IsNaN(m_X0[i]);
+
         public static long KeyOf(Entity e) => SortedKeys.KeyOf(e.Index, e.Version);
 
         /// <summary>The set from the published bands (Core BoxEdgeHandoff: sorted, parallel arrays).</summary>
-        public static JRBoxEdges FromBands(long[] keys, float[] t, uint[] masks)
+        public static JRBoxEdges FromBands(long[] keys, float[] t, uint[] masks, float[] window)
         {
             JRBoxEdges set = default;
             int n = keys.Length < t.Length ? keys.Length : t.Length;
             for (int i = 0; i < n; i++)
             {
-                if (set.m_Keys.Length >= set.m_Keys.Capacity || set.m_T.Length >= set.m_T.Capacity || set.m_Mask.Length >= set.m_Mask.Capacity) break;
+                if (set.m_Keys.Length >= set.m_Keys.Capacity || set.m_T.Length >= set.m_T.Capacity || set.m_Mask.Length >= set.m_Mask.Capacity
+                    || set.m_X0.Length >= set.m_X0.Capacity) break;
                 set.m_Keys.Add(keys[i]);
                 set.m_T.Add(t[i]);
                 set.m_Mask.Add(masks != null && i < masks.Length ? masks[i] : MedianSplit.AllCarriageways);
+                bool w = window != null && window.Length >= 4 * i + 4;
+                set.m_X0.Add(w ? window[4 * i] : float.NaN);
+                set.m_Z0.Add(w ? window[4 * i + 1] : 0f);
+                set.m_X1.Add(w ? window[4 * i + 2] : 0f);
+                set.m_Z1.Add(w ? window[4 * i + 3] : 0f);
             }
             return set;
         }

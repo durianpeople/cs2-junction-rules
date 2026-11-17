@@ -112,46 +112,22 @@ namespace JunctionRules.Stage2
                 if (a != BoxDriving.Approach.Check) return float.MaxValue;
                 float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, wait, safeTimeStep), speedRange);
                 if (!(hold < currentMax)) return float.MaxValue;
+                // 0.4.10 (G19): room free NOW past the box (no credit for a moving queue).
                 bool room = HasRoomPast(lane, 1f, inverse, laneLength, 0f, owner.m_Owner, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
-                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes);
+                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, freeNow: true);
                 if (!BoxDriving.Holds(a, room)) return float.MaxValue;
-                if (Counting) Min(ref m_HasBoxRoom, ref m_BoxRoomSpeed, hold);
+                if (Counting)
+                {
+                    Min(ref m_HasBoxRoom, ref m_BoxRoomSpeed, hold);
+                    if (m_FreeNowHeld) Min(ref m_HasBoxFreeNow, ref m_BoxFreeNowSpeed, hold);
+                }
                 return hold;
             }
             // 0.4.3: the boxed CAR EXITS on this road (JRBoxEdges: edge key + curve position per exit, resolved on the main
             // thread from the saved exit keys); one binary search finds the edge's first band. Buildings are not read here.
-            if (!m_BoxEntrances || !m_EdgeLaneData.TryGetComponent(lane, out Game.Net.EdgeLane edgeLane) || !m_OwnerData.TryGetComponent(lane, out Owner edgeOwner))
+            if (!m_BoxEntrances || !m_EdgeLaneData.HasComponent(lane) || !m_OwnerData.TryGetComponent(lane, out Owner edgeOwner))
                 return float.MaxValue;
-            JRBoxEdges* bands = m_BoxEdges;
-            int first = bands->First(edgeOwner.m_Owner);
-            if (first < 0) return float.MaxValue;
-            long edgeKey = bands->Key(first);
-            float delta = edgeLane.m_EdgeDelta.y - edgeLane.m_EdgeDelta.x;
-            if (math.abs(delta) < 1e-4f) return float.MaxValue;
-            // 0.4.4 (JR-T-011): only the bands of this lane's carriageway (a divided road: the exit's side of the median,
-            // CarLane.m_CarriagewayGroup low byte = NetCompositionLane.m_Carriageway, LaneSystem.cs 4153), and bands that
-            // overlap or touch on this lane are ONE band (the paint draws their boxes as one, Core/BoxMerge.cs). Bands come
-            // sorted by t on the edge and the lane maps t linearly, so neighbours in this order are neighbours on the lane.
-            int carriageway = carLanes[lane].m_CarriagewayGroup;
-            // 0.4.9 (G14 / G15): bands closer than this vehicle's whole length + room margin are one band for its hold (UK
-            // yellow box: no part of it may stop in a box), at least the 2 m the paint merges (Core ExitBands.HoldTouchMetres).
-            float touch = ExitBands.HoldTouchMetres(m_VehicleLength, m_RoomMargin) / laneLength;
-            FixedList128Bytes<float2> merged = default;
-            for (int i = first; i < bands->Count && bands->Key(i) == edgeKey; i++)
-            {
-                if (!MedianSplit.InMask(bands->Mask(i), carriageway)) continue;
-                // The exit point on this lane: the edge curve position mapped through the lane's own edge range.
-                float access = (bands->T(i) - edgeLane.m_EdgeDelta.x) / delta;
-                if (!BoxDriving.Band(access, laneLength, m_BoxEntranceLength, inverse, out float b0, out float b1)) continue;
-                int last = merged.Length - 1;
-                if (last >= 0 && ExitBands.Touch(merged[last].x, merged[last].y, b0, b1, touch))
-                {
-                    merged[last] = math.float2(math.min(merged[last].x, b0), math.max(merged[last].y, b1));
-                    continue;
-                }
-                if (merged.Length >= merged.Capacity) break;
-                merged.Add(math.float2(b0, b1));
-            }
+            if (!LaneBands(lane, edgeOwner.m_Owner, laneLength, inverse, carLanes[lane].m_CarriagewayGroup, ref curves, out FixedList128Bytes<float2> merged)) return float.MaxValue;
             float braking = -1f;
             float result = float.MaxValue;
             for (int m = 0; m < merged.Length; m++)
@@ -184,10 +160,13 @@ namespace JunctionRules.Stage2
                 // band (Main); a vehicle leaving the drive (Leaving) never waits for one (it could be the entrant that waits for it).
                 Entity keepBand = m_LastBlocker;
                 m_SideHeld = false;
+                // 0.4.10 (G19): room free NOW past the band, for through traffic and for a vehicle leaving into it alike.
                 bool room = HasRoomPast(lane, b1, inverse, laneLength, entry, joined, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
-                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, role == BoxDriving.EntranceRole.Main);
+                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, role == BoxDriving.EntranceRole.Main,
+                    freeNow: true);
                 if (!BoxDriving.Holds(a, room)) { m_LastBlocker = keepBand; continue; }
                 result = hold;
+                if (Counting && m_FreeNowHeld) Min(ref m_HasBoxFreeNow, ref m_BoxFreeNowSpeed, hold);
                 // 0.4.9 (G15b, final review): held only because a vehicle turning into (or out of) a driveway stands across the
                 // lane: it waits for that building like an entrant, so an exit within 10 m does not wait for it (no
                 // through car -> entrant -> yard -> exit -> through car loop). On the exit's conflict it still blocks.
@@ -199,6 +178,46 @@ namespace JunctionRules.Stage2
                 }
             }
             return result;
+        }
+
+        /// <summary>
+        /// The boxed exit / entrance bands on one road lane (driving coordinates), shared by BoxHold (S2-28) and the exit
+        /// rule's ExitBandBlocks (JRExitGiveWay.cs). 0.4.4 (JR-T-011): only the bands of this lane's carriageway (a divided
+        /// road: the exit's side of the median, CarLane.m_CarriagewayGroup low byte = NetCompositionLane.m_Carriageway,
+        /// LaneSystem.cs 4153), and bands that overlap or touch on this lane are ONE band. 0.4.9 (G14 / G15): bands closer
+        /// than this vehicle's whole length + room margin are one band for its hold (UK yellow box: no part of it may stop
+        /// in a box), at least the 2 m the paint merges (Core ExitBands.HoldTouchMetres).
+        /// 0.4.10 (JR-T-016, G18 / G19): each band is the PAINTED window (joint windows included) projected onto this lane's
+        /// own curve (Core/LaneWindow.cs), not the edge curve position mapped through EdgeLane.m_EdgeDelta plus the box
+        /// length: lanes are built on the edge's cut geometry (mouth to mouth), so that mapping put the bands metres off the
+        /// paint (12-13 m at Alderbrook Street's 843726 exit). Bands come sorted by t on the edge and each window lies
+        /// around its t, so neighbours in this order are neighbours on the lane. False = no band on this lane.
+        /// </summary>
+        private unsafe bool LaneBands(Entity lane, Entity edge, float laneLength, bool inverse, int carriageway, ref ComponentLookup<Curve> curves,
+            out FixedList128Bytes<float2> merged)
+        {
+            merged = default;
+            JRBoxEdges* bands = m_BoxEdges;
+            int first = bands->First(edge);
+            if (first < 0 || !(laneLength > 0f) || !curves.TryGetComponent(lane, out Curve curve)) return false;
+            long edgeKey = bands->Key(first);
+            Bezier4x3 bz = curve.m_Bezier;
+            float touch = ExitBands.HoldTouchMetres(m_VehicleLength, m_RoomMargin) / laneLength;
+            for (int i = first; i < bands->Count && bands->Key(i) == edgeKey; i++)
+            {
+                if (!MedianSplit.InMask(bands->Mask(i), carriageway) || !bands->HasWindow(i)) continue;
+                if (!LaneWindow.OnLane(bz.a.x, bz.a.z, bz.b.x, bz.b.z, bz.c.x, bz.c.z, bz.d.x, bz.d.z, laneLength, inverse,
+                    bands->m_X0[i], bands->m_Z0[i], bands->m_X1[i], bands->m_Z1[i], out float b0, out float b1)) continue;
+                int last = merged.Length - 1;
+                if (last >= 0 && ExitBands.Touch(merged[last].x, merged[last].y, b0, b1, touch))
+                {
+                    merged[last] = math.float2(math.min(merged[last].x, b0), math.max(merged[last].y, b1));
+                    continue;
+                }
+                if (merged.Length >= merged.Capacity) break;
+                merged.Add(math.float2(b0, b1));
+            }
+            return merged.Length > 0;
         }
 
         /// <summary>
@@ -315,10 +334,15 @@ namespace JunctionRules.Stage2
             float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, m_Stretch.Wait(spot), safeTimeStep), speedRange);
             if (!(hold < currentMax)) return float.MaxValue;
             if (!m_OwnerData.TryGetComponent(lane, out Owner owner)) return float.MaxValue;
+            // 0.4.10 (G19): the right-turner may wait at its in-box spot only while its exit has room free NOW.
             bool room = HasRoomPast(lane, 1f, inverse, length, math.max(0f, m_Stretch.CurveX), owner.m_Owner, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
-                ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes);
+                ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, freeNow: true);
             if (room) return float.MaxValue;
-            if (Counting) Min(ref m_HasBoxTurnRoom, ref m_BoxTurnRoomSpeed, hold);
+            if (Counting)
+            {
+                Min(ref m_HasBoxTurnRoom, ref m_BoxTurnRoomSpeed, hold);
+                if (m_FreeNowHeld) Min(ref m_HasBoxFreeNow, ref m_BoxFreeNowSpeed, hold);
+            }
             return hold;
         }
     }

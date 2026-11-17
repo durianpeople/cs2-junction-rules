@@ -328,7 +328,7 @@ namespace JunctionRules.Tests
             Check(yb.Contains("MedianSplit.InMask(bands->Mask(i), carriageway)"), "driving: bands apply only to lanes of the exit's side");
             Check(yb.Contains("ExitBands.JunctionJoinMetres") && yb.Contains("NextBoxedJunction(lane)"), "driving: a band near a boxed junction needs room past the junction box too");
             string bridge = File.ReadAllText(Path.Combine(src, "Stage2", "JRStage2Bridge.cs"));
-            Check(bridge.Contains("JRBoxEdges.FromBands(BoxEdgeHandoff.Keys, BoxEdgeHandoff.T, BoxEdgeHandoff.Masks)"), "bridge hands the carriageway masks to the job");
+            Check(bridge.Contains("JRBoxEdges.FromBands(BoxEdgeHandoff.Keys, BoxEdgeHandoff.T, BoxEdgeHandoff.Masks, BoxEdgeHandoff.Window)"), "bridge hands the carriageway masks to the job");
             string shapes = File.ReadAllText(Path.Combine(src, "Boxes", "BoxShapes.cs"));
             Check(shapes.Contains("MedianSplit.Insets(") && shapes.Contains("span.Divided"), "exit box stops at the median on divided roads");
         }

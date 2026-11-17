@@ -426,6 +426,20 @@ namespace JunctionRules.Core
         public int BlockerIndex, BlockerVersion;
         private int m_MinIndex, m_MinVersion;
 
+        /// <summary>
+        /// 0.4.10 (JR-T-016, G19, owner 17 Nov 2026, UK yellow box: do not enter unless your exit is clear): only room that
+        /// is FREE NOW counts: a vehicle ahead that moves gives no braking-distance credit (a creeping stop-and-go queue
+        /// can stop again with the car in the box). Set for the yellow box room tests (junction and exit / entrance boxes,
+        /// the right-turner's re-check at its turn spot, a vehicle leaving into a box); the zebra rule keeps the credit.
+        /// </summary>
+        public bool FreeNow;
+
+        /// <summary>
+        /// 0.4.10 (G19, probe): with <see cref="FreeNow"/>, the vehicle that blocked had room with its moving credit: the
+        /// 0.4.9 rule would have let the car in (counted, to show what the free-now rule costs through traffic).
+        /// </summary>
+        public bool HeldForMovingQueue;
+
         public static RoomScan Begin(float vehicleLength, float margin)
         {
             RoomScan r = default;
@@ -446,9 +460,14 @@ namespace JunctionRules.Core
         public void Add(float rear, float length, float credit, int index, int version)
         {
             if (Blocked) return;
-            float room = rear + (credit > 0f ? credit : 0f) - m_Occupied;
+            float c = credit > 0f ? credit : 0f;
+            float room = rear + (FreeNow ? 0f : c) - m_Occupied;
             if (room < m_MinRoom) { m_MinRoom = room; m_MinIndex = index; m_MinVersion = version; }
-            if (!(room >= Needed)) { Blocked = true; BlockerIndex = index; BlockerVersion = version; }
+            if (!(room >= Needed))
+            {
+                Blocked = true; BlockerIndex = index; BlockerVersion = version;
+                if (FreeNow && room + c >= Needed) HeldForMovingQueue = true;
+            }
             m_Occupied += (length > 0f ? length : 0f) + Spacing;
             Obstacles++;
         }

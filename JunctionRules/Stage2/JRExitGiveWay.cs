@@ -1038,34 +1038,13 @@ namespace JunctionRules.Stage2
             ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
         {
             boxed = false;
-            if (!m_BoxLookups || !m_BoxEntrances || !m_EdgeLaneData.TryGetComponent(road, out Game.Net.EdgeLane edgeLane)
+            if (!m_BoxLookups || !m_BoxEntrances || !m_EdgeLaneData.HasComponent(road)
                 || !m_OwnerData.TryGetComponent(road, out Owner edgeOwner)) return false;
-            JRBoxEdges* bands = m_BoxEdges;
-            int first = bands->First(edgeOwner.m_Owner);
-            if (first < 0) return false;
-            long edgeKey = bands->Key(first);
-            float span = edgeLane.m_EdgeDelta.y - edgeLane.m_EdgeDelta.x;
-            if (math.abs(span) < 1e-4f) return false;
-            // 0.4.7 (JR-T-013g, review F1): the same band set as S2-28 BoxHold (JRYellowBox.cs): only the bands of this lane's
-            // carriageway (#17 median), and bands that overlap or touch on this lane are ONE band (#17 merged boxes).
+            // 0.4.7 (JR-T-013g, review F1): the same band set as S2-28 BoxHold (JRYellowBox.LaneBands): own carriageway, touching
+            // bands one band, 0.4.9 (G14) closer than the leaving vehicle's length + margin one band; 0.4.10 (G18): the painted
+            // window projected onto the lane.
             int carriageway = carLanes.TryGetComponent(road, out Game.Net.CarLane roadCarLane) ? roadCarLane.m_CarriagewayGroup : 0;
-            // 0.4.9 (G14): the leaving vehicle's own band set, as BoxHold's: bands closer than its length + margin are one.
-            float touch = ExitBands.HoldTouchMetres(m_VehicleLength, m_RoomMargin) / length;
-            FixedList128Bytes<float2> merged = default;
-            for (int i = first; i < bands->Count && bands->Key(i) == edgeKey; i++)
-            {
-                if (!MedianSplit.InMask(bands->Mask(i), carriageway)) continue;
-                float access = (bands->T(i) - edgeLane.m_EdgeDelta.x) / span;
-                if (!BoxDriving.Band(access, length, m_BoxEntranceLength, false, out float nb0, out float nb1)) continue;
-                int last = merged.Length - 1;
-                if (last >= 0 && ExitBands.Touch(merged[last].x, merged[last].y, nb0, nb1, touch))
-                {
-                    merged[last] = math.float2(math.min(merged[last].x, nb0), math.max(merged[last].y, nb1));
-                    continue;
-                }
-                if (merged.Length >= merged.Capacity) break;
-                merged.Add(math.float2(nb0, nb1));
-            }
+            if (!LaneBands(road, edgeOwner.m_Owner, length, false, carriageway, ref curves, out FixedList128Bytes<float2> merged)) return false;
             for (int m = 0; m < merged.Length; m++)
             {
                 float b0 = merged[m].x, b1 = merged[m].y;
@@ -1074,8 +1053,9 @@ namespace JunctionRules.Stage2
                 // As BoxHold: a merged band reaching the lane end where the leaving car's path enters a boxed junction is one
                 // box with it, so room is needed past the junction box (its lanes count as inside the box).
                 Entity joined = (1f - b1) * length <= ExitBands.JunctionJoinMetres ? NextBoxedJunction(road) : Entity.Null;
+                // 0.4.10 (G19): a vehicle leaving into a box needs room free NOW past it, as road traffic does.
                 bool room = HasRoomPast(road, b1, false, length, t, joined, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
-                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes);
+                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, freeNow: true);
                 if (!room) return true;
             }
             return false;

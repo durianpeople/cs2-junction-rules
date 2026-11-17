@@ -209,7 +209,14 @@ namespace JunctionRules.Core
         public const int ExitEntrantIgnored = FeedingScans + 51;
         /// <summary>0.4.9 (G13): car-steps in which a vehicle held at a driveway exit did not ask road traffic for space (the game's keep-clear request withdrawn).</summary>
         public const int ExitKeepClearWithdrawn = FeedingScans + 52;
-        public const int Count = FeedingScans + 53;
+        /// <summary>
+        /// 0.4.10 (G19, probe): car-steps in which a yellow box hold (junction box, exit / entrance band, the right-turner's
+        /// turn-spot re-check, a vehicle leaving into a box) bound only because room must now be FREE NOW: the vehicle that
+        /// blocked had room with its moving braking-distance credit (0.4.9 would have let the car in). Shows what the
+        /// free-now rule costs through traffic.
+        /// </summary>
+        public const int BoxHeldFreeNow = FeedingScans + 53;
+        public const int Count = FeedingScans + 54;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -365,6 +372,8 @@ namespace JunctionRules.Core
                        ? "; exits not waiting for a vehicle that waits to turn in " + deltas[ExitEntrantIgnored].ToString(ci) +
                          "; held exits' keep-clear requests withdrawn " + deltas[ExitKeepClearWithdrawn].ToString(ci)
                        : "") +
+                   // 0.4.10 (G19): newest, at the end.
+                   (boxMask >= 2 ? "; box holds only because the queue past the box was moving (free-now rule) " + deltas[BoxHeldFreeNow].ToString(ci) : "") +
                    "; " + points;
         }
     }
@@ -381,6 +390,7 @@ namespace JunctionRules.Core
         private static long[] s_Keys = new long[0];
         private static float[] s_T = new float[0];
         private static uint[] s_Masks = new uint[0];
+        private static float[] s_Window = new float[0];
 
         /// <summary>Bumped on every publish that changes the bands.</summary>
         public static int Version { get; private set; }
@@ -394,6 +404,12 @@ namespace JunctionRules.Core
         /// <summary>0.4.4: carriageway mask per band (ExitBand.Carriageways), parallel to <see cref="Keys"/>.</summary>
         public static uint[] Masks => s_Masks;
 
+        /// <summary>
+        /// 0.4.10 (G18): the painted window per band, 4 floats each (x0, z0, x1, z1: its end points on the edge's centre
+        /// curve), parallel to <see cref="Keys"/>; NaN x0 = no window (not driven).
+        /// </summary>
+        public static float[] Window => s_Window;
+
         /// <summary>Exits not handed over at the last publish (more than ExitBands.Capacity).</summary>
         public static int Dropped { get; private set; }
 
@@ -405,17 +421,34 @@ namespace JunctionRules.Core
             if (n.Length == s_Keys.Length)
             {
                 bool same = true;
-                for (int i = 0; i < n.Length && same; i++) same = n[i].EdgeKey == s_Keys[i] && n[i].T == s_T[i] && n[i].Carriageways == s_Masks[i];
+                for (int i = 0; i < n.Length && same; i++)
+                    same = n[i].EdgeKey == s_Keys[i] && n[i].T == s_T[i] && n[i].Carriageways == s_Masks[i] && SameWindow(n[i], s_Window, i);
                 if (same) return;
             }
             var keys = new long[n.Length];
             var t = new float[n.Length];
             var masks = new uint[n.Length];
-            for (int i = 0; i < n.Length; i++) { keys[i] = n[i].EdgeKey; t[i] = n[i].T; masks[i] = n[i].Carriageways; }
+            var window = new float[n.Length * 4];
+            for (int i = 0; i < n.Length; i++)
+            {
+                keys[i] = n[i].EdgeKey; t[i] = n[i].T; masks[i] = n[i].Carriageways;
+                window[4 * i] = n[i].HasWindow ? n[i].X0 : float.NaN;
+                window[4 * i + 1] = n[i].Z0;
+                window[4 * i + 2] = n[i].X1;
+                window[4 * i + 3] = n[i].Z1;
+            }
             s_Keys = keys;
             s_T = t;
             s_Masks = masks;
+            s_Window = window;
             Version++;
+        }
+
+        private static bool SameWindow(ExitBand b, float[] w, int i)
+        {
+            if (w == null || w.Length < 4 * i + 4) return false;
+            if (!b.HasWindow) return float.IsNaN(w[4 * i]);
+            return w[4 * i] == b.X0 && w[4 * i + 1] == b.Z0 && w[4 * i + 2] == b.X1 && w[4 * i + 3] == b.Z1;
         }
     }
 }

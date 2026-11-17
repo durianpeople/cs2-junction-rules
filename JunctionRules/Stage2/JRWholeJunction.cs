@@ -178,7 +178,7 @@ namespace JunctionRules.Stage2
         private bool m_BoxLeftHand;
         private bool m_BoxJunctions;
         private bool m_BoxEntrances;
-        private float m_BoxEntranceLength;
+        // 0.4.10 (G18): m_BoxEntranceLength removed: bands are the painted windows (JRBoxEdges), not t + the box length.
         /// <summary>SetBoxes ran (the box lookups below are valid).</summary>
         private bool m_BoxLookups;
         private ComponentLookup<JunctionRules.Boxes.YellowBoxJunction> m_BoxJunctionData;
@@ -280,6 +280,11 @@ namespace JunctionRules.Stage2
         private Entity m_LastBlocker;
         /// <summary>G15b (final review): this car-step a room scan was blocked by a vehicle standing across the lane from a driveway.</summary>
         private bool m_SideHeld;
+        /// <summary>0.4.10 (G19, probe): the last HasRoomPast with freeNow found no room only because a moving queue no longer counts.</summary>
+        private bool m_FreeNowHeld;
+        /// <summary>0.4.10 (G19, probe): a box hold that bound this car-step was due to the free-now rule only (counter BoxHeldFreeNow).</summary>
+        private bool m_HasBoxFreeNow;
+        private float m_BoxFreeNowSpeed;
 
         /// <summary>0.4.8 trace: the exit's position (drive lane start / join point) of this update's decision.</summary>
         private float2 m_ExitPoint;
@@ -337,7 +342,6 @@ namespace JunctionRules.Stage2
             j.m_BoxLeftHand = (mode & Stage2Mode.BoxLeftHand) != 0;
             j.m_BoxJunctions = (mode & Stage2Mode.BoxJunctions) != 0;
             j.m_BoxEntrances = (mode & Stage2Mode.BoxEntrances) != 0;
-            j.m_BoxEntranceLength = Stage2Mode.BoxEntranceLength(mode);
             j.m_BoxTurnSpot = 2f;
             j.m_BoxTurnIndex = -1;
             // 0.4.4: and the exit give-way rule.
@@ -702,9 +706,12 @@ namespace JunctionRules.Stage2
             ref ComponentLookup<Game.Net.CarLane> carLanes, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves,
             ref ComponentLookup<Moving> moving, ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs,
             ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars,
-            ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes, bool sideObstacles = false)
+            ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes, bool sideObstacles = false, bool freeNow = false)
         {
             RoomScan scan = RoomScan.Begin(m_VehicleLength, m_RoomMargin);
+            // 0.4.10 (G19): yellow boxes count only room that is free now (no credit for a moving queue); zebras keep the credit.
+            scan.FreeNow = freeNow;
+            m_FreeNowHeld = false;
             bool unsorted = false;
             if (queueFrom >= 0f && fromDriving > queueFrom)
             {
@@ -743,6 +750,7 @@ namespace JunctionRules.Stage2
             if (sideObstacles && scan.HasRoom) SideObstacles(ref scan, lane, queueFrom >= 0f && queueFrom < fromDriving ? queueFrom : fromDriving, fromDriving, inverse, length, self,
                 ref carLanes, ref laneObjects, ref controllers, ref prefabRefs, ref geometries, ref curves, ref overlapData);
             NoteRoomBlocker(scan);
+            m_FreeNowHeld = scan.HeldForMovingQueue;
             return scan.HasRoom;
         }
 
@@ -1498,6 +1506,7 @@ namespace JunctionRules.Stage2
             if (m_ExitEmergency && ExitEvent(eventTable, entity, frame, 4)) Add(counters, Stage2Counters.ExitEmergencyPass, 1);
             if (m_ExitCapHit) Add(counters, Stage2Counters.ExitCapHits, 1);
             if (m_ExitEntrantIgnored) Add(counters, Stage2Counters.ExitEntrantIgnored, 1);   // 0.4.9 (G15)
+            if (Stage2Counters.IsBinding(m_HasBoxFreeNow, m_BoxFreeNowSpeed, finalMaxSpeed)) Add(counters, Stage2Counters.BoxHeldFreeNow, 1);   // 0.4.10 (G19)
             // 0.4.7: the cap hits by kind (lane cap: go; vehicle cap: wait).
             if (m_ExitLaneCap) Add(counters, Stage2Counters.ExitCapLanes, 1);
             if (m_ExitVehicleCap) Add(counters, Stage2Counters.ExitCapVehicles, 1);

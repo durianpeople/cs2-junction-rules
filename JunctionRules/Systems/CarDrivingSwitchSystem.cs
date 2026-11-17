@@ -65,22 +65,27 @@ namespace JunctionRules.Systems
             }
             int count = m_EntranceBuildings.CalculateEntityCount();
             int version = JunctionRules.Boxes.BoxStore.Version;
-            if (count == m_BoxEdgeCount && version == m_BoxStoreVersion && ++m_BoxEdgeAge < BoxEdgeRefreshSteps) return;
+            int merged = MergedBoxes.Version;   // 0.4.10 (G18): the paint regrouped (a box or a road / node under one changed)
+            if (count == m_BoxEdgeCount && version == m_BoxStoreVersion && merged == m_MergedVersion && ++m_BoxEdgeAge < BoxEdgeRefreshSteps) return;
             m_BoxEdgeCount = count;
             m_BoxStoreVersion = version;
+            m_MergedVersion = merged;
             m_BoxEdgeAge = 0;
-            var bands = new System.Collections.Generic.List<ExitBand>();
+            var sources = new System.Collections.Generic.List<JunctionRules.Boxes.DrivingBands.Source>();
             int unmatched = 0;
             using (var buildings = m_EntranceBuildings.ToEntityArray(Unity.Collections.Allocator.Temp))
             {
-                for (int i = 0; i < buildings.Length; i++) unmatched += JunctionRules.Boxes.BoxFacts.BoxedExitBands(EntityManager, buildings[i], bands);
+                for (int i = 0; i < buildings.Length; i++) unmatched += JunctionRules.Boxes.BoxFacts.BoxedExitBands(EntityManager, buildings[i], sources);
             }
+            // 0.4.10 (G18): the painted windows (joint boxes as one), not the exit points
+            var bands = JunctionRules.Boxes.DrivingBands.Build(EntityManager, sources, out int notPainted, out int joint);
             int before = BoxEdgeHandoff.Version;
             BoxEdgeHandoff.Publish(bands);
             int dropped = BoxEdgeHandoff.Dropped;
             if (BoxEdgeHandoff.Version != before)
             {
-                Mod.log.Info($"yellow boxes (driving): {BoxEdgeHandoff.Keys.Length} boxed car exit(s) on {count} building(s) handed to the box rule"
+                Mod.log.Info($"yellow boxes (driving): {BoxEdgeHandoff.Keys.Length} painted exit / entrance box(es) ({sources.Count} boxed exit(s) and entrance(s), {joint} built as one box) on {count} building(s) handed to the box rule, each over its painted window"
+                    + (notPainted > 0 ? $"; {notPainted} not painted, so not obeyed" : "")
                     + (unmatched > 0 ? $"; {unmatched} saved exit key(s) without an exit now (not obeyed until the paint re-keys or drops them)" : ""));
             }
             // 0.4.3 review F2: the kept bands can stay the same (no new version) while the number over the limit changes
@@ -95,6 +100,9 @@ namespace JunctionRules.Systems
 
         /// <summary>Steps between rebuilds of the boxed edge set while the box count is unchanged.</summary>
         private const int BoxEdgeRefreshSteps = 64;
+
+        /// <summary>0.4.10 (G18): the paint's merged-box version at the last rebuild (Core MergedBoxes.Version).</summary>
+        private int m_MergedVersion = -1;
 
         [Preserve]
         protected override void OnCreate()

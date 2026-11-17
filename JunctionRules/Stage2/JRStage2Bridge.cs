@@ -228,7 +228,7 @@ namespace JunctionRules.Stage2
             {
                 if (s_BoxEdgeVersion != BoxEdgeHandoff.Version)
                 {
-                    s_BoxEdges = JRBoxEdges.FromBands(BoxEdgeHandoff.Keys, BoxEdgeHandoff.T, BoxEdgeHandoff.Masks);
+                    s_BoxEdges = JRBoxEdges.FromBands(BoxEdgeHandoff.Keys, BoxEdgeHandoff.T, BoxEdgeHandoff.Masks, BoxEdgeHandoff.Window);
                     s_BoxEdgeVersion = BoxEdgeHandoff.Version;
                 }
                 s_BoxEdges.m_EntranceLog = EntranceRing();   // JR-T-014c (G9): always on

@@ -86,8 +86,14 @@ namespace JunctionRules.Tests
             int at = src.IndexOf("private unsafe bool ExitBandBlocks(", StringComparison.Ordinal);
             int end = at < 0 ? -1 : src.IndexOf("private bool ConflictBusy(", at, StringComparison.Ordinal);
             string body = at < 0 || end < 0 ? "" : src.Substring(at, end - at);
-            Check(body.Contains("MedianSplit.InMask(bands->Mask(i), carriageway)"), "F1 job: ExitBandBlocks filters bands by the join lane's carriageway");
-            Check(body.Contains("ExitBands.Touch(") && body.Contains("ExitBands.HoldTouchMetres(m_VehicleLength, m_RoomMargin) / length"), "F1 job: ExitBandBlocks merges touching bands (0.4.9: the vehicle's own length + margin, at least 2 m)");
+            // 0.4.10 (G18): the band set is one shared function (JRYellowBox.LaneBands) for BoxHold and ExitBandBlocks.
+            string yb = File.ReadAllText(Path.Combine(RepoRoot(), "JunctionRules", "Stage2", "JRYellowBox.cs"));
+            int lb = yb.IndexOf("private unsafe bool LaneBands(", StringComparison.Ordinal);
+            int lbEnd = lb < 0 ? -1 : yb.IndexOf("private float EnteringHold(", lb, StringComparison.Ordinal);
+            string lbody = lb < 0 || lbEnd < 0 ? "" : yb.Substring(lb, lbEnd - lb);
+            Check(body.Contains("LaneBands(road, edgeOwner.m_Owner, length, false, carriageway, ref curves, out FixedList128Bytes<float2> merged)")
+                && lbody.Contains("MedianSplit.InMask(bands->Mask(i), carriageway)"), "F1 job: ExitBandBlocks filters bands by the join lane's carriageway");
+            Check(lbody.Contains("ExitBands.Touch(") && lbody.Contains("ExitBands.HoldTouchMetres(m_VehicleLength, m_RoomMargin) / laneLength"), "F1 job: ExitBandBlocks merges touching bands (0.4.9: the vehicle's own length + margin, at least 2 m)");
             Check(body.Contains("ExitBands.JunctionJoinMetres") && body.Contains("NextBoxedJunction(road)"), "F1 job: ExitBandBlocks joins a boxed junction at the lane end");
             Check(body.Contains("HasRoomPast(road, b1, false, length, t, joined,"), "F1 job: room past the merged band (and joined junction box)");
             Check(src.Contains("m_ExitNodeJoin = nodeJoin;\n            m_ExitSignalArm = false;"), "F2 job: the signalled-arm trace reason resets with the node-join flag");
