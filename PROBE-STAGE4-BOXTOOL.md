@@ -6,7 +6,7 @@ road's lanes, also on a ONE-WAY road (0.4.4-0.4.11 cut only where the lanes past
 box at building 77236 on Sunset Street was painted kerb to kerb across the raised centre median); the box and the
 driving rule cover only the building's own lanes. Junction boxes keep 0.5 m clear of every median nose at their arms
 (like a zebra: the mouth is held back past it); a junction whose median runs on through it, and a saved roundabout
-box (centre island), get no box. G27: the exit trace says `boxed yes` and `no room` (not `gap`) when a standing queue holds a boxed exit (labels only). No change to the copied game code (`docs/vanilla_copy_check_0.4.12.txt`: 0 unexplained
+box (centre island), get no box. G28 (owner rule): a car leaving a building by a drive may pull into its exit box behind a queue when it only merges into that lane (G22's exception for exits). G27: the exit trace says `boxed yes` and `no room` (not `gap`) when a standing queue holds a boxed exit (labels only). No change to the copied game code (`docs/vanilla_copy_check_0.4.12.txt`: 0 unexplained
 differences, 42 marked blocks / 328 lines as 0.4.11). Carries 0.4.11 and everything before.
 
 **0.4.11-probe (JR-T-017: 0.4.10 live gap G21), what changed since 0.4.10 (section 21):** a vehicle turning INTO a
@@ -2069,3 +2069,35 @@ blocker speed < 0.5 m/s); the drive-lane lines use the drive judgement's own fla
 |---|---|---|
 | 27-1 | A held exit at a saved exit box behind a standing queue (77236 on Sunset Street) | trace `decision wait (no room: a vehicle stands in its way out, at / past the box) boxed yes` |
 | 27-2 | A held exit with moving traffic, unboxed | `wait (gap) boxed no` as before |
+
+### 22.7 G28 (owner rule): a building exit is a yielding approach - the same-exit-lane box exception for exits
+
+Owner 17 Nov: "entrances and exits of buildings are that yielded exit right": G22's exception (0.4.11, junction boxes)
+now also lets a vehicle LEAVING a building through a drive enter its exit box although the lane past the box is full,
+when its whole-body waiting spot overlaps only paths into that same lane; it then waits in the box at the back of the
+queue. `Core/ExitSameLane.cs`, job `JRExitGiveWay.G28Check` (run before the drive judgement's early returns, so it also
+covers a committed vehicle), the road-lane box hold (S2-28, role Leaving) and the exit judgement's room-past-the-box
+test honour it. Conditions (all): the join point is in a box band; every car / track overlap still ahead on the drive's
+leaving lane is the lane it joins (near-side merge; a far-side turn across the near lane, the other carriageway or
+another drive's way in / out = normal rule); the footprint (front 1 m - the room margin - behind the nearest vehicle
+STANDING ahead on that lane, or the lane end; body = whole length + margin) stays off the pavement; no other path of
+the joined lane (a building's way in, a turn-in) lies under it. Then, on the joined lane only and only with a standing
+queue ahead, vehicles STANDING before the merge (not on it) are the queue it joins, not present traffic; moving vehicles
+and one standing on the merge point keep the gap rule. Counter shared with G22 (`entered a box under the same-exit-lane
+exception`). Gates / lots / building parking keep the 0.4.11 rule (no drive leaving lane); turning INTO a building is
+not an approach of the box (G21 unchanged: waits before the box). Deadlocks: the exiter blocks only the joined lane's own
+traffic behind it, which waits for the same full lane; entrance / turn-in paths under it are excluded; the far
+carriageway is never touched (merge only, median G26). All G15 / G21 / G22 tests stay green.
+
+Live case (offline, game closed): SUV 602885 leaving 77236 at (72.4, 427.1): exit on the driver's RIGHT of one-way Sunset
+Street (lateral -12.6 m), joining the right lane (centre -2.5 m), nothing crossed; queue car 838449 at 27.3 m along the
+edge, lateral -2.46 m (same lane), rear ~25.1 m; join ~19.0 m. Footprint front 24.1 m, 5.1 m on the lane, ~0.7 m of the
+SUV's tail on the leaving lane's road part, off the pavement (estimated leaving-lane geometry: unproven until live). A
+12 m lorry there would stand on the pavement: normal rule. Tests `G28Tests`.
+
+| # | Do | Expect |
+|---|---|---|
+| 28-1 | 77236's exit with the right lane queued past the box | a car pulls into the box behind the queue and waits there (counter `entered a box under the same-exit-lane exception` +1); never on the pavement |
+| 28-2 | Same with a lorry, or a building whose exit turns across a lane | waits before the pavement as before |
+| 28-3 | A car waiting to turn INTO a building across the box | still waits before the box (G21) |
+| 28-4 | Watch for | an exiter standing in a box across another building's way in (must not happen); queue cars upstream let the exiter in (accepted) |

@@ -124,6 +124,10 @@ namespace JunctionRules.Stage2
                 if (ExitConflict(overlaps[i], inverse, start, ref carLanes, out float s, out _)) { if (s < firstRoad) firstRoad = s; }
                 else if (ExitSidewalk(overlaps[i], inverse, start, ref pedestrianLanes, out float w) && w < firstWalk) firstWalk = w;
             }
+            // 0.4.12 (G28): before any early return, so the road-lane box hold (S2-28, role Leaving) sees it this update even for a
+            // committed vehicle: may it wait in the exit box for room under the same-exit-lane exception (Core/ExitSameLane.cs)?
+            if (m_BoxRule) G28Check(lane, overlaps, start, inverse, length, self, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers,
+                ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes);
             if (firstRoad > 1f)
             {
                 // 0.4.9 (G12): its own drive lane with no road conflict ahead: the front is past every lane it crosses (on the road).
@@ -209,7 +213,9 @@ namespace JunctionRules.Stage2
                 bool merge = hasJoin && o.m_Other == joinNav.m_Lane && !across;
                 float dist = merge ? toConflict : ExitGiveWay.ClearMetres(toConflict, length * (e - s), ownLength);
                 float delta = ArrivalTime.Compute(ref motion, dist, currentSpeed, drive, 0f, timeStep);
+                m_G28Scan = m_G28Queue && m_G28JoinLane != Entity.Null && o.m_Other == m_G28JoinLane;   // 0.4.12 (G28): its queue is not present traffic
                 busy = ConflictBusy(o.m_Other, otherCurve, oS, oE, delta, ref reads, ref budget);
+                m_G28Scan = false;
             }
             if (Counting && budget.m_CapHit) m_ExitCapHit = true;
             NoteBudget(budget);
@@ -223,6 +229,8 @@ namespace JunctionRules.Stage2
                 if (!boxed || !m_BoxRule)
                     roomJoin = HasRoomPast(lane, 1f, inverse, length, -1f, Entity.Null, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
                         ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes);
+                // 0.4.12 (G28): the same-exit-lane exception replaces the room past the box (counter shared with G22)
+                if (boxed && !roomBox && m_G28JoinLane != Entity.Null && m_G28JoinLane == joinNav.m_Lane) { roomBox = true; m_G28Used = true; }
             }
             // 0.4.12 (G27, owner: the trace must tell the truth): held by the gap scan, the box test above did not run, so the
             // trace said "boxed no" at a boxed exit. Label only: whether the join point lies in a box band (no room scan, no
@@ -240,6 +248,7 @@ namespace JunctionRules.Stage2
             if (d == ExitGiveWay.Decision.Go)
             {
                 if (Counting) m_ExitGo = true;
+                if (m_G28Used) m_BoxSameExitEntry = true;
                 return float.MaxValue;
             }
             Min(ref m_HasDriveHold, ref m_DriveHoldSpeed, hold);
@@ -1398,6 +1407,70 @@ namespace JunctionRules.Stage2
         }
 
         /// <summary>
+        /// 0.4.12 (JR-T-018, G28, owner rule; Core/ExitSameLane.cs): a drive's leaving lane at a boxed exit. Sets
+        /// m_G28JoinLane to the lane it joins when the vehicle may wait in the exit box for room: the join point is in a band,
+        /// every car / track overlap still ahead on the leaving lane is the joined lane (a near-side merge), its whole-body
+        /// footprint (front behind the nearest vehicle standing ahead on the joined lane, minus the margin) stays off the
+        /// pavement, and no other path of the joined lane (a way in / out, a turn-in) lies under it.
+        /// </summary>
+        private void G28Check(Entity wayOut, DynamicBuffer<LaneOverlap> overlaps, float start, bool inverse, float wayOutLength, Entity self,
+            ref ComponentLookup<Game.Net.CarLane> carLanes, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves,
+            ref ComponentLookup<Moving> moving, ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs,
+            ref ComponentLookup<ObjectGeometryData> geometries, ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
+        {
+            m_G28JoinLane = Entity.Null;
+            m_G28Queue = false;
+            if (!PathLaneAfter(wayOut, out CarNavigationLane join) || !curves.TryGetComponent(join.m_Lane, out Curve joinCurve) || !(joinCurve.m_Length > 0f)) return;
+            if (!ExitInBand(join.m_Lane, join.m_CurvePosition.x, ref carLanes, ref curves)) return;
+            // merge only; the pavement's far end on the leaving lane
+            int ahead = 0, joined = 0;
+            float walkEnd = -1f;
+            for (int i = 0; i < overlaps.Length; i++)
+            {
+                LaneOverlap o = overlaps[i];
+                if (((int)o.m_Flags & WholePathRule.Water) != 0) continue;
+                float a = o.m_ThisStart * WholePathRule.ByteToOffset, b = o.m_ThisEnd * WholePathRule.ByteToOffset;
+                float s = inverse ? 1f - b : a, e = inverse ? 1f - a : b;
+                if (pedestrianLanes.HasComponent(o.m_Other)) { if (e * wayOutLength > walkEnd) walkEnd = e * wayOutLength; continue; }
+                if (!(e > start)) continue;
+                ahead++;
+                if (o.m_Other == join.m_Lane) joined++;
+            }
+            if (!ExitSameLane.MergeOnly(ahead, joined)) return;
+            bool inverseJ = join.m_CurvePosition.y < join.m_CurvePosition.x;
+            float joinM = StretchGeometry.ToDriving(join.m_CurvePosition.x, inverseJ) * joinCurve.m_Length;
+            // the nearest vehicle standing ahead of the join point on the joined lane (same direction)
+            float rearAhead = float.MaxValue;
+            if (laneObjects.TryGetBuffer(join.m_Lane, out DynamicBuffer<LaneObject> objects))
+                for (int i = 0; i < objects.Length; i++)
+                {
+                    Entity e = objects[i].m_LaneObject;
+                    if (e == self || (controllers.TryGetComponent(e, out Controller c) && c.m_Controller == self)) continue;
+                    if (!prefabRefs.TryGetComponent(e, out PrefabRef pr)) continue;
+                    bool against = inverseJ ? objects[i].m_CurvePosition.y > objects[i].m_CurvePosition.x : objects[i].m_CurvePosition.y < objects[i].m_CurvePosition.x;
+                    if (against) continue;
+                    if (moving.TryGetComponent(e, out Moving mv) && math.lengthsq(mv.m_Velocity) >= Stage2Counters.StandingSpeed * Stage2Counters.StandingSpeed) continue;
+                    float x = StretchGeometry.ToDriving(objects[i].m_CurvePosition.x, inverseJ) * joinCurve.m_Length;
+                    if (x <= joinM) continue;
+                    float rear = x + (geometries.TryGetComponent(pr.m_Prefab, out ObjectGeometryData g) ? g.m_Bounds.min.z : 0f);
+                    if (rear < rearAhead) rearAhead = rear;
+                }
+            if (!ExitSameLane.Footprint(joinM, joinCurve.m_Length, rearAhead, m_VehicleLength > 0f ? m_VehicleLength : 4f, m_RoomMargin, wayOutLength, walkEnd,
+                out float from, out float to, out _)) return;
+            // no other path of the joined lane under the footprint (a way in / out of a building, a turn-in)
+            if (overlapData.TryGetBuffer(join.m_Lane, out DynamicBuffer<LaneOverlap> jo))
+                for (int i = 0; i < jo.Length; i++)
+                {
+                    LaneOverlap o = jo[i];
+                    if (o.m_Other == wayOut || ((int)o.m_Flags & WholePathRule.Water) != 0) continue;
+                    StretchGeometry.ToConflict((int)o.m_Flags, o.m_ThisStart, o.m_ThisEnd, inverseJ, false, out float s, out float e);
+                    if (ExitSameLane.TouchesOther(s * joinCurve.m_Length, e * joinCurve.m_Length, from, to)) return;
+                }
+            m_G28JoinLane = join.m_Lane;
+            m_G28Queue = rearAhead < joinCurve.m_Length;   // a standing queue ahead: vehicles standing behind the merge belong to it
+        }
+
+        /// <summary>
         /// 0.4.12 (G27): does curve position t of this road lane lie in a box band (the same band set as ExitBandBlocks)? For
         /// the trace only: no room scan, no light request, no blocker named.
         /// </summary>
@@ -1693,6 +1766,9 @@ namespace JunctionRules.Stage2
                         continue;
                     }
                 }
+                // 0.4.12 (G28): on the lane a same-exit-lane exiter joins, a vehicle standing before the merge (not on it) is the
+                // queue it joins at the back (it waits in the box behind the queue ahead): not present. Moving ones count.
+                if (ExitSameLane.QueueNotPresent(m_G28Scan, occupies, gap, speed)) continue;
                 // 0.4.9 (G15): a vehicle standing before the exit while it waits for room INTO a building (G9 entrance hold,
                 // recorded this or the last navigation updates) is not "present at the exit": the exit may go.
                 bool entering = !occupies && gap > 0f && ((gap <= ExitGiveWay.PresentMetres && (EnteringHeld(e) || (m_EntryScan && EntryGapHeld(e))))

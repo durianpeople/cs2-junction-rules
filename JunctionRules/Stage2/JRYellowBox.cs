@@ -208,6 +208,14 @@ namespace JunctionRules.Stage2
                     ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, role == BoxDriving.EntranceRole.Main,
                     freeNow: true);
                 if (!BoxDriving.Holds(a, room)) { m_LastBlocker = keepBand; continue; }
+                // 0.4.12 (G28): a vehicle leaving a drive into this band under the same-exit-lane exception (S2-29 G28Check this
+                // update: near-side merge, footprint over only this lane's own traffic) waits in the box at the back of the queue.
+                if (role == BoxDriving.EntranceRole.Leaving && m_G28JoinLane != Entity.Null && m_G28JoinLane == lane)
+                {
+                    m_LastBlocker = keepBand;
+                    m_BoxSameExitEntry = true;
+                    continue;
+                }
                 result = hold;
                 NoteLightPetition(hold);   // review R1
                 if (Counting && m_FreeNowHeld) Min(ref m_HasBoxFreeNow, ref m_BoxFreeNowSpeed, hold);
