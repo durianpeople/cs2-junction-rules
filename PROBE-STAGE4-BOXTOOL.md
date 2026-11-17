@@ -1320,12 +1320,13 @@ the node centre):
   333.6): 6.4 m inside the paint. That it stopped just before the exit box's own painted start (338.6) was a
   coincidence of the shift.
 - **G19** (sedan 909747 northbound, z 294.4 for ~10 s; truck 380975 at z 295.8 and car 910952 at z 288.2 southbound):
-  843726's box was driven 13 m north of the paint on both lanes. The sedan simply queued behind 910969 (z 298.9) INSIDE
-  the paint, with no driven box under it; the southbound truck and car queued back from the main-road junction into the
-  paint, south of the driven box. **The southbound vehicles had the same cause** (the misplaced box), not a moving-queue
-  entry. The stop-and-go reading ("entered while the queue past it was moving") does not fit the track: with the box
-  where it is painted the sedan would have been held at z 288 even with the 0.4.9 moving credit (910969's rear stood
-  0.7 m past the box end at frame 36628536: no room for 4.4 + 1 m either way).
+  843726's box was driven 13 m north of the paint on both lanes. The car ahead, 910969, crept to z 298.9 and stopped
+  there with its front at ~301.1: exactly at the DRIVEN box line (301.3), held there for room past the misplaced box. The
+  sedan queued behind it INSIDE the paint, with no driven box under it. The southbound truck and car queued back from
+  the main-road junction into the paint, south of the driven box. **The southbound vehicles had the same cause** (the
+  misplaced box), not a moving-queue entry. Whether 0.4.9's moving credit would also have let the sedan in with the box
+  in the right place cannot be told from the track (the vehicle that held 910969 was not tracked); 0.4.10 needs room
+  free now in any case (20.2).
 
 **Now:** the main thread builds every exit / entrance box's window with the paint's own code (Boxes/BoxShapes.Entrance
 with the published shape parameters; boxes less than 2 m apart built as ONE box over the joint window exactly as the
