@@ -1,4 +1,14 @@
-# Probe kit: Junction Rules 0.4.8-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits and entrances; vehicles leaving buildings give way before the sidewalk; merged boxes; median; markings hidden; gaps G1-G11)
+# Probe kit: Junction Rules 0.4.9-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits and entrances; vehicles leaving buildings give way before the sidewalk; merged boxes; median; markings hidden; gaps G1-G15)
+
+**0.4.9-probe (JR-T-015: 0.4.8 live gaps G12-G15), what changed since 0.4.8 (section 19):** G15 the Alderwood
+deadlock (No. 40: a van waiting to turn in stood in No. 40's own exit box and the exit waited for it) cannot form: a
+vehicle never waits with any part of it in a box (bands closer than its length are one band for it, so it waits before
+the building's exit box too), and an exit does not wait for a vehicle that only waits for room INTO a building. G14
+boxes on one road less than 2 m apart (exit + exit, exit + entrance) are built and driven as ONE box. G13 a vehicle held
+at a driveway no longer makes road traffic stop to keep the drive clear for it. G12 the proof counters count the right
+moment (the front passing the sidewalk spot) and a Go'd exit crosses pavement and road in one move. Diagnostics stay on
+by default. `docs/vanilla_copy_check_0.4.9.txt`: 0 unexplained differences, 39 marked blocks / 311 lines (new S2-51 /
+S2-51b; S2-22 condition and S2-26 extended; DEVIATIONS.md). Carries 0.4.8 and everything before.
 
 **0.4.8-probe (JR-T-014: G7, G5 again, G9, G10, G11), what changed since 0.4.7 (section 18):** G7 vehicles leaving a
 building now take the WHOLE decision **before the sidewalk** (owner rule: the pavement an exit crosses is a zebra):
@@ -70,7 +80,7 @@ differences). Also: the T-junction through-side kerb fix (section 6) and the ent
 0.3.6 (JR-T-008, people pass a car blocking their crossing; merged from 784ba28) and everything before it
 (PROBE-STAGE3-PAINT.md).
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.4.8-probe/` (JR-T-014 merge, branch jr-t-014; managed build only until main does the Burst build, see its `STALE.md`; the block below refuses on the `0000...` placeholder sums and while `STALE.md` exists). 0.4.7-probe (installed 17 Nov, `.staged/0.4.7-probe`, Burst from cd6a1eb, sums in commit 3854a23) is the rollback; never write into `.staged/0.4.7-probe`. Never install the old `.staged/0.4.4-probe` (the paused JR-T-011 managed build). While `.staged/0.4.8-probe` holds a `STALE.md` it is a managed
+Build to install: `~/Code/cs2-junction-rules/.staged/0.4.9-probe/` (JR-T-015, branch jr-t-015; managed build only until main does the Burst build, see its `STALE.md`; the block below refuses on the `0000...` placeholder sums and while `STALE.md` exists). 0.4.8-probe (installed 17 Nov 07:5x, `.staged/0.4.8-probe`, Burst from 8fca058, sums in commit 242618d) is the rollback; never write into `.staged/0.4.8-probe` or `.staged/0.4.7-probe`. Never install the old `.staged/0.4.4-probe` (the paused JR-T-011 managed build). While `.staged/0.4.9-probe` holds a `STALE.md` it is a managed
 build only: main does the Burst build in `STALE.md` (game closed, at the owner's quit), then puts the five sums into the
 install block below. Until then the block refuses (placeholder sums `0000...`).
 
@@ -83,27 +93,27 @@ copy does not run; the boxes stay in the save).
 (
   CS2="$HOME/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II"
   BACKUP="$HOME/Code/cs2-junction-rules/.staged/0.2.4-installed-backup"
-  cd ~/Code/cs2-junction-rules/.staged/0.4.8-probe || exit 1
+  cd ~/Code/cs2-junction-rules/.staged/0.4.9-probe || exit 1
   if [ "$(ps -eo comm | grep -ci cities2)" != 0 ]; then echo "GAME IS RUNNING - stop, nothing installed"; exit 1; fi
   if [ -e STALE.md ]; then echo "STAGED BUILD IS STALE - see STALE.md, rebuild first; nothing installed"; exit 1; fi
   if [ ! -d "$CS2" ]; then echo "CS2 folder not found - nothing installed"; exit 1; fi
   sha256sum -c --strict - <<'SUMS' || { echo "SHA256 MISMATCH - nothing installed"; exit 1; }
-106bd82850b6e19afe2e6bf3d741944b5b4ae8002b588ba511c8de74e24424b5  JunctionRules.dll
-01c5735e0a35983b2897f384de75ba2ec5e4d9120836ab7bdd118babe0a5b5a4  JunctionRules.pdb
-9e8f8a397f70bbeb121ef7224981278773595c1fe2ce7e31de01d4c4df2b65bf  JunctionRules.mjs
-d3178e58abcae74c2fbf2d91e90806f955ab0649982e7ba558a4d29f20dde38e  JunctionRules_win_x86_64.dll
-8b27cc25e88e68a26cbafdbfa7768e1249004ebc90cc77cf6aaa15e36379a3e6  JunctionRules_win_x86_64.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.pdb
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules.mjs
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.dll
+0000000000000000000000000000000000000000000000000000000000000000  JunctionRules_win_x86_64.pdb
 SUMS
   if [ -d "$CS2/Mods/JunctionRules" ] && [ ! -e "$BACKUP/JunctionRules.dll" ]; then
     mkdir -p "$BACKUP" && cp -p "$CS2/Mods/JunctionRules/"* "$BACKUP/" && echo "backed up the installed files to $BACKUP" || { echo "BACKUP FAILED - nothing installed"; exit 1; }
   fi
   mkdir -p "$CS2/Mods/JunctionRules" &&
   cp JunctionRules.dll JunctionRules.pdb JunctionRules.mjs JunctionRules_win_x86_64.dll JunctionRules_win_x86_64.pdb "$CS2/Mods/JunctionRules/" &&
-  echo "installed 0.4.8-probe"
+  echo "installed 0.4.9-probe"
 )
 ```
 
-Rollback: to 0.4.7 (JR-T-013m, Burst from cd6a1eb, installed 17 Nov; no G7 sidewalk rule, no entrance boxes): the same block with `.staged/0.4.7-probe` and its sums (commit 3854a23). To 0.4.6: the same block with `.staged/0.4.6-probe` and its sums (commit 8bf6cf2). To 0.4.5 (JR-T-012 lot-exit build, Burst from 9639e71, installed 16 Nov): the same block with `.staged/0.4.5-probe` and its sums (commit bb676cd). To 0.4.4 (JR-T-012 first build, Burst from ba75f0b, installed 16 Nov): the same block with `.staged/0.4.4-probe-jr012` and its sums (commit 853ea2b). To 0.4.3 (installed 16 Nov, Burst from a14445d): the same block with `.staged/0.4.3-probe` and its sums (commit 1441805). To 0.4.2 (the JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
+Rollback: to 0.4.8 (JR-T-014, Burst from 8fca058, installed 17 Nov 07:5x; G12-G15 not fixed): the same block with `.staged/0.4.8-probe` and its sums (commit 242618d: dll 106bd828..., pdb 01c5735e..., mjs 9e8f8a39..., win dll d3178e58..., win pdb 8b27cc25...). To 0.4.7 (JR-T-013m, Burst from cd6a1eb, installed 17 Nov; no G7 sidewalk rule, no entrance boxes): the same block with `.staged/0.4.7-probe` and its sums (commit 3854a23). To 0.4.6: the same block with `.staged/0.4.6-probe` and its sums (commit 8bf6cf2). To 0.4.5 (JR-T-012 lot-exit build, Burst from 9639e71, installed 16 Nov): the same block with `.staged/0.4.5-probe` and its sums (commit bb676cd). To 0.4.4 (JR-T-012 first build, Burst from ba75f0b, installed 16 Nov): the same block with `.staged/0.4.4-probe-jr012` and its sums (commit 853ea2b). To 0.4.3 (installed 16 Nov, Burst from a14445d): the same block with `.staged/0.4.3-probe` and its sums (commit 1441805). To 0.4.2 (the JR-T-010 build: box driving rule, old entrance boxes; 0.4.3 exit keys are skipped by
 its loader, so exit boxes fall back to one entrance box per building): the same block with `.staged/0.4.2-probe` and
 its sums (full sums in commit c781df0). To 0.4.1 (boxes kept, box driving rule gone): the same block with `.staged/0.4.1-probe` and its sums
 (dll af5b1322..., pdb db04729f..., mjs 9e8f8a39..., win dll 5acf0104..., win pdb d5762071...; full sums in the 0.4.1 commit 07cc519)
@@ -1065,3 +1075,104 @@ unmarked crossings on`.
 
 Unproven: the 0.5 m kerb tolerance; a feeding car with an unknown route counts (people wait longer); a car that
 cannot stop for a person already crossing still collides as in stock.
+
+## 19. 0.4.9: the 0.4.8 live gaps G12-G15 (JR-T-015)
+
+Driving changes act only while Car driving is the Junction Rules copy. Diagnostics stay **on by default** (timing log,
+compact exit trace, entrance box log). Evidence: 0.4.8 log 08:46-08:54 (jrlogs `JunctionRules.Mod.2026-11-17_048.log`),
+owner shots ded7b442 (G13), a4d15d38 (G14), a7b0fa45 (G15), read-only cs2 reads 08:5x (frames 36670652, 36685203,
+36692240).
+
+### 19.1 G15: the Alderwood deadlock (No. 40, warehouse 839552)
+
+**The loop (live read).** No. 40 has an ENTRANCE drive at x -1994 and an EXIT drive at x -1983.4, 10.5 m apart on the
+westbound (near) lane; their 8 m boxes are 2.5 m apart. A van for No. 40 came westbound and had to wait because No. 40's
+yard was full (G9: do not turn in without room for the whole vehicle). 0.4.8 held it before the ENTRANCE box, so its
+6-7 m body stood in the EXIT box behind it (live: van centre x -1986.9, z 271.6). No. 40's exit head (380832, later
+380901, at the drive start) then waited for the van twice over: the van stood on its westbound conflict, and even where
+it does not, a vehicle standing within 10 m of an exit counts as "present" (0.4.8 G7 rule). The yard could not empty,
+the van could not get in: van -> yard -> exit -> van. The lot-internal 'Crossing' wait (905413 on the Invisible Car
+Path, then 174655 / 174632) is the same queue inside the yard, not a separate cause; the eastbound vans for No. 40
+queued at z ~278 the same way. The game's deadlock detector cannot see Junction Rules holds (0 loops).
+
+**Rules now (UK yellow box: never stop with any part of the vehicle in a box; vehicles leaving buildings give way).**
+1. A vehicle held at a box band never stands in another band: for its own hold, bands on its lane closer than its whole
+   length (trailers incl.) + the room margin are ONE band (at least 2 m). The van now waits before No. 40's EXIT box,
+   clear of the exit mouth. Same for through traffic (room needed past the last of the close boxes) and for vehicles
+   leaving a boxed drive.
+2. An exit does not wait for a road vehicle that stands before it while it waits for room INTO a building (held by the
+   G9 rule this or the last navigation updates). It waits for nothing the exit can give it except room, and that room
+   comes from vehicles leaving. A vehicle ON the exit's conflict, or one moving towards it, still blocks (safety floor);
+   a through vehicle standing next to the exit still blocks (G7 rule unchanged).
+No timeout: both are rules, the loop cannot form.
+
+Regression test: `G15LoopTests` rebuilds the live geometry (bands at x -1983.4 and -1994.04, 6.5 m van) and shows the
+0.4.8 rules close the van -> yard -> exit loop and the 0.4.9 rules leave it open.
+
+### 19.2 G14: near boxes are one box
+
+Cause: the paint joined exit boxes only when they touched within 0.05 m (Alderbrook Street boxes ~0.6 m apart stayed two),
+and an exit box with an entrance box ~0.5 m off it was unioned with nearly parallel kerb sides; the union failed (log
+08:49:39 `merge with 1 touching box(es) failed (union boundary does not close); drawn separately`), so both outlines were
+drawn. Driving merged bands only within 0.1 m, so the eastbound artic of the shot entered the first box with room only in
+the 0.6 m gap before the second (cab in one box, a truck across the other).
+
+Now: boxes on the same road and carriageways whose windows overlap or are less than **2 m** apart are BUILT as one box
+over the joint window (from the first box's access; never over a road marking or into a junction-mouth margin: then they
+stay apart, logged), and driven as one band (2 m, and per vehicle its own length, 19.1). Log: `yellow boxes: N boxes
+within 2.0 m on edge E built as ONE box, window a..b m (...)` or `... kept apart: <why>`. Hover and the tool still see
+every member (clicking still adds / removes that building's boxes as before).
+
+### 19.3 G13: through traffic waited for an exit that gives way
+
+Cause (game protocol): a vehicle whose next lane is a driveway's leaving lane asks road traffic for space every update
+(the game's RequestSpace reservation, priority 96, CarNavigationSystem.ReserveNavigationLanes), and a road car that
+would have no space past the drive stops before it (CarLaneSpeedIterator.CheckOverlapSpace). Junction Rules holds that
+exiting vehicle (it gives way), so the road car waited for a vehicle that was not allowed to go (sedan 909842 before
+the Alderbrook box while 910673 / 910289 waited at the exit). Now a vehicle held at a driveway exit withdraws that
+request for the update it is held (new copy blocks S2-51 / S2-51b; its own state is restored). Boxed exits are still
+kept clear by the box rule (a road car enters a box only with room past it). Not proven live: the shot alone cannot show
+which of the game's checks held the sedan; the new counter shows whether withdrawals happen.
+
+### 19.4 G12: the proof counters and "one move"
+
+Causes: (1) 0.4.8 counted "driveway exits crossing the sidewalk ... without a full judgement" at the PIVOT hand-over onto
+the drive lane; a lorry held before the sidewalk is handed over while it still waits there (live: 844033 `waits` and
+`NOT judged` in the same frame 36642880; 841993, 180943, 183365 likewise), so most NOTABLE 'NOT judged' lines were
+vehicles that had not crossed. (2) Every exit that had passed the sidewalk spot after its Go was judged AGAIN at the road
+lane and counted "judged only on the sidewalk" (24 of 28 in the 08:54 window); worse, that second judgement could stop a
+Go'd lorry ON the pavement, front at the kerb (live: 380901 at No. 40). (3) "standing on the road after leaving" counted
+every vehicle standing on a drive lane that was not judged in that update, also vehicles queued behind a held one more
+than 12 m before the spot; it often equalled the crossing count by accident, not by double counting the same event.
+
+Now: the crossing is counted once, where the FRONT passes the sidewalk spot: judged (a Go stood), judged only on the
+sidewalk (no Go, decided at the road lane: it could not stop before the pavement) or without a full judgement (neither:
+must be 0). A Go'd vehicle past the spot that is still moving is committed: pavement and road in one move (the game's
+physical checks still apply); one that stopped on the pavement is judged again at the road lane. "Standing on the road"
+counts only vehicles whose front is past the sidewalk spot.
+
+### 19.5 What to watch
+
+| # | Do | Expect |
+|---|---|---|
+| 19-1 | Alderwood St, No. 40 (warehouse 839552) and neighbours, busy | vans for a full yard wait on the road BEFORE the exit box (exit mouth clear); No. 40's lorries leave; no van -> yard -> exit lock; timing `exits not waiting for a vehicle that waits to turn in` > 0 at busy times |
+| 19-2 | Alderbrook St boxes of shot a4d15d38 | one box (one outline, one hatch) where boxes were < 2 m apart; log `built as ONE box` |
+| 19-3 | Same place, eastbound artics | no artic stops with its cab in one box and its trailer in the next |
+| 19-4 | Through traffic past an exit with vehicles waiting at it, lane clear past the box | through traffic keeps going; `held exits' keep-clear requests withdrawn` > 0 |
+| 19-5 | Timing line | `without a full judgement` 0 or close; `judged only on the sidewalk` small (no longer about equal to the crossings); `standing on the road after leaving` small |
+| 19-6 | NOTABLE `crosses the sidewalk ... NOT judged` or `stands on the road` lines | send the log + a shot of that spot |
+
+Timing line, end: `...; judged only on the sidewalk (could not stop before it) L; exits not waiting for a vehicle that
+waits to turn in N; held exits' keep-clear requests withdrawn K`. Trace: a crossing judged only at the road lane is now a
+sampled line `crosses the sidewalk ... decision judged only at the road lane (could not stop before the sidewalk)`.
+
+**Unproven / watch:** (a) G13's mechanism is inferred from the game code, not seen; if through traffic still waits at
+exits, send a shot + the vehicle ids (the cs2 read of the blocker helps). (b) Withdrawing the keep-clear request lets
+queues stand across UNBOXED drives more often (exits then wait longer; owner rule: no safeguard); boxed drives unchanged.
+(c) Per-vehicle band merging makes long artics wait before a row of close exit boxes until there is room past the last
+one (UK box rule, may look cautious on streets with many boxes). (d) An entrant held for room is excused only while the
+entering hold binds (its record is at most 3 navigation updates old); a second vehicle queued behind it is still traffic
+for exits within 10 m. (e) Inside a yard, entering and leaving vehicles can still block each other at the lot's own
+internal crossing when the yard is full (game lot layout; not a Junction Rules hold); 0.4.9 only removes the road-side
+half of that loop. (f) The joint box uses the first box's access for its shape; on a curve the merged box follows the
+same edge curve. (g) None of this has run in game yet.
