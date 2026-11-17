@@ -300,8 +300,7 @@ namespace JunctionRules.Stage2
         private bool m_HasBoxFreeNow;
         private float m_BoxFreeNowSpeed;
         /// <summary>0.4.10 (owner nose rule, probe): a box hold that bound with the front bumper past its line (counter BoxNosePast, must be 0).</summary>
-        private bool m_HasBoxNose;
-        private float m_BoxNoseSpeed;
+        private bool m_BoxNose;
         /// <summary>0.4.10 (probe): standing with a part of the body inside a box (counter BoxStoodInside; not at the right-turn spot).</summary>
         private bool m_BoxStoodInside;
 
@@ -1696,8 +1695,11 @@ namespace JunctionRules.Stage2
             if (m_ExitCapHit) Add(counters, Stage2Counters.ExitCapHits, 1);
             if (m_ExitEntrantIgnored) Add(counters, Stage2Counters.ExitEntrantIgnored, 1);   // 0.4.9 (G15)
             if (Stage2Counters.IsBinding(m_HasBoxFreeNow, m_BoxFreeNowSpeed, finalMaxSpeed)) Add(counters, Stage2Counters.BoxHeldFreeNow, 1);   // 0.4.10 (G19)
-            if (Stage2Counters.IsStandingOn(m_HasBoxNose, m_BoxNoseSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxNosePast, 1);   // 0.4.10 nose rule: must be 0
-            if (m_BoxStoodInside && !Stage2Counters.IsStandingOn(m_HasBoxTurnWait, m_BoxTurnWaitSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxStoodInside, 1);
+            // 0.4.10 probes; the UK right-turn spot (waiting for the oncoming gap or, review 3 F2, for exit room) is excluded
+            bool turnSpot = Stage2Counters.IsStandingOn(m_HasBoxTurnWait, m_BoxTurnWaitSpeed, finalMaxSpeed, currentSpeed)
+                || Stage2Counters.IsStandingOn(m_HasBoxTurnRoom, m_BoxTurnRoomSpeed, finalMaxSpeed, currentSpeed);
+            if (m_BoxNose && !turnSpot && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.BoxNosePast, 1);   // owner nose rule: must be 0
+            if (m_BoxStoodInside && !turnSpot && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.BoxStoodInside, 1);
             // 0.4.7: the cap hits by kind (lane cap: go; vehicle cap: wait).
             if (m_ExitLaneCap) Add(counters, Stage2Counters.ExitCapLanes, 1);
             if (m_ExitVehicleCap) Add(counters, Stage2Counters.ExitCapVehicles, 1);

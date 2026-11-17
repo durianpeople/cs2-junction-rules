@@ -31,6 +31,8 @@ namespace JunctionRules.Tests
             public bool Entrant, Reserved, WaitingToEnter;
             /// <summary>Crossed a box line while the light was green (not amber / red): a later light change can catch it.</summary>
             public bool EnteredOnGreen;
+            /// <summary>Crossed a box line during amber / red only because it could no longer stop (review 3 F3: counted apart).</summary>
+            public bool EnteredCommittedAmber;
             public float Accel, Decel;
             /// <summary>This step's binding stop was a box hold at HoldLine (the painted line).</summary>
             public bool HeldByBox;
@@ -175,14 +177,14 @@ namespace JunctionRules.Tests
             return scan.HasRoom;
         }
 
-        private static (int violations, int residual, bool drained, int served, int entered, int exited, int nose, int enteredNoRoom) SimRun(SimLane lane, int seed, bool robust, int steps, int drainSteps)
+        private static (int violations, int residual, bool drained, int served, int entered, int exited, int nose, int enteredNoRoom, int residualCommitted, int noseLight) SimRun(SimLane lane, int seed, bool robust, int steps, int drainSteps)
         {
             var rnd = new Random(seed);
             var vs = new List<SimVehicle>();
             var yardDwell = new List<int>();
             for (int i = 0; i < lane.Yard; i++) yardDwell.Add(rnd.Next(5, 40));
             float[] lengths = { 4.2f, 4.2f, 4.2f, 6.5f, 6.5f, 12f, 16.5f };
-            int nextId = 1, violations = 0, residual = 0, served = 0, entered = 0, exited = 0, nose = 0, enteredNoRoom = 0;
+            int nextId = 1, violations = 0, residual = 0, served = 0, entered = 0, exited = 0, nose = 0, enteredNoRoom = 0, residualCommitted = 0, noseLight = 0;
             for (int step = 0; step < steps + drainSteps; step++)
             {
                 bool demand = step < steps;
@@ -235,12 +237,12 @@ namespace JunctionRules.Tests
                         if (v.Front <= pb.a && v.Front + move > pb.a)
                         {
                             // light-change residual: crossed on green, or during amber / red only because it could no longer stop
-                            v.EnteredOnGreen = lane.Light && (!SimLightStops(lane, step) || !v.LastCanStop);
+                            v.EnteredOnGreen = lane.Light && !SimLightStops(lane, step);
+                            v.EnteredCommittedAmber = lane.Light && SimLightStops(lane, step) && !v.LastCanStop;
                             v.CommittedCounted = false;
                         }
                     v.Speed = move / SimDt;
                     v.Front += move;
-                    if (v.HeldByBox && v.Speed < 0.01f && BoxDriving.NosePast(v.HoldLine - v.Front)) nose++;
                     ahead = v;
                 }
                 // turn in / leave the model
@@ -300,7 +302,11 @@ namespace JunctionRules.Tests
                         {
                             // known residual (PROBE 20.6): the first vehicle at a red light that entered the box on green and
                             // met amber / red before the line (the light's remaining green is not read)
+                            bool lightCase = lane.Light && SimLightStops(lane, step) && (v.EnteredOnGreen || v.EnteredCommittedAmber);
+                            // the job's nose counter (BoxDriving.NoseIn: front past the box's near line, rear still before it)
+                            if (BoxDriving.NoseIn(b.a - v.Front, v.Length)) { if (lightCase) noseLight++; else nose++; }
                             if (lane.Light && SimLightStops(lane, step) && v.EnteredOnGreen) { residual++; break; }
+                            if (lightCase) { residualCommitted++; break; }
                             violations++;
                             break;
                         }
@@ -317,7 +323,7 @@ namespace JunctionRules.Tests
                 SimAdvanceLight(lane);
             }
             bool drained = vs.Count == 0 && lane.Yard == 0 && yardDwell.Count == 0;
-            return (violations, residual, drained, served, entered, exited, nose, enteredNoRoom);
+            return (violations, residual, drained, served, entered, exited, nose, enteredNoRoom, residualCommitted, noseLight);
         }
 
         private static int Reserved(List<SimVehicle> vs)
@@ -353,6 +359,7 @@ namespace JunctionRules.Tests
             Check(Chained(ExitBands.MergeGapMetres).Painted.Count == 4, "paint: the chained road's 2.8 m gap is one box, the 6 / 12 / 25 m gaps stay");
             Check(Alderbrook(ExitBands.MergeGapMetres).Painted.Count == 4, "paint: Alderbrook's 193433 + 843726 boxes one box (110.0..127.3 m along = 48.0..65.3 m here)");
             int totalViol = 0, oldViol = 0, residual = 0, oldResidual = 0, served = 0, entered = 0, exited = 0, nose = 0, noRoom = 0, oldNoRoom = 0;
+            int resCommitted = 0, oldResCommitted = 0, noseLight = 0, oldNose = 0;
             bool allDrained = true;
             for (int seed = 1; seed <= 20; seed++)
             {
@@ -364,6 +371,8 @@ namespace JunctionRules.Tests
                     totalViol += r.violations;
                     residual += r.residual;
                     nose += r.nose;
+                    resCommitted += r.residualCommitted;
+                    noseLight += r.noseLight;
                     noRoom += r.enteredNoRoom;
                     allDrained &= r.drained;
                     served += r.served; entered += r.entered; exited += r.exited;
@@ -371,15 +380,20 @@ namespace JunctionRules.Tests
                     var o = SimRun(Make(2.0), seed, false, 2400, 2400);
                     oldViol += o.violations;
                     oldResidual += o.residual;
+                    oldResCommitted += o.residualCommitted;
+                    oldNose += o.nose + o.noseLight;
                     oldNoRoom += o.enteredNoRoom;
                 }
             }
-            Console.WriteLine($"  box scenario: 0.4.10 rules: {served} vehicles through, {entered} turned into No. 40, {exited} left it, standing-in-box vehicle-steps {totalViol} (+ {residual} light-change residual), front bumper past a line while held {nose}, committed while the room past the box shrank (could not stop; none ended standing) {noRoom}; 0.4.9 rules: {oldViol} (+ {oldResidual}), committed {oldNoRoom}");
-            Check(nose == 0, $"owner nose rule: no vehicle held by a box stands with its front bumper past the painted line (braking-limited approach, all vehicle kinds) ({nose})");
+            Console.WriteLine($"  box scenario: 0.4.10 rules: {served} vehicles through, {entered} turned into No. 40, {exited} left it; standing-in-box vehicle-steps: "
+                + $"{totalViol} not caused by a light change, {residual} entered on green then stopped by amber / red, {resCommitted} committed into the box during amber / red (could not stop); "
+                + $"nose in a box while standing: {nose} not caused by a light change, {noseLight} light change; committed at a line with less room than needed (could not stop) {noRoom}; "
+                + $"0.4.9 rules: standing {oldViol} + {oldResidual} + {oldResCommitted}, nose {oldNose}, committed {oldNoRoom}");
+            Check(nose == 0, $"owner nose rule: no standing vehicle has its nose in a box (front past the line, rear before it) except where a light changed after it entered ({nose})");
             Check(served > 1000 && entered > 50 && exited > 50, "the scenario moves traffic (through, into and out of the yard)");
             Check(totalViol == 0, $"0.4.10: no standing vehicle has any part inside a painted box (car, van, bus, artic; through, entering, leaving; stop-and-go exit; red light) ({totalViol})");
             Check(allDrained, "0.4.10: no deadlock: with the demand off everything drains (lane empty, No. 40's yard turned over and empty)");
-            Check(residual < oldResidual + oldViol, $"the light-change residual (first vehicle at a red line, entered on green) is rare next to 0.4.9 ({residual})");
+            Check(residual + resCommitted < oldResidual + oldResCommitted + oldViol, $"the light-change residual (first vehicle at a red line, entered on green) is rare next to 0.4.9 ({residual})");
             // review R1: without the light request of a car held before a box for the light, a quiet approach starves
             int starvedRuns = 0, requestRuns = 0;
             for (int seed = 1; seed <= 20; seed++)
@@ -463,12 +477,16 @@ namespace JunctionRules.Tests
                 if (ftl < 0f && ap != BoxDriving.Approach.Inside) okInside = false;
             }
             Check(okCheck, "every held car (Check) can stop within its distance to the line: its front bumper stops at or before the painted line (20000 random approaches)");
-            Check(okInside, "a car whose front is past the line is never held by the box (it is inside): the nose counter can only see a game overshoot");
+            Check(okInside, "a car whose front is past the line is never held by the box (it is inside): the nose counter therefore measures standing cars (BoxDriving.NoseIn), not holds");
+            Check(BoxDriving.NoseIn(-0.5f, 4.2f) && !BoxDriving.NoseIn(-5f, 4.2f) && !BoxDriving.NoseIn(0.2f, 4.2f) && !BoxDriving.NoseIn(-0.05f, 4.2f), "NoseIn: front past the line, rear before it (not a car wholly in, not before the line)");
             Check(BoxDriving.BodyInside(-0.5f, 7.5f, 4.2f) && BoxDriving.BodyInside(-12f, -4f, 4.2f) && !BoxDriving.BodyInside(0.3f, 8.3f, 4.2f) && !BoxDriving.BodyInside(-14f, -6f, 4.2f),
                 "standing-inside probe: nose in, wholly in, front at the line (outside), rear past the far edge (outside)");
             string yb2 = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Stage2", "JRYellowBox.cs"));
-            Check(yb2.Contains("Min(ref m_HasBoxNose, ref m_BoxNoseSpeed, hold);") && wj.Contains("Add(counters, Stage2Counters.BoxNosePast, 1);") && wj.Contains("Add(counters, Stage2Counters.BoxStoodInside, 1);"),
-                "counters 'front bumper past a box line while held' (must be 0) and 'standing inside a box' wired");
+            Check(yb2.Contains("if (BoxDriving.NoseIn(fl, m_VehicleLength)) { m_BoxNose = true; m_BoxStoodInside = true; }") && yb2.Contains("if (BoxDriving.NoseIn(f0, m_VehicleLength)) m_BoxNose = true;")
+                && wj.Contains("if (m_BoxNose && !turnSpot && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.BoxNosePast, 1);")
+                && wj.Contains("|| Stage2Counters.IsStandingOn(m_HasBoxTurnRoom, m_BoxTurnRoomSpeed, finalMaxSpeed, currentSpeed);")
+                && wj.Contains("if (m_BoxStoodInside && !turnSpot && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.BoxStoodInside, 1);"),
+                "counters 'standing with the nose in a box' (must be 0) and 'standing inside a box' measure standing cars at junction and exit / entrance boxes; the right-turn spot (oncoming gap or exit room) is excluded");
             // review R1: the light request
             Check(nav.Contains("// JR-STAGE2 BEGIN S2-52:") && nav.Contains("laneIterator.m_JR.LightPetition(laneIterator.m_MaxSpeed, out Entity jrPetitionLane)")
                 && nav.Contains("m_LaneSignals.Enqueue(new CarNavigationHelpers.LaneSignal(entity, jrPetitionLane, priority));") && wj.Contains("m_LastLightLane = nav.m_Lane;"),

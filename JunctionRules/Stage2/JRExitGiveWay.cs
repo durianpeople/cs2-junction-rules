@@ -1056,7 +1056,9 @@ namespace JunctionRules.Stage2
                 // 0.4.10 (G19): a vehicle leaving into a box needs room free NOW past it, as road traffic does.
                 bool room = HasRoomPast(road, b1, false, length, t, joined, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
                     ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, freeNow: true);
-                if (!room) { NoteLightPetition(0f); return true; }   // review R1: a leaving vehicle held for a light asks it for green
+                // review R1: a leaving vehicle held for a light asks it for green. Review 3 F4: recorded as binding (speed 0), not tied
+                // to the vehicle's final limit as the other three sites are: at worst one extra signal request (harmless).
+                if (!room) { NoteLightPetition(0f); return true; }
             }
             return false;
         }

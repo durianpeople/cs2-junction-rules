@@ -109,8 +109,15 @@ namespace JunctionRules.Stage2
             {
                 if (!m_BoxJunctions || !m_OwnerData.TryGetComponent(lane, out Owner owner) || !m_BoxJunctionData.HasComponent(owner.m_Owner)) return float.MaxValue;
                 bool inBox = m_FirstLane || OnNode(m_CurrentLane, owner.m_Owner) || OnNode(m_CurrentLane2, owner.m_Owner);
-                if (inBox && Counting && currentSpeed < Stage2Counters.StandingSpeed) m_BoxStoodInside = true;   // 0.4.10 probe (not counted at the right-turn spot)
                 float wait = wait0 - laneLength * start;
+                if (Counting && currentSpeed < Stage2Counters.StandingSpeed)
+                {
+                    // 0.4.10 probes (not counted at the right-turn spot, AddCounts): standing on the box's lanes, and a nose in the
+                    // box (front bumper past the stop line, rear still before it)
+                    if (inBox) m_BoxStoodInside = true;
+                    float fl = BoxDriving.FrontToLine(wait, margin);
+                    if (BoxDriving.NoseIn(fl, m_VehicleLength)) { m_BoxNose = true; m_BoxStoodInside = true; }
+                }
                 BoxDriving.Approach a = BoxDriving.Classify(inBox, wait, margin, VehicleUtils.GetBrakingDistance(car, currentSpeed, timeStep));
                 if (a != BoxDriving.Approach.Check) return float.MaxValue;
                 float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, wait, safeTimeStep), speedRange);
@@ -127,7 +134,6 @@ namespace JunctionRules.Stage2
                 {
                     Min(ref m_HasBoxRoom, ref m_BoxRoomSpeed, hold);
                     if (m_FreeNowHeld) Min(ref m_HasBoxFreeNow, ref m_BoxFreeNowSpeed, hold);
-                    if (BoxDriving.NosePast(BoxDriving.FrontToLine(wait, margin))) Min(ref m_HasBoxNose, ref m_BoxNoseSpeed, hold);   // owner nose rule: must never happen
                 }
                 return hold;
             }
@@ -146,6 +152,7 @@ namespace JunctionRules.Stage2
                 {
                     float f0 = BoxDriving.FrontToLine(wait0 + laneLength * (b0 - start), margin);
                     if (BoxDriving.BodyInside(f0, f0 + (b1 - b0) * laneLength, m_VehicleLength)) m_BoxStoodInside = true;
+                    if (BoxDriving.NoseIn(f0, m_VehicleLength)) m_BoxNose = true;   // review 3 F1: the nose counter measures standing cars, not holds
                 }
                 BoxDriving.EntranceRole role = BoxDriving.Role(start, end, b0, b1, out float entry);
                 if (role == BoxDriving.EntranceRole.Entering)
@@ -182,7 +189,6 @@ namespace JunctionRules.Stage2
                 result = hold;
                 NoteLightPetition(hold);   // review R1
                 if (Counting && m_FreeNowHeld) Min(ref m_HasBoxFreeNow, ref m_BoxFreeNowSpeed, hold);
-                if (Counting && BoxDriving.NosePast(BoxDriving.FrontToLine(wait, margin))) Min(ref m_HasBoxNose, ref m_BoxNoseSpeed, hold);   // owner nose rule: must never happen
                 // 0.4.9 (G15b, final review): held only because a vehicle turning into (or out of) a driveway stands across the
                 // lane: it waits for that building like an entrant, so an exit within 10 m does not wait for it (no
                 // through car -> entrant -> yard -> exit -> through car loop). On the exit's conflict it still blocks.
@@ -292,7 +298,6 @@ namespace JunctionRules.Stage2
             bool holds = BoxDriving.EnteringHolds(a, room);
             EntranceWrite(self, road, EntranceLog.Pack(holds ? EntranceLog.Event.Held : EntranceLog.Event.Go, room, currentSpeed, b0));
             if (!holds) return float.MaxValue;
-            if (Counting && BoxDriving.NosePast(BoxDriving.FrontToLine(wait, margin))) Min(ref m_HasBoxNose, ref m_BoxNoseSpeed, hold);   // owner nose rule: must never happen
             // 0.4.9 (G15): exits nearby do not wait for a vehicle that waits for room INTO a building (JRExitGiveWay.EnteringHeld).
             NoteEnteringHeld(self);
             if (Counting) Min(ref m_HasEntranceEntering, ref m_EntranceEnteringSpeed, hold);

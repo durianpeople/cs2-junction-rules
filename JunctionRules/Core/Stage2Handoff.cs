@@ -218,8 +218,8 @@ namespace JunctionRules.Core
         public const int BoxHeldFreeNow = FeedingScans + 53;
         /// <summary>
         /// 0.4.10 (owner: "if the car can't clear the whole thing, the car should not enter the box"): car-steps in which a
-        /// standing car is held by a box rule (junction / exit / entrance box, entering, leaving; not the right-turn spot)
-        /// with its FRONT BUMPER past the painted box line (BoxDriving.NosePast). MUST stay 0.
+        /// standing car has its NOSE in a box: front bumper past the painted box line, rear still before it
+        /// (BoxDriving.NoseIn; junction / exit / entrance boxes; not a right-turner at its spot). MUST stay 0.
         /// </summary>
         public const int BoxNosePast = FeedingScans + 54;
         /// <summary>
@@ -387,7 +387,7 @@ namespace JunctionRules.Core
                        : "") +
                    // 0.4.10 (G19): newest, at the end.
                    (boxMask >= 2 ? "; box holds only because the queue past the box was moving (free-now rule) " + deltas[BoxHeldFreeNow].ToString(ci)
-                       + "; front bumper past a box line while held " + deltas[BoxNosePast].ToString(ci) + " (must be 0)"
+                       + "; standing with the front bumper past a box line (nose in the box) " + deltas[BoxNosePast].ToString(ci) + " (must be 0)"
                        + "; standing inside a box (not at the right-turn spot) " + deltas[BoxStoodInside].ToString(ci) : "") +
                    "; " + points;
         }

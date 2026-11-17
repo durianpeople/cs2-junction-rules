@@ -68,9 +68,18 @@ namespace JunctionRules.Core
         /// <summary>Tolerance (m) for "front bumper past the box line" (float noise of the game's own distances).</summary>
         public const float NoseTolerance = 0.1f;
 
-        /// <summary>0.4.10: a box hold binding while the front bumper is past the line by more than the tolerance (must never happen).</summary>
+        /// <summary>0.4.10: the front bumper is past the line by more than the tolerance.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool NosePast(float frontToLine) => frontToLine < -NoseTolerance;
+
+        /// <summary>
+        /// 0.4.10 (owner nose rule; final review 3 F1: a counter recorded only on holds could never fire, a held car is by
+        /// definition before its line): a car's NOSE is in a box: front bumper past the box's near line by more than the
+        /// tolerance, rear still before that line (it entered without being able to clear, or overshot). Counted for
+        /// standing cars (BoxNosePast, must be 0; the UK right-turn spot excluded).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool NoseIn(float frontToLine, float length) => frontToLine < -NoseTolerance && -frontToLine < (length > 0f ? length : 0f);
 
         /// <summary>
         /// 0.4.10 probe: a body (front bumper 'frontToStart' / 'frontToEnd' metres before the box's near / far edge, whole

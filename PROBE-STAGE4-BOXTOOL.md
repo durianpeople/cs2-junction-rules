@@ -1444,9 +1444,11 @@ deadlock). The same scenes under 0.4.9's rules: 37653 standing-in-box steps.
 
 ### 20.6 Known residuals (proven absent in the model, possible in game)
 
-(a) A light that turns amber / red AFTER a car entered a box on green can stop the car at the line with its tail in the
-box. The car was let in with green; the light's remaining green is not read. 0 cases in the model with a 3 s amber; in
-game, watch boxes within one vehicle length of a signal. (b) A give-way / STOP line inside the room window is not treated
+(a) A light that turns amber / red AFTER a car decided on green can stop the car with part of it in the box. Two
+kinds: it entered on green and the amber caught it before the line; or the amber came while it was too close to stop at
+the box line, so it entered committed. The light's remaining green is not read; the game's amber ("stop if you safely
+can") is kept. In the model it happens at Alderbrook's light 8.4 m past a box (20.8 has the figures); in game, watch
+boxes within one vehicle length of a signal. (b) A give-way / STOP line inside the room window is not treated
 as a stop. Holding the car before the box would hold it forever, since the sign is always there. Such a box is a paint
 mouth-margin question: tell main if one shows up. (c) A bus stopping at a stop inside a box is stock behaviour (the stop
 is the bus's target). (d) The free-now counter (20.2) is an upper bound (review F6). (e) The driving list now caches
@@ -1469,9 +1471,14 @@ make sure the room it sees then is still there when it arrives:
    following another into a box gets room only for both.
 2. A light past the box: a red / amber light inside the room = no room (20.5).
 
-**Counters (end of the timing line):** `front bumper past a box line while held N (must be 0)`, and
-`standing inside a box (not at the right-turn spot) N`. The second is what the owner would see as "a car stopped in
-the box"; expected ~0, with only the residuals of 20.6 able to cause it.
+**Counters (end of the timing line):**
+- `standing with the front bumper past a box line (nose in the box) N (must be 0)`: a standing car whose front bumper is
+  past the painted line while its rear is still before it.
+- `standing inside a box (not at the right-turn spot) N`: any part of a standing car in a box. This is what the owner
+  would see as "a car stopped in the box"; only the light-change cases of 20.6 (a) should cause it.
+Both count standing cars at junction, exit and entrance boxes. A right-turner waiting at its spot (for the oncoming gap
+or for exit room) is not counted. (Final review 3 F1: the first version counted only HELD cars, and a held car is
+before its line by definition, so it could never be non-zero.)
 
 **Review R1 (final Sonnet review): the light request.** A signal changes only to a group a car has asked for, and a car
 asks only when its look-ahead reaches the signal's lane (TrafficLightSystem.GetNextSignalGroup; the copy's
@@ -1526,12 +1533,22 @@ gap that fits or does not). The scenario model gained a chained road (gaps 2.8 /
 junction).
 
 **Final model result** (Alderwood No. 40, Alderbrook, the chained road; car / van / bus / artic; 20 seeds incl.
-heavy jams):
-- Front bumper past a line while held: **0**.
-- Vehicles standing in a painted box: **0**, apart from the light-change residual (20.6 a): 6924 vehicle-steps, all at
-  Alderbrook's light 8.4 m past a box, against 19192 under 0.4.9's rules. These are cars let in on green that the amber
-  then caught before the line. The game's amber is kept: stop if you safely can.
-- Everything drains.
+heavy jams; vehicle-steps; final review 3 F3 split by cause):
+
+| | 0.4.10 | 0.4.9 rules |
+|---|---|---|
+| Standing in a box, no light change involved | **0** | 16527 |
+| Entered on green, then stopped by amber / red in the box | 3873 | 6010 |
+| Committed into the box during amber / red (could not stop any more) | 3051 | 13182 |
+| Nose in a box while standing, no light change involved | **0** | (6951 incl. light) |
+| Nose in a box while standing, light change | 1589 | |
+
+All light-change cases are at Alderbrook's light, 8.4 m past the 843722 box. Everything drains.
+
+The model also counts "committed at a line with less room than needed" (4082; 0.4.9: 1706). This is a snapshot: the
+car decided with room (the car ahead still inside the box, or a free gap), and a moment later the measured room dipped
+while that car was leaving the box. It is not a car stopping in a box: outside light changes none of them ended
+standing in one (row 1).
 
 
 ### 20.9 Owner: merge = one real box
