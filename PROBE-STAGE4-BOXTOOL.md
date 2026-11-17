@@ -1101,7 +1101,8 @@ queued at z ~278 the same way. The game's deadlock detector cannot see Junction 
    clear of the exit mouth. Same for through traffic (room needed past the last of the close boxes) and for vehicles
    leaving a boxed drive.
 2. An exit does not wait for a road vehicle that stands before it while it waits for room INTO a building (held by the
-   G9 rule this or the last navigation updates). It waits for nothing the exit can give it except room, and that room
+   G9 rule this or the last navigation update; also a standing one queued behind such a vehicle when its own way in is
+   full). It waits for nothing the exit can give it except room, and that room
    comes from vehicles leaving. A vehicle ON the exit's conflict, or one moving towards it, still blocks (safety floor);
    a through vehicle standing next to the exit still blocks (G7 rule unchanged).
 No timeout: both are rules, the loop cannot form.
@@ -1175,4 +1176,9 @@ entering hold binds (its record is at most 3 navigation updates old); a second v
 for exits within 10 m. (e) Inside a yard, entering and leaving vehicles can still block each other at the lot's own
 internal crossing when the yard is full (game lot layout; not a Junction Rules hold); 0.4.9 only removes the road-side
 half of that loop. (f) The joint box uses the first box's access for its shape; on a curve the merged box follows the
-same edge curve. (g) None of this has run in game yet.
+same edge curve. (g) Driving merges bands less than 2 m apart even where the paint keeps two boxes apart (a road marking
+in the gap): cautious, never bolder. (h) The no-parking mask still follows each box's own outline, so the up-to-2 m gap
+inside a joint box is not no-parking (no car fits there). (i) Review (Sonnet) fixes in: a second van queued behind the
+first for a full yard is recorded as waiting to turn in too (F1); the entrant record is at most 2 updates old and a
+vehicle above 0.2 m/s counts as moving (F2); a committed crossing keeps its Go fresh (F3); a failed union draws a joint
+box once (F6). (j) None of this has run in game yet.

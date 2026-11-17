@@ -228,7 +228,16 @@ namespace JunctionRules.Stage2
                 return float.MaxValue;
             }
             float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, wait, safeTimeStep), speedRange);
-            if (!(hold < currentMax)) return float.MaxValue;
+            if (!(hold < currentMax))
+            {
+                // 0.4.9 review F1 (G15): a STANDING entrant held harder by something else (in practice the entrant ahead of it in
+                // the same queue for the full building) would also be held by this rule: record it too, so an exit within 10 m
+                // does not wait for the second van of the queue either. Read only while it stands (one room read per update).
+                if (currentSpeed < ExitGiveWay.EnteringStandSpeed
+                    && !HasRoomInto(next, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars))
+                    NoteEnteringHeld(self);
+                return float.MaxValue;
+            }
             bool room = HasRoomInto(next, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars);
             bool holds = BoxDriving.EnteringHolds(a, room);
             EntranceWrite(self, road, EntranceLog.Pack(holds ? EntranceLog.Event.Held : EntranceLog.Event.Go, room, currentSpeed, b0));

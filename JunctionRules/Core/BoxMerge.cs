@@ -199,10 +199,15 @@ namespace JunctionRules.Core
                 }
                 if (u == null)
                 {
-                    // drawn separately, as 0.4.3
+                    // drawn separately, as 0.4.3 (0.4.9 review F6: members of one joint box carry the same ring: drawn once)
+                    var drawnRings = new List<(List<V3> Ring, MergedBoxGroup Group)>();
                     foreach (int m in g.Members)
                     {
+                        MergedBoxGroup same = null;
+                        foreach (var dr in drawnRings) if (SameRing(dr.Ring, rings[m])) { same = dr.Group; break; }
+                        if (same != null) { same.Members.Add(m); continue; }   // hover / tool still find this member
                         var single = new MergedBoxGroup();
+                        drawnRings.Add((rings[m], single));
                         single.Members.Add(m);
                         single.Rings.Add(rings[m]);
                         single.Anchor = AnchorOf(single.Rings);

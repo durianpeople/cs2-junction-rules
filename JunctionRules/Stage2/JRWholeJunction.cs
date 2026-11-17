@@ -270,6 +270,8 @@ namespace JunctionRules.Stage2
         private bool m_DriveCrossing;
         /// <summary>G12: a Go judgement still stood when the front passed the spot (the crossing was judged).</summary>
         private bool m_DriveGoStood;
+        /// <summary>G12 (review F3): this update the vehicle crossed committed (Go standing, moving): NoteExit refreshes its Go.</summary>
+        private bool m_DriveCommitted;
         /// <summary>G15: this update the vehicle was held before a box because its way INTO a building is full (recorded for exits nearby).</summary>
         private bool m_EnteringHeld;
         /// <summary>G15 (counting): this update an exit did not wait for a standing vehicle that waits for room into a building.</summary>

@@ -141,7 +141,11 @@ namespace JunctionRules.Stage2
                 m_DriveGoStood = goStands;
                 m_DriveLane = lane;
                 if (curves.TryGetComponent(lane, out Curve passCurve)) m_ExitPoint = passCurve.m_Bezier.a.xz;
-                if (ExitGiveWay.Committed(true, goStands, currentSpeed >= ExitGiveWay.CommitMovingSpeed)) return float.MaxValue;
+                if (ExitGiveWay.Committed(true, goStands, currentSpeed >= ExitGiveWay.CommitMovingSpeed))
+                {
+                    m_DriveCommitted = true;   // review F3: NoteExit keeps the Go fresh while it crosses (no lapse after 16 s of creeping)
+                    return float.MaxValue;
+                }
                 if (!(firstWalk < firstRoad)) return float.MaxValue;
                 wait = origDistance + length * (firstRoad - start);
                 if (!ExitGiveWay.CanHold(wait + ExitGiveWay.SpotSlack, margin, braking)) return float.MaxValue;
@@ -645,6 +649,8 @@ namespace JunctionRules.Stage2
             }
             // 0.4.9 (G13): held at a driveway exit this update: the lane reservation step (S2-51) withdraws its keep-clear request.
             if (m_HasDriveHold) ExitEvent(eventTable, self, frame, ExitGiveWay.DriveHeldKind);
+            // 0.4.9 review F3 (G12): a committed crossing (Go standing, moving, past the spot) keeps its Go fresh.
+            if (m_DriveCommitted) ExitEvent(eventTable, self, frame, ExitGiveWay.DriveGoKind);
             // Final review F1: not a vehicle the exit rule is holding on purpose (it stands before the sidewalk). 0.4.9 (G12):
             // only a vehicle whose FRONT is past its sidewalk spot (S2-29 m_DrivePast); 0.4.8 used "not judged this update",
             // which also counted vehicles queued on a long drive lane behind a held one (more than 12 m before the spot, so

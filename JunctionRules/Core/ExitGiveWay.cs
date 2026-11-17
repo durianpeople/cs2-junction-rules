@@ -158,8 +158,8 @@ namespace JunctionRules.Core
             return reach >= gap;
         }
 
-        /// <summary>0.4.9 (G15): a vehicle held for room into a building counts as standing up to this speed (m/s; the game's stopped test is 0.5).</summary>
-        public const float EnteringStandSpeed = 0.5f;
+        /// <summary>0.4.9 (G15): a vehicle held for room into a building counts as standing up to this speed (m/s; review F2: 0.5 -> 0.2, one that starts to move is judged as moving).</summary>
+        public const float EnteringStandSpeed = 0.2f;
 
         /// <summary>
         /// 0.4.9 (G12, owner 17 Nov: "the sidewalk is a zebra; decide before it, then go in one move"): what the vehicle's
@@ -295,8 +295,8 @@ namespace JunctionRules.Core
         /// <summary>0.4.9 (G13): event kind of "held at a driveway exit this update" (read by the same vehicle's lane reservation step).</summary>
         public const int DriveHeldKind = 19;
 
-        /// <summary>0.4.9 (G15): an entering hold counts for exits nearby when it is at most this many frames old (three navigation updates).</summary>
-        public const uint EnteringHeldWindow = SafetyStopEvents.ContinueFrames;
+        /// <summary>0.4.9 (G15): an entering hold counts for exits nearby when it is at most this many frames old (two navigation updates; review F2: was 48).</summary>
+        public const uint EnteringHeldWindow = 32;
 
         /// <summary>0.4.8 (trace): event kind of "the last Go judgement was at a BOXED exit" (so the sidewalk-crossing line says boxed yes even when judged in an earlier update).</summary>
         public const int DriveBoxedKind = 16;

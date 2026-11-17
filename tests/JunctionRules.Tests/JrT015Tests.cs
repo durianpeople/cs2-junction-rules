@@ -154,6 +154,7 @@ namespace JunctionRules.Tests
             Check(groups.Count == 1 && groups[0].Members.Count == 3 && groups[0].Rings.Count == 1 && groups[0].Merged && groups[0].Notes.Count == 0,
                 $"three members of one joint box: one group, one ring, no failure note (groups {groups.Count}, rings {(groups.Count > 0 ? groups[0].Rings.Count : 0)})");
             Check(groups.Count == 1 && Math.Abs(BoxPaintGeometry.SignedArea(groups[0].Rings[0]) - 153.0) < 1e-6, "the joint ring keeps the box area (17 x 9 m)");
+            Check(ExitGiveWay.EnteringStandSpeed <= 0.2f && ExitGiveWay.EnteringHeldWindow <= 32u, "review F2: tighter entrant stand speed and record window");
             Check(BoxMerge.SameRing(ring, shifted) && !BoxMerge.SameRing(ring, new List<V3> { new V3(0, 0, 0), new V3(17.5, 0, 0), new V3(17, 0, 9), new V3(0, 0, 9) }), "SameRing: any start vertex, 1 mm tolerance");
         }
 
@@ -170,7 +171,7 @@ namespace JunctionRules.Tests
             Check(driveEntry.Length > 0 && !driveEntry.Contains("ExitDriveEntries") && !driveEntry.Contains("ExitDriveUnjudged"), "G12: the pivot hand-over no longer counts crossings");
             Check(exit.Contains("m_DriveCrossing && ExitEvent(eventTable, self, frame, ExitGiveWay.DriveCrossKind)") && exit.Contains("ExitGiveWay.Crossing(m_DriveGoStood, m_DriveJudged && m_DriveLate)"),
                 "G12: NoteExit counts the crossing once per episode where the front passes the spot");
-            Check(exit.Contains("if (ExitGiveWay.Committed(true, goStands, currentSpeed >= ExitGiveWay.CommitMovingSpeed)) return float.MaxValue;"), "G12: a standing Go commits (no re-judgement on the pavement)");
+            Check(exit.Contains("if (ExitGiveWay.Committed(true, goStands, currentSpeed >= ExitGiveWay.CommitMovingSpeed))") && exit.Contains("m_DriveCommitted = true;"), "G12: a standing Go commits (no re-judgement on the pavement)");
             Check(exit.Contains("&& !m_ExitWaiting && m_DrivePast"), "G12: 'standing on the road' only with the front past the sidewalk spot");
             Check(nav.Contains("// 0.4.9 (JR-T-015): the event table for driving") && nav.Contains("carLaneSpeedIterator.m_JR.SetEvents(m_JRSafetyEvents, m_SimulationFrame);"), "S2-26 hands the event table in for driving");
             Check(nav.Contains("if (laneIterator.m_JR.m_ExitRule)\n\t\t\t{\n\t\t\t\tlaneIterator.m_JR.NoteExit("), "S2-22: NoteExit (Go records) runs whenever the exit rule is on");
@@ -181,6 +182,13 @@ namespace JunctionRules.Tests
             Check(nav.Contains("currentLaneData.m_LaneFlags = jrCurrentFlags;") && nav.Contains("jrNav.m_Flags = jrNextFlags;"), "G13: S2-51b restores both flags");
             Check(exit.Contains("ExitGiveWay.IsDrivewayExitLane((uint)cur.m_Flags)") && exit.Contains("ExitGiveWay.IsDrivewayExitLane((uint)next.m_Flags)"), "G13: only a driveway leaving lane's request is withdrawn");
             Check(box.Contains("ExitBands.HoldTouchMetres(m_VehicleLength, m_RoomMargin) / laneLength") && box.Contains("NoteEnteringHeld(self);"), "G14/G15: per-vehicle band merge in BoxHold; entering holds recorded");
+            int eh = box.IndexOf("private float EnteringHold(", StringComparison.Ordinal);
+            int early = eh < 0 ? -1 : box.IndexOf("if (!(hold < currentMax))", eh, StringComparison.Ordinal);
+            Check(early > 0 && box.IndexOf("NoteEnteringHeld(self);", early, StringComparison.Ordinal) < box.IndexOf("return float.MaxValue;", early, StringComparison.Ordinal),
+                "review F1: a standing entrant held harder by the one ahead is recorded too (queue of vans for a full yard)");
+            Check(exit.Contains("if (m_DriveCommitted) ExitEvent(eventTable, self, frame, ExitGiveWay.DriveGoKind);"), "review F3: a committed crossing keeps its Go fresh");
+            string merge = File.ReadAllText(Path.Combine(root, "JunctionRules", "Core", "BoxMerge.cs"));
+            Check(merge.Contains("if (same != null) { same.Members.Add(m); continue; }"), "review F6: a failed union draws a joint box's identical rings once, every member kept in that group");
             Check(exit.Contains("bool entering = !occupies && gap > 0f && gap <= ExitGiveWay.PresentMetres && EnteringHeld(e);") && exit.Contains("ExitGiveWay.VehicleBlocks(gap, occupies, speed, braking, delta, entering)"),
                 "G15: the exit scan asks whether a standing vehicle waits to turn in");
             Check(paint.Contains("Dictionary<Box, List<V3>> joint = JointBoxes();") && paint.Contains("ExitBoxWindows.Chains(windows, ExitBands.MergeGapMetres)"), "G14: the paint builds near boxes on one road as one");
