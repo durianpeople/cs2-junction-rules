@@ -89,7 +89,7 @@ differences). Also: the T-junction through-side kerb fix (section 6) and the ent
 0.3.6 (JR-T-008, people pass a car blocking their crossing; merged from 784ba28) and everything before it
 (PROBE-STAGE3-PAINT.md).
 
-Build to install: `~/Code/cs2-junction-rules/.staged/0.4.9-probe/` (JR-T-015, branch jr-t-015; managed build only until main does the Burst build, see its `STALE.md`; the block below refuses on the `0000...` placeholder sums and while `STALE.md` exists). 0.4.8-probe (installed 17 Nov 07:5x, `.staged/0.4.8-probe`, Burst from 8fca058, sums in commit 242618d) is the rollback; never write into `.staged/0.4.8-probe` or `.staged/0.4.7-probe`. Never install the old `.staged/0.4.4-probe` (the paused JR-T-011 managed build). While `.staged/0.4.9-probe` holds a `STALE.md` it is a managed
+Build to install: `~/Code/cs2-junction-rules/.staged/0.4.10-probe/` (JR-T-016, branch jr-t-016; managed build only until main does the Burst build, see its `STALE.md`; the block below refuses on the `0000...` placeholder sums and while `STALE.md` exists). 0.4.9-probe (installed 17 Nov ~midday, `.staged/0.4.9-probe`, Burst from e6c7dd9, sums in commit 84a78fe) is the rollback; never write into `.staged/0.4.9-probe`, `.staged/0.4.8-probe` or `.staged/0.4.7-probe`. Never install the old `.staged/0.4.4-probe` (the paused JR-T-011 managed build). While `.staged/0.4.10-probe` holds a `STALE.md` it is a managed
 build only: main does the Burst build in `STALE.md` (game closed, at the owner's quit), then puts the five sums into the
 install block below. Until then the block refuses (placeholder sums `0000...`).
 
