@@ -195,17 +195,21 @@ namespace JunctionRules.Core
         public const int ExitHeldBeforeSidewalk = FeedingScans + 44;
         /// <summary>0.4.8 (G7): of those, unboxed exits held because the lane they join has no room for the whole vehicle (events).</summary>
         public const int ExitHeldRoom = FeedingScans + 45;
-        /// <summary>0.4.8 (G7): vehicles entering a driveway's leaving lane (crossing the sidewalk onto the road).</summary>
+        /// <summary>0.4.8 (G7): driveway exits crossing the sidewalk. 0.4.9 (G12): counted where the FRONT passes the sidewalk spot (0.4.8: at the pivot hand-over onto the drive lane, often while the vehicle still waited before the sidewalk).</summary>
         public const int ExitDriveEntries = FeedingScans + 46;
-        /// <summary>0.4.8 (G7): of those, entered without a full judgement (gap + room / box) taken while they could still stop before the sidewalk. Must be 0.</summary>
+        /// <summary>0.4.8 (G7): of those, crossed with no Go standing and no decision at the road lane either. Must be 0.</summary>
         public const int ExitDriveUnjudged = FeedingScans + 47;
-        /// <summary>0.4.8 (G7): vehicles standing 5 s+ on a driveway's leaving lane (past the sidewalk, on / across the road; episodes). Expected ~0.</summary>
+        /// <summary>0.4.8 (G7): vehicles standing 5 s+ on a driveway's leaving lane with the front past the sidewalk spot (0.4.9: only those; 0.4.8 also counted vehicles queued on a long drive lane behind a held one). Expected ~0.</summary>
         public const int ExitStuckOnRoad = FeedingScans + 48;
         /// <summary>JR-T-014c (G9): car-steps in which a vehicle turning INTO a building stood before the box (entrance / two-way drive) because there was no room for its whole length past the box on its way in.</summary>
         public const int EntranceHeldEntering = FeedingScans + 49;
-        /// <summary>0.4.8 review (G7 F4): driveway exits judged only at the first road lane (could not stop before the sidewalk; episodes).</summary>
+        /// <summary>0.4.8 review (G7 F4): driveway exits judged only at the first road lane (could not stop before the sidewalk; episodes). 0.4.9 (G12): only crossings with no Go standing (0.4.8 also counted every Go'd exit re-judged after it passed the spot).</summary>
         public const int ExitDriveLate = FeedingScans + 50;
-        public const int Count = FeedingScans + 51;
+        /// <summary>0.4.9 (G15): car-steps in which an exit did not wait for a vehicle standing next to it that waits for room INTO a building.</summary>
+        public const int ExitEntrantIgnored = FeedingScans + 51;
+        /// <summary>0.4.9 (G13): car-steps in which a vehicle held at a driveway exit did not ask road traffic for space (the game's keep-clear request withdrawn).</summary>
+        public const int ExitKeepClearWithdrawn = FeedingScans + 52;
+        public const int Count = FeedingScans + 53;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -355,6 +359,11 @@ namespace JunctionRules.Core
                          ", of them without a full judgement " + deltas[ExitDriveUnjudged].ToString(ci) + " (must be 0)" +
                          "; standing on the road after leaving a driveway (5 s+) " + deltas[ExitStuckOnRoad].ToString(ci) +
                          "; judged only on the sidewalk (could not stop before it) " + deltas[ExitDriveLate].ToString(ci)
+                       : "") +
+                   // 0.4.9 (G15 / G13): newest, at the end.
+                   (exitMask >= 2
+                       ? "; exits not waiting for a vehicle that waits to turn in " + deltas[ExitEntrantIgnored].ToString(ci) +
+                         "; held exits' keep-clear requests withdrawn " + deltas[ExitKeepClearWithdrawn].ToString(ci)
                        : "") +
                    "; " + points;
         }

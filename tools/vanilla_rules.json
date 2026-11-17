@@ -276,6 +276,18 @@
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
         "reason": "JR-T-014d (G11): right after S2-27, diagnostics only: AfterUnmarkedFloor counts / records a car braked for a person already on the carriageway of an unmarked crossing; restores jrInScope for the next lane object."
+      },
+      "S2-51": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
+        },
+        "reason": "0.4.9 (JR-T-015, G13): ReserveNavigationLanes, before the RequestSpace reservations: a vehicle held at a driveway exit in this update (event DriveHeldKind) has the RequestSpace flag of its driveway leaving lane (current or first navigation lane) cleared, so road traffic is not asked to keep the drive clear for a vehicle that gives way; counted (counting only)."
+      },
+      "S2-51b": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
+        },
+        "reason": "0.4.9 (JR-T-015, G13): right after the RequestSpace reservations: restores the flags S2-51 cleared (the vehicle's own state is unchanged)."
       }
     }
   }

@@ -40,9 +40,44 @@ namespace JunctionRules.Core
 
         /// <summary>
         /// 0.4.4 (JR-T-011): bands on one lane whose ends are at most this far apart (metres) are one band (the paint draws
-        /// overlapping / touching exit boxes as one box, Core/BoxMerge.cs; the paint snaps at 0.05 m).
+        /// overlapping / touching exit boxes as one box, Core/BoxMerge.cs). 0.4.9 (G14, owner 17 Nov: two Alderbrook Street
+        /// boxes ~0.5-1 m apart stayed two boxes): 0.1 -> <see cref="MergeGapMetres"/>, the same gap the paint now closes
+        /// (Core/ExitBoxWindows), so what is drawn as one box is driven as one box.
         /// </summary>
-        public const float TouchMetres = 0.1f;
+        public const float TouchMetres = MergeGapMetres;
+
+        /// <summary>0.4.9 (G14): exit / entrance boxes on one road (same carriageways) closer than this along it (m) are ONE box.</summary>
+        public const float MergeGapMetres = 2.0f;
+
+        /// <summary>
+        /// 0.4.9 (G14 / G15, UK yellow box: never stop with any part of the vehicle in a box): for one vehicle's own hold,
+        /// two bands on its lane closer than its whole length (trailers incl.) plus the room margin are one band: held
+        /// before the first, room needed past the last. 0.4.8 held a van turning into No. 40 Alderwood St before No. 40's
+        /// entrance band with its body standing in No. 40's EXIT band 2.5 m upstream (the G15 lock), and let an eastbound
+        /// artic enter the first of two Alderbrook boxes with room only in the gap before the second (G14 shot).
+        /// </summary>
+        public static float HoldTouchMetres(float vehicleLength, float roomMargin)
+        {
+            float own = (vehicleLength > 0f ? vehicleLength : 0f) + (roomMargin > 0f ? roomMargin : 0f);
+            return own > TouchMetres ? own : TouchMetres;
+        }
+
+        /// <summary>
+        /// 0.4.9: the bands of one lane (driving coordinates, sorted by start) chained the way the job does it (BoxHold /
+        /// ExitBandBlocks): a band touching the previous within 'tol' (driving units) extends it. For tests and the doc.
+        /// </summary>
+        public static List<(float b0, float b1)> Chain(IList<(float b0, float b1)> bands, float tol)
+        {
+            var r = new List<(float b0, float b1)>();
+            if (bands == null) return r;
+            foreach (var b in bands)
+            {
+                int last = r.Count - 1;
+                if (last >= 0 && Touch(r[last].b0, r[last].b1, b.b0, b.b1, tol)) { r[last] = (Math.Min(r[last].b0, b.b0), Math.Max(r[last].b1, b.b1)); continue; }
+                r.Add(b);
+            }
+            return r;
+        }
 
         /// <summary>
         /// 0.4.4 (JR-T-011): a band that reaches this close (metres) to the end of its lane, where the car's path enters a

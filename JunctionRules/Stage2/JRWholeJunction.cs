@@ -257,6 +257,24 @@ namespace JunctionRules.Stage2
         private bool m_DriveRoomHold;
         /// <summary>Review F4: the decision was taken at the first road lane, the vehicle could no longer stop before the sidewalk.</summary>
         private bool m_DriveLate;
+        // ---- 0.4.9 (JR-T-015): G12 crossings counted where the front passes the sidewalk spot; commit after a Go; G15 entrants ----
+        /// <summary>S2-26 SetEvents: the shared event table (JRStage2Bridge.SafetyEvents, always created) and this step's frame.
+        /// 0.4.9 reads it for DRIVING (a standing Go commits a driveway exit; an entrant held for room is not "present" at an
+        /// exit), so it is handed in whenever the exit or box rule is on, not only while counting.</summary>
+        private bool m_HasEvents;
+        private NativeArray<long> m_Events;
+        private uint m_EventFrame;
+        /// <summary>G12: this update the vehicle's front is past its driveway exit's sidewalk spot (or past every road conflict).</summary>
+        private bool m_DrivePast;
+        /// <summary>G12: of those, past the spot while its exit's lanes are still ahead (a crossing in progress: counted once per episode).</summary>
+        private bool m_DriveCrossing;
+        /// <summary>G12: a Go judgement still stood when the front passed the spot (the crossing was judged).</summary>
+        private bool m_DriveGoStood;
+        /// <summary>G15: this update the vehicle was held before a box because its way INTO a building is full (recorded for exits nearby).</summary>
+        private bool m_EnteringHeld;
+        /// <summary>G15 (counting): this update an exit did not wait for a standing vehicle that waits for room into a building.</summary>
+        private bool m_ExitEntrantIgnored;
+
         /// <summary>0.4.8 trace: the exit's position (drive lane start / join point) of this update's decision.</summary>
         private float2 m_ExitPoint;
         /// <summary>Setting "Exit trace (log)": the ring (Stage2/JRStage2Bridge.cs TraceRing) handed in by S2-26 SetTrace.</summary>
@@ -1388,6 +1406,7 @@ namespace JunctionRules.Stage2
             if (exitStanding && m_DriveRoomHold && ExitEvent(eventTable, entity, frame, ExitGiveWay.RoomHoldKind)) Add(counters, Stage2Counters.ExitHeldRoom, 1);
             if (m_ExitEmergency && ExitEvent(eventTable, entity, frame, 4)) Add(counters, Stage2Counters.ExitEmergencyPass, 1);
             if (m_ExitCapHit) Add(counters, Stage2Counters.ExitCapHits, 1);
+            if (m_ExitEntrantIgnored) Add(counters, Stage2Counters.ExitEntrantIgnored, 1);   // 0.4.9 (G15)
             // 0.4.7: the cap hits by kind (lane cap: go; vehicle cap: wait).
             if (m_ExitLaneCap) Add(counters, Stage2Counters.ExitCapLanes, 1);
             if (m_ExitVehicleCap) Add(counters, Stage2Counters.ExitCapVehicles, 1);

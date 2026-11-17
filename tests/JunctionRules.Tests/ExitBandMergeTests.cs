@@ -87,7 +87,7 @@ namespace JunctionRules.Tests
             int end = at < 0 ? -1 : src.IndexOf("private bool ConflictBusy(", at, StringComparison.Ordinal);
             string body = at < 0 || end < 0 ? "" : src.Substring(at, end - at);
             Check(body.Contains("MedianSplit.InMask(bands->Mask(i), carriageway)"), "F1 job: ExitBandBlocks filters bands by the join lane's carriageway");
-            Check(body.Contains("ExitBands.Touch(") && body.Contains("ExitBands.TouchMetres / length"), "F1 job: ExitBandBlocks merges touching bands");
+            Check(body.Contains("ExitBands.Touch(") && body.Contains("ExitBands.HoldTouchMetres(m_VehicleLength, m_RoomMargin) / length"), "F1 job: ExitBandBlocks merges touching bands (0.4.9: the vehicle's own length + margin, at least 2 m)");
             Check(body.Contains("ExitBands.JunctionJoinMetres") && body.Contains("NextBoxedJunction(road)"), "F1 job: ExitBandBlocks joins a boxed junction at the lane end");
             Check(body.Contains("HasRoomPast(road, b1, false, length, t, joined,"), "F1 job: room past the merged band (and joined junction box)");
             Check(src.Contains("m_ExitNodeJoin = nodeJoin;\n            m_ExitSignalArm = false;"), "F2 job: the signalled-arm trace reason resets with the node-join flag");

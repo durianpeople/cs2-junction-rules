@@ -132,7 +132,9 @@ namespace JunctionRules.Stage2
             // overlap or touch on this lane are ONE band (the paint draws their boxes as one, Core/BoxMerge.cs). Bands come
             // sorted by t on the edge and the lane maps t linearly, so neighbours in this order are neighbours on the lane.
             int carriageway = carLanes[lane].m_CarriagewayGroup;
-            float touch = ExitBands.TouchMetres / laneLength;
+            // 0.4.9 (G14 / G15): bands closer than this vehicle's whole length + room margin are one band for its hold (UK
+            // yellow box: no part of it may stop in a box), at least the 2 m the paint merges (Core ExitBands.HoldTouchMetres).
+            float touch = ExitBands.HoldTouchMetres(m_VehicleLength, m_RoomMargin) / laneLength;
             FixedList128Bytes<float2> merged = default;
             for (int i = first; i < bands->Count && bands->Key(i) == edgeKey; i++)
             {
@@ -231,6 +233,8 @@ namespace JunctionRules.Stage2
             bool holds = BoxDriving.EnteringHolds(a, room);
             EntranceWrite(self, road, EntranceLog.Pack(holds ? EntranceLog.Event.Held : EntranceLog.Event.Go, room, currentSpeed, b0));
             if (!holds) return float.MaxValue;
+            // 0.4.9 (G15): exits nearby do not wait for a vehicle that waits for room INTO a building (JRExitGiveWay.EnteringHeld).
+            NoteEnteringHeld(self);
             if (Counting) Min(ref m_HasEntranceEntering, ref m_EntranceEnteringSpeed, hold);
             return hold;
         }

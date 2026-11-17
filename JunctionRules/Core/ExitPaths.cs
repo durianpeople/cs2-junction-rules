@@ -221,7 +221,7 @@ namespace JunctionRules.Core
             Unpack(facts, out Event e, out ExitPaths.Path path, out _, out _, out int reasons, out _);
             if (e == Event.LongHold || e == Event.StuckOnRoad) return true;
             if ((reasons & ReasonEmergency) != 0) return false;
-            if (e == Event.EnterDrive) return (reasons & ReasonDecided) == 0;
+            if (e == Event.EnterDrive) return (reasons & (ReasonDecided | ReasonLate)) == 0;
             if (e == Event.HandOver) return (reasons & ReasonDecided) == 0 && path != ExitPaths.Path.Drive;
             return false;
         }
@@ -231,6 +231,9 @@ namespace JunctionRules.Core
 
         /// <summary>Review F6 (0.4.7): a building road joining a signalled arm: the signal decides (S2-36 holds nothing there).</summary>
         public const int ReasonSignal = 32;
+
+        /// <summary>0.4.9 (G12): the sidewalk was crossed without a standing Go, but the decision was taken at the first road lane (could not stop before the sidewalk).</summary>
+        public const int ReasonLate = 64;
 
         /// <summary>Slot base index (into the ring) of sequence number seq (1-based).</summary>
         public static int SlotBase(long seq) => 1 + (int)((seq - 1) % Slots) * Words;
@@ -275,10 +278,11 @@ namespace JunctionRules.Core
             else decided = (reasons & ReasonLaneCap) != 0 ? "go (gap clear; lane cap hit, far lanes not read)" : "go (gap clear)";
             string bld = building == 0 ? "none" : Ent(building);
             if (e == Event.EnterDrive)
-                decided = (reasons & ReasonDecided) != 0 ? "go (full judgement before the sidewalk)" : "NOT judged before the sidewalk";
+                decided = (reasons & ReasonDecided) != 0 ? "go (full judgement before the sidewalk)"
+                    : (reasons & ReasonLate) != 0 ? "judged only at the road lane (could not stop before the sidewalk)" : "NOT judged before the sidewalk";
             string what = e == Event.Wait ? "waits" : e == Event.EnterDrive ? "crosses the sidewalk" : e == Event.LongHold ? "NOTABLE held " + LongHoldSeconds.ToString("0", ci) + " s+ at the exit"
                 : e == Event.StuckOnRoad ? "NOTABLE stands on the road after leaving (driveway lane, " + StuckSeconds.ToString("0", ci) + " s+)" : "joins road";
-            if (e == Event.EnterDrive && (reasons & ReasonDecided) == 0) what = "NOTABLE crosses the sidewalk";
+            if (e == Event.EnterDrive && (reasons & (ReasonDecided | ReasonLate)) == 0) what = "NOTABLE crosses the sidewalk";
             if (e == Event.HandOver && (reasons & (ReasonDecided | ReasonEmergency)) == 0 && path != ExitPaths.Path.Drive) what = "NOTABLE joins road";
             return "exit trace: " + what + " vehicle " + Ent(vehicle) + " building " + bld
                    + " path " + ExitPaths.Name(path) + " (" + ExitPaths.Name(kind) + ")" + PointText(point)

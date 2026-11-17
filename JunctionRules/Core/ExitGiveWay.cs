@@ -142,6 +142,49 @@ namespace JunctionRules.Core
         }
 
         /// <summary>
+        /// 0.4.9 (G15, Alderwood deadlock 17 Nov 08:5x): as <see cref="VehicleBlocks(float,bool,float,float,float)"/>, but a road
+        /// vehicle that is WAITING TO TURN INTO A BUILDING (held by the G9 entrance rule: its way in is full) and stands
+        /// before the conflict is not "present at the exit": it does not want to pass the exit, it waits for room inside a
+        /// building, and that room comes from vehicles leaving. Live loop: van 767785 stood on the westbound lane before
+        /// No. 40's entrance (lot full) within <see cref="PresentMetres"/> of No. 40's own exit, the exit waited for the van
+        /// (PresentMetres), the lot never emptied, the van never got in. Standing on the conflict (occupies / gap &lt;= 0) or
+        /// moving towards it still blocks exactly as before.
+        /// </summary>
+        public static bool VehicleBlocks(float gap, bool occupies, float speed, float braking, float delta, bool waitingToEnter)
+        {
+            if (!waitingToEnter || occupies || !(gap > 0f) || speed > EnteringStandSpeed) return VehicleBlocks(gap, occupies, speed, braking, delta);
+            if (!(speed > 0f)) return false;
+            float reach = (braking > 0f ? braking : 0f) + speed * (ArrivalProjection.StockLookAhead + (delta > 0f ? delta : 0f));
+            return reach >= gap;
+        }
+
+        /// <summary>0.4.9 (G15): a vehicle held for room into a building counts as standing up to this speed (m/s; the game's stopped test is 0.5).</summary>
+        public const float EnteringStandSpeed = 0.5f;
+
+        /// <summary>
+        /// 0.4.9 (G12, owner 17 Nov: "the sidewalk is a zebra; decide before it, then go in one move"): what the vehicle's
+        /// front passing its sidewalk spot (or, with no sidewalk, its first road lane spot) means. A Go that still stands
+        /// (Core GoStands: no Wait after it) = judged; no Go but a decision at the first road lane in the same update (it
+        /// could no longer stop before the sidewalk, but before the road) = late; neither = unjudged (must be 0).
+        /// 0.4.8 counted at the PIVOT hand-over onto the drive lane instead: a lorry held before the sidewalk whose pivot
+        /// reached the drive lane start was counted "crosses the sidewalk ... NOT judged" while it still stood before the
+        /// sidewalk (live: vehicle 844033 'waits' and 'NOT judged' in the same frame 36642880), and every normal exit that
+        /// had passed the sidewalk spot after its Go was re-judged at the road lane and counted "judged only on the
+        /// sidewalk" (24 of 28 in the 08:54 window).
+        /// </summary>
+        public enum CrossOutcome : byte { Judged = 0, Late = 1, Unjudged = 2 }
+
+        public static CrossOutcome Crossing(bool goStands, bool lateDecision) => goStands ? CrossOutcome.Judged : lateDecision ? CrossOutcome.Late : CrossOutcome.Unjudged;
+
+        /// <summary>
+        /// 0.4.9 (G12): a vehicle whose front is past its sidewalk spot with a Go that still stands is COMMITTED: it is not
+        /// judged again at the first road lane (0.4.8 did, so a Go'd lorry could be stopped ON the pavement, front at the
+        /// kerb, by traffic that appeared while it crossed; live: 380901 at No. 40, pivot at the drive start, front at the
+        /// kerb). The game's own physical checks (vehicles on its lanes, reservations) still apply.
+        /// </summary>
+        public static bool Committed(bool pastSidewalkSpot, bool goStands) => pastSidewalkSpot && goStands;
+
+        /// <summary>
         /// 0.4.8 (G7): a road vehicle whose front is this close (m) before a conflict blocks the exit whatever its speed: it
         /// is present at the exit (the blue westbound truck of the 17 Nov shot stood ~2-6 m before the exit, held before the
         /// entrance band, and 0.4.7 let the leaving truck out in front of it because it stood still). 10 m = an 8 m entrance
@@ -236,7 +279,19 @@ namespace JunctionRules.Core
         public const float AreaScanMin = 25f;
 
         /// <summary>Counter episodes (0.4.6): a vehicle's consecutive exit decisions (at most <see cref="Core.SafetyStopEvents.ContinueFrames"/> apart) are one event, per kind.</summary>
-        public const int EventKinds = 17;
+        public const int EventKinds = 20;
+
+        /// <summary>0.4.9 (G15): event kind of "held before a box: its way INTO a building is full" (written every held update, read by exits nearby).</summary>
+        public const int EnteringHeldKind = 17;
+
+        /// <summary>0.4.9 (G12): event kind of "front passed its sidewalk spot" (one counted crossing per episode).</summary>
+        public const int DriveCrossKind = 18;
+
+        /// <summary>0.4.9 (G13): event kind of "held at a driveway exit this update" (read by the same vehicle's lane reservation step).</summary>
+        public const int DriveHeldKind = 19;
+
+        /// <summary>0.4.9 (G15): an entering hold counts for exits nearby when it is at most this many frames old (three navigation updates).</summary>
+        public const uint EnteringHeldWindow = SafetyStopEvents.ContinueFrames;
 
         /// <summary>0.4.8 (trace): event kind of "the last Go judgement was at a BOXED exit" (so the sidewalk-crossing line says boxed yes even when judged in an earlier update).</summary>
         public const int DriveBoxedKind = 16;

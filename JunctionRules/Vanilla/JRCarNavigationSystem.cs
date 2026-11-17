@@ -6,7 +6,7 @@
 // tools/vanilla_rules.json (and DEVIATIONS.md) and run `python3 tools/vanilla_copy.py generate`.
 // Changes applied: R-01, R-02, R-03, D-01 (see DEVIATIONS.md). Logic is otherwise the game's, unchanged.
 // Exception: hand-written code only inside '// JR-STAGE2 BEGIN <id>' ... '// JR-STAGE2 END' blocks
-// (S2-20, S2-21, S2-22, S2-23, S2-24, S2-26, S2-30, S2-31, S2-32, S2-33, S2-34, S2-35, S2-36; see DEVIATIONS.md). `check` proves everything outside them is the above.
+// (S2-20, S2-21, S2-22, S2-23, S2-24, S2-26, S2-30, S2-31, S2-32, S2-33, S2-34, S2-35, S2-36, S2-51, S2-51b; see DEVIATIONS.md). `check` proves everything outside them is the above.
 // ==== end of header; the code below is the game's, changed only as listed in DEVIATIONS.md ====
 
 using System.Runtime.CompilerServices;
@@ -1631,6 +1631,11 @@ public class JRCarNavigationSystem : GameSystemBase
 					carLaneSpeedIterator.m_JR.m_VehicleLength = JunctionRules.Stage2.JRVehicleLength.WithTrailers(prefabObjectGeometryData, jrZebraLayout, ref m_PrefabRefData, ref m_PrefabObjectGeometryData, ref m_JRTractorData, ref m_JRTrailerData);
 				}
 			}
+			if (carLaneSpeedIterator.m_JR.m_ExitRule || carLaneSpeedIterator.m_JR.m_BoxRule)
+			{
+				// 0.4.9 (JR-T-015): the event table for driving reads (G12 a driveway exit's standing Go; G15 entrants held for room)
+				carLaneSpeedIterator.m_JR.SetEvents(m_JRSafetyEvents, m_SimulationFrame);
+			}
 			if (carLaneSpeedIterator.m_JR.m_ExitRule)
 			{
 				carLaneSpeedIterator.m_JR.SetExits(m_JRExitBuildings, m_JRExitEdges, m_LeftHandTraffic);
@@ -1810,8 +1815,8 @@ public class JRCarNavigationSystem : GameSystemBase
 				// 0.4.7 review (G1 F1): a vehicle placed straight onto a public road lane (not judged; counted only)
 				laneIterator.m_JR.CountRoadStart(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane, currentLane.m_LaneFlags, m_UnspawnedData.HasComponent(entity), ref laneIterator.m_CarLaneData);
 			}
-			// 0.4.8 (G7): an exit's Go judgement (read back at its hand-over / drive entry) and the driveway trace "waits" line
-			if ((m_JRMode & JunctionRules.Core.Stage2Mode.Count) != 0 || m_JRExitTraceOn)
+			// 0.4.8 (G7): an exit's Go judgement (read back at its hand-over / drive entry) and the driveway trace "waits" line; 0.4.9: always with the exit rule (a standing Go now commits a driveway exit, G12; held exits withdraw their keep-clear request, G13)
+			if (laneIterator.m_JR.m_ExitRule)
 			{
 				laneIterator.m_JR.NoteExit(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane, num2, currentLane.m_Duration, ref laneIterator.m_CarLaneData, ref laneIterator.m_CurveData);
 			}
@@ -2472,6 +2477,15 @@ public class JRCarNavigationSystem : GameSystemBase
 					ReserveOtherLanesInGroup(currentLaneData.m_Lane, 102);
 				}
 			}
+			// JR-STAGE2 BEGIN S2-51: 0.4.9 (G13) a vehicle held at a driveway exit this update (S2-29, recorded by NoteExit) does not ask road traffic for space: its keep-clear request (RequestSpace, priority 96) on the drive lane is withdrawn for this update only (flags restored in S2-51b)
+			Game.Vehicles.CarLaneFlags jrCurrentFlags = currentLaneData.m_LaneFlags;
+			Game.Vehicles.CarLaneFlags jrNextFlags = navigationLanes.Length > 0 ? navigationLanes[0].m_Flags : default(Game.Vehicles.CarLaneFlags);
+			bool jrWithdraw = (m_JRMode & JunctionRules.Core.Stage2Mode.ExitGiveWay) != 0 && JunctionRules.Stage2.JRWholeJunction.HeldAtDriveway(m_JRSafetyEvents, entity, m_SimulationFrame);
+			if (jrWithdraw && JunctionRules.Stage2.JRWholeJunction.WithdrawKeepClear(ref currentLaneData, navigationLanes, ref m_CarLaneData) && (m_JRMode & JunctionRules.Core.Stage2Mode.Count) != 0)
+			{
+				JunctionRules.Stage2.JRWholeJunction.CountKeepClearWithdrawn(m_JRCounters);
+			}
+			// JR-STAGE2 END
 			if ((currentLaneData.m_LaneFlags & Game.Vehicles.CarLaneFlags.RequestSpace) != 0 && m_LaneReservationData.HasComponent(currentLaneData.m_Lane))
 			{
 				m_LaneReservations.Enqueue(new CarNavigationHelpers.LaneReservation(currentLaneData.m_Lane, 0f, 96));
@@ -2484,6 +2498,18 @@ public class JRCarNavigationSystem : GameSystemBase
 					m_LaneReservations.Enqueue(new CarNavigationHelpers.LaneReservation(carNavigationLane.m_Lane, 0f, 96));
 				}
 			}
+			// JR-STAGE2 BEGIN S2-51b: 0.4.9 (G13) restore the RequestSpace flags S2-51 withdrew (the game's own state of the vehicle is unchanged)
+			if (jrWithdraw)
+			{
+				currentLaneData.m_LaneFlags = jrCurrentFlags;
+				if (navigationLanes.Length > 0)
+				{
+					CarNavigationLane jrNav = navigationLanes[0];
+					jrNav.m_Flags = jrNextFlags;
+					navigationLanes[0] = jrNav;
+				}
+			}
+			// JR-STAGE2 END
 			bool2 @bool = currentLaneData.m_CurvePosition.yz > currentLaneData.m_CurvePosition.zy;
 			if (flag ? @bool.y : @bool.x)
 			{

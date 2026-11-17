@@ -117,7 +117,12 @@ namespace JunctionRules.Stage2
                 if (ExitConflict(overlaps[i], inverse, start, ref carLanes, out float s, out _)) { if (s < firstRoad) firstRoad = s; }
                 else if (ExitSidewalk(overlaps[i], inverse, start, ref pedestrianLanes, out float w) && w < firstWalk) firstWalk = w;
             }
-            if (firstRoad > 1f) return float.MaxValue;
+            if (firstRoad > 1f)
+            {
+                // 0.4.9 (G12): its own drive lane with no road conflict ahead: the front is past every lane it crosses (on the road).
+                if (m_FirstLane) m_DrivePast = true;
+                return float.MaxValue;
+            }
             float spot = ExitGiveWay.ExitSpot(firstRoad, firstWalk);
             float wait = origDistance + length * (spot - start);
             float braking = VehicleUtils.GetBrakingDistance(car, currentSpeed, timeStep);
@@ -127,6 +132,16 @@ namespace JunctionRules.Stage2
             bool late = false;
             if (!ExitGiveWay.CanHold(wait + ExitGiveWay.SpotSlack, margin, braking))
             {
+                // 0.4.9 (G12): the front passes (or can no longer stop before) the sidewalk spot NOW: this is the crossing that
+                // must have been judged (counted once per episode in NoteExit). A Go that still stands commits the vehicle: one
+                // move across the pavement and the road, never re-judged on the pavement (Core ExitGiveWay.Committed).
+                bool goStands = FreshGo(m_Events, self, m_EventFrame);
+                m_DrivePast = true;
+                m_DriveCrossing = true;
+                m_DriveGoStood = goStands;
+                m_DriveLane = lane;
+                if (curves.TryGetComponent(lane, out Curve passCurve)) m_ExitPoint = passCurve.m_Bezier.a.xz;
+                if (ExitGiveWay.Committed(true, goStands)) return float.MaxValue;
                 if (!(firstWalk < firstRoad)) return float.MaxValue;
                 wait = origDistance + length * (firstRoad - start);
                 if (!ExitGiveWay.CanHold(wait + ExitGiveWay.SpotSlack, margin, braking)) return float.MaxValue;
@@ -551,25 +566,15 @@ namespace JunctionRules.Stage2
             }
         }
 
-        /// <summary>0.4.8 (G7): a vehicle enters a drive's leaving lane: counted, and "without a full judgement" when it has no fresh Go.</summary>
-        private unsafe void DriveEntry(NativeArray<long> counters, NativeArray<long> eventTable, Entity self, uint frame, Entity from, Entity drive, bool count, ref ComponentLookup<Curve> curves)
+        /// <summary>
+        /// 0.4.8 (G7) counted the driveway crossing here, at the PIVOT hand-over onto the drive lane; 0.4.9 (G12) counts it where
+        /// the FRONT passes the sidewalk spot (S2-29 sets m_DriveCrossing, NoteExit counts once per episode): a long vehicle
+        /// held before the sidewalk is handed over to its drive lane while it still waits there, and 0.4.8 reported it as
+        /// "crosses the sidewalk ... NOT judged" (vehicle 844033: 'waits' and 'NOT judged' in the same frame 36642880).
+        /// Kept as a no-op hook so the hand-over block (S2-34) is unchanged.
+        /// </summary>
+        private void DriveEntry(NativeArray<long> counters, NativeArray<long> eventTable, Entity self, uint frame, Entity from, Entity drive, bool count, ref ComponentLookup<Curve> curves)
         {
-            if (m_ExitEmergency) return;   // on-duty emergency: stock, never judged (counted as emergency passthroughs)
-            bool judged = (m_DriveJudged && m_DriveLane == drive && m_DriveDecision == ExitGiveWay.Decision.Go) || FreshGo(eventTable, self, frame);
-            if (count)
-            {
-                Add(counters, Stage2Counters.ExitDriveEntries, 1);
-                if (!judged) Add(counters, Stage2Counters.ExitDriveUnjudged, 1);
-            }
-            if (m_TraceOn)
-            {
-                Entity building = ExitBuilding(from);
-                int reasons = judged ? ExitTrace.ReasonDecided : 0;
-                // 0.4.7 printed "boxed no" for every driveway line (the drive decision never set the flag); 0.4.8: this update's
-                // decision, else the recorded boxed Go of the same window.
-                bool boxedGo = m_DriveBoxed || BoxedGo(eventTable, self, frame);
-                TraceWrite(m_TraceRing, self, building, ExitTrace.Pack(ExitTrace.Event.EnterDrive, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, ExitGiveWay.Decision.Go, reasons, boxedGo), frame, OwnerOf(drive), LaneStart(drive, ref curves));
-            }
         }
 
         /// <summary>0.4.8 (G7): a Go judgement of this vehicle's exit was recorded (NoteExit) within Core ExitGiveWay.DriveGoWindow frames.</summary>
@@ -620,9 +625,31 @@ namespace JunctionRules.Stage2
             // 0.4.8 diagnostics (on by default): a vehicle standing on a driveway's leaving lane = past the sidewalk, on / across
             // the road (the G7 failure itself); and a long wait at an exit spot. Both once per episode (event table).
             bool standing = speed < Stage2Counters.StandingSpeed;
-            // Final review F1: not a vehicle the exit rule is holding on purpose (it stands before the sidewalk), nor one S2-29
-            // could still stop before its spot this update (m_DriveJudged): only a vehicle already committed past the pavement.
-            if (standing && laneSeconds >= ExitTrace.StuckSeconds && !m_ExitEmergency && !m_HasDriveHold && !m_ExitWaiting && !m_DriveJudged
+            // 0.4.9 (G12): the crossing of the sidewalk spot, once per episode, judged / late / unjudged (Core ExitGiveWay.Crossing).
+            if (m_DriveCrossing && ExitEvent(eventTable, self, frame, ExitGiveWay.DriveCrossKind))
+            {
+                ExitGiveWay.CrossOutcome outcome = ExitGiveWay.Crossing(m_DriveGoStood, m_DriveJudged && m_DriveLate);
+                if (Counting && counters.IsCreated)
+                {
+                    Add(counters, Stage2Counters.ExitDriveEntries, 1);
+                    if (outcome == ExitGiveWay.CrossOutcome.Unjudged) Add(counters, Stage2Counters.ExitDriveUnjudged, 1);
+                    else if (outcome == ExitGiveWay.CrossOutcome.Late) Add(counters, Stage2Counters.ExitDriveLate, 1);
+                }
+                if (m_TraceOn)
+                {
+                    int reasons = outcome == ExitGiveWay.CrossOutcome.Judged ? ExitTrace.ReasonDecided : outcome == ExitGiveWay.CrossOutcome.Late ? ExitTrace.ReasonLate : 0;
+                    bool boxedGo = m_DriveBoxed || BoxedGo(eventTable, self, frame);
+                    TraceWrite(m_TraceRing, self, ExitBuilding(m_DriveLane), ExitTrace.Pack(ExitTrace.Event.EnterDrive, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane,
+                        ExitGiveWay.Decision.Go, reasons, boxedGo), frame, OwnerOf(m_DriveLane), m_ExitPoint);
+                }
+            }
+            // 0.4.9 (G13): held at a driveway exit this update: the lane reservation step (S2-51) withdraws its keep-clear request.
+            if (m_HasDriveHold) ExitEvent(eventTable, self, frame, ExitGiveWay.DriveHeldKind);
+            // Final review F1: not a vehicle the exit rule is holding on purpose (it stands before the sidewalk). 0.4.9 (G12):
+            // only a vehicle whose FRONT is past its sidewalk spot (S2-29 m_DrivePast); 0.4.8 used "not judged this update",
+            // which also counted vehicles queued on a long drive lane behind a held one (more than 12 m before the spot, so
+            // not judged) and reported them as standing on the road.
+            if (standing && laneSeconds >= ExitTrace.StuckSeconds && !m_ExitEmergency && !m_HasDriveHold && !m_ExitWaiting && m_DrivePast
                 && carLanes.TryGetComponent(currentLane, out Game.Net.CarLane onLane)
                 && ExitGiveWay.IsDrivewayExitLane((uint)onLane.m_Flags) && ExitEvent(eventTable, self, frame, ExitGiveWay.StuckKind))
             {
@@ -650,7 +677,6 @@ namespace JunctionRules.Stage2
                 return;
             }
             if (!m_DriveJudged) return;
-            if (m_DriveLate && Counting && counters.IsCreated && ExitEvent(eventTable, self, frame, ExitGiveWay.LateJudgeKind)) Add(counters, Stage2Counters.ExitDriveLate, 1);
             if (m_DriveDecision == ExitGiveWay.Decision.Go)
             {
                 ExitEvent(eventTable, self, frame, ExitGiveWay.DriveGoKind);
@@ -701,6 +727,95 @@ namespace JunctionRules.Stage2
             ExitPaths.Path path = ExitPaths.Classify(m_ExitFromFlags, building != Entity.Null, isCar, false);
             ExitPaths.LaneKind kind = ExitPaths.Kind(m_ExitFromFlags, isCar, false);
             TraceWrite(m_TraceRing, self, building, ExitTrace.Pack(ExitTrace.Event.Wait, path, kind, m_ExitDecision, TraceReasons(), m_ExitBoxed), frame, m_ExitRoadOwner, m_ExitPoint);
+        }
+
+        /// <summary>
+        /// 0.4.9 (S2-26, JR-T-015): the shared event table (JRStage2Bridge.SafetyEvents) and this step's frame for the
+        /// DRIVING reads of 0.4.9 (a driveway exit's standing Go, G12; an entrant held for room, G15). Always handed in while
+        /// the exit or box rule is on (0.4.8 used the table only for counters and the trace).
+        /// </summary>
+        public void SetEvents(NativeArray<long> events, uint frame)
+        {
+            if (!events.IsCreated) return;
+            m_Events = events;
+            m_EventFrame = frame;
+            m_HasEvents = true;
+        }
+
+        /// <summary>0.4.9 (G15): vehicle 'other' was held before a box this or the last navigation updates because its way INTO a building is full.</summary>
+        private unsafe bool EnteringHeld(Entity other)
+        {
+            if (!m_HasEvents) return false;
+            TableSlots slots = default;
+            slots.m_P = (long*)NativeArrayUnsafeUtility.GetUnsafeBufferPointerWithoutChecks(m_Events);
+            slots.m_N = m_Events.Length;
+            bool found = EventLookup.Last(ref slots, ExitGiveWay.EventKey(other.Index, ExitGiveWay.EnteringHeldKind), out uint last);
+            return EventLookup.Fresh(found, last, m_EventFrame, ExitGiveWay.EnteringHeldWindow);
+        }
+
+        /// <summary>0.4.9 (G15): record this update's entering hold (EnteringHold, Stage2/JRYellowBox.cs) for exits nearby.</summary>
+        private unsafe void NoteEnteringHeld(Entity self)
+        {
+            if (!m_HasEvents || m_EnteringHeld) return;
+            m_EnteringHeld = true;
+            TableSlots slots = default;
+            slots.m_P = (long*)NativeArrayUnsafeUtility.GetUnsafeBufferPointerWithoutChecks(m_Events);
+            slots.m_N = m_Events.Length;
+            SafetyStopEvents.Record(ref slots, ExitGiveWay.EventKey(self.Index, ExitGiveWay.EnteringHeldKind), m_EventFrame);
+        }
+
+        /// <summary>
+        /// 0.4.9 (G13, S2-51, lane reservation step of the navigation job): this vehicle was held at a driveway exit in THIS
+        /// update (NoteExit recorded ExitGiveWay.DriveHeldKind at this frame).
+        /// </summary>
+        public static unsafe bool HeldAtDriveway(NativeArray<long> events, Entity self, uint frame)
+        {
+            if (!events.IsCreated) return false;
+            TableSlots slots = default;
+            slots.m_P = (long*)NativeArrayUnsafeUtility.GetUnsafeBufferPointerWithoutChecks(events);
+            slots.m_N = events.Length;
+            bool found = EventLookup.Last(ref slots, ExitGiveWay.EventKey(self.Index, ExitGiveWay.DriveHeldKind), out uint last);
+            return EventLookup.Fresh(found, last, frame, 0u);
+        }
+
+        /// <summary>
+        /// 0.4.9 (G13, S2-51): the game's keep-clear protocol. A vehicle whose current or next lane is a driveway's leaving lane
+        /// (Unsafe, owned by the road edge: CarNavigationSystem.UpdateNavigationLanes sets CarLaneFlags.RequestSpace) reserves
+        /// that lane at priority 96 every update, whatever its speed (ReserveNavigationLanes 2475-2486), and every road vehicle
+        /// crossing it then stops before the drive when it would have no space past it (CarLaneSpeedIterator
+        /// CheckOverlappingLanes, CheckOverlapSpace, priority 96). A vehicle the exit rule HOLDS cannot use that space (it gives
+        /// way, owner rule), so road traffic waited for nothing (G13: sedan 909842 held before the Alderbrook Street box, its
+        /// lane clear, while 910673 / 910289 stood at the exit). For this update only, the RequestSpace flag of a driveway
+        /// leaving lane (current lane or the first navigation lane) is cleared before the game's reservation lines; S2-51b
+        /// restores both. Returns true when a flag was cleared.
+        /// </summary>
+        public static bool WithdrawKeepClear(ref CarCurrentLane current, DynamicBuffer<CarNavigationLane> lanes, ref ComponentLookup<Game.Net.CarLane> carLanes)
+        {
+            bool cleared = false;
+            if ((current.m_LaneFlags & Game.Vehicles.CarLaneFlags.RequestSpace) != 0 && carLanes.TryGetComponent(current.m_Lane, out Game.Net.CarLane cur)
+                && ExitGiveWay.IsDrivewayExitLane((uint)cur.m_Flags))
+            {
+                current.m_LaneFlags &= ~Game.Vehicles.CarLaneFlags.RequestSpace;
+                cleared = true;
+            }
+            if (lanes.Length > 0)
+            {
+                CarNavigationLane nav = lanes[0];
+                if ((nav.m_Flags & Game.Vehicles.CarLaneFlags.RequestSpace) != 0 && carLanes.TryGetComponent(nav.m_Lane, out Game.Net.CarLane next)
+                    && ExitGiveWay.IsDrivewayExitLane((uint)next.m_Flags))
+                {
+                    nav.m_Flags &= ~Game.Vehicles.CarLaneFlags.RequestSpace;
+                    lanes[0] = nav;
+                    cleared = true;
+                }
+            }
+            return cleared;
+        }
+
+        /// <summary>0.4.9 (G13): one car-step whose keep-clear request was withdrawn (counting only).</summary>
+        public static void CountKeepClearWithdrawn(NativeArray<long> counters)
+        {
+            if (counters.IsCreated && counters.Length > Stage2Counters.ExitKeepClearWithdrawn) Add(counters, Stage2Counters.ExitKeepClearWithdrawn, 1);
         }
 
         /// <summary>0.4.7 (S2-26): the exit trace is on; ring = Stage2/JRStage2Bridge.cs TraceRing.</summary>
@@ -923,7 +1038,8 @@ namespace JunctionRules.Stage2
             // 0.4.7 (JR-T-013g, review F1): the same band set as S2-28 BoxHold (JRYellowBox.cs): only the bands of this lane's
             // carriageway (#17 median), and bands that overlap or touch on this lane are ONE band (#17 merged boxes).
             int carriageway = carLanes.TryGetComponent(road, out Game.Net.CarLane roadCarLane) ? roadCarLane.m_CarriagewayGroup : 0;
-            float touch = ExitBands.TouchMetres / length;
+            // 0.4.9 (G14): the leaving vehicle's own band set, as BoxHold's: bands closer than its length + margin are one.
+            float touch = ExitBands.HoldTouchMetres(m_VehicleLength, m_RoomMargin) / length;
             FixedList128Bytes<float2> merged = default;
             for (int i = first; i < bands->Count && bands->Key(i) == edgeKey; i++)
             {
@@ -1141,7 +1257,11 @@ namespace JunctionRules.Stage2
                 }
                 bool occupies = front > cStart && rear < cEnd;
                 float braking = VehicleUtils.GetBrakingDistance(data, speed, ReservationTimeStep);
-                if (ExitGiveWay.VehicleBlocks(gap, occupies, speed, braking, delta)) return true;
+                // 0.4.9 (G15): a vehicle standing before the exit while it waits for room INTO a building (G9 entrance hold,
+                // recorded this or the last navigation updates) is not "present at the exit": the exit may go.
+                bool entering = !occupies && gap > 0f && gap <= ExitGiveWay.PresentMetres && EnteringHeld(e);
+                if (entering && Counting) m_ExitEntrantIgnored = true;
+                if (ExitGiveWay.VehicleBlocks(gap, occupies, speed, braking, delta, entering)) return true;
             }
             return false;
         }
