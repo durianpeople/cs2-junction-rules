@@ -377,3 +377,8 @@ RequestSpace keep-clear at priority 96, queues only). PROBE section 21. Owner bo
 painted box (its spot lay inside the box), using the curve lookup S2-28's `BoxHold` keeps for the step. Review 1: keep-clear
 of other drives' crossings, nearest-only present vehicle for entrant scans, true crossings only, way in must start on the
 lane.
+G23 (0.4.11): S2-08b's call hands three more stock values (`laneObject.m_CurvePosition.x`, `m_CurveOffset`, `m_Curve.m_Length`;
+same line, block line count unchanged): the 0.3.2 full stop for people applies only to a person whose position on the
+crossing lies inside the car's range on it (+-0.5 m); a standing person beside it (waiting at the kerb for their own green)
+gets the game's own creep past (CheckPedestrian's distance test) instead of holding the car until the car's red. Job side:
+the exit / entry gap scans no longer count a vehicle standing in a queue held by a red / amber light as "present".

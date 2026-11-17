@@ -66,6 +66,33 @@ namespace JunctionRules.Core
         /// (the creep adds 3 m/s squared under the root and floors at 3), so this only ever lowers the limit.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float PedestrianSpeedInPath(bool settingOn, PushReason reason, bool personInPath, float stockSpeed, float fullStopSpeed) =>
+            personInPath ? PedestrianSpeed(settingOn, reason, stockSpeed, fullStopSpeed) : stockSpeed;
+
+        /// <summary>
+        /// 0.4.11 (JR-T-017, gap G23, owner live 17 Nov: "what makes this car not want to come out on green?", Crescent St x
+        /// Eastgate Lane): the game's CheckPedestrian also brakes for a person who is NOT on the car's way over the crossing
+        /// but stands within the car's half width + the person's size of it (2026-11-13 copy, CheckPedestrian: targetOffset
+        /// outside the car's range on the pedestrian lane, then the distance to the overlap line); for a standing person it
+        /// only creeps by (3 m/s). A short left turn (left-hand traffic) hugs the corner where people wait at the kerb for
+        /// their own green: 0.3.2's full stop held such a car for people who were not crossing, until they got their green,
+        /// i.e. until the car's red (live: hatchback 910624, queue head, blocker type Temporary = a person, 22 queued).
+        /// Now the full stop applies only to a person whose position on the crossing lies inside the car's range on it
+        /// (personPos, rangeA / rangeB = game offsets on the pedestrian lane, laneLength in metres) widened by
+        /// <see cref="InPathToleranceMetres"/>; a person beside it gets the game's own creep past.
+        /// </summary>
+        public static bool PersonInPath(float personPos, float rangeA, float rangeB, float laneLength)
+        {
+            float lo = (rangeA < rangeB ? rangeA : rangeB) * laneLength - InPathToleranceMetres;
+            float hi = (rangeA < rangeB ? rangeB : rangeA) * laneLength + InPathToleranceMetres;
+            float p = personPos * laneLength;
+            return p >= lo && p <= hi;
+        }
+
+        /// <summary>0.4.11 (G23): metres either side of the car's range on the crossing within which a standing person counts as on its way.</summary>
+        public const float InPathToleranceMetres = 0.5f;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float PedestrianSpeed(bool settingOn, PushReason reason, float stockSpeed, float fullStopSpeed) =>
             settingOn && reason != PushReason.None && fullStopSpeed < stockSpeed ? fullStopSpeed : stockSpeed;
 

@@ -1767,3 +1767,49 @@ Timing line (box rule on), at the end: `entered a box under the same-exit-lane e
 | 22-1 | A boxed T with a YIELD side road and a queue in the exit lane | short side-road cars turning left (and right where the merge is the only thing under them) enter and queue; lorries wait at the line; the priority road is never blocked |
 | 22-2 | All-way junction with STOP and YIELD arms | only STOP-arm cars use the exception |
 | 22-3 | Timing line | the exception count rises where queues form; `standing inside a box` does not rise from it |
+
+### 21.8 G23: a car that would not come out on green (Crescent St x Eastgate Lane)
+
+Owner (live): "what makes this car not want to come out on green?" Hatchback 910624, head of the Eastgate south arm (22
+queued), short LEFT turn into Crescent westbound, on green, exit lane empty, westbound Crescent at its red, people waiting
+at the kerbs; the game's blocker type of the queue head: **Temporary**. In the game (2026-11-13 copy) Temporary is set only
+by `CheckPedestrian`: the car was held for a PERSON. `CheckPedestrian` brakes not only for people on the car's way over a
+crossing but also for a person within the car's half width + the person's size of its path line (target offset outside
+the car's range on the crossing, then the distance test), and for a STANDING person it only creeps by at 3 m/s. A short
+left turn hugs the corner where people wait at the kerb for their own green. Junction Rules 0.3.2 ("cars never push
+through people", S2-08b) turned that creep into a full stop, so the car waited for people who were not crossing until
+they got their green, which is the car's red: it never left on green. (The car had already sat 20 min at a driveway exit
+on the same alley earlier, exit trace 18:57-19:18: that was the exit gap rule on a busy alley, a separate matter.)
+
+**Now:** the full stop applies only to a person whose position on the crossing is inside the car's range on it (+-0.5 m;
+`CrossingPush.PersonInPath`, S2-08b hands the person's position and the car's range, same line); a standing person beside
+it gets the game's own creep past. People walking or standing on the car's way: unchanged (never pushed through).
+Counter: `people beside a crossing passed at the game's creep (not on the car's way)`.
+
+**Owner rule: vehicles stopped at a red never count as approaching traffic.** The whole-junction projection and the exits'
+feeding-lane scan already skip a vehicle that will stop at its red (0.2.4 `FeedingSignal`). One hole: the exits' (and now
+entries') 10 m "present" rule counted a vehicle STANDING in a queue held by a red within 10 m of the conflict. Now a
+vehicle standing before the conflict on a lane whose every way on at its end is red / amber is not present
+(`ExitGiveWay.QueuedAtRedNotPresent`, `LaneEndsAtRed`); one standing ON the conflict still blocks; moving ones are judged as
+before (they may still pass the conflict before their stop line). Counter: `standing vehicles queued at a red not counted as
+present`. Ruled out for this car (from code): the box room test (exit empty), the arrival projection (red-held feeders
+skipped), the zebra sections (room past the exit zebra), the G22 logic (not a yielding arm: signalled).
+
+| # | Do | Expect |
+|---|---|---|
+| 23-1 | Crescent x Eastgate, south arm left turn on green with people waiting at the corner | the car goes on green, slowing past the waiting people |
+| 23-2 | Same with a person stepping onto the crossing in front of it | it stops (never pushed through) |
+| 23-3 | Timing line | `people beside a crossing passed at the game's creep` > 0 where corners are busy |
+
+### 21.9 Review 2 (Sonnet) fixes
+
+- Keep-clear shift taken only when the whole body stays on its lane and outside every box (never back into the junction
+  box or another box); else the unshifted spot.
+- Entrant scans: a standing vehicle on a lane BEFORE the crossed lane is never present (closed a rare four-vehicle loop
+  with facing drives near a junction mouth whose queues spill back across it).
+- A boxed way in gets no zebra sections either (their first vehicle point was the old in-box spot).
+- Settings: the owner box rule for turning in needs both "Cars obey yellow boxes" and "Vehicles leaving buildings give
+  way" (default on). With the exit setting off, turners into buildings behave as in 0.4.10 (stock give-way at the in-box
+  spot).
+- Watch (owner may confirm): a boxed turner that could not stop before the box line (already in the band, moving) crosses
+  with the game's own checks only (counter `could not stop before the spot`); it is never held inside the box.

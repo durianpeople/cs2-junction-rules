@@ -113,7 +113,7 @@
         "files": {
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
-        "reason": "Restores the game's distance after the pedestrian check; 0.3.2: with the setting on, the game's creep (5 s push timer, standing person) becomes a full stop and the saved limit is merged back."
+        "reason": "Restores the game's distance after the pedestrian check; 0.3.2: with the setting on, the game's creep (5 s push timer, standing person) becomes a full stop and the saved limit is merged back. 0.4.11 (G23): the call also hands the person's position on the crossing and the car's range on it (laneObject.m_CurvePosition.x, m_CurveOffset, m_Curve.m_Length): the full stop only for a person on the car's way, not one beside it at the kerb."
       },
       "S2-09": {
         "files": {

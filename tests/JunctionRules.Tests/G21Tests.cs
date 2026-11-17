@@ -271,6 +271,13 @@ namespace JunctionRules.Tests
             Check(deadNew == 0, $"0.4.11 keep-clear: no offset leaves both on each other's crossing ({cases} offsets -12..12 m)");
             var chain = new G21Crossings { S = new[] { -3f, -10f }, E = new[] { -1f, -8f } };
             Check(Math.Abs(EntryGiveWay.KeepClearFront(0f, len, G21Margin, ref chain) - (-10f - G21Margin)) < 1e-4f, "chained crossings move it back past both");
+            // Review 2 F1: a shift that would put the body back into the junction (lane start) or into a box is not taken.
+            var noBands = new G21Crossings { S = new float[0], E = new float[0] };
+            Check(!EntryGiveWay.BodyOnLaneOutsideBands(2f - G21Margin, len, G21Margin, ref noBands), "crossing 3 m from the lane start, 6.5 m van: the shifted body would reach back into the junction: not taken");
+            Check(EntryGiveWay.BodyOnLaneOutsideBands(20f, len, G21Margin, ref noBands), "far enough along the lane: taken");
+            var band = new G21Crossings { S = new[] { 12f }, E = new[] { 20f } };
+            Check(!EntryGiveWay.BodyOnLaneOutsideBands(24f, len, G21Margin, ref band) && EntryGiveWay.BodyOnLaneOutsideBands(11f, len, G21Margin, ref band),
+                "a shifted body overlapping another box is not taken; one before it is");
             var none = new G21Crossings { S = new[] { 5f }, E = new[] { 7f } };
             Check(EntryGiveWay.KeepClearFront(0f, len, G21Margin, ref none) == 0f, "a crossing ahead of its front (beyond the margin) does not move it");
         }
@@ -304,13 +311,13 @@ namespace JunctionRules.Tests
             string exit = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRExitGiveWay.cs"));
             int hold = exit.IndexOf("public float ExitDrivewayHold(", StringComparison.Ordinal);
             int gate = exit.IndexOf("if (!ExitGiveWay.IsDrivewayExitLane((uint)own.m_Flags))", hold, StringComparison.Ordinal);
-            int call = exit.IndexOf("return EntryRoadHold(", hold, StringComparison.Ordinal);
-            Check(hold > 0 && gate > hold && call > gate && call - gate < 200, "S2-29's call hands every non-exit lane to EntryRoadHold (no new copy block)");
+            int call = exit.IndexOf("EntryRoadHold(lane, own, overlaps", hold, StringComparison.Ordinal);
+            Check(hold > 0 && gate > hold && call > gate && call - gate < 400, "S2-29's call hands every non-exit lane to EntryRoadHold (no new copy block)");
             int eh = exit.IndexOf("private float EntryRoadHold(", StringComparison.Ordinal);
             Check(eh > 0, "EntryRoadHold exists");
             string body = eh > 0 ? exit.Substring(eh, exit.IndexOf("private static bool EntryConflict(", eh, StringComparison.Ordinal) - eh) : "";
             Check(body.Contains("EntryGiveWay.IsDrivewayEntryLane((uint)wayLane.m_Flags)") && body.Contains("PathLaneAfter(lane, out CarNavigationLane nextNav)"), "only a path whose next lane is a way in");
-            Check(body.Contains("LaneBands(lane, edgeOwner.m_Owner, length, inverse, own.m_CarriagewayGroup, ref curves, out FixedList128Bytes<float2> merged)"), "the box line is the painted band on the lane (0.4.10 windows)");
+            Check(body.Contains("LaneBands(lane, edgeOwner.m_Owner, length, inverse, own.m_CarriagewayGroup, ref curves, out merged)"), "the box line is the painted band on the lane (0.4.10 windows)");
             Check(body.Contains("EntryGiveWay.Choose(boxed, inBox, boxLineWait, driveStartWait, margin, braking)"), "spot: box line, else drive start, else committed");
             Check(body.Contains("EntryGiveWay.ClearMetres(toDriveStart, wayCurve.m_Length * s, wayCurve.m_Length * (e - s), ownLength)") && body.Contains("ConflictBusy(o.m_Other, otherCurve, oS, oE, delta, ref reads, ref budget)"),
                 "crossed lanes judged with the exits' scan and the whole-length clear time");
@@ -318,6 +325,9 @@ namespace JunctionRules.Tests
             Check(body.Contains("reads.m_OwnLane = lane;"), "the turner's own road lane is never a feeding lane");
             Check(body.Contains("(nextNav.m_Flags & EntryOtherFlags) != 0") && body.Contains("EntryGeometricCrossings(lane, roadCurve, tLeave, sidePoint"), "every access: gates / lots / building parking judged by geometry");
             Check(body.Contains("if (!boxed) m_EntryGapUnboxed = true;") && !body.Contains("if (!boxed) return"), "unboxed accesses are judged and held too (counted apart)");
+            Check(exit.Contains("|| (m_EntryScan && (cStart >= curve.m_Length || !EntryGiveWay.StandingCountsAsPresent(e == nearest, false))));"), "review 2 F2: a standing vehicle on a feeder lane is never present for an entrant (no 4-vehicle loop across the junction)");
+            string wjr = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRWholeJunction.cs"));
+            Check(wjr.Contains("if (lane == m_SkippedWayIn && lane != Entity.Null) return float.MaxValue;"), "review 2 F3: no zebra sections (old in-box spot) on a boxed way in");
             Check(exit.Contains("(EnteringHeld(e) || (m_EntryScan && EntryGapHeld(e)))"), "an entrant's scan skips standing vehicles that wait to turn in; exits still wait for a gap-held entrant");
             string copy = File.ReadAllText(Path.Combine(root, "JunctionRules", "Vanilla", "JRCarLaneSpeedIterator.cs"));
             Check(!copy.Contains("EntryRoadHold") && copy.Contains("float jrExitHold = m_JR.ExitDrivewayHold(lane, bufferData, curveOffset.x"), "the copy is unchanged: S2-29 as in 0.4.10");

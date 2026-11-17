@@ -300,6 +300,12 @@ namespace JunctionRules.Stage2
         /// <summary>G21 (counting): the entry gap hold (before the box line or at the drive start).</summary>
         private bool m_HasEntryGap;
         private float m_EntryGapSpeed;
+        /// <summary>G21 review 2 F3: the boxed way in BeginLane left out this car-step (BeginZebras leaves it out too).</summary>
+        private Entity m_SkippedWayIn;
+        /// <summary>G23 (counting): this car-step a standing person beside (not on) the car's way over a crossing got the game's creep, not a full stop.</summary>
+        private bool m_PeopleBesideCreep;
+        /// <summary>G23 (counting): a gap scan did not count a vehicle standing in a queue held by a red light as present.</summary>
+        private bool m_RedQueueIgnored;
         /// <summary>G22 (counting): this car-step the same-exit-lane exception let the car into / on through a junction box without exit room; standing in a box under it.</summary>
         private bool m_BoxSameExitEntry, m_BoxSameExitStanding;
         /// <summary>G21 review 1 (counting): the turn-in spot moved back to keep another drive's crossing clear; committed without a hold (could not stop before its spot).</summary>
@@ -489,6 +495,7 @@ namespace JunctionRules.Stage2
             if (m_ExitRule && m_BoxRule && carLanes.TryGetComponent(lane, out Game.Net.CarLane wayIn) && EntryGiveWay.IsDrivewayEntryLane((uint)wayIn.m_Flags) && WayInBoxed(lane, ref carLanes))
             {
                 if (Counting) m_EntryWholePathSkipped = true;
+                m_SkippedWayIn = lane;   // review 2 F3: BeginZebras must not bring the in-box spot back on it
                 return;
             }
             // JR-T-013b (G4): the car checks a lane of the watched junction (debug log only; no driving effect).
@@ -682,6 +689,9 @@ namespace JunctionRules.Stage2
                 m_Inside = false;
             }
             if (!m_NodeLaneData.HasComponent(lane)) return float.MaxValue;
+            // 0.4.11 review 2 F3: a boxed way in (whole-path decision left out by BeginLane, owner box rule) gets no zebra
+            // sections either: their first vehicle conflict point is the old in-box spot; the G9 room hold covers its way in.
+            if (lane == m_SkippedWayIn && lane != Entity.Null) return float.MaxValue;
             ZebraElements elements = default;
             elements.m_Overlaps = overlaps;
             elements.m_Inverse = inverse;
@@ -1294,7 +1304,7 @@ namespace JunctionRules.Stage2
         /// </summary>
         public void NoPushPedestrian(ref float maxSpeed, ref Entity blocker, ref BlockerType blockerType, float savedMax, Entity savedBlocker,
             BlockerType savedType, Entity obj, float distance, bool pushBlockers, ref ComponentLookup<Moving> movingData, CarData car,
-            float safeTimeStep, Bounds1 speedRange)
+            float safeTimeStep, Bounds1 speedRange, float personPos, float2 carRange, float crossingLength)
         {
             float result = float.MaxValue;
             if (maxSpeed < float.MaxValue)
@@ -1304,7 +1314,10 @@ namespace JunctionRules.Stage2
                 CrossingPush.PushReason reason = CrossingPush.Pedestrian(pushBlockers, hasMoving, hasMoving ? math.lengthsq(moving.m_Velocity) : 0f);
                 float fullStop = reason == CrossingPush.PushReason.None ? stock
                     : MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, distance, safeTimeStep), speedRange);
-                result = CrossingPush.PedestrianSpeed(true, reason, stock, fullStop);
+                // 0.4.11 (G23): the full stop only for a person on the car's way over the crossing (not one waiting beside it at the kerb).
+                bool inPath = CrossingPush.PersonInPath(personPos, carRange.x, carRange.y, crossingLength);
+                result = CrossingPush.PedestrianSpeedInPath(true, reason, inPath, stock, fullStop);
+                if (Counting && reason != CrossingPush.PushReason.None && !inPath) m_PeopleBesideCreep = true;
                 if (Counting && result < stock && result < savedMax)
                 {
                     if (reason == CrossingPush.PushReason.Timer) m_RefusedTimer = true;
@@ -1733,6 +1746,8 @@ namespace JunctionRules.Stage2
             if (m_EntryJudgedOther) Add(counters, Stage2Counters.EntryJudgedOther, 1);
             if (m_EntryWholePathSkipped) Add(counters, Stage2Counters.EntryBoxedWayWholePathSkipped, 1);
             if (m_EntryKeptClear) Add(counters, Stage2Counters.EntryKeptClear, 1);
+            if (m_PeopleBesideCreep) Add(counters, Stage2Counters.PeopleBesideCrossingCreep, 1);   // 0.4.11 (G23)
+            if (m_RedQueueIgnored) Add(counters, Stage2Counters.RedQueueNotPresent, 1);   // 0.4.11 (G23)
             // 0.4.11 (G22): entries under the same-exit-lane exception (one per vehicle episode), standing in a box under it (car-steps)
             if (m_BoxSameExitEntry && ExitEvent(eventTable, entity, frame, ExitGiveWay.SameExitEntryKind)) Add(counters, Stage2Counters.BoxSameExitEntries, 1);
             if (m_BoxSameExitStanding && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.BoxSameExitStanding, 1);

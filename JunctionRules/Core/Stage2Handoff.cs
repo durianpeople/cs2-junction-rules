@@ -253,7 +253,11 @@ namespace JunctionRules.Core
         public const int BoxSameExitEntries = FeedingScans + 66;
         /// <summary>0.4.11 (G22): car-steps standing in a junction box under that exception (not counted as 'standing inside a box').</summary>
         public const int BoxSameExitStanding = FeedingScans + 67;
-        public const int Count = FeedingScans + 68;
+        /// <summary>0.4.11 (G23): car-steps in which a standing person beside (not on) the car's way over a crossing got the game's creep past instead of the 0.3.2 full stop.</summary>
+        public const int PeopleBesideCrossingCreep = FeedingScans + 68;
+        /// <summary>0.4.11 (G23, owner: vehicles stopped at a red signal never count as approaching traffic): car-steps in which a building exit / entry gap scan did not count a vehicle standing in a queue held by a red light as present.</summary>
+        public const int RedQueueNotPresent = FeedingScans + 69;
+        public const int Count = FeedingScans + 70;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -424,6 +428,9 @@ namespace JunctionRules.Core
                    (boxMask >= 2 ? "; box holds only because the queue past the box was moving (free-now rule) " + deltas[BoxHeldFreeNow].ToString(ci)
                        + "; standing with the front bumper past a box line (nose in the box) " + deltas[BoxNosePast].ToString(ci) + " (must be 0)"
                        + "; standing inside a box (not at the right-turn spot) " + deltas[BoxStoodInside].ToString(ci) : "") +
+                   // 0.4.11 (G23)
+                   (exitMask >= 2 || deltas[PeopleBesideCrossingCreep] > 0 ? "; people beside a crossing passed at the game's creep (not on the car's way) " + deltas[PeopleBesideCrossingCreep].ToString(ci) : "") +
+                   (exitMask >= 2 ? "; standing vehicles queued at a red not counted as present " + deltas[RedQueueNotPresent].ToString(ci) : "") +
                    // 0.4.11 (G22): the owner's same-exit-lane exception.
                    (boxMask >= 2 ? "; entered a box under the same-exit-lane exception " + deltas[BoxSameExitEntries].ToString(ci)
                        + " (standing in a box under it " + deltas[BoxSameExitStanding].ToString(ci) + ")" : "") +

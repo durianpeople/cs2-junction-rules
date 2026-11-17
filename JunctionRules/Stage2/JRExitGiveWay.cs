@@ -106,8 +106,9 @@ namespace JunctionRules.Stage2
             if (!m_ExitRule || !m_ExitLookups) return float.MaxValue;
             if (!carLanes.TryGetComponent(lane, out Game.Net.CarLane own)) return float.MaxValue;
             // 0.4.11 (G21): a ROAD lane whose next path lane is a drive's way in: the turn into the building gives way (EntryRoadHold).
+            // Review 2 F6: a way in always starts on an edge lane (never a junction lane): junction lanes return at once.
             if (!ExitGiveWay.IsDrivewayExitLane((uint)own.m_Flags))
-                return EntryRoadHold(lane, own, overlaps, curveX, length, origDistance, margin, inverse, priority, car, currentSpeed, timeStep, safeTimeStep, speedRange,
+                return m_NodeLaneData.HasComponent(lane) ? float.MaxValue : EntryRoadHold(lane, own, overlaps, curveX, length, origDistance, margin, inverse, priority, car, currentSpeed, timeStep, safeTimeStep, speedRange,
                     currentMax, self, ref carLanes, ref signals, ref laneObjects, ref curves, ref moving, ref cars, ref controllers, ref prefabRefs, ref prefabCars,
                     ref geometries, ref overlapData);
             if (ExitGiveWay.IsEmergency(priority))
@@ -286,7 +287,9 @@ namespace JunctionRules.Stage2
             }
             else if (carLanes.TryGetComponent(way, out wayLane) && EntryGiveWay.IsDrivewayEntryLane((uint)wayLane.m_Flags)) isDrive = true;
             else return float.MaxValue;
-            if (!EntryGiveWay.Applies(true, priority)) return float.MaxValue;   // on-duty emergency vehicle: stock
+            // On-duty emergency vehicle: stock. (Review 2 F4: consistent with BeginLane, whose boxed-way-in skip needs the curve lookup
+            // BoxHold keeps, and S2-28 does not call BoxHold for emergency vehicles: the whole-path rule stays for them too.)
+            if (!EntryGiveWay.Applies(true, priority)) return float.MaxValue;
             if (!curves.TryGetComponent(lane, out Curve roadCurve) || !curves.TryGetComponent(way, out Curve wayCurve)) return float.MaxValue;
             // Where the way in leaves this lane and where it ends (the building side).
             float3 leavePoint, sidePoint;
@@ -330,8 +333,9 @@ namespace JunctionRules.Stage2
             // The box: the painted band on this lane that contains the leave point (the paint's own windows, 0.4.10 LaneWindow).
             bool boxed = false, inBox = false;
             float boxLineWait = 0f, bandStart = 0f;
+            FixedList128Bytes<float2> merged = default;
             if (m_BoxRule && m_BoxEntrances && m_BoxLookups && m_EdgeLaneData.HasComponent(lane) && m_OwnerData.TryGetComponent(lane, out Owner edgeOwner)
-                && LaneBands(lane, edgeOwner.m_Owner, length, inverse, own.m_CarriagewayGroup, ref curves, out FixedList128Bytes<float2> merged))
+                && LaneBands(lane, edgeOwner.m_Owner, length, inverse, own.m_CarriagewayGroup, ref curves, out merged))
             {
                 for (int m = 0; m < merged.Length; m++)
                 {
@@ -366,10 +370,16 @@ namespace JunctionRules.Stage2
                 cross.m_CarLanes = carLanes;
                 float spotM = (spot == EntryGiveWay.Spot.BoxLine ? BoxDriving.EnteringEntry(start, bandStart) : leave) * length;
                 float front = spotM - margin;
-                float shift = front - EntryGiveWay.KeepClearFront(front, ownLen, margin, ref cross);
+                float newFront = EntryGiveWay.KeepClearFront(front, ownLen, margin, ref cross);
+                float shift = front - newFront;
                 if (shift > WholePathRule.SpotEpsilon)
                 {
-                    if (ExitGiveWay.CanHold(wait - shift + ExitGiveWay.SpotSlack, margin, braking))
+                    // Review 2 F1: only when the whole body still stands on this lane (not back in the junction) and outside every box on it.
+                    BandMetres bandList = default;
+                    bandList.m_Bands = merged;
+                    bandList.m_Length = length;
+                    bool bodyClear = EntryGiveWay.BodyOnLaneOutsideBands(newFront, ownLen, margin, ref bandList);
+                    if (bodyClear && ExitGiveWay.CanHold(wait - shift + ExitGiveWay.SpotSlack, margin, braking))
                     {
                         wait -= shift;
                         if (Counting) m_EntryKeptClear = true;
@@ -482,6 +492,20 @@ namespace JunctionRules.Stage2
 
         /// <summary>0.4.11 review 1 F2: a gate / lot / parking way in counts as leaving this lane when its road-side end lies within this many metres of it.</summary>
         public const float EntryOnLaneMetres = 3f;
+
+        /// <summary>0.4.11 review 2 F1: the lane's painted bands (driving offsets) in metres, for EntryGiveWay.BodyOnLaneOutsideBands.</summary>
+        private struct BandMetres : IConflictList
+        {
+            public FixedList128Bytes<float2> m_Bands;
+            public float m_Length;
+            public int Count => m_Bands.Length;
+            public bool Conflict(int i, out float start, out float end)
+            {
+                start = m_Bands[i].x * m_Length;
+                end = m_Bands[i].y * m_Length;
+                return true;
+            }
+        }
 
         /// <summary>0.4.11 review 1 F1: other drives' crossings of the entrant's own lane (metres along it, driving direction), for EntryGiveWay.KeepClearFront.</summary>
         private struct DriveCrossings : IConflictList
@@ -1450,6 +1474,32 @@ namespace JunctionRules.Stage2
             return false;
         }
 
+        /// <summary>
+        /// 0.4.11 (G23): every car lane that continues <paramref name="lane"/> at its end (Lane.m_StartNode == its m_EndNode, the
+        /// stock continuation test, in the subLanes of the edge's two nodes) carries a red or amber light (LaneSignal Stop /
+        /// SafeStop): a vehicle standing on it waits for the light. False for a node lane (already in the junction), no
+        /// continuation or any continuation without a light / on green.
+        /// </summary>
+        private bool LaneEndsAtRed(Entity lane, ref ExitReads reads)
+        {
+            if (m_NodeLaneData.HasComponent(lane) || !m_LaneData.TryGetComponent(lane, out Lane laneData) || !m_OwnerData.TryGetComponent(lane, out Owner owner)
+                || !m_ExitEdgeData.TryGetComponent(owner.m_Owner, out Game.Net.Edge edge)) return false;
+            int found = 0;
+            for (int n = 0; n < 2; n++)
+            {
+                Entity node = n == 0 ? edge.m_Start : edge.m_End;
+                if (!m_SubLanes.TryGetBuffer(node, out DynamicBuffer<Game.Net.SubLane> subs)) continue;
+                for (int i = 0; i < subs.Length; i++)
+                {
+                    Entity c = subs[i].m_SubLane;
+                    if (!reads.m_CarLanes.HasComponent(c) || !m_LaneData.TryGetComponent(c, out Lane cl) || !cl.m_StartNode.Equals(laneData.m_EndNode)) continue;
+                    found++;
+                    if (!reads.m_Signals.TryGetComponent(c, out LaneSignal sig) || !BoxDriving.LightStopsInWindow((int)sig.m_Signal)) return false;
+                }
+            }
+            return found > 0;
+        }
+
         /// <summary>Up to 8 feeding lanes (fixed fields: Burst, no allocation).</summary>
         private struct Feeders
         {
@@ -1541,6 +1591,7 @@ namespace JunctionRules.Stage2
         {
             if (!reads.m_LaneObjects.TryGetBuffer(lane, out DynamicBuffer<LaneObject> objects) || objects.Length == 0) return false;
             int signalType = (int)signal.m_Signal, signalFlags = (int)signal.m_Flags;
+            int redKnown = 0;   // 0.4.11 (G23): 0 = not read yet, 1 = this lane ends at red / amber for every way on, 2 = not
             // 0.4.11 review 1 F1: an entrant's scan lets only the vehicle nearest before the conflict count as present while standing.
             Entity nearest = Entity.Null;
             if (m_EntryScan)
@@ -1600,11 +1651,26 @@ namespace JunctionRules.Stage2
                 }
                 bool occupies = front > cStart && rear < cEnd;
                 float braking = VehicleUtils.GetBrakingDistance(data, speed, ReservationTimeStep);
+                // 0.4.11 (G23, owner: vehicles stopped at a red signal never count as approaching traffic): a vehicle standing
+                // before the conflict on a lane whose every way on at its end is red / amber waits for the light (the queue at
+                // the red), not for the exit: it is not "present". Moving vehicles are judged as before (they may still pass
+                // the conflict before their stop line).
+                if (ExitGiveWay.QueuedAtRedNotPresent(occupies, gap, speed, true))
+                {
+                    if (redKnown == 0) redKnown = LaneEndsAtRed(lane, ref reads) ? 1 : 2;
+                    if (ExitGiveWay.QueuedAtRedNotPresent(occupies, gap, speed, redKnown == 1))
+                    {
+                        if (Counting) m_RedQueueIgnored = true;
+                        continue;
+                    }
+                }
                 // 0.4.9 (G15): a vehicle standing before the exit while it waits for room INTO a building (G9 entrance hold,
                 // recorded this or the last navigation updates) is not "present at the exit": the exit may go.
                 bool entering = !occupies && gap > 0f && ((gap <= ExitGiveWay.PresentMetres && (EnteringHeld(e) || (m_EntryScan && EntryGapHeld(e))))
-                    // review 1 F1: for an entrant only the vehicle nearest before the conflict can be present while standing
-                    || (m_EntryScan && !EntryGiveWay.StandingCountsAsPresent(e == nearest, false)));
+                    // review 1 F1: for an entrant only the vehicle nearest before the conflict can be present while standing;
+                    // review 2 F2: never one on a lane BEFORE the crossed lane (a feeder: the conflict lies beyond its end, so
+                    // whatever stands on the crossed lane or the junction is nearer)
+                    || (m_EntryScan && (cStart >= curve.m_Length || !EntryGiveWay.StandingCountsAsPresent(e == nearest, false))));
                 // 0.4.11 (G21): an entrant's scan (m_EntryScan) also lets a standing vehicle that waits for a gap to turn in go unseen
                 // (two facing entrances would otherwise wait for each other); exits still wait for it (it stands in the lane they join).
                 if (entering && Counting) { if (m_EntryScan) m_EntryEntrantIgnored = true; else m_ExitEntrantIgnored = true; }

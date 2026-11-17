@@ -116,7 +116,7 @@ namespace JunctionRules.Tests
             Check(se.Contains("m_VehicleLength > 0f ? m_VehicleLength : 4f, m_RoomMargin"), "whole length incl. trailers + the room margin");
             string wj = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Stage2", "JRWholeJunction.cs"));
             Check(wj.Contains("ExitEvent(eventTable, entity, frame, ExitGiveWay.SameExitEntryKind)) Add(counters, Stage2Counters.BoxSameExitEntries, 1);"), "counter: entered a box under the same-exit-lane exception (per vehicle)");
-            Check(Stage2Counters.BoxSameExitEntries == Stage2Counters.Count - 2 && Stage2Counters.BoxSameExitStanding == Stage2Counters.Count - 1, "G22 counters at the end");
+            Check(Stage2Counters.BoxSameExitEntries == Stage2Counters.Count - 4 && Stage2Counters.BoxSameExitStanding == Stage2Counters.Count - 3, "G22 counters at the end");
             Check(Stage2Counters.Format(2, new long[Stage2Counters.Count], 0, 0, 2, 2).Contains("entered a box under the same-exit-lane exception 0"), "timing line names the counter");
         }
     }

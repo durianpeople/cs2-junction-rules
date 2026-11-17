@@ -158,6 +158,15 @@ namespace JunctionRules.Core
             return reach >= gap;
         }
 
+        /// <summary>
+        /// 0.4.11 (G23, owner 17 Nov: "vehicles stopped at a red signal must never count as approaching traffic for gap
+        /// judgements"): the 10 m present rule does not apply to a vehicle standing (&lt;= EnteringStandSpeed) before the
+        /// conflict on a lane whose every way on is red / amber (laneEndsAtRed): it waits for the light. Occupying the conflict
+        /// still blocks; a moving vehicle is judged as before (it may pass the conflict before its stop line).
+        /// </summary>
+        public static bool QueuedAtRedNotPresent(bool occupies, float gap, float speed, bool laneEndsAtRed) =>
+            laneEndsAtRed && !occupies && gap > 0f && gap <= PresentMetres && speed <= EnteringStandSpeed;
+
         /// <summary>0.4.9 (G15): a vehicle held for room into a building counts as standing up to this speed (m/s; review F2: 0.5 -> 0.2, one that starts to move is judged as moving).</summary>
         public const float EnteringStandSpeed = 0.2f;
 

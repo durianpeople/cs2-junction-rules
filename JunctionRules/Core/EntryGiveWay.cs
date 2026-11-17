@@ -113,6 +113,23 @@ namespace JunctionRules.Core
         }
 
         /// <summary>
+        /// Review 2 F1: a keep-clear shift is taken only when the whole body (front back to front - ownLength - margin) still
+        /// stands on this lane (not back in the junction before it) and outside every painted box (bands, driving offsets on
+        /// the lane): a shifted spot never puts a part of the vehicle in a box.
+        /// </summary>
+        public static bool BodyOnLaneOutsideBands<T>(float front, float ownLength, float margin, ref T bandsMetres) where T : struct, IConflictList
+        {
+            float rear = front - ownLength - margin;
+            if (rear < 0f) return false;
+            for (int i = 0; i < bandsMetres.Count; i++)
+            {
+                if (!bandsMetres.Conflict(i, out float s, out float e)) continue;
+                if (e > rear && s < front + margin) return false;
+            }
+            return true;
+        }
+
+        /// <summary>
         /// Review 1 F1 (queued followers): for an ENTRANT's scan, only the vehicle nearest before a crossed conflict on a lane can
         /// be "present" while standing (the exits' 10 m rule); a vehicle standing behind it cannot reach the conflict before it
         /// does. Without this, a westbound car queued behind a waiting entrant, within 10 m of a facing entrant's crossing,
