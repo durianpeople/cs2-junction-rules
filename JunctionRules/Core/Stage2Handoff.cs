@@ -269,7 +269,10 @@ namespace JunctionRules.Core
         /// <summary>0.4.12 (G29): car-steps standing with the nose past a junction box line while that lane's own light shows red /
         /// amber (the game's amber rule: entered on green / could not stop); kept apart from the must-be-0 nose count.</summary>
         public const int BoxNoseAtLight = FeedingScans + 74;
-        public const int Count = FeedingScans + 75;
+        /// <summary>0.4.12 OWNER DECISION REVISED: vehicles (episodes) admitted under the same-exit-lane exception whose waiting
+        /// footprint has a zebra under it (allowed by the owner: "it can block ANY pedestrian paths for the yielding exit at the box").</summary>
+        public const int BoxSameExitZebraTail = FeedingScans + 75;
+        public const int Count = FeedingScans + 76;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -450,7 +453,7 @@ namespace JunctionRules.Core
                    (ruleMask >= 2 && (exitMask >= 2 || deltas[StockRoomHoldSkipped] > 0) ? "; stock room hold skipped (unboxed, crossings clear) " + deltas[StockRoomHoldSkipped].ToString(ci) + " (boxed, same-exit-lane exception " + deltas[StockRoomHoldSkippedBoxed].ToString(ci) + ")" : "") +
                    // 0.4.11 (G22): the owner's same-exit-lane exception.
                    (boxMask >= 2 ? "; entered a box under the same-exit-lane exception " + deltas[BoxSameExitEntries].ToString(ci)
-                       + " (standing in a box under it " + deltas[BoxSameExitStanding].ToString(ci) + ")" : "") +
+                       + " (standing in a box under it " + deltas[BoxSameExitStanding].ToString(ci) + "; admitted with a tail on a zebra " + deltas[BoxSameExitZebraTail].ToString(ci) + ")" : "") +
                    "; " + points;
         }
     }

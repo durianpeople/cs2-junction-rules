@@ -1436,7 +1436,7 @@ namespace JunctionRules.Stage2
             if (!ExitInBand(join.m_Lane, join.m_CurvePosition.x, ref carLanes, ref curves)) return;
             // merge only; the pavement's far end on the leaving lane
             int ahead = 0, joined = 0;
-            float walkEnd = -1f, walkStart = -1f;
+            float walkEnd = -1f, walkStart = -1f, zebraEnd = -1f;
             for (int i = 0; i < overlaps.Length; i++)
             {
                 LaneOverlap o = overlaps[i];
@@ -1447,7 +1447,8 @@ namespace JunctionRules.Stage2
                 {
                     // 0.4.12 (owner decision): the footprint may lie over the drive's sidewalk band / a non-zebra crossing;
                     // only a zebra limits it (walkEnd). walkStart (any pavement) still marks "front on the pavement" for the latch.
-                    if (PedestrianBlocksAsZebra(o.m_Other, (int)wp.m_Flags, ref curves) && e * wayOutLength > walkEnd) walkEnd = e * wayOutLength;
+                    // 0.4.12 OWNER DECISION REVISED: no pedestrian path limits the footprint (walkEnd stays -1); a zebra is noted for the counter
+                    if (SameExitException.BlocksAsZebra((int)wp.m_Flags) && e * wayOutLength > zebraEnd) zebraEnd = e * wayOutLength;
                     if (walkStart < 0f || s * wayOutLength < walkStart) walkStart = s * wayOutLength;
                     continue;
                 }
@@ -1479,18 +1480,29 @@ namespace JunctionRules.Stage2
                     if (rear < rearAhead) rearAhead = rear;
                 }
             if (!ExitSameLane.Footprint(joinM, joinCurve.m_Length, rearAhead, m_VehicleLength > 0f ? m_VehicleLength : 4f, m_RoomMargin, wayOutLength, walkEnd,
-                out float from, out float to, out _)) return;
+                out float from, out float to, out float wayFrom)) return;
+            bool zebraTail = zebraEnd > wayFrom;
             // no other path of the joined lane under the footprint (a way in / out of a building, a turn-in)
             if (overlapData.TryGetBuffer(join.m_Lane, out DynamicBuffer<LaneOverlap> jo))
                 for (int i = 0; i < jo.Length; i++)
                 {
                     LaneOverlap o = jo[i];
                     if (o.m_Other == wayOut || ((int)o.m_Flags & WholePathRule.Water) != 0) continue;
-                    if (pedestrianLanes.TryGetComponent(o.m_Other, out Game.Net.PedestrianLane jp) && !PedestrianBlocksAsZebra(o.m_Other, (int)jp.m_Flags, ref curves)) continue;   // 0.4.12 owner: non-zebra path OK
+                    if (pedestrianLanes.TryGetComponent(o.m_Other, out Game.Net.PedestrianLane jp))
+                    {
+                        // 0.4.12 owner: any pedestrian path may be under it (a zebra is noted for the counter)
+                        if (SameExitException.BlocksAsZebra((int)jp.m_Flags))
+                        {
+                            StretchGeometry.ToConflict((int)o.m_Flags, o.m_ThisStart, o.m_ThisEnd, inverseJ, false, out float zs, out float ze);
+                            if (ExitSameLane.TouchesOther(zs * joinCurve.m_Length, ze * joinCurve.m_Length, from, to)) zebraTail = true;
+                        }
+                        continue;
+                    }
                     StretchGeometry.ToConflict((int)o.m_Flags, o.m_ThisStart, o.m_ThisEnd, inverseJ, false, out float s, out float e);
                     if (ExitSameLane.TouchesOther(s * joinCurve.m_Length, e * joinCurve.m_Length, from, to)) return;
                 }
             m_G28JoinLane = join.m_Lane;
+            if (zebraTail) m_SameExitZebraTail = true;
             m_G28Queue = rearAhead < joinCurve.m_Length;   // a standing queue ahead: vehicles standing behind the merge belong to it
         }
 

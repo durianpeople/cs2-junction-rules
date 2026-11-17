@@ -2169,32 +2169,33 @@ drops that hold when G22 admits the car, so the remaining question is only G22's
 the blocking path is Lilac Street's crossing (its tail), otherwise it enters. Pedestrian-path rule unchanged pending the
 owner's ruling on tails over unmarked crossings.
 
-### 22.9 Owner decision: the same-exit-lane exception may block non-zebra and pavement pedestrian paths
+### 22.9 Owner decision (revised): the same-exit-lane exception may block ANY pedestrian path
 
-Owner 17 Nov (G22 / G28 / G29): "for this exception, it is allowed to block non-zebra and pavement pedestrian paths". So
-for the same-exit-lane exception (junction boxes, G22; building drive exits, G28) the waiting footprint may lie over
-unmarked crossings (crosswalk lane with `Unsafe`) and pavement / footway paths (no `Crosswalk` flag, incl. a drive's
-sidewalk band). Never over a ZEBRA = the game's marked crosswalk (`Crosswalk` without `Unsafe`): exactly the definition of
-the kept "cars never stop on a zebra" rule (`ZebraSections.IsZebra`), so the exception never admits a car that the
-no-stop rule would then stop short on a crossing (`Core/SameExitException.BlocksAsZebra`). Vehicle paths into other lanes
-still disqualify. Only zebras limit the junction footprint's front (exit zebra) and the G28 leaving-lane footprint (a
-drive's sidewalk band no longer does). No change to the copied game code (42 blocks / 328 lines as 0.4.11).
+Owner 17 Nov, REVISED (supersedes "non-zebra and pavement only"): "it can block ANY pedestrian paths for the yielding exit
+at the box". Under the same-exit-lane exception (G22 junction boxes; G28 building drive exits) the waiting footprint may
+lie over any pedestrian path: zebras, unmarked crossings, pedestrian-street crossings, pavements / footways (incl. a
+drive's sidewalk band). Only vehicle paths into other lanes (and tracks / unknown overlaps) disqualify. This overrides
+"cars never stop on a zebra" for vehicles admitted under the exception only:
+- G22 footprint (`JRSameExit`): every pedestrian overlap is allowed; the front is no longer held before an exit zebra.
+- G28 footprint (`G28Check`): no pedestrian path limits the leaving-lane part (the old pavement / zebra limit is gone);
+  joined-lane pedestrian paths allowed.
+- The zebra rule's room hold (`BeginZebras`: "no room past the zebra -> wait before it") is skipped when, after its own
+  room test failed, the car on that lane is admitted by the exception (`SameExitZebraExempt`: G22 on a boxed junction
+  lane, G28 on a drive's leaving lane). Cars that have room are unaffected; cars not admitted keep the rule.
+Kept: cars never drive into people (the game's pedestrian check and "Cars never push through people": a person ON the
+crossing stops the car before it moves onto them); people pass a blocking car after 2 s (setting), so a car standing on a
+zebra does not lock pedestrians. Counter: `entered a box under the same-exit-lane exception N (...; admitted with a tail on
+a zebra M)` (per entry episode, the game's marked crosswalk under the admitted footprint). No change to the copied game code
+(42 blocks / 328 lines). The bottom police car (Lilac Street crossing) is now admitted whatever that crossing counts as.
+History: a first version (zebras never blocked, pedestrian-street crossings as non-zebra) was rejected by review (arm pick
+was a tie); the second (zebra = game-marked crosswalk, never blocked) was approved; both superseded by this decision.
 
-Review (Sonnet) of a first version that also treated a pedestrian-street crossing as non-zebra: REJECT (its arm pick was
-an arbitrary tie: every edge's curve ends at the node; and the no-stop rule would still call that crossing a zebra), so
-that part was dropped. **OPEN FOR THE OWNER:** Lilac Street's crossing at 621408 (the bottom police car's arm) is a
-pedestrian street: the game gives its crossing lane the MARKED flag (`Crosswalk`, node end flags "Crosswalk, Pavement,
-Tiles") although no stripes are drawn. It therefore counts as a zebra for BOTH rules today. If the owner wants
-pedestrian-street crossings treated as unmarked, that should change both rules together (the exception and "never stop on
-a zebra"); it needs the arm's composition (read by the arm's direction, not the curve end). For the bottom police car
-itself (turn ~9.3 m, crossing 0-2.2 m) the footprint most likely clears the crossing anyway (22.8 follow-up), and the
-0.4.12 G29 fix removes what held it in 0.4.11.
-
-Tests `PedPathTests`: tail over an unmarked crossing -> enters; with a zebra there -> waits; a vehicle path into another
-lane under it -> waits; the exception and the no-stop rule agree for every flag combination; G28: a van's tail over the
-drive's sidewalk band -> enters, over a zebra band -> refused.
+Tests `PedPathTests`: tail over an unmarked crossing -> enters; tail over a zebra -> enters; footprint over another lane's
+path -> waits; a track under it -> waits; G28 van tail over the sidewalk band -> enters; repo pins of the zebra-hold skip
+and the counter.
 
 | # | Do | Expect |
 |---|---|---|
-| 30-1 | A same-exit case whose tail lies over an unmarked crossing or a footway | it enters and waits in the box (counter `entered a box under the same-exit-lane exception` +1) |
-| 30-2 | A same-exit case whose tail would lie on a zebra (incl. a pedestrian-street crossing, pending the owner) | waits before the box |
+| 30-1 | The bottom police car's case at 621408 (exit lane queued past the box) | enters and waits in the box; `entered ... exception` +1 (and `tail on a zebra` +1 if its tail lies on the crossing) |
+| 30-2 | People arrive at the crossing under a waiting admitted car | they pass it after 2 s; a car about to move onto a person on the crossing stops |
+| 30-3 | A same-exit case whose footprint covers another lane's path | waits before the box |

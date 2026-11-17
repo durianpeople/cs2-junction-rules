@@ -114,8 +114,13 @@ namespace JunctionRules.Core
         /// </summary>
         public static bool BlocksAsZebra(int pedestrianFlags) => ZebraSections.IsZebra(pedestrianFlags);
 
-        /// <summary>The footprint kind of a pedestrian path (0.4.12 owner decision).</summary>
-        public static Path PedestrianKind(int pedestrianFlags) => BlocksAsZebra(pedestrianFlags) ? Path.Other : Path.Pavement;
+        /// <summary>
+        /// 0.4.12 OWNER DECISION REVISED (17 Nov, supersedes the zebra limit above for this exception): "it can block ANY pedestrian
+        /// paths for the yielding exit at the box". Every pedestrian path (zebra, unmarked crossing, pavement) may lie under the
+        /// footprint; only vehicle paths into other lanes disqualify. <see cref="BlocksAsZebra"/> now only feeds the counter
+        /// "admitted under the exception with a tail on a zebra".
+        /// </summary>
+        public static Path PedestrianKind(int pedestrianFlags) => Path.Pavement;
 
         /// <summary>The footprint [from, to] admits the car: every overlap range [s, e] (metres) it touches is a SameExit path.</summary>
         public static bool Admits<T>(float from, float to, ref T paths) where T : struct, IFootprintPaths

@@ -45,16 +45,11 @@ namespace JunctionRules.Stage2
             if (!m_LaneData.TryGetComponent(lane, out Lane ownLane) || !overlapData.TryGetBuffer(lane, out DynamicBuffer<LaneOverlap> overlaps)) return false;
             // Exit zebra: the first pedestrian overlap in the far half (the zebra rule never lets the car stand on it).
             float zebra = float.MaxValue;
-            // 0.4.12 (owner decision): a non-zebra pedestrian path (unmarked crossing, pavement) may lie under the footprint:
-            // bit i of 'pavement' (first 64 overlaps) = overlap i is such a path; zebras (the no-stop rule's own) limit the front.
-            ulong pavement = 0UL;
-            for (int i = 0; i < overlaps.Length; i++)
-            {
-                if (!pedestrianLanes.TryGetComponent(overlaps[i].m_Other, out Game.Net.PedestrianLane ped)) continue;
-                if (i < 64 && !PedestrianBlocksAsZebra(overlaps[i].m_Other, (int)ped.m_Flags, ref curves)) { pavement |= 1UL << i; continue; }
-                StretchGeometry.ToConflict((int)overlaps[i].m_Flags, overlaps[i].m_ThisStart, overlaps[i].m_ThisEnd, inverse, false, out float zs, out _);
-                if (zs >= 0.5f && zs * laneLength < zebra) zebra = zs * laneLength;
-            }
+            // 0.4.12 OWNER DECISION REVISED: ANY pedestrian path may lie under the footprint (zebras too) and the front is not
+            // held before an exit zebra; 'zebras' marks the zebra overlaps (first 64) for the counter "tail on a zebra".
+            ulong zebras = 0UL;
+            for (int i = 0; i < overlaps.Length && i < 64; i++)
+                if (pedestrianLanes.TryGetComponent(overlaps[i].m_Other, out Game.Net.PedestrianLane ped) && SameExitException.BlocksAsZebra((int)ped.m_Flags)) zebras |= 1UL << i;
             // Box chain: the rear of the nearest vehicle standing / driving ahead of the car on this lane.
             float rearAhead = float.MaxValue;
             if (laneObjects.TryGetBuffer(lane, out DynamicBuffer<LaneObject> objects))
@@ -89,12 +84,39 @@ namespace JunctionRules.Stage2
             paths.m_CarLanes = carLanes;
             paths.m_Lanes = m_LaneData;
             paths.m_Pedestrian = pedestrianLanes;
-            paths.m_PavementMask = pavement;
-            return SameExitException.Admits(from, to, ref paths);
+            if (!SameExitException.Admits(from, to, ref paths)) return false;
+            // counter only: does a zebra lie under the admitted footprint?
+            for (int i = 0; i < overlaps.Length && i < 64; i++)
+            {
+                if ((zebras & (1UL << i)) == 0) continue;
+                StretchGeometry.ToConflict((int)overlaps[i].m_Flags, overlaps[i].m_ThisStart, overlaps[i].m_ThisEnd, inverse, false, out float zs, out float ze);
+                if (zs * laneLength < to && ze * laneLength > from) { m_SameExitZebraTail = true; break; }
+            }
+            return true;
         }
 
-        /// <summary>0.4.12 (owner decision, Core SameExitException.BlocksAsZebra): is this pedestrian lane a zebra the same-exit-lane exception must never block (the game's marked crosswalk, as the no-stop-on-zebra rule)?</summary>
-        private static bool PedestrianBlocksAsZebra(Entity ped, int pedFlags, ref ComponentLookup<Curve> curves) => SameExitException.BlocksAsZebra(pedFlags);
+        /// <summary>
+        /// 0.4.12 owner decision revised: the zebra room hold (BeginZebras) is skipped for this lane: a boxed junction lane whose car
+        /// G22 admits (before the lane: start 0, else its own position), or a drive's leaving lane whose car G28 admits.
+        /// </summary>
+        private bool SameExitZebraExempt(Entity lane, DynamicBuffer<LaneOverlap> overlaps, float curveX, float length, bool inverse, Entity self,
+            ref ComponentLookup<Game.Net.CarLane> carLanes, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves,
+            ref ComponentLookup<Moving> moving, ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs,
+            ref ComponentLookup<ObjectGeometryData> geometries, ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
+        {
+            float start = StretchGeometry.ToDriving(curveX, inverse);
+            if (IsBoxedJunctionLane(lane) && m_OwnerData.TryGetComponent(lane, out Owner o))
+                return SameExitAdmits(lane, o.m_Owner, length, inverse, start, self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs,
+                    ref geometries, ref overlapData, ref pedestrianLanes, ref moving);
+            if (m_ExitRule && carLanes.TryGetComponent(lane, out Game.Net.CarLane cl) && ExitGiveWay.IsDrivewayExitLane((uint)cl.m_Flags))
+            {
+                G28Check(lane, overlaps, start, inverse, length, self, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs,
+                    ref geometries, ref overlapData, ref pedestrianLanes);
+                return m_G28JoinLane != Entity.Null || m_G28Latched != Entity.Null;
+            }
+            return false;
+        }
+
 
         /// <summary>0.4.11 (G22): the junction lane's overlaps as footprint paths (metres, kind by the other lane's exit lane).</summary>
         private struct FootprintPaths : IFootprintPaths
@@ -106,8 +128,7 @@ namespace JunctionRules.Stage2
             public ComponentLookup<Game.Net.CarLane> m_CarLanes;
             public ComponentLookup<Lane> m_Lanes;
             public ComponentLookup<Game.Net.PedestrianLane> m_Pedestrian;
-            /// <summary>0.4.12: bit i = overlap i is a non-zebra pedestrian path (owner: may be under the footprint).</summary>
-            public ulong m_PavementMask;
+
 
             public int Count => m_Overlaps.Length;
 
@@ -119,7 +140,7 @@ namespace JunctionRules.Stage2
                 end = e * m_Length;
                 kind = SameExitException.Path.Other;
                 if (((int)o.m_Flags & WholePathRule.Water) != 0) return false;
-                if (i < 64 && (m_PavementMask & (1UL << i)) != 0) { kind = SameExitException.Path.Pavement; return true; }
+                if (m_Pedestrian.HasComponent(o.m_Other)) { kind = SameExitException.Path.Pavement; return true; }   // 0.4.12 owner: any pedestrian path
                 if (m_CarLanes.HasComponent(o.m_Other) && m_Lanes.TryGetComponent(o.m_Other, out Lane other))
                     kind = other.m_EndNode.Equals(m_ExitNode) ? SameExitException.Path.SameExit : SameExitException.Path.OtherExit;
                 return true;

@@ -74,7 +74,7 @@ namespace JunctionRules.Tests
 
         private static void G3CounterTests()
         {
-            Check(Stage2Counters.BoxTurnRoomWaits == Stage2Counters.ExitCapVehicles + 1 && Stage2Counters.BoxTurnRoomWaits == Stage2Counters.Count - 33, "G3 counter appended after the G1 counters (the review F1 counter after it)");
+            Check(Stage2Counters.BoxTurnRoomWaits == Stage2Counters.ExitCapVehicles + 1 && Stage2Counters.BoxTurnRoomWaits == Stage2Counters.Count - 34, "G3 counter appended after the G1 counters (the review F1 counter after it)");
             var dl = new long[Stage2Counters.Count];
             dl[Stage2Counters.BoxTurnRoomWaits] = 5;
             dl[Stage2Counters.BoxTurnWaits] = 9;
