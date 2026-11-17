@@ -1569,3 +1569,16 @@ Tests (MergedOutlineTests), on the live road (16 m, 3 m footways), for No. 40 Al
 - drawn as one ring;
 - the old separate outlines left the gap uncovered;
 - a marking in the gap still keeps them apart.
+
+### 20.10 Final review (Sonnet, APPROVE): what to watch in game
+
+1. The merged outline itself (20.9): the paint and driving code that builds it needs the game, so only the core geometry
+   is tested offline. Check one merged pair in game (No. 40 Alderwood): one outline, one hatch, cars stop at its first line.
+2. Driving and paint choose their boxes from slightly different lists (driving: every box with a valid window; paint:
+   the boxes it drew). Where they differ, driving keeps two boxes the paint merged, never the reverse (the safe side).
+3. A vehicle standing in a box ahead (e.g. a bus at a stop inside a box) keeps followers before the box until it moves:
+   watch for long queues behind such a stop.
+4. The stricter room test makes cars commit at a line with less measured room more often in the model (4082 against
+   1706, 20.8). None of them ended standing in a box without a light change.
+5. A standing junction-box car with only its TAIL in the box is counted only where its nose / lanes show it (the probe
+   sees the nose case and exit / entrance boxes fully).
