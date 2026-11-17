@@ -97,6 +97,7 @@ namespace JunctionRules.Stage2
             ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars,
             ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
         {
+            BeginHoldBlocker();   // 0.4.9 (G17)
             if (!m_BoxLookups || !carLanes.HasComponent(lane)) return float.MaxValue;
             float start = StretchGeometry.ToDriving(curveOffset.x, inverse);
             float end = StretchGeometry.ToDriving(curveOffset.y, inverse);
@@ -291,6 +292,7 @@ namespace JunctionRules.Stage2
             ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars,
             ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
         {
+            BeginHoldBlocker();   // 0.4.9 (G17)
             if (!RuleOn || !m_BoxLane || !m_LaneActive || m_LaneEntity != lane || !m_BoxLookups) return float.MaxValue;
             int turn = m_BoxTurnIndex;
             if (turn < 0 || turn >= m_Stretch.Spots.Count) return float.MaxValue;

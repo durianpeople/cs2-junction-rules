@@ -96,8 +96,8 @@ namespace JunctionRules.Tests
             Check(s25 > 0 && s35 > s25 && s29 > s35, "S2-37 after S2-25 (zebra spots known) and before S2-29");
             Check(it.IndexOf("// JR-STAGE2 BEGIN S2-37:", s35 + 1, StringComparison.Ordinal) < 0, "S2-37 once");
             string block = it.Substring(s35, it.IndexOf("JR-STAGE2 END", s35, StringComparison.Ordinal) - s35);
-            Check(block.Contains("if (m_JR.m_BoxRule)") && block.Contains("m_JR.BoxTurnRoomHold(") && block.Contains("m_Blocker = Entity.Null;") && block.Contains("m_BlockerType = BlockerType.Continuing;"),
-                "S2-37 gated by the box setting, sets no blocker vehicle");
+            Check(block.Contains("if (m_JR.m_BoxRule)") && block.Contains("m_JR.BoxTurnRoomHold(") && block.Contains("m_Blocker = m_JR.HoldBlocker;") && block.Contains("m_BlockerType = BlockerType.Continuing;"),
+                "S2-37 gated by the box setting; 0.4.9 (G17): names the vehicle that took its exit room as blocker");
             Check(it.Substring(0, 2000).Contains("S2-29, S2-37") /* JR-T-014d: S2-50 ids follow */, "iterator header lists S2-37");
             string rules = File.ReadAllText(Path.Combine(root, "tools", "vanilla_rules.json"));
             string dev = File.ReadAllText(Path.Combine(root, "DEVIATIONS.md"));

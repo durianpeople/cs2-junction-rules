@@ -1137,7 +1137,7 @@ public struct JRCarLaneSpeedIterator
 			if (jrBoxHold < m_MaxSpeed)
 			{
 				m_MaxSpeed = jrBoxHold;
-				m_Blocker = Entity.Null;
+				m_Blocker = m_JR.HoldBlocker;   // 0.4.9 (G17): the vehicle the hold waits for (stock names the car it stops behind)
 				m_BlockerType = BlockerType.Continuing;
 			}
 		}
@@ -1177,7 +1177,7 @@ public struct JRCarLaneSpeedIterator
 			if (jrBoxHold < m_MaxSpeed)
 			{
 				m_MaxSpeed = jrBoxHold;
-				m_Blocker = Entity.Null;
+				m_Blocker = m_JR.HoldBlocker;   // 0.4.9 (G17): the vehicle the hold waits for (stock names the car it stops behind)
 				m_BlockerType = BlockerType.Continuing;
 			}
 		}
@@ -1253,7 +1253,7 @@ public struct JRCarLaneSpeedIterator
 			if (jrZebraHold < m_MaxSpeed)
 			{
 				m_MaxSpeed = jrZebraHold;
-				m_Blocker = Entity.Null;
+				m_Blocker = m_JR.HoldBlocker;   // 0.4.9 (G17): the vehicle the hold waits for (stock names the car it stops behind)
 				m_BlockerType = BlockerType.Continuing;
 			}
 		}
@@ -1265,7 +1265,7 @@ public struct JRCarLaneSpeedIterator
 			if (jrTurnRoomHold < m_MaxSpeed)
 			{
 				m_MaxSpeed = jrTurnRoomHold;
-				m_Blocker = Entity.Null;
+				m_Blocker = m_JR.HoldBlocker;   // 0.4.9 (G17): the vehicle the hold waits for (stock names the car it stops behind)
 				m_BlockerType = BlockerType.Continuing;
 			}
 		}
@@ -1277,7 +1277,7 @@ public struct JRCarLaneSpeedIterator
 			if (jrExitHold < m_MaxSpeed)
 			{
 				m_MaxSpeed = jrExitHold;
-				m_Blocker = Entity.Null;
+				m_Blocker = m_JR.HoldBlocker;   // 0.4.9 (G17): the vehicle the hold waits for (stock names the car it stops behind)
 				m_BlockerType = BlockerType.Crossing;
 			}
 		}

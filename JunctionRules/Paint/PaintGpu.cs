@@ -41,6 +41,9 @@ namespace JunctionRules.Paint
         private static readonly int s_EdgeNoise = Shader.PropertyToID("colossal_EdgeNoise");
         private static readonly int s_AreaParameters = Shader.PropertyToID("colossal_AreaParameters");
         private static readonly int s_DecalLayerMask = Shader.PropertyToID("colossal_DecalLayerMask");
+        // 0.4.9 (G16): the snow colour of the AreaDecalShader (DBufferMesh pixel shader, docs/shader-areadecal/blob054.asm: the
+        // albedo is lerp(paint, _Snow_BaseColorMap(world uv), snow factor from the global _SnowMap x colossal_SnowScale)).
+        private static readonly int s_SnowBaseColorMap = Shader.PropertyToID("_Snow_BaseColorMap");
 
         /// <summary>Layout of AreaBufferSystem's private AreaTriangleData (the overlay shader's buffer), stride 124.</summary>
         [StructLayout(LayoutKind.Sequential)]
@@ -55,6 +58,9 @@ namespace JunctionRules.Paint
         private Material m_Overlay;           // overlay path (null when not drawn)
         private Mesh m_Mesh;
         private Texture2D m_White, m_Normal, m_Mask;
+        /// <summary>0.4.9 (G16): 1x1 snow colour texture in the paint colour (so snow-covered paint still reads yellow) and its colour.</summary>
+        private Texture2D m_SnowPaint;
+        private Color m_SnowPaintColor;
         private ComputeBuffer m_Triangles, m_Colors, m_OverlayTris;
         private GraphicsBuffer m_Indices, m_Args;
         private Bounds m_Bounds;
@@ -208,6 +214,19 @@ namespace JunctionRules.Paint
                 SetT(s_NormalMap, "_NormalMap", m_Normal);
                 SetT(s_MaskMap, "_MaskMap", m_Mask);
             }
+            // 0.4.9 (G16, owner 17 Nov: every box turned WHITE in winter): our material is a copy of the game's rendered-area
+            // (surface) material, whose AreaDecalShader blends the albedo towards _Snow_BaseColorMap as the global snow map
+            // rises (grass / sand surfaces whiten in winter). The configuration material has no snow texture, so Unity's
+            // default "white" was used: snow turned the boxes white. The snow colour is now the paint colour (sRGB, like the
+            // base colour): in snow the box keeps its normal / smoothness snow response (dusted) but reads yellow.
+            Color paint = new Color((float)rp.Color[0], (float)rp.Color[1], (float)rp.Color[2], 1f);
+            if (m_SnowPaint == null || m_SnowPaintColor != paint)
+            {
+                if (m_SnowPaint != null) UnityEngine.Object.Destroy(m_SnowPaint);
+                m_SnowPaint = Plain(paint, false);
+                m_SnowPaintColor = paint;
+            }
+            SetT(s_SnowBaseColorMap, "_Snow_BaseColorMap", m_SnowPaint);
             if (missing.Count > 0 && !m_OptionalReported)
             {
                 m_OptionalReported = true;
@@ -341,6 +360,7 @@ namespace JunctionRules.Paint
             if (m_Overlay != null) { UnityEngine.Object.Destroy(m_Overlay); m_Overlay = null; }
             if (m_Mesh != null) { UnityEngine.Object.Destroy(m_Mesh); m_Mesh = null; }
             if (m_White != null) { UnityEngine.Object.Destroy(m_White); m_White = null; }
+            if (m_SnowPaint != null) { UnityEngine.Object.Destroy(m_SnowPaint); m_SnowPaint = null; }
             if (m_Normal != null) { UnityEngine.Object.Destroy(m_Normal); m_Normal = null; }
             if (m_Mask != null) { UnityEngine.Object.Destroy(m_Mask); m_Mask = null; }
         }

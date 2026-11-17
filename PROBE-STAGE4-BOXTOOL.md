@@ -1,6 +1,6 @@
 # Probe kit: Junction Rules 0.4.9-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits and entrances; vehicles leaving buildings give way before the sidewalk; merged boxes; median; markings hidden; gaps G1-G15)
 
-**0.4.9-probe (JR-T-015: 0.4.8 live gaps G12-G15), what changed since 0.4.8 (section 19):** G15 the Alderwood
+**0.4.9-probe (JR-T-015: 0.4.8 live gaps G12-G15), what changed since 0.4.8 (section 19):** G16 boxes stay yellow in snow; G17 holds name the vehicle they wait for, so No Vehicle Despawn and the cs2 deadlock finder see loops through Junction Rules holds. G15 the Alderwood
 deadlock (No. 40: a van waiting to turn in stood in No. 40's own exit box and the exit waited for it) cannot form: a
 vehicle never waits with any part of it in a box (bands closer than its length are one band for it, so it waits before
 the building's exit box too), and an exit does not wait for a vehicle that only waits for room INTO a building. G14
@@ -1152,7 +1152,45 @@ must be 0). A Go'd vehicle past the spot that is still moving is committed: pave
 physical checks still apply); one that stopped on the pavement is judged again at the road lane. "Standing on the road"
 counts only vehicles whose front is past the sidewalk spot.
 
-### 19.5 What to watch
+### 19.6 G16: boxes turned WHITE in snow
+
+Cause: the box paint is drawn with a copy of the game's surface-area material (AreaDecalShader, the shader of grass /
+sand / pavement areas). That shader lets surfaces snow over: its pixel shader (docs/shader-areadecal/blob054.asm) ends
+with `albedo = lerp(paint colour, _Snow_BaseColorMap(world uv), snow factor)`, the factor from the global snow map
+(`_SnowMap` x `colossal_SnowScale`, Game.Simulation/SnowSystem). The areas configuration material we copy has no snow
+texture, so Unity's default WHITE texture was used: in snow every box turned white (owner shot a868219c, Alderwood,
+winter night). Now the box material's snow colour map is a 1x1 texture in the paint colour: in snow the box keeps the
+snow response of the surface (normals / smoothness, so it looks snow-dusted like the stock surfaces) but its colour stays
+yellow. Rain / wetness is unchanged (the stock wet darkening). No new setting.
+
+### 19.7 G17: the No Vehicle Despawn mod did not see the Alderwood deadlock
+
+What the mod does (NoTrafficDespawn 85211_15, read-only decompile; owner setting `despawnBehavior: DespawnDeadlocksOnly`,
+defaults linger 400 frames, search depth 100, 1 removal per pass, stuck below Blocker speed 3): every 4 frames its
+`TagStuckObjectsJob` follows each vehicle's game `Blocker` (`m_Blocker`, through trailers to the controller); a vehicle
+whose chain comes back to itself (or to its target) is a deadlock and gets `StuckObject` (highlighted). A chain stops as
+"not stuck" at a link with `m_Blocker = Entity.Null`, type Temporary, or `m_MaxSpeed >= 3`. After a stuck vehicle has stayed
+stuck for 400 frames the mod sets `PathFlags.Stuck` on it (the game then removes it, i.e. despawns ONE vehicle of the loop
+per pass), until the loop is gone. It also asks a vehicle that blocks someone at a crossing to request space.
+
+Why it saw nothing: every Junction Rules hold wrote `Blocker.m_Blocker = Entity.Null` (the exit hold, the box / entrance
+hold, the zebra and right-turn room holds; the lot-exit branch even left `m_MaxSpeed` 255 = "moving"), so each chain stopped
+at the first Junction Rules hold: van (entrance hold) and No. 40's exit head (exit hold) both looked "not blocked by
+anyone". The game's own deadlock remover (StuckMovingObjectSystem) and the cs2 bridge's `cs2_vehicles` deadlocks
+(CS2MCP.Bridge RequestHandlers.Vehicles.cs 149-161: the same `Blocker.m_Blocker` chain among driving vehicles) were blind
+for the same reason; the bridge needs no change.
+
+Now every hold names the vehicle it waits for, as stock names the car it stops behind: the vehicle that took the room the
+hold needs (box, entrance, zebra, right-turn spot, exit room), or the road vehicle an exit gives way to; `Entity.Null`
+only when no vehicle is to blame (people on a crossing). The lot-exit / spawn-point holds also write the held speed. So a
+loop through Junction Rules holds is now visible: No Vehicle Despawn highlights it and, if it persists 400 frames,
+despawns one vehicle per pass (its own rule, owner's choice); `cs2_vehicles` lists it under deadlocks. With 0.4.9's G15
+rules the Alderwood loop should not form at all; this is the safety net the owner already runs.
+
+Check: `cs2_vehicles x,z` near a jam caused by Junction Rules shows queue heads behind named vehicles (not "Crossing"
+with nobody); a JR-caused loop (if any) appears under `deadlocks` and is highlighted by No Vehicle Despawn.
+
+### 19.8 What to watch
 
 | # | Do | Expect |
 |---|---|---|
@@ -1162,6 +1200,8 @@ counts only vehicles whose front is past the sidewalk spot.
 | 19-4 | Through traffic past an exit with vehicles waiting at it, lane clear past the box | through traffic keeps going; `held exits' keep-clear requests withdrawn` > 0 |
 | 19-5 | Timing line | `without a full judgement` 0 or close; `judged only on the sidewalk` small (no longer about equal to the crossings); `standing on the road after leaving` small |
 | 19-6 | NOTABLE `crosses the sidewalk ... NOT judged` or `stands on the road` lines | send the log + a shot of that spot |
+| 19-7 | Winter / snow (G16) | boxes stay YELLOW (may look snow-dusted) |
+| 19-8 | A jam at a JR hold (G17) | `cs2_vehicles` names the vehicle the held one waits for; a real loop is listed under deadlocks and highlighted by No Vehicle Despawn (which despawns one vehicle of it after ~400 frames) |
 
 Timing line, end: `...; judged only on the sidewalk (could not stop before it) L; exits not waiting for a vehicle that
 waits to turn in N; held exits' keep-clear requests withdrawn K`. Trace: a crossing judged only at the road lane is now a
@@ -1181,4 +1221,7 @@ in the gap): cautious, never bolder. (h) The no-parking mask still follows each 
 inside a joint box is not no-parking (no car fits there). (i) Review (Sonnet) fixes in: a second van queued behind the
 first for a full yard is recorded as waiting to turn in too (F1); the entrant record is at most 2 updates old and a
 vehicle above 0.2 m/s counts as moving (F2); a committed crossing keeps its Go fresh (F3); a failed union draws a joint
-box once (F6). (j) None of this has run in game yet.
+box once (F6). (j) G16: the snow colour map was proven from the shader disassembly, not seen in game. (k) G17: naming
+blockers also feeds the game's traffic-bottleneck notification (it groups 'Continuing' blockers) and its lane choice
+(a named blocker makes a car look for a better lane, as stock); No Vehicle Despawn will now despawn vehicles of
+JR-caused loops after 400 frames (the owner's own mod setting). (l) None of this has run in game yet.

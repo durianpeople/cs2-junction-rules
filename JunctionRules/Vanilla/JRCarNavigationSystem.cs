@@ -1680,8 +1680,9 @@ public class JRCarNavigationSystem : GameSystemBase
 					if (jrTargetExit < navigation.m_MaxSpeed)
 					{
 						navigation.m_MaxSpeed = jrTargetExit;
-						blocker.m_Blocker = Entity.Null;
+						blocker.m_Blocker = laneIterator.m_JR.HoldBlocker;   // 0.4.9 (G17)
 						blocker.m_Type = BlockerType.Crossing;
+						blocker.m_MaxSpeed = (byte)math.clamp(Mathf.RoundToInt(jrTargetExit * 2.2949998f), 0, 255);   // 0.4.9 (G17): as CheckBlocker, so a standing held vehicle reads as stopped
 					}
 					laneIterator.m_JR.TraceWait(m_JRSafetyEvents, entity, m_SimulationFrame);
 					laneIterator.m_JR.NoteExit(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane, num2, currentLane.m_Duration, ref laneIterator.m_CarLaneData, ref laneIterator.m_CurveData);
@@ -1763,7 +1764,9 @@ public class JRCarNavigationSystem : GameSystemBase
 					if (jrAreaExit < navigation.m_MaxSpeed)
 					{
 						navigation.m_MaxSpeed = jrAreaExit;
+						blocker.m_Blocker = laneIterator.m_JR.HoldBlocker;   // 0.4.9 (G17)
 						blocker.m_Type = BlockerType.Crossing;
+						blocker.m_MaxSpeed = (byte)math.clamp(Mathf.RoundToInt(jrAreaExit * 2.2949998f), 0, 255);   // 0.4.9 (G17): as CheckBlocker, so a standing held vehicle reads as stopped
 					}
 					// 0.4.7: the exit trace's first-wait line
 					laneIterator.m_JR.TraceWait(m_JRSafetyEvents, entity, m_SimulationFrame);
@@ -1785,7 +1788,7 @@ public class JRCarNavigationSystem : GameSystemBase
 				if (jrExitWait < laneIterator.m_MaxSpeed)
 				{
 					laneIterator.m_MaxSpeed = jrExitWait;
-					laneIterator.m_Blocker = Entity.Null;
+					laneIterator.m_Blocker = laneIterator.m_JR.HoldBlocker;   // 0.4.9 (G17)
 					laneIterator.m_BlockerType = BlockerType.Crossing;
 				}
 				// 0.4.7: the exit trace's first-wait line
@@ -1799,7 +1802,7 @@ public class JRCarNavigationSystem : GameSystemBase
 				if (jrLaneExit < laneIterator.m_MaxSpeed)
 				{
 					laneIterator.m_MaxSpeed = jrLaneExit;
-					laneIterator.m_Blocker = Entity.Null;
+					laneIterator.m_Blocker = laneIterator.m_JR.HoldBlocker;   // 0.4.9 (G17)
 					laneIterator.m_BlockerType = BlockerType.Crossing;
 				}
 				laneIterator.m_JR.TraceWait(m_JRSafetyEvents, entity, m_SimulationFrame);

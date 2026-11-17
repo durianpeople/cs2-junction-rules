@@ -102,6 +102,7 @@ namespace JunctionRules.Stage2
             ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<CarData> prefabCars,
             ref ComponentLookup<ObjectGeometryData> geometries, ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
         {
+            BeginHoldBlocker();   // 0.4.9 (G17)
             if (!m_ExitRule || !m_ExitLookups) return float.MaxValue;
             if (!carLanes.TryGetComponent(lane, out Game.Net.CarLane own) || !ExitGiveWay.IsDrivewayExitLane((uint)own.m_Flags)) return float.MaxValue;
             if (ExitGiveWay.IsEmergency(priority))
@@ -289,6 +290,7 @@ namespace JunctionRules.Stage2
             ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<CarData> prefabCars, ref ComponentLookup<ObjectGeometryData> geometries,
             ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
         {
+            BeginHoldBlocker();   // 0.4.9 (G17)
             m_ExitWaiting = false;
             if (!m_ExitRule || !m_ExitLookups) return float.MaxValue;
             if (!ExitJoinLane(connection, priority, next, true, ref carLanes, ref curves, out Entity road, out Curve roadCurve, out Owner roadOwner)) return float.MaxValue;
@@ -334,6 +336,7 @@ namespace JunctionRules.Stage2
             ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<CarData> prefabCars, ref ComponentLookup<ObjectGeometryData> geometries,
             ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
         {
+            BeginHoldBlocker();   // 0.4.9 (G17)
             m_ExitWaiting = false;
             if (!m_ExitRule || !m_ExitLookups) return float.MaxValue;
             if (!ExitJoinLane(areaLane, priority, next, false, ref carLanes, ref curves, out Entity road, out Curve roadCurve, out Owner roadOwner)) return float.MaxValue;
@@ -358,6 +361,7 @@ namespace JunctionRules.Stage2
             ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<CarData> prefabCars, ref ComponentLookup<ObjectGeometryData> geometries,
             ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
         {
+            BeginHoldBlocker();   // 0.4.9 (G17)
             m_ExitWaiting = false;
             if (!m_ExitRule || !m_ExitLookups) return float.MaxValue;
             if ((next.m_Flags & NotRoadLane) != 0 || !LeavesBuilding(lane)) return float.MaxValue;
@@ -448,6 +452,7 @@ namespace JunctionRules.Stage2
             ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<CarData> prefabCars, ref ComponentLookup<ObjectGeometryData> geometries,
             ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
         {
+            BeginHoldBlocker();   // 0.4.9 (G17)
             m_ExitWaiting = false;
             if (!m_ExitRule || !m_ExitLookups) return float.MaxValue;
             bool parking = (fromFlags & Game.Vehicles.CarLaneFlags.ParkingSpace) != 0;
@@ -1267,7 +1272,7 @@ namespace JunctionRules.Stage2
                 // recorded this or the last navigation updates) is not "present at the exit": the exit may go.
                 bool entering = !occupies && gap > 0f && gap <= ExitGiveWay.PresentMetres && EnteringHeld(e);
                 if (entering && Counting) m_ExitEntrantIgnored = true;
-                if (ExitGiveWay.VehicleBlocks(gap, occupies, speed, braking, delta, entering)) return true;
+                if (ExitGiveWay.VehicleBlocks(gap, occupies, speed, braking, delta, entering)) { m_LastBlocker = e; return true; }   // 0.4.9 (G17): the exit's blocker
             }
             return false;
         }

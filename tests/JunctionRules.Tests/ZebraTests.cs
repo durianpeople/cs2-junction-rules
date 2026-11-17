@@ -383,7 +383,7 @@ namespace JunctionRules.Tests
             Check(s04 > 0 && s04 < s25 && s25 < s05, "S2-25 sits after S2-04, before the overlap loop");
             Check(it.Contains("if (m_JR.m_ZebraRule)\n\t\t{\n\t\t\tfloat jrZebraHold") || it.Contains("if (m_JR.m_ZebraRule)\r\n"), "S2-25 does nothing with the setting off");
             Check(it.Contains("bool jrInScope = (m_JR.m_Mode != 0 || m_JR.m_ZebraActive) && m_JR.InScope("), "S2-05: zebras in scope also with the stock gap rule");
-            Check(it.Contains("m_Blocker = Entity.Null;\n\t\t\t\tm_BlockerType = BlockerType.Continuing;") || it.Contains("m_Blocker = Entity.Null;\r\n"), "room hold sets no blocker (no IgnoreBlocker creep through a held car)");
+            Check(it.Contains("m_Blocker = m_JR.HoldBlocker;   // 0.4.9 (G17): the vehicle the hold waits for (stock names the car it stops behind)\n\t\t\t\tm_BlockerType = BlockerType.Continuing;"), "0.4.9 (G17): a room hold names the vehicle that took the room (a moving vehicle never gets the stock IgnoreBlocker creep: CheckBlocker sets IsBlocked only for a blocker without Moving)");
             string nav = File.ReadAllText(Path.Combine(src, "Vanilla", "JRCarNavigationSystem.cs"));
             Check(nav.IndexOf("BEGIN S2-26", StringComparison.Ordinal) > nav.IndexOf("BEGIN S2-21", StringComparison.Ordinal) && nav.Contains("m_JR.SetPath(navigationLanes)"), "S2-26 hands over the navigation lanes after S2-21");
             string job = File.ReadAllText(Path.Combine(src, "Stage2", "JRWholeJunction.cs"));

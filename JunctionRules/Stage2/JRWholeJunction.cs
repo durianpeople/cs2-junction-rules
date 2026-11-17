@@ -276,6 +276,8 @@ namespace JunctionRules.Stage2
         private bool m_EnteringHeld;
         /// <summary>G15 (counting): this update an exit did not wait for a standing vehicle that waits for room into a building.</summary>
         private bool m_ExitEntrantIgnored;
+        /// <summary>G17: the vehicle the current hook's hold waits for (HoldBlocker).</summary>
+        private Entity m_LastBlocker;
 
         /// <summary>0.4.8 trace: the exit's position (drive lane start / join point) of this update's decision.</summary>
         private float2 m_ExitPoint;
@@ -613,6 +615,7 @@ namespace JunctionRules.Stage2
             ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars,
             ref BufferLookup<LaneOverlap> overlapData)
         {
+            BeginHoldBlocker();   // 0.4.9 (G17)
             m_ZebraActive = false;
             if (m_Mode == 0)
             {
@@ -733,8 +736,34 @@ namespace JunctionRules.Stage2
                 }
             }
             if (unsorted && Counting) m_ZebraUnsortedSeen = true;
+            NoteRoomBlocker(scan);
             return scan.HasRoom;
         }
+
+        /// <summary>
+        /// 0.4.9 (G17): a room scan that found no room names the vehicle that took it (RoomScan.BlockerIndex) as this
+        /// hook's blocker (<see cref="HoldBlocker"/>); people on a further zebra name nobody.
+        /// </summary>
+        private void NoteRoomBlocker(RoomScan scan)
+        {
+            if (scan.HasRoom || scan.BlockerIndex <= 0) return;
+            Entity b = default;
+            b.Index = scan.BlockerIndex;
+            b.Version = scan.BlockerVersion;
+            m_LastBlocker = b;
+        }
+
+        /// <summary>
+        /// 0.4.9 (G17): the vehicle the latest Junction Rules hold of this car-step waits for (the vehicle that took the room
+        /// it needs, or the road vehicle an exit gives way to), written into the game's Blocker by the hold blocks (S2-25,
+        /// S2-28, S2-28b, S2-29, S2-30, S2-32, S2-35, S2-36, S2-37) where 0.4.8 wrote Entity.Null. Stock names the car it stops
+        /// behind the same way; with Entity.Null blocker-chain deadlock finders (the No Vehicle Despawn mod, the game's own
+        /// StuckMovingObjectSystem, the cs2 bridge) stop at every Junction Rules hold and never see a loop through one.
+        /// Each hook clears it first (<see cref="BeginHoldBlocker"/>), so it never carries over from another hook.
+        /// </summary>
+        public Entity HoldBlocker => m_LastBlocker;
+
+        private void BeginHoldBlocker() => m_LastBlocker = Entity.Null;
 
         /// <summary>
         /// JR-T-014c (G9): RoomScan over the car's path lanes from index 'from' (its way into the building), as the path part of
@@ -759,6 +788,7 @@ namespace JunctionRules.Stage2
                 read += span;
             }
             if (unsorted && Counting) m_ZebraUnsortedSeen = true;
+            NoteRoomBlocker(scan);
             return scan.HasRoom;
         }
 
@@ -894,7 +924,9 @@ namespace JunctionRules.Stage2
                     float v = math.dot(m.m_Velocity, inverse ? -dir : dir);
                     if (v > 0.001f) credit = VehicleUtils.GetBrakingDistance(cd, v, safeTimeStep);
                 }
-                scan.Add(baseDistance + d + g.m_Bounds.min.z, MathUtils.Size(g.m_Bounds.z), credit);
+                // 0.4.9 (G17): the vehicle (its controller for a trailer) is named, for the hold's Blocker.
+                Entity who = controllers.TryGetComponent(e, out Controller wc) && wc.m_Controller != Entity.Null ? wc.m_Controller : e;
+                scan.Add(baseDistance + d + g.m_Bounds.min.z, MathUtils.Size(g.m_Bounds.z), credit, who.Index, who.Version);
             }
         }
 

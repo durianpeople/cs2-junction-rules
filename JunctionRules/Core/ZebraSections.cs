@@ -422,6 +422,9 @@ namespace JunctionRules.Core
         private float m_Base;
         /// <summary>Smallest room of the vehicles added so far (an extension re-judges them).</summary>
         private float m_MinRoom;
+        /// <summary>0.4.9 (G17): the vehicle that took the room (entity index / version; 0 / 0 = none or unknown, e.g. people on a further zebra).</summary>
+        public int BlockerIndex, BlockerVersion;
+        private int m_MinIndex, m_MinVersion;
 
         public static RoomScan Begin(float vehicleLength, float margin)
         {
@@ -433,12 +436,19 @@ namespace JunctionRules.Core
         }
 
         /// <summary>The next vehicle ahead on the path (in path order).</summary>
-        public void Add(float rear, float length, float credit)
+        public void Add(float rear, float length, float credit) => Add(rear, length, credit, 0, 0);
+
+        /// <summary>
+        /// 0.4.9 (G17): as above, naming the vehicle (entity index / version), so a hold for want of room can name the vehicle
+        /// it waits for in the game's Blocker (stock does that for a car it stops behind; 0.4.8 wrote none, which hid every
+        /// Junction Rules hold from blocker-chain deadlock finders such as the No Vehicle Despawn mod).
+        /// </summary>
+        public void Add(float rear, float length, float credit, int index, int version)
         {
             if (Blocked) return;
             float room = rear + (credit > 0f ? credit : 0f) - m_Occupied;
-            if (room < m_MinRoom) m_MinRoom = room;
-            if (!(room >= Needed)) Blocked = true;
+            if (room < m_MinRoom) { m_MinRoom = room; m_MinIndex = index; m_MinVersion = version; }
+            if (!(room >= Needed)) { Blocked = true; BlockerIndex = index; BlockerVersion = version; }
             m_Occupied += (length > 0f ? length : 0f) + Spacing;
             Obstacles++;
         }
@@ -467,7 +477,7 @@ namespace JunctionRules.Core
             if (!(n > Needed)) return;
             Needed = n;
             Extensions++;
-            if (m_MinRoom < Needed) Blocked = true;
+            if (m_MinRoom < Needed && !Blocked) { Blocked = true; BlockerIndex = m_MinIndex; BlockerVersion = m_MinVersion; }
         }
 
         /// <summary>0.4.1 (JR-T-009-r): a further zebra inside the room window has people on it: no room.</summary>

@@ -137,6 +137,8 @@ namespace JunctionRules.Tests
             ("G12CrossingTests", G12CrossingTests),
             ("G14JointBoxTests", G14JointBoxTests),
             ("JrT015RepoTests", JrT015RepoTests),
+            ("G17BlockerTests", G17BlockerTests),
+            ("G16SnowTests", G16SnowTests),
         };
 
         private static int Main(string[] args)
