@@ -1110,6 +1110,30 @@ No timeout: both are rules, the loop cannot form.
 Regression test: `G15LoopTests` rebuilds the live geometry (bands at x -1983.4 and -1994.04, 6.5 m van) and shows the
 0.4.8 rules close the van -> yard -> exit loop and the 0.4.9 rules leave it open.
 
+### 19.1b G15 again: the loop No Vehicle Despawn flagged (owner shot 5d341726, camera rotated 180)
+
+The yard of No. 40 is one-way: in by the entrance drive (x -1994), out by the exit drive (x -1983.4). The 7 outlined
+vehicles: the exit column down the exit drive (red van at the pavement edge, held by Junction Rules before the
+pavement), a dark van standing on the near lane INSIDE the exit box, a van angled across the entrance box turning in
+(rear on the road), a vehicle in the entrance drive, two at the top of the yard turning back to the exit column.
+Who waits for whom, with the evidence:
+- Exiter (red) -> dark van: the dark van stands on the exit's merge area. This is a PHYSICAL block (the game's own
+  check names the dark van as blocker; that is why the detector could follow the chain through it). The exit room test
+  counting it is right: (b) is not a fault.
+- Dark van -> angled van: 0.4.8 faults. (1) An entrant held by G9 waited before the ENTRANCE box with its body in the
+  EXIT box 2.5 m upstream (fixed in 19.1: it now waits before the exit box). (2) A vehicle entering a box needed room past
+  it, but the room scan reads only the road lane's own vehicles, and the game lists a vehicle only on its CURRENT lane:
+  the angled van's pivot was already on the entrance drive lane, so its rear across the near lane was invisible and the
+  box looked clear. Fixed: the room scan also reads every driveway lane overlapping the road lane in the box / room window;
+  a vehicle on it whose body still covers the road part stands across the lane and leaves no room (named as blocker).
+- Angled van -> entrance drive / yard: 0.4.8 fault (3): G9 let a vehicle turn in when the queue on its way in was MOVING
+  (a moving queue counted its braking distance as room). A yard queue that moves can stop, and the yard only empties
+  through its exit. Fixed: on the way IN only room that is free now counts.
+- Yard -> exit column -> exiter: the yard's own one-way circulation (game layout, stock behaviour).
+With 19.1 and these two fixes the loop cannot be built from the road side: no vehicle turns in without free room for its
+whole length, no vehicle waits inside the exit box for an entrant, and the exit does not wait for vehicles waiting to
+turn in. Regression tests: `G15LoopTests`, `G15bSideObstacleTests`.
+
 ### 19.2 G14: near boxes are one box
 
 Cause: the paint joined exit boxes only when they touched within 0.05 m (Alderbrook Street boxes ~0.6 m apart stayed two),
@@ -1187,6 +1211,15 @@ loop through Junction Rules holds is now visible: No Vehicle Despawn highlights 
 despawns one vehicle per pass (its own rule, owner's choice); `cs2_vehicles` lists it under deadlocks. With 0.4.9's G15
 rules the Alderwood loop should not form at all; this is the safety net the owner already runs.
 
+When it saw the loop (owner shot 5d341726) and why not earlier (shot a7b0fa45): it flags a vehicle the moment (checked
+every 4 game frames) its blocker chain closes; the blue outline is its "highlight stuck objects" option; with
+"despawn deadlocks only" it removes one vehicle of the loop after it stayed flagged 400 frames. In 5d341726 every link
+was a PHYSICAL stop the game names itself (the red exiter's merge area was occupied by the dark van, so the game's own
+check, stricter than ours, named the dark van). In a7b0fa45 the No. 40 exiter stood before the pavement held only by the
+Junction Rules exit rule with nothing physically in its way, so its Blocker was Entity.Null and the chain ended there:
+JR holds hid the loop until it had grown into physical blocks. 0.4.9 names the blocker for every JR hold, so such a loop
+is flagged as soon as it closes.
+
 Check: `cs2_vehicles x,z` near a jam caused by Junction Rules shows queue heads behind named vehicles (not "Crossing"
 with nobody); a JR-caused loop (if any) appears under `deadlocks` and is highlighted by No Vehicle Despawn.
 
@@ -1194,7 +1227,7 @@ with nobody); a JR-caused loop (if any) appears under `deadlocks` and is highlig
 
 | # | Do | Expect |
 |---|---|---|
-| 19-1 | Alderwood St, No. 40 (warehouse 839552) and neighbours, busy | vans for a full yard wait on the road BEFORE the exit box (exit mouth clear); No. 40's lorries leave; no van -> yard -> exit lock; timing `exits not waiting for a vehicle that waits to turn in` > 0 at busy times |
+| 19-1 | Alderwood St, No. 40 (warehouse 839552) and neighbours, busy (19.1, 19.1b) | vans for a full yard wait on the road BEFORE the exit box (exit mouth clear); No. 40's lorries leave; no van -> yard -> exit lock; timing `exits not waiting for a vehicle that waits to turn in` > 0 at busy times |
 | 19-2 | Alderbrook St boxes of shot a4d15d38 | one box (one outline, one hatch) where boxes were < 2 m apart; log `built as ONE box` |
 | 19-3 | Same place, eastbound artics | no artic stops with its cab in one box and its trailer in the next |
 | 19-4 | Through traffic past an exit with vehicles waiting at it, lane clear past the box | through traffic keeps going; `held exits' keep-clear requests withdrawn` > 0 |
@@ -1224,4 +1257,6 @@ vehicle above 0.2 m/s counts as moving (F2); a committed crossing keeps its Go f
 box once (F6). (j) G16: the snow colour map was proven from the shader disassembly, not seen in game. (k) G17: naming
 blockers also feeds the game's traffic-bottleneck notification (it groups 'Continuing' blockers) and its lane choice
 (a named blocker makes a car look for a better lane, as stock); No Vehicle Despawn will now despawn vehicles of
-JR-caused loops after 400 frames (the owner's own mod setting). (l) None of this has run in game yet.
+JR-caused loops after 400 frames (the owner's own mod setting). (l) G15b: vehicles turn in only with room free NOW (more waiting on the road at busy yards; a queue waiting to turn in
+blocks the lane behind it, as in the UK); a vehicle half across a lane from a driveway now holds box / zebra entries on
+that lane until it has cleared. (m) None of this has run in game yet.

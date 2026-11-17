@@ -483,6 +483,15 @@ namespace JunctionRules.Core
         /// <summary>0.4.1 (JR-T-009-r): a further zebra inside the room window has people on it: no room.</summary>
         public void Block() => Blocked = true;
 
+        /// <summary>0.4.9 (G15b): a vehicle standing across the path (turning into / out of a driveway): no room, naming it.</summary>
+        public void BlockBy(int index, int version)
+        {
+            if (Blocked) return;
+            Blocked = true;
+            BlockerIndex = index;
+            BlockerVersion = version;
+        }
+
         /// <summary>
         /// 0.4.1 (JR-T-009-r): a further zebra on the path from <paramref name="start"/> to <paramref name="end"/> (metres
         /// from the section end). Inside the window (it starts before the room needed so far ends): people on it block,

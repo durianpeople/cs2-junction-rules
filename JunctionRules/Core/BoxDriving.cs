@@ -114,6 +114,12 @@ namespace JunctionRules.Core
             return true;
         }
 
+        /// <summary>0.4.9 (G15b): the overlap [t0, t1] on this lane (driving coordinates) lies in the window from the band entry to the end of the room needed.</summary>
+        public static bool SideOverlapInWindow(float t0, float t1, float from, float windowEnd) => t1 > from && t0 < windowEnd;
+
+        /// <summary>0.4.9 (G15b): a body [rear, front] (metres on the driveway lane) still covers the lane's overlap with the road [oS, oE].</summary>
+        public static bool SideBodyCovers(float rear, float front, float oS, float oE) => front > oS && rear < oE;
+
         /// <summary>A car's role at an entrance band on one road lane.</summary>
         public enum EntranceRole
         {

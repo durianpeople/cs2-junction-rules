@@ -736,8 +736,54 @@ namespace JunctionRules.Stage2
                 }
             }
             if (unsorted && Counting) m_ZebraUnsortedSeen = true;
+            // 0.4.9 (G15b): a vehicle turning into (or out of) a driveway whose body still lies across this lane is not one of
+            // this lane's objects (the game lists a car only on its current lane), so the scan above did not see it.
+            if (scan.HasRoom) SideObstacles(ref scan, lane, queueFrom >= 0f && queueFrom < fromDriving ? queueFrom : fromDriving, fromDriving, inverse, length, self,
+                ref carLanes, ref laneObjects, ref controllers, ref prefabRefs, ref geometries, ref curves, ref overlapData);
             NoteRoomBlocker(scan);
             return scan.HasRoom;
+        }
+
+        /// <summary>
+        /// 0.4.9 (G15b, owner shot 5d341726, Alderwood No. 40, the loop No Vehicle Despawn finally flagged): a van turning
+        /// into No. 40's entrance stood angled across the near lane (its pivot already on the drive's entering lane, its rear
+        /// on the road), and a van behind it entered No. 40's EXIT box because the room-past scan reads only the road lane's
+        /// own objects (CarNavigationSystem registers a car on its current lane only: CheckChanges is passed no blocked
+        /// lanes). Here: every driveway lane (SideConnection, in or out) that overlaps this lane; a vehicle on it whose body
+        /// still covers the overlap stands across this lane at the overlap: inside the band (from 'queueFrom') or within the
+        /// room needed past it (from 'fromDriving') it leaves no room (conservative: Block, naming it). Not the car itself.
+        /// </summary>
+        private void SideObstacles(ref RoomScan scan, Entity lane, float queueFrom, float fromDriving, bool inverse, float length, Entity self,
+            ref ComponentLookup<Game.Net.CarLane> carLanes, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Controller> controllers,
+            ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<Curve> curves,
+            ref BufferLookup<LaneOverlap> overlapData)
+        {
+            if (!overlapData.TryGetBuffer(lane, out DynamicBuffer<LaneOverlap> overlaps) || !(length > 0f)) return;
+            float windowEnd = fromDriving + scan.Needed / length;
+            for (int i = 0; i < overlaps.Length && scan.HasRoom; i++)
+            {
+                LaneOverlap o = overlaps[i];
+                if (!carLanes.TryGetComponent(o.m_Other, out Game.Net.CarLane other) || (other.m_Flags & Game.Net.CarLaneFlags.SideConnection) == 0) continue;
+                float a = o.m_ThisStart * WholePathRule.ByteToOffset, b = o.m_ThisEnd * WholePathRule.ByteToOffset;
+                float t0 = inverse ? 1f - math.max(a, b) : math.min(a, b), t1 = inverse ? 1f - math.min(a, b) : math.max(a, b);
+                if (!BoxDriving.SideOverlapInWindow(t0, t1, queueFrom, windowEnd)) continue;
+                if (!laneObjects.TryGetBuffer(o.m_Other, out DynamicBuffer<LaneObject> objects) || objects.Length == 0) continue;
+                if (!curves.TryGetComponent(o.m_Other, out Curve oc)) continue;
+                float oa = o.m_OtherStart * WholePathRule.ByteToOffset * oc.m_Length, ob = o.m_OtherEnd * WholePathRule.ByteToOffset * oc.m_Length;
+                float oS = math.min(oa, ob), oE = math.max(oa, ob);
+                for (int j = 0; j < objects.Length; j++)
+                {
+                    LaneObject lo = objects[j];
+                    Entity e = lo.m_LaneObject;
+                    Entity who = controllers.TryGetComponent(e, out Controller c) && c.m_Controller != Entity.Null ? c.m_Controller : e;
+                    if (who == self) continue;
+                    if (!prefabRefs.TryGetComponent(e, out PrefabRef pr) || !geometries.TryGetComponent(pr.m_Prefab, out ObjectGeometryData g)) continue;
+                    float x = lo.m_CurvePosition.x * oc.m_Length;
+                    if (!BoxDriving.SideBodyCovers(x + g.m_Bounds.min.z, x + g.m_Bounds.max.z, oS, oE)) continue;
+                    scan.BlockBy(who.Index, who.Version);
+                    break;
+                }
+            }
         }
 
         /// <summary>
@@ -766,6 +812,9 @@ namespace JunctionRules.Stage2
         private void BeginHoldBlocker() => m_LastBlocker = Entity.Null;
 
         /// <summary>
+        /// 0.4.9 (G15b): no braking-distance credit for vehicles moving ahead on the way IN: a yard queue that moves can stop
+        /// (the yard empties only through its exit), and a vehicle that turned in on that credit stood across the road
+        /// (owner shot 5d341726). Only room that is free now counts.
         /// JR-T-014c (G9): RoomScan over the car's path lanes from index 'from' (its way into the building), as the path part of
         /// HasRoomPast: vehicles on each lane ahead of where the path enters it, in path order, up to MaxRoomLanes lanes; a
         /// lane that is not a car lane (parking space, spawn location) ends the read (the rest counts as free).
@@ -784,7 +833,7 @@ namespace JunctionRules.Stage2
                 bool navInverse = nav.m_CurvePosition.y < nav.m_CurvePosition.x;
                 float span = math.abs(nav.m_CurvePosition.y - nav.m_CurvePosition.x) * navCurve.m_Length;
                 ScanLane(ref scan, nav.m_Lane, nav.m_CurvePosition.x, navInverse, navCurve.m_Length, span, read, false, self, safeTimeStep, ref laneObjects,
-                    ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted);
+                    ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted, noCredit: true);
                 read += span;
             }
             if (unsorted && Counting) m_ZebraUnsortedSeen = true;
@@ -871,7 +920,7 @@ namespace JunctionRules.Stage2
         private static void ScanLane(ref RoomScan scan, Entity lane, float from, bool inverse, float laneLength, float span, float baseDistance,
             bool queued, Entity self, float safeTimeStep, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves, ref ComponentLookup<Moving> moving,
             ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<ObjectGeometryData> geometries,
-            ref ComponentLookup<CarData> prefabCars, ref bool unsorted)
+            ref ComponentLookup<CarData> prefabCars, ref bool unsorted, bool noCredit = false)
         {
             if (!laneObjects.TryGetBuffer(lane, out DynamicBuffer<LaneObject> objects) || objects.Length == 0) return;
             bool hasCurve = curves.TryGetComponent(lane, out Curve curve);
@@ -918,7 +967,7 @@ namespace JunctionRules.Stage2
                     continue;
                 }
                 float credit = 0f;
-                if (hasCurve && moving.TryGetComponent(e, out Moving m) && prefabCars.TryGetComponent(pr.m_Prefab, out CarData cd))
+                if (!noCredit && hasCurve && moving.TryGetComponent(e, out Moving m) && prefabCars.TryGetComponent(pr.m_Prefab, out CarData cd))
                 {
                     float3 dir = math.normalizesafe(MathUtils.Tangent(curve.m_Bezier, o.m_CurvePosition.x));
                     float v = math.dot(m.m_Velocity, inverse ? -dir : dir);
