@@ -149,7 +149,7 @@
        Windows Burst build (BurstPostProcess above, game closed only), the upload content is staged in
        bin/PublishContent/JunctionRules (the same five files the probe installs used), and ModPublisher is called the way
        Mod.targets calls it. ModPublisher logs in with the Paradox account the game last logged in with (no password
-       prompt; without a saved game sign-in pass -p:ModPublisherExtraArgs="--noAutoLogin -l /abs/path/login.txt", a file with
+       prompt; without a saved game sign-in pass -p:ModPublisherExtraArgs="(dash-dash)noAutoLogin -l /abs/path/login.txt" (see README), a file with
        the email on line 1 and the password on line 2); it runs under Wine in the game's Proton prefix, which is one more reason the game must be closed. -->
   <PropertyGroup>
     <PublishConfigurationPath Condition="'$(PublishConfigurationPath)' == ''">Properties\PublishConfiguration.xml</PublishConfigurationPath>
