@@ -117,7 +117,9 @@ three profiles in `JunctionRules/Properties/PublishProfiles/`. Run from the `Jun
 - A new version: bump `<Version>`/`<InformationalVersion>` in the csproj and `<ModVersion>` (tests keep them equal),
   write `<ChangeLog>`, then `dotnet publish -c Release -p:PublishProfile=PublishNewVersion`.
 - Texts or images only: `dotnet publish -c Release -p:PublishProfile=UpdatePublishedConfiguration`.
-- Add `-p:PublishDryRun=true` to any of them to have ModPublisher check the configuration and stop before signing in.
+- Add `-p:PublishDryRun=true` to any of them to have ModPublisher check the configuration fields and stop before signing in
+  (add `-p:Burst=false` too for a quick check without the Burst build; image files are checked by the tests, not by
+  ModPublisher, which silently uses its own thumbnail when the file is missing).
 
 ## License
 

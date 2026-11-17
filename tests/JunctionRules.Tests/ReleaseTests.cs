@@ -103,7 +103,7 @@ namespace JunctionRules.Tests
             Check(Val("ForumLink") == "https://github.com/durianpeople/cs2-junction-rules", "ForumLink = GitHub");
             Check(r.Elements("ExternalLink").Any(e => e.Attribute("Type")?.Value == "github" && e.Attribute("Url")?.Value == "https://github.com/durianpeople/cs2-junction-rules"), "ExternalLink github");
             Check(ProjectVersion(out string ver, out string info) && Val("ModVersion") == ver && info == ver, $"ModVersion {Val("ModVersion")} = csproj Version {ver} = InformationalVersion {info} (release: no suffix)");
-            Check(Val("GameVersion") == "1.6.4", "GameVersion 1.6.4 (the version the copy was made from)");
+            Check(Val("GameVersion") == "1.6.*", "GameVersion 1.6.* (game uploader format; the copy was made from 1.6.4)");
             Check(r.Elements("Dependency").All(e => string.IsNullOrEmpty(e.Attribute("Id")?.Value)) && r.Elements("RequiredDLC").All(e => string.IsNullOrEmpty(e.Attribute("Value")?.Value)), "no dependencies, no DLC");
             Check(!string.IsNullOrWhiteSpace(Val("ChangeLog")), "ChangeLog set (NewVersion needs it)");
 

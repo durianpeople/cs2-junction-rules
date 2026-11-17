@@ -59,8 +59,8 @@ Source code, issue tracker and design notes: https://github.com/durianpeople/cs2
 	<ForumLink Value="https://github.com/durianpeople/cs2-junction-rules" />
 	<!--Version of the mod-->
 	<ModVersion Value="1.0.0" />
-	<!--Recommended version of the base game to use the mod-->
-	<GameVersion Value="1.6.4" />
+	<!--Recommended version of the base game to use the mod. "major.minor.*" as the game's own asset uploader writes it; the mod itself runs its driving copy only on 1.6.4 (version gate) and falls back to the game's driving otherwise.-->
+	<GameVersion Value="1.6.*" />
 	<!--Dependency for the mod, can be set multiple times-->
 	<Dependency Id="" />
 	<!--Required DLC, can be set multiple times. Supported values are "Landmark Buildings", "San Fransisco Set", "Beach Properties", "Urban Promenades", "Modern Architecture"-->
