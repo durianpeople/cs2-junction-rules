@@ -1926,3 +1926,22 @@ says "clear"), so the turner never sits across live traffic.
   is (HumanNavigationSystem 779-796 / 1160-1171, ReferencesSystem 128-130).
 - G24: the "also refused" note keeps the held-mouth failure when the junction has no game corners.
 - G22: the same-exit check is not repeated for the nose probe.
+
+**Owner decision: option (c), implemented (copy block S2-54, `JRStockRoom.cs`, `Core/StockRoomSkip.cs`).** Right after
+the stock chain in `IterateNextLane`: when it stopped the car at a junction lane's entry for room (`CheckSpace` failed:
+driveSpeed 0, blocker type Continuing - only `CheckSpace` sets Continuing there, never a STOP-line or signal stop), at an
+UNBOXED junction lane without signals / level crossing / roundabout, with the Whole junction rule on (and the exit
+setting's lookups), every true crossing of that junction lane is judged by the exits' gap scan (vehicles on the crossed
+lane and its feeders, whole-length clear time from the car's front, a vehicle standing within 10 m counts, one queued at
+a red does not). All clear: the stock hold is dropped, the car enters and waits inside the junction for exit room (the
+whole-junction gap decisions still apply as it enters). Any crossed lane busy: the stock hold stays (waits outside, as
+before). Boxed junctions: the box rules (unchanged). Counter `stock room hold skipped (unboxed, crossings clear)`.
+Tests (`G25Tests`): unboxed T, slow exit queue, no crossing traffic -> enters; northbound car 30 m away at 10 m/s -> waits
+outside; the same car 120 m away -> enters; a vehicle standing 5 m before the crossing -> waits; boxed / signalled /
+roundabout -> stock; block placement after the stock chain.
+
+| # | Do | Expect |
+|---|---|---|
+| 25-1 | The T near (-1765, 272) with a slow lorry queue in the side street, no northbound traffic | right-turners drive in and wait inside for room |
+| 25-2 | Same with northbound traffic coming | they wait at the entry as before |
+| 25-3 | Watch for | a turner waiting inside that blocks traffic arriving on the crossed lane later (accepted trade-off of option c); timing line `stock room hold skipped (unboxed, crossings clear)` |

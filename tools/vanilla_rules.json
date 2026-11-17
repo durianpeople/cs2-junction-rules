@@ -283,6 +283,12 @@
         },
         "reason": "0.4.11 (JR-T-017, G23, owner live 17 Nov: a car on green held by a person waiting just off the kerb): CheckOverlappingLanes, creature branch, right after S2-50 and before S2-08, only with 'Cars never push through people': a person who is not crossing (standing within 1 m of the end of the overlapped pedestrian lane: the game keeps a person waiting for a walk signal on the previous lane at its end, HumanNavigationSystem 779-796 / 1160-1171, ReferencesSystem 128-130) is skipped (continue), so the game's pedestrian check never brakes for them; people walking, and people standing on the car's way further out on the crossing, keep the game's check (and the 0.3.2 full stop). The G11 safety floor (already on an unmarked crossing) is never skipped."
       },
+      "S2-54": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "0.4.11 (JR-T-017, G25, owner decision option c): IterateNextLane, right after the stock chain that may stop the car at a junction lane's entry for room (CheckSpace failed: driveSpeed 0, blocker type Continuing): at an UNBOXED, unsignalled junction, with the Whole junction rule, the hold is dropped (drive speed restored, blocker none, type Limit) when every lane the junction lane crosses is clear by the exits' gap scan (JRWholeJunction.SkipStockRoomHold, Core/StockRoomSkip.cs). Exit-room holds outside a junction are yellow-box behaviour only (owner)."
+      },
       "S2-51": {
         "files": {
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1

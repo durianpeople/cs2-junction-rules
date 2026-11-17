@@ -261,7 +261,9 @@ namespace JunctionRules.Core
         public const int PeopleWaitingNotCrossing = FeedingScans + 70;
         /// <summary>0.4.11 (G23, owner guard, MUST be 0): car-steps in which a car stood held for a person waiting at the kerb (not crossing).</summary>
         public const int HeldForWaitingPerson = FeedingScans + 71;
-        public const int Count = FeedingScans + 72;
+        /// <summary>0.4.11 (G25, owner option c): car-steps in which the game's own room hold at an unboxed junction entry was skipped because every lane the turner crosses is clear.</summary>
+        public const int StockRoomHoldSkipped = FeedingScans + 72;
+        public const int Count = FeedingScans + 73;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -438,6 +440,8 @@ namespace JunctionRules.Core
                          "; people waiting at a crossing (kerb / red walk signal) not braked for " + deltas[PeopleWaitingNotCrossing].ToString(ci) +
                          "; car held for a person waiting at the kerb (not crossing) " + deltas[HeldForWaitingPerson].ToString(ci) + " (must be 0)" : "") +
                    (exitMask >= 2 ? "; standing vehicles queued at a red not counted as present " + deltas[RedQueueNotPresent].ToString(ci) : "") +
+                   // 0.4.11 (G25)
+                   (ruleMask >= 2 && (exitMask >= 2 || deltas[StockRoomHoldSkipped] > 0) ? "; stock room hold skipped (unboxed, crossings clear) " + deltas[StockRoomHoldSkipped].ToString(ci) : "") +
                    // 0.4.11 (G22): the owner's same-exit-lane exception.
                    (boxMask >= 2 ? "; entered a box under the same-exit-lane exception " + deltas[BoxSameExitEntries].ToString(ci)
                        + " (standing in a box under it " + deltas[BoxSameExitStanding].ToString(ci) + ")" : "") +

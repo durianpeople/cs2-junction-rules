@@ -302,6 +302,8 @@ namespace JunctionRules.Stage2
         private float m_EntryGapSpeed;
         /// <summary>G21 review 2 F3: the boxed way in BeginLane left out this car-step (BeginZebras leaves it out too).</summary>
         private Entity m_SkippedWayIn;
+        /// <summary>G25 (counting): this car-step the game's room hold at an unboxed junction was skipped (crossings clear).</summary>
+        private bool m_StockRoomSkipped;
         /// <summary>G23 (owner): the last person S2-53 classified (true = waiting, not crossing); skipped persons never reach S2-08b,
         /// so a true here at S2-08b means the G11 floor kept the check (guard counter).</summary>
         private bool m_PersonWaitingNow;
@@ -1778,6 +1780,7 @@ namespace JunctionRules.Stage2
             if (m_EntryKeptClear) Add(counters, Stage2Counters.EntryKeptClear, 1);
             if (m_PeopleBesideCreep) Add(counters, Stage2Counters.PeopleBesideCrossingCreep, 1);   // 0.4.11 (G23)
             if (m_PeopleWaitingSkipped) Add(counters, Stage2Counters.PeopleWaitingNotCrossing, 1);
+            if (m_StockRoomSkipped) Add(counters, Stage2Counters.StockRoomHoldSkipped, 1);   // 0.4.11 (G25)
             if (m_HeldForWaitingPerson && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.HeldForWaitingPerson, 1);
             if (m_RedQueueIgnored) Add(counters, Stage2Counters.RedQueueNotPresent, 1);   // 0.4.11 (G23)
             // 0.4.11 (G22): entries under the same-exit-lane exception (one per vehicle episode), standing in a box under it (car-steps)

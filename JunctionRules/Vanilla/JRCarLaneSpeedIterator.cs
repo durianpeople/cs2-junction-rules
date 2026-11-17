@@ -6,7 +6,7 @@
 // tools/vanilla_rules.json (and DEVIATIONS.md) and run `python3 tools/vanilla_copy.py generate`.
 // Changes applied: R-01, R-02, R-03, D-01 (see DEVIATIONS.md). Logic is otherwise the game's, unchanged.
 // Exception: hand-written code only inside '// JR-STAGE2 BEGIN <id>' ... '// JR-STAGE2 END' blocks
-// (S2-01, S2-02, S2-03, S2-04, S2-05, S2-06, S2-07, S2-08, S2-08b, S2-09, S2-10, S2-11, S2-11b, S2-12, S2-13, S2-25, S2-27, S2-28, S2-28b, S2-29, S2-37, S2-50, S2-50b, S2-53; see DEVIATIONS.md). `check` proves everything outside them is the above.
+// (S2-01, S2-02, S2-03, S2-04, S2-05, S2-06, S2-07, S2-08, S2-08b, S2-09, S2-10, S2-11, S2-11b, S2-12, S2-13, S2-25, S2-27, S2-28, S2-28b, S2-29, S2-37, S2-50, S2-50b, S2-53, S2-54; see DEVIATIONS.md). `check` proves everything outside them is the above.
 // ==== end of header; the code below is the game's, changed only as listed in DEVIATIONS.md ====
 
 using System;
@@ -483,6 +483,14 @@ public struct JRCarLaneSpeedIterator
 					blockerType = BlockerType.Continuing;
 				}
 			}
+			// JR-STAGE2 BEGIN S2-54: 0.4.11 (G25, owner option c) at an UNBOXED junction the game's room hold (CheckSpace failed: driveSpeed 0, blocker type Continuing) is dropped when every lane the turner crosses is clear by the Junction Rules gap check: it enters and waits inside for exit room, never across moving traffic
+			if (driveSpeed == 0f && blockerType == BlockerType.Continuing && m_JR.SkipStockRoomHold(lane, componentData2.m_Flags, componentData.m_Length, num2, flag2, m_PrefabCar, m_CurrentSpeed, m_TimeStep, m_Entity, ref m_CarLaneData, ref m_LaneSignalData, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_CarData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabCarData, ref m_PrefabObjectGeometryData, ref m_LaneOverlapData))
+			{
+				driveSpeed = VehicleUtils.GetMaxDriveSpeed(m_PrefabCar, componentData2);
+				blocker = Entity.Null;
+				blockerType = BlockerType.Limit;
+			}
+			// JR-STAGE2 END
 			num2 += m_DistanceOffset;
 			float num3;
 			if (driveSpeed == 0f)
