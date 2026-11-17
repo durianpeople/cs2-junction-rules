@@ -110,7 +110,9 @@ Development notes, probe logs and design history are in `docs/` and the `PROBE-*
 The official mod template's files: `JunctionRules/Properties/PublishConfiguration.xml` (texts, images, version) and the
 three profiles in `JunctionRules/Properties/PublishProfiles/`. Run from the `JunctionRules/` folder with the game closed
 (the Burst build and ModPublisher both use the game's Proton prefix); each profile builds with Burst first and uploads
-`bin/PublishContent/JunctionRules`. ModPublisher signs in with the Paradox account the game last signed in with.
+`bin/PublishContent/JunctionRules`. ModPublisher signs in with the Paradox account the game last signed in with; without
+one, add `-p:ModPublisherExtraArgs="--noAutoLogin -l /absolute/path/login.txt"` (email on line 1, password on line 2;
+keep that file outside the repo).
 
 - First upload: `dotnet publish -c Release -p:PublishProfile=PublishNewMod`, then put the printed
   `Mod published with Id=NNNNN` into `<ModId Value="NNNNN" />` and commit it.

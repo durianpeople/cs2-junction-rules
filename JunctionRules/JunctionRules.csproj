@@ -149,7 +149,8 @@
        Windows Burst build (BurstPostProcess above, game closed only), the upload content is staged in
        bin/PublishContent/JunctionRules (the same five files the probe installs used), and ModPublisher is called the way
        Mod.targets calls it. ModPublisher logs in with the Paradox account the game last logged in with (no password
-       prompt); it runs under Wine in the game's Proton prefix, which is one more reason the game must be closed. -->
+       prompt; without a saved game sign-in pass -p:ModPublisherExtraArgs="--noAutoLogin -l /abs/path/login.txt", a file with
+       the email on line 1 and the password on line 2); it runs under Wine in the game's Proton prefix, which is one more reason the game must be closed. -->
   <PropertyGroup>
     <PublishConfigurationPath Condition="'$(PublishConfigurationPath)' == ''">Properties\PublishConfiguration.xml</PublishConfigurationPath>
     <ModPublisherPath Condition="'$(ModPublisherPath)' == ''">$(CSII_MODPUBLISHERPATH)</ModPublisherPath>
@@ -179,7 +180,7 @@
     <!-- As Mod.targets' CheckPublishFilesAction: the SDK's own publish folder is not the upload content. -->
     <RemoveDir Directories="$(PublishDir)" Condition="'$(PublishDir)' != '$(OutDir)'" />
     <PropertyGroup>
-      <JRModPublisherArgs>"$(ModPublisherPath)" $(ModPublisherCommand) "$(JRPublishConfigFullPath)" -c "$(JRPublishContentDir)" -v</JRModPublisherArgs>
+      <JRModPublisherArgs>"$(ModPublisherPath)" $(ModPublisherCommand) "$(JRPublishConfigFullPath)" -c "$(JRPublishContentDir)" -v $(ModPublisherExtraArgs)</JRModPublisherArgs>
       <!-- Dry run: ModPublisher's own validation of the whole configuration runs, then sandbox mode stops it before it
            creates a session, logs in or uploads (it answers "Not supported in release mode"). -->
       <JRModPublisherArgs Condition="'$(PublishDryRun)' == 'true'">$(JRModPublisherArgs) --sandbox</JRModPublisherArgs>
