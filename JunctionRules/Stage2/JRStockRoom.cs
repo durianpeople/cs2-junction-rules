@@ -20,7 +20,11 @@ namespace JunctionRules.Stage2
     /// The turner then enters and waits inside the junction for exit room, never across moving traffic. Holding outside a
     /// junction for room past it is yellow-box behaviour only (owner rule G25). Kept stock: boxed junctions (the box rules
     /// decide), signalled / level-crossing junction lanes (their signal request runs only on the stock path), roundabouts
-    /// (CheckSpace is never called there). Needs the Whole junction gap rule and the exit setting's lookups (both default on).
+    /// (CheckSpace is never called there), and a junction lane that also crosses a track (review F2). Needs the Whole junction
+    /// gap rule and the "Vehicles leaving buildings give way" setting (its lookups feed the gap scan); both default on. With
+    /// "Cars obey yellow boxes" off every junction counts as unboxed (no box rules act then). Owner-accepted limit: the gap is
+    /// judged as the turner enters; a long turner waiting at the lane end may still have its tail on a crossing that a vehicle
+    /// arriving LATER then waits behind (stock physical checks).
     /// Block S2-54 in the copy (after the stock chain); fields in JRWholeJunction.cs.
     /// </summary>
     public partial struct JRWholeJunction
@@ -31,15 +35,14 @@ namespace JunctionRules.Stage2
         /// lane's drive speed). frontToStart = the stock num2 (metres from the car's front to the lane start), inverse = the lane
         /// is driven against its curve (the stock flag2).
         /// </summary>
-        public bool SkipStockRoomHold(Entity lane, Game.Net.CarLaneFlags laneFlags, float laneLength, float frontToStart, bool inverse, CarData car,
-            float currentSpeed, float timeStep, Entity self, ref ComponentLookup<Game.Net.CarLane> carLanes, ref ComponentLookup<LaneSignal> signals,
+        public bool SkipStockRoomHold(Entity lane, Game.Net.CarLane laneData, float laneLength, float frontToStart, bool inverse, CarData car,
+            float currentSpeed, float timeStep, Entity self, ref ComponentLookup<LaneCondition> laneConditions, ref ComponentLookup<Game.Net.CarLane> carLanes, ref ComponentLookup<LaneSignal> signals,
             ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves, ref ComponentLookup<Moving> moving, ref ComponentLookup<Car> cars,
             ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<CarData> prefabCars,
             ref ComponentLookup<ObjectGeometryData> geometries, ref BufferLookup<LaneOverlap> overlapData)
         {
-            if (!StockRoomSkip.Applies(RuleOn, m_ExitLookups, (uint)laneFlags, m_NodeLaneData.HasComponent(lane), IsBoxedJunctionLane(lane))) return false;
+            if (!StockRoomSkip.Applies(RuleOn, m_ExitLookups, (uint)laneData.m_Flags, m_NodeLaneData.HasComponent(lane), IsBoxedJunctionLane(lane))) return false;
             if (!overlapData.TryGetBuffer(lane, out DynamicBuffer<LaneOverlap> overlaps) || overlaps.Length == 0) return false;
-            if (!carLanes.TryGetComponent(lane, out Game.Net.CarLane own)) return false;
             ExitReads reads = default;
             reads.m_Self = self;
             reads.m_OwnLane = lane;
@@ -56,12 +59,17 @@ namespace JunctionRules.Stage2
             ExitBudget budget = default;
             GameMotion motion = default;
             motion.m_Car = car;
-            float drive = VehicleUtils.GetMaxDriveSpeed(car, own);
+            // Review F1: the stock lane data as the chain saw it (speed limit already scaled by the speed limit factor), plus the
+            // lane's wear / weather condition, as the whole-junction rule's own motion (SetMotion).
+            float drive = VehicleUtils.GetMaxDriveSpeed(car, laneData);
+            if (laneConditions.TryGetComponent(lane, out LaneCondition condition)) VehicleUtils.ModifyDriveSpeed(ref drive, condition);
             float ownLength = m_VehicleLength > 0f ? m_VehicleLength : 4f;
             int crossings = 0;
             for (int i = 0; i < overlaps.Length; i++)
             {
                 LaneOverlap o = overlaps[i];
+                // Review F2: a true crossing of a track (tram / train) is not judged here: keep the stock hold.
+                if (StockRoomSkip.CrossesTrack((int)o.m_Flags)) return false;
                 if (!StockRoomSkip.IsCrossedLane((int)o.m_Flags, carLanes.HasComponent(o.m_Other))) continue;
                 if (!curves.TryGetComponent(o.m_Other, out Curve otherCurve)) continue;
                 if (++crossings > ExitGiveWay.MaxConflictLanes) return false;   // conservative: too much to judge

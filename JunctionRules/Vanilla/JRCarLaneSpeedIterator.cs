@@ -484,7 +484,7 @@ public struct JRCarLaneSpeedIterator
 				}
 			}
 			// JR-STAGE2 BEGIN S2-54: 0.4.11 (G25, owner option c) at an UNBOXED junction the game's room hold (CheckSpace failed: driveSpeed 0, blocker type Continuing) is dropped when every lane the turner crosses is clear by the Junction Rules gap check: it enters and waits inside for exit room, never across moving traffic
-			if (driveSpeed == 0f && blockerType == BlockerType.Continuing && m_JR.SkipStockRoomHold(lane, componentData2.m_Flags, componentData.m_Length, num2, flag2, m_PrefabCar, m_CurrentSpeed, m_TimeStep, m_Entity, ref m_CarLaneData, ref m_LaneSignalData, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_CarData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabCarData, ref m_PrefabObjectGeometryData, ref m_LaneOverlapData))
+			if (driveSpeed == 0f && blockerType == BlockerType.Continuing && m_JR.SkipStockRoomHold(lane, componentData2, componentData.m_Length, num2, flag2, m_PrefabCar, m_CurrentSpeed, m_TimeStep, m_Entity, ref m_LaneConditionData, ref m_CarLaneData, ref m_LaneSignalData, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_CarData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabCarData, ref m_PrefabObjectGeometryData, ref m_LaneOverlapData))
 			{
 				driveSpeed = VehicleUtils.GetMaxDriveSpeed(m_PrefabCar, componentData2);
 				blocker = Entity.Null;

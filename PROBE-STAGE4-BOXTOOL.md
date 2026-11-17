@@ -1894,7 +1894,7 @@ way, unchanged.
 - Checked and confirmed by the review against the decompile: signs on junction lanes (LaneSystem.CreateNodeLane), same
   exit lane = Lane.m_EndNode, the S2-08b root cause, LaneEndsAtRed semantics.
 
-### 21.12 G25: right-turners wait at an unboxed T for room in a slow exit queue (STOCK behaviour)
+### 21.12 G25: right-turners wait at an unboxed T for room in a slow exit queue (stock behaviour; owner option (c) implemented)
 
 Owner (live, T near (-1765, 272), main road N-S, side street W): right-turners wait at their entry spot though nothing
 crosses their path; the side-street lane they join holds a slow lorry queue (van 752263 went once lorry 184673 crawled to
@@ -1944,4 +1944,9 @@ roundabout -> stock; block placement after the stock chain.
 |---|---|---|
 | 25-1 | The T near (-1765, 272) with a slow lorry queue in the side street, no northbound traffic | right-turners drive in and wait inside for room |
 | 25-2 | Same with northbound traffic coming | they wait at the entry as before |
-| 25-3 | Watch for | a turner waiting inside that blocks traffic arriving on the crossed lane later (accepted trade-off of option c); timing line `stock room hold skipped (unboxed, crossings clear)` |
+| 25-3 | Watch for | a turner waiting inside that blocks traffic arriving on the crossed lane later (accepted trade-off of option c: the gap is judged as it enters; a long vehicle waiting at the lane end may keep its tail on the crossing); timing line `stock room hold skipped (unboxed, crossings clear)` |
+
+Review (Sonnet, APPROVE WITH FIXES) applied: the turner's own time uses the scaled speed limit and the lane condition (as
+the whole-junction rule); a junction lane that also crosses a tram / train track keeps the stock hold. Gating: needs the
+Whole junction rule and "Vehicles leaving buildings give way" (its lookups feed the scan), both default on; with "Cars obey
+yellow boxes" off every junction counts as unboxed.

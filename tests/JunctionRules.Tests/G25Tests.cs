@@ -10,7 +10,8 @@ namespace JunctionRules.Tests
     /// exit-room hold outside a junction is yellow-box behaviour only. Finding: the hold is the GAME's own (CarLaneSpeedIterator
     /// IterateNextLane -> CheckSpace, decompile 2026-11-13 lines ~430-480 / 642-...): entering a junction lane with turn /
     /// forward flags from an approach lane, a car stops at the entry when the junction lane has a true crossing overlap and
-    /// the next lane has no space for its length. Junction Rules adds no room hold at an unboxed junction; these tests pin that.
+    /// the next lane has no space for its length. Junction Rules adds no room hold of its own at an unboxed junction (pinned
+    /// below); owner decision option (c): JR block S2-54 drops that stock hold when every crossed lane is clear (tests below).
     /// </summary>
     internal static partial class Program
     {
@@ -59,6 +60,9 @@ namespace JunctionRules.Tests
             Check(approaching && !StockRoomSkip.Skip(true, 1, approaching), $"crossing traffic approaching (30 m, 10 m/s, van clears in {clear:0.0} s): waits outside as the game does");
             Check(!ExitGiveWay.VehicleBlocks(120f, false, 10f, 6.25f, clear, false) && StockRoomSkip.Skip(true, 1, false), "the same car 120 m away: clear, the turner enters");
             Check(!StockRoomSkip.Skip(true, 0, false), "no crossing at all: the stock hold had another reason, kept");
+            Check(StockRoomSkip.CrossesTrack(0x100 | 0x4 | 0x8) && !StockRoomSkip.CrossesTrack(0x100 | 0x1) && !StockRoomSkip.CrossesTrack(0x80 | 0x4 | 0x8), "a true crossing of a tram / train track keeps the stock hold (review F2)");
+            string sr = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRStockRoom.cs"));
+            Check(sr.Contains("float drive = VehicleUtils.GetMaxDriveSpeed(car, laneData);") && sr.Contains("VehicleUtils.ModifyDriveSpeed(ref drive, condition);") && copy.Contains("m_JR.SkipStockRoomHold(lane, componentData2, componentData.m_Length, num2, flag2,"), "the turner's own time uses the stock-scaled speed limit and the lane condition (review F1)");
             Check(ExitGiveWay.VehicleBlocks(5f, false, 0f, 0f, clear, false), "a vehicle standing 5 m before the crossing (present): busy, waits outside");
             int s54 = copy.IndexOf("JR-STAGE2 BEGIN S2-54", StringComparison.Ordinal);
             int lastCheck = copy.LastIndexOf("!CheckSpace(lane, curveOffset, nextLanes, out blocker)", StringComparison.Ordinal);

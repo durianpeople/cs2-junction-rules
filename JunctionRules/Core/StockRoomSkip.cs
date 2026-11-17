@@ -26,6 +26,12 @@ namespace JunctionRules.Core
         public static bool IsCrossedLane(int overlapFlags, bool otherIsCarLane) =>
             otherIsCarLane && (overlapFlags & (MergeFlags | Unsafe | Water)) == 0;
 
+        /// <summary>Review F2: a true crossing (no merge / unsafe / water) of a TRACK lane (OverlapFlags.Track 0x100): not judged by the gap scan, stock hold kept.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool CrossesTrack(int overlapFlags) => (overlapFlags & (MergeFlags | Unsafe | Water)) == 0 && (overlapFlags & Track) != 0;
+
+        public const int Track = 0x100;
+
         /// <summary>The whole decision: every crossed lane clear (and at least one crossing: else the stock hold had another reason).</summary>
         public static bool Skip(bool applies, int crossedLanes, bool anyBusy) => applies && crossedLanes > 0 && !anyBusy;
     }
