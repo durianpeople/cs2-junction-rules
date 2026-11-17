@@ -64,6 +64,59 @@ namespace JunctionRules.Core
             return result;
         }
 
+        /// <summary>
+        /// 0.4.10 (G20): every pair of NEIGHBOURING boxes on one road (same edge and carriageways, in order along it) whose gap
+        /// is below <paramref name="within"/> metres, for the per-pair merge log: (A, B) = indices into 'windows' (A the
+        /// earlier one, or the box reaching furthest so far), Gap = B.From - furthest end so far (negative = overlap).
+        /// A pair is merged by <see cref="Chains"/> exactly when Gap &lt; the merge gap (if the joint window fits).
+        /// </summary>
+        public static List<(int A, int B, double Gap)> Neighbours(IList<ExitWindow> windows, double within)
+        {
+            var result = new List<(int A, int B, double Gap)>();
+            if (windows == null || windows.Count < 2) return result;
+            var order = new List<int>();
+            for (int i = 0; i < windows.Count; i++)
+                if (IsFinite(windows[i].From) && IsFinite(windows[i].To) && windows[i].To > windows[i].From) order.Add(i);
+            order.Sort((a, b) =>
+            {
+                ExitWindow x = windows[a], y = windows[b];
+                if (x.Edge != y.Edge) return x.Edge.CompareTo(y.Edge);
+                if (x.Carriageways != y.Carriageways) return x.Carriageways.CompareTo(y.Carriageways);
+                int c = x.From.CompareTo(y.From);
+                return c != 0 ? c : a.CompareTo(b);
+            });
+            int far = -1;
+            foreach (int i in order)
+            {
+                ExitWindow w = windows[i];
+                if (far >= 0 && windows[far].Edge == w.Edge && windows[far].Carriageways == w.Carriageways)
+                {
+                    double gap = w.From - windows[far].To;
+                    if (gap < within) result.Add((far, i, gap));
+                    if (w.To > windows[far].To) far = i;
+                    continue;
+                }
+                far = i;
+            }
+            return result;
+        }
+
+        /// <summary>Gap below this (m) between neighbouring boxes is logged with its merge decision (farther pairs are plainly separate).</summary>
+        public const double LogPairsWithin = 15.0;
+
+        /// <summary>
+        /// 0.4.10 (G20): the log text of one neighbour pair's merge decision. 'jointFits' / 'jointWhy' = the joint window's
+        /// check for the chain holding both (only read when the gap is below the merge gap).
+        /// </summary>
+        public static string PairDecision(double gap, double mergeGap, bool jointFits, string jointWhy, double from, double to)
+        {
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            string g = gap < 0 ? $"overlap {(-gap).ToString("0.0", ci)} m" : $"gap {gap.ToString("0.0", ci)} m";
+            if (gap >= mergeGap) return $"NOT merged: {g} >= {mergeGap.ToString("0.0", ci)} m (a vehicle can wait between them)";
+            if (!jointFits) return $"NOT merged: {g} < {mergeGap.ToString("0.0", ci)} m but the joint box is refused: {jointWhy}";
+            return $"MERGED: {g} < {mergeGap.ToString("0.0", ci)} m (no vehicle can wait between them): one box, window {from.ToString("0.0", ci)}..{to.ToString("0.0", ci)} m";
+        }
+
         private static bool IsFinite(double v) => !double.IsNaN(v) && !double.IsInfinity(v);
     }
 }

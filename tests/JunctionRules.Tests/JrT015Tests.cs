@@ -119,7 +119,7 @@ namespace JunctionRules.Tests
 
         private static void G14JointBoxTests()
         {
-            Check(ExitBands.TouchMetres == ExitBands.MergeGapMetres && ExitBands.MergeGapMetres == 2f, "driving merges bands within the same 2 m the paint closes");
+            Check(ExitBands.TouchMetres == ExitBands.MergeGapMetres && ExitBands.MergeGapMetres == 6f, "driving merges bands within the same gap the paint closes (0.4.10 G20: 6 m)");
             uint all = MedianSplit.AllCarriageways;
             // Alderbrook Street (shot a4d15d38): two exit boxes ~0.6 m apart, plus an entrance box overlapping the left one
             var w = new List<ExitWindow>

@@ -65,8 +65,17 @@ namespace JunctionRules.Core
         /// </summary>
         public const float TouchMetres = MergeGapMetres;
 
-        /// <summary>0.4.9 (G14): exit / entrance boxes on one road (same carriageways) closer than this along it (m) are ONE box.</summary>
-        public const float MergeGapMetres = 2.0f;
+        /// <summary>
+        /// 0.4.9 (G14): exit / entrance boxes on one road (same carriageways) closer than this along it (m) are ONE box, in
+        /// the paint and in driving (one constant). 0.4.10 (G20, owner 17 Nov 2026, No. 40 Alderwood: an entrance box and an
+        /// exit box 2.8 m apart were drawn as two boxes with a strip of road between: "you said within 2 m it will be merged
+        /// but this is not"): 2 m -> 6 m. A gap is only useful if a vehicle can wait in it: the shortest road vehicle in the
+        /// city is a small car of about 4.2-4.5 m and the box rule wants it to stand clear of both boxes with the room margin
+        /// (default 1 m, RoomScan.DefaultMargin) = about 5.5 m; a gap under 6 m holds no vehicle, so it is part of the box
+        /// (the 0.4.9 driving rule already treated such boxes as one per vehicle). Never across a road marking or into a
+        /// junction mouth margin (EntranceBox.WindowFits keeps them apart then).
+        /// </summary>
+        public const float MergeGapMetres = 6.0f;
 
         /// <summary>
         /// 0.4.9 (G14 / G15, UK yellow box: never stop with any part of the vehicle in a box): for one vehicle's own hold,

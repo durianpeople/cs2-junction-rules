@@ -63,6 +63,37 @@ namespace JunctionRules.Tests
             return LaneWindow.OnLane(ax, az, bx, bz, cx, cz, dx, dz, len, false, x0, z0, x1, z1, out b0, out b1);
         }
 
+        /// <summary>
+        /// 0.4.10 (G20, owner shot ae3ba73f, Alderwood edge 557050, Scandic Baron No. 40 = building 839552): the derived
+        /// entrance box (window 34.7..42.7 m) and the saved exit box (45.5..53.5 m) are 2.8 m apart and were drawn as two
+        /// boxes with a strip of road between (0.4.9 merged only below 2 m).
+        /// </summary>
+        private static void G20MergeGapTests()
+        {
+            uint all = MedianSplit.AllCarriageways;
+            var w = new List<ExitWindow> { new ExitWindow(557050, all, 45.5, 53.5), new ExitWindow(557050, all, 34.7, 42.7) };
+            Check(ExitBoxWindows.Chains(w, 2.0).Count == 0, "G20 root cause: with 0.4.9's 2 m gap the No. 40 boxes (2.8 m apart) stay two boxes");
+            var chains = ExitBoxWindows.Chains(w, ExitBands.MergeGapMetres);
+            Check(chains.Count == 1 && chains[0].Members.Count == 2 && Math.Abs(chains[0].From - 34.7) < 1e-9 && Math.Abs(chains[0].To - 53.5) < 1e-9,
+                "G20: 0.4.10 builds them as ONE box 34.7..53.5 m (paint and driving use the same chains)");
+            Check(EntranceBox.WindowFits(34.7, 53.5, 0, 120, 0.5, null, out _), "the joint window fits when no marking lies in the gap");
+            var pairs = ExitBoxWindows.Neighbours(w, ExitBoxWindows.LogPairsWithin);
+            Check(pairs.Count == 1 && pairs[0].A == 1 && pairs[0].B == 0 && Math.Abs(pairs[0].Gap - 2.8) < 1e-9, "one neighbour pair logged, gap 2.8 m");
+            string merged = ExitBoxWindows.PairDecision(2.8, ExitBands.MergeGapMetres, true, null, 34.7, 53.5);
+            Check(merged.StartsWith("MERGED: gap 2.8 m < 6.0 m") && merged.Contains("34.7..53.5"), "log: " + merged);
+            string far = ExitBoxWindows.PairDecision(6.5, ExitBands.MergeGapMetres, false, null, 0, 0);
+            Check(far.StartsWith("NOT merged: gap 6.5 m >= 6.0 m"), "log: " + far);
+            string marked = ExitBoxWindows.PairDecision(2.8, ExitBands.MergeGapMetres, false, "joint window crosses a road marking", 0, 0);
+            Check(marked.StartsWith("NOT merged: gap 2.8 m < 6.0 m but the joint box is refused: joint window crosses a road marking"), "log: " + marked);
+            Check(!EntranceBox.WindowFits(34.7, 53.5, 0, 120, 0.5, new[] { new AlongSpan(43.5, 43.8) }, out string why) && why.Contains("road marking"), "a marking in the gap keeps them apart: " + why);
+            // why 6 m: a gap below the shortest vehicle (~4.2-4.5 m) + the room margin (1 m) holds no vehicle
+            Check(ExitBands.MergeGapMetres >= 4.5f + RoomScan.DefaultMargin && ExitBands.MergeGapMetres <= 6.5f, "merge gap = shortest vehicle + room margin, rounded up (6 m)");
+            Check(ExitBands.HoldTouchMetres(4.2f, 1f) == ExitBands.MergeGapMetres && ExitBands.HoldTouchMetres(16.5f, 1f) == 17.5f,
+                "driving per vehicle: at least the paint's gap (a car), its own length + margin when longer (an artic)");
+            var n3 = ExitBoxWindows.Neighbours(new List<ExitWindow> { new ExitWindow(1, all, 0, 8), new ExitWindow(1, all, 30, 38), new ExitWindow(1, 0x1, 9, 17) }, ExitBoxWindows.LogPairsWithin);
+            Check(n3.Count == 0, "pairs only on one road and carriageway set, below 15 m");
+        }
+
         private static void G18G19Tests()
         {
             float laneLength = AbCutEnd - AbCutStart;

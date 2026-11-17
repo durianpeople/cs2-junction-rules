@@ -1,12 +1,12 @@
 # Probe kit: Junction Rules 0.4.10-probe (stage 4, yellow box selection tool; cars never stop on a zebra; cars obey yellow boxes; straight-sided boxes; boxes at car exits and entrances; vehicles leaving buildings give way before the sidewalk; merged boxes; median; markings hidden; gaps G1-G19)
 
-**0.4.10-probe (JR-T-016: 0.4.9 live gaps G18, G19), what changed since 0.4.9 (section 20):** cars no longer stop
+**0.4.10-probe (JR-T-016: 0.4.9 live gaps G18, G19, G20), what changed since 0.4.9 (section 20):** cars no longer stop
 inside a painted exit / entrance box: the driving rule now uses exactly the painted box (0.4.3-0.4.9 placed the driven
 box metres away from the paint: up to 12-13 m at Alderbrook Street, because the road's lanes are measured from mouth to
 mouth and the box position was measured from node to node). Boxes built as one box are driven as that one box. Every
 yellow box (junction, exit, entrance; through traffic, vehicles leaving a building, the right-turner's re-check at its
 in-box spot) now needs room that is **free now** past the box for the whole vehicle: a creeping queue no longer counts
-as room. New timing counter at the end of the line. `docs/vanilla_copy_check_0.4.10.txt`: 0 unexplained differences (no
+as room. G20: boxes on one road less than 6 m apart (was 2 m) are built and driven as one box, with a log line per pair saying merged or not and why. New timing counter at the end of the line. `docs/vanilla_copy_check_0.4.10.txt`: 0 unexplained differences (no
 change to the copied game code). Carries 0.4.9 and everything before.
 
 **0.4.9-probe (JR-T-015: 0.4.8 live gaps G12-G15), what changed since 0.4.8 (section 19):** G16 boxes stay yellow in snow; G17 holds name the vehicle they wait for, so No Vehicle Despawn and the cs2 deadlock finder see loops through Junction Rules holds. G15 the Alderwood
@@ -1379,3 +1379,25 @@ sharp curve the driven box ends follow the lane's perpendicular, the paint's end
 normal curves). (d) A box the paint cannot draw (log `not painted`) is no longer driven (0.4.9 drove a box there); the
 paint log names why. (e) The 2 m same-road merge for the vehicle's own length (19.1, per vehicle) is unchanged and now
 works on the true positions.
+
+### 20.4 G20: boxes 2-6 m apart are one box (owner: "you said within 2 m it will be merged but this is not")
+
+Owner shot ae3ba73f, Alderwood (edge 557050), No. 40 (Scandic Baron, building 839552): the derived entrance box (window
+34.7..42.7 m) and the saved exit box (45.5..53.5 m) are 2.8 m apart; 0.4.9 merged boxes only below 2 m, so they were drawn
+as two boxes with a strip of road between. A gap is only useful if a vehicle can wait in it; the shortest road vehicle
+is a small car of about 4.2-4.5 m, and the box rule wants it clear of both boxes with the room margin (1 m): about
+5.5 m. **Now: boxes on one road (same carriageways) less than 6 m apart are built and driven as ONE box** (one constant,
+ExitBands.MergeGapMetres, used by the paint's JointBoxes and by the driving list), still never over a road marking or
+into a junction mouth margin (then they stay apart, logged). In driving a vehicle longer than 5 m still treats boxes
+closer than its own length + margin as one for its own hold (19.1, unchanged). No. 40 becomes one box 34.7..53.5 m
+(test `G20MergeGapTests`), unless the road's one marking lies in the 2.8 m gap (the log then says so).
+
+New log, one line per neighbouring pair of boxes on a road less than 15 m apart, once per decision:
+`yellow boxes: pair on edge E: <box A> window a..b m | <box B> window c..d m: MERGED: gap 2.8 m < 6.0 m (no vehicle can
+wait between them): one box, window 34.7..53.5 m` or `NOT merged: gap 6.5 m >= 6.0 m (a vehicle can wait between them)`
+or `NOT merged: gap 2.8 m < 6.0 m but the joint box is refused: <why>`.
+
+| # | Do | Expect |
+|---|---|---|
+| 20-6 | No. 40 Alderwood (shot ae3ba73f) and other boxes 2-6 m apart | one box, one outline; log `pair ... MERGED` |
+| 20-7 | Boxes 6 m or more apart | two boxes; log `NOT merged: gap ... >= 6.0 m` (below 15 m only) |

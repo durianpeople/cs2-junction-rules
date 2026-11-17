@@ -1084,6 +1084,8 @@ namespace JunctionRules.Paint
             }
             if (boxes.Count < 2) return result;
             EntityManager em = EntityManager;
+            // 0.4.10 (G20): per box, the outcome of its chain (for the per-pair decision log below)
+            var chainOf = new Dictionary<int, (bool Fits, string Why, double From, double To)>();
             foreach (var chain in ExitBoxWindows.Chains(windows, ExitBands.MergeGapMetres))
             {
                 Box first = boxes[chain.Members[0]];
@@ -1093,6 +1095,7 @@ namespace JunctionRules.Paint
                 foreach (int m in chain.Members) labels.Add(boxes[m].Label);
                 string sig = first.EdgeKey + "|" + chain.From.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + "|" + chain.To.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + "|" + (shape.Outline != null);
                 bool log = m_JointLogged.Add(sig);
+                foreach (int m in chain.Members) chainOf[m] = (shape.Outline != null, shape.Failure, chain.From, chain.To);
                 if (shape.Outline == null)
                 {
                     if (log) Mod.log.Info($"yellow boxes: {chain.Members.Count} boxes within {ExitBands.MergeGapMetres:0.0} m on edge {first.Access.Edge} kept apart: {shape.Failure} ({string.Join("; ", labels)})");
@@ -1100,6 +1103,16 @@ namespace JunctionRules.Paint
                 }
                 foreach (int m in chain.Members) result[boxes[m]] = new List<V3>(shape.Outline);
                 if (log) Mod.log.Info($"yellow boxes: {chain.Members.Count} boxes within {ExitBands.MergeGapMetres:0.0} m on edge {first.Access.Edge} built as ONE box, window {chain.From:0.0}..{chain.To:0.0} m ({string.Join("; ", labels)})");
+            }
+            // 0.4.10 (G20, owner: "you said within 2 m it will be merged but this is not"): one line per neighbouring pair on a
+            // road (gap below ExitBoxWindows.LogPairsWithin), merged or not and why; once per decision.
+            foreach (var pr in ExitBoxWindows.Neighbours(windows, ExitBoxWindows.LogPairsWithin))
+            {
+                bool inChain = chainOf.TryGetValue(pr.B, out var co) && chainOf.ContainsKey(pr.A);
+                string text = ExitBoxWindows.PairDecision(pr.Gap, ExitBands.MergeGapMetres, inChain && co.Fits, inChain ? co.Why : "not in one chain", co.From, co.To);
+                Box a = boxes[pr.A], b = boxes[pr.B];
+                string line = $"yellow boxes: pair on edge {a.Access.Edge}: {a.Label} window {a.WinFrom:0.0}..{a.WinTo:0.0} m | {b.Label} window {b.WinFrom:0.0}..{b.WinTo:0.0} m: {text}";
+                if (m_JointLogged.Add("pair|" + line)) Mod.log.Info(line);
             }
             return result;
         }
