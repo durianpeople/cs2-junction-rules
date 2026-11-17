@@ -101,6 +101,30 @@ namespace JunctionRules.Core
             return result;
         }
 
+        /// <summary>
+        /// 0.4.10 (review F5): the boxes as drawn, one entry per drawn box: each chain (<see cref="Chains"/>) whose joint window
+        /// the paint accepts (<paramref name="jointFits"/>(first member, from, to): BoxShapes.Entrance with the joint window
+        /// gives an outline) is ONE box over the joint window; every other window is its own box. Window order of the
+        /// result: joint boxes first (chain order), then the single ones in input order. Shared by the driving list
+        /// (Boxes/DrivingBands.cs); the paint's JointBoxes applies the same chains to its drawn boxes.
+        /// </summary>
+        public static List<(List<int> Members, double From, double To)> Assemble(IList<ExitWindow> windows, double gap, Func<int, double, double, bool> jointFits)
+        {
+            var result = new List<(List<int> Members, double From, double To)>();
+            if (windows == null) return result;
+            var done = new bool[windows.Count];
+            foreach (var chain in Chains(windows, gap))
+            {
+                if (jointFits != null && !jointFits(chain.Members[0], chain.From, chain.To)) continue;
+                foreach (int m in chain.Members) done[m] = true;
+                result.Add((chain.Members, chain.From, chain.To));
+            }
+            for (int i = 0; i < windows.Count; i++)
+                if (!done[i] && IsFinite(windows[i].From) && IsFinite(windows[i].To) && windows[i].To > windows[i].From)
+                    result.Add((new List<int> { i }, windows[i].From, windows[i].To));
+            return result;
+        }
+
         /// <summary>Gap below this (m) between neighbouring boxes is logged with its merge decision (farther pairs are plainly separate).</summary>
         public const double LogPairsWithin = 15.0;
 

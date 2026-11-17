@@ -1131,7 +1131,7 @@ public struct JRCarLaneSpeedIterator
 	private void CheckCurrentLane(float distance, float laneOffset, float2 minOffset, bool inverse, bool inverseLaneOffset)
 	{
 		// JR-STAGE2 BEGIN S2-28: 0.4.2 cars obey yellow boxes: no entering a boxed junction or an entrance band without room past it for the whole vehicle
-		if (m_JR.m_BoxRule)
+		if (m_JR.m_BoxRule && !JunctionRules.Core.ExitGiveWay.IsEmergency(m_Priority))   // 0.4.10: on-duty emergency vehicles pass boxes (as at exits)
 		{
 			float jrBoxHold = m_JR.BoxHold(m_Lane, m_Curve.m_Length, m_CurveOffset, distance, math.select(0.9f, 0.4f, m_IsBicycle), inverse, m_PrefabCar, m_CurrentSpeed, m_TimeStep, m_SafeTimeStep, m_SpeedRange, m_MaxSpeed, m_Entity, ref m_CarLaneData, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabObjectGeometryData, ref m_PrefabCarData, ref m_LaneOverlapData, ref m_PedestrianLaneData);
 			if (jrBoxHold < m_MaxSpeed)
@@ -1171,7 +1171,7 @@ public struct JRCarLaneSpeedIterator
 	private void CheckCurrentLane(float distance, float laneOffset, float2 minOffset, bool inverse, bool inverseLaneOffset, ref float canUseLane)
 	{
 		// JR-STAGE2 BEGIN S2-28b: 0.4.2 cars obey yellow boxes: no entering a boxed junction or an entrance band without room past it for the whole vehicle
-		if (m_JR.m_BoxRule)
+		if (m_JR.m_BoxRule && !JunctionRules.Core.ExitGiveWay.IsEmergency(m_Priority))   // 0.4.10: on-duty emergency vehicles pass boxes (as at exits)
 		{
 			float jrBoxHold = m_JR.BoxHold(m_Lane, m_Curve.m_Length, m_CurveOffset, distance, math.select(0.9f, 0.4f, m_IsBicycle), inverse, m_PrefabCar, m_CurrentSpeed, m_TimeStep, m_SafeTimeStep, m_SpeedRange, m_MaxSpeed, m_Entity, ref m_CarLaneData, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabObjectGeometryData, ref m_PrefabCarData, ref m_LaneOverlapData, ref m_PedestrianLaneData);
 			if (jrBoxHold < m_MaxSpeed)
@@ -1259,7 +1259,7 @@ public struct JRCarLaneSpeedIterator
 		}
 		// JR-STAGE2 END
 		// JR-STAGE2 BEGIN S2-37: JR-T-013b (G3) yellow box, UK right-turn exception: a turner at its turn spot inside the box stays there (clear of the oncoming lane) while its exit has no room
-		if (m_JR.m_BoxRule)
+		if (m_JR.m_BoxRule && !JunctionRules.Core.ExitGiveWay.IsEmergency(m_Priority))   // 0.4.10: on-duty emergency vehicles pass boxes (as at exits)
 		{
 			float jrTurnRoomHold = m_JR.BoxTurnRoomHold(lane, length, inverse, m_PrefabCar, m_SafeTimeStep, m_SpeedRange, m_MaxSpeed, m_Entity, ref m_CarLaneData, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabObjectGeometryData, ref m_PrefabCarData, ref m_LaneOverlapData, ref m_PedestrianLaneData);
 			if (jrTurnRoomHold < m_MaxSpeed)

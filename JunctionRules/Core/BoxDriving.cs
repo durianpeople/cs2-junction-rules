@@ -114,6 +114,28 @@ namespace JunctionRules.Core
             return true;
         }
 
+        /// <summary>
+        /// 0.4.10 (sweep): a light that holds a car at a junction lane inside a box's room window: red (Stop) or amber
+        /// (SafeStop: the car stops if it can). Values = Game.Net.LaneSignalType.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool LightStopsInWindow(int signal) => signal == WholePathRule.SignalStop || signal == WholePathRule.SignalSafeStop;
+
+        /// <summary>
+        /// 0.4.10 (sweep): a band [b0, b1] (driving coordinates) of a later path lane whose part on the path [startD, endD]
+        /// starts inside the room window (read = metres from the window start to where the path enters this lane, needed
+        /// = the room window so far): the room is then needed past the band (pastEnd = metres from the window start).
+        /// </summary>
+        public static bool BandInWindow(float b0, float b1, float startD, float endD, float laneLength, float read, float needed, out float pastEnd)
+        {
+            pastEnd = 0f;
+            if (!(b1 > startD) || !(b0 < endD)) return false;
+            float from = read + (b0 > startD ? b0 - startD : 0f) * laneLength;
+            if (!(from < needed)) return false;
+            pastEnd = read + ((b1 < endD ? b1 : endD) - startD) * laneLength;
+            return true;
+        }
+
         /// <summary>0.4.9 (G15b): the overlap [t0, t1] on this lane (driving coordinates) lies in the window from the band entry to the end of the room needed.</summary>
         public static bool SideOverlapInWindow(float t0, float t1, float from, float windowEnd) => t1 > from && t0 < windowEnd;
 

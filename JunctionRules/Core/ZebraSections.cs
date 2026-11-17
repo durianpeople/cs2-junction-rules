@@ -528,6 +528,13 @@ namespace JunctionRules.Core
         /// The scan can stop: blocked, or the path read so far (from the section end) is long enough that no vehicle
         /// further on can take the room (rear &gt;= this length means room &gt;= Needed).
         /// </summary>
+        /// <summary>
+        /// 0.4.10 (sweep): how far past the window start the car may end up standing when it has room: the vehicles queued
+        /// ahead of it (inside the box) plus its own room. Further boxes / lights starting before this matter (JRWholeJunction
+        /// .FurtherBoxes).
+        /// </summary>
+        public readonly float Reach => Needed + m_Occupied;
+
         public readonly bool Done(float pathRead) => Blocked || pathRead >= Needed + m_Occupied;
 
         /// <summary>

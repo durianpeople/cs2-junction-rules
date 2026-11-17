@@ -213,7 +213,7 @@ namespace JunctionRules.Core
         /// 0.4.10 (G19, probe): car-steps in which a yellow box hold (junction box, exit / entrance band, the right-turner's
         /// turn-spot re-check, a vehicle leaving into a box) bound only because room must now be FREE NOW: the vehicle that
         /// blocked had room with its moving braking-distance credit (0.4.9 would have let the car in). Shows what the
-        /// free-now rule costs through traffic.
+        /// free-now rule costs through traffic. An upper bound (review F6): only the first blocker's credit is tested.
         /// </summary>
         public const int BoxHeldFreeNow = FeedingScans + 53;
         public const int Count = FeedingScans + 54;

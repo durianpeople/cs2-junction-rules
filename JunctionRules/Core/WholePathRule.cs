@@ -141,7 +141,7 @@ namespace JunctionRules.Core
             + ((mode & NoPushPeople) != 0 ? "; cars never push through people on crossings" : "")
             + ((mode & ZebraClear) != 0 ? "; cars never stop on a zebra (room margin " + ZebraMargin(mode).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " m)" : "")
             + ((mode & BoxObey) != 0 ? "; cars obey yellow boxes (room margin " + ZebraMargin(mode).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)
-                + " m, entrance band " + BoxEntranceLength(mode).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " m; "
+                + " m, exit boxes driven over their painted windows (box length setting " + BoxEntranceLength(mode).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " m); "
                 + ((mode & BoxTurnWait) != 0 ? "turning across oncoming may wait in the box, " + ((mode & BoxLeftHand) != 0 ? "left" : "right") + "-hand traffic" : "no waiting in the box")
                 + ")" : "")
             + ((mode & ExitGiveWay) != 0 ? "; vehicles leaving buildings give way" : "")

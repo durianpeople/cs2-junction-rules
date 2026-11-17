@@ -236,8 +236,8 @@ namespace JunctionRules.Tests
             Check(sw.Contains("merged == m_MergedVersion"), "driving bands rebuilt when the paint regroups");
             string db = File.ReadAllText(Path.Combine(root, "JunctionRules", "Boxes", "DrivingBands.cs"));
             Check(db.Contains("BoxShapes.Entrance(em, src.Access, p.KerbInset, p.EntranceLength, p.MarkingMargin, src.BuildingPos)")
-                && db.Contains("ExitBoxWindows.Chains(windows, ExitBands.MergeGapMetres)")
-                && db.Contains("BoxShapes.Entrance(em, first.Access, p.KerbInset, p.EntranceLength, p.MarkingMargin, first.BuildingPos, chain.From, chain.To)"),
+                && db.Contains("ExitBoxWindows.Assemble(windows, ExitBands.MergeGapMetres, Fits)")
+                && db.Contains("BoxShapes.Entrance(em, first.Access, p.KerbInset, p.EntranceLength, p.MarkingMargin, first.BuildingPos, from, to)"),
                 "driving windows are made by the paint's own shape code (box window, joint windows as JointBoxes)");
         }
     }

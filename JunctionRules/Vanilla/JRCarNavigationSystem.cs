@@ -1621,7 +1621,7 @@ public class JRCarNavigationSystem : GameSystemBase
 			// JR-STAGE2 BEGIN S2-26: 0.4.1 cars never stop on a zebra / 0.4.2 cars obey yellow boxes: the navigation lanes for the room-past scan; whole vehicle length (trailers incl.) also with the stock gap rule; 0.4.2 the box lookups
 			if (carLaneSpeedIterator.m_JR.m_BoxRule)
 			{
-				carLaneSpeedIterator.m_JR.SetBoxes(m_JRBoxJunctionData, m_JREdgeLaneData, ref m_JRBoxEdges);
+				carLaneSpeedIterator.m_JR.SetBoxes(m_JRBoxJunctionData, m_JREdgeLaneData, ref m_JRBoxEdges, m_LaneSignalData);
 			}
 			if (carLaneSpeedIterator.m_JR.m_ZebraRule || carLaneSpeedIterator.m_JR.m_BoxRule || carLaneSpeedIterator.m_JR.m_ExitRule)
 			{

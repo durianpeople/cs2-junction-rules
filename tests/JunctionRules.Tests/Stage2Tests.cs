@@ -337,7 +337,7 @@ namespace JunctionRules.Tests
             foreach (System.Text.RegularExpressions.Match m in cclBlocks)
             {
                 string body = m.Value;
-                cclOk &= (m.Groups[1].Value == "S2-28" || m.Groups[1].Value == "S2-28b") && body.Contains("if (m_JR.m_BoxRule)") && body.Contains("m_JR.BoxHold(")
+                cclOk &= (m.Groups[1].Value == "S2-28" || m.Groups[1].Value == "S2-28b") && body.Contains("if (m_JR.m_BoxRule && !JunctionRules.Core.ExitGiveWay.IsEmergency(m_Priority))") && body.Contains("m_JR.BoxHold(")
                     && !body.Contains("UpdateMaxSpeed") && !body.Contains("canUseLane");
             }
             int firstLoop = cclPart.IndexOf("for (int i = 0; i < bufferData.Length; i++)", StringComparison.Ordinal);

@@ -77,8 +77,24 @@ namespace JunctionRules.Systems
             {
                 for (int i = 0; i < buildings.Length; i++) unmatched += JunctionRules.Boxes.BoxFacts.BoxedExitBands(EntityManager, buildings[i], sources);
             }
-            // 0.4.10 (G18): the painted windows (joint boxes as one), not the exit points
-            var bands = JunctionRules.Boxes.DrivingBands.Build(EntityManager, sources, out int notPainted, out int joint);
+            // 0.4.10 (G18): the painted windows (joint boxes as one), not the exit points. Review F1: the paint's shape code runs
+            // here on the main thread; a failure keeps the bands published last (logged once per message) and never escapes.
+            System.Collections.Generic.List<ExitBand> bands;
+            int notPainted, joint;
+            try
+            {
+                bands = JunctionRules.Boxes.DrivingBands.Build(EntityManager, sources, out notPainted, out joint);
+            }
+            catch (System.Exception e)
+            {
+                if (m_BandFailure != e.Message)
+                {
+                    m_BandFailure = e.Message;
+                    Mod.log.Warn($"yellow boxes (driving): the painted windows could not be built ({e.GetType().Name}: {e.Message}); the boxes handed over last stay in force");
+                }
+                return;
+            }
+            m_BandFailure = null;
             int before = BoxEdgeHandoff.Version;
             BoxEdgeHandoff.Publish(bands);
             int dropped = BoxEdgeHandoff.Dropped;
@@ -100,6 +116,9 @@ namespace JunctionRules.Systems
 
         /// <summary>Steps between rebuilds of the boxed edge set while the box count is unchanged.</summary>
         private const int BoxEdgeRefreshSteps = 64;
+
+        /// <summary>0.4.10 review F1: the last window-build failure logged (null = none).</summary>
+        private string m_BandFailure;
 
         /// <summary>0.4.10 (G18): the paint's merged-box version at the last rebuild (Core MergedBoxes.Version).</summary>
         private int m_MergedVersion = -1;

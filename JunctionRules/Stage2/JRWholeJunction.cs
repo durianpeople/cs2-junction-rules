@@ -189,6 +189,8 @@ namespace JunctionRules.Stage2
         /// job's Execute (the job struct does not move while it runs); null until SetBoxes (m_BoxLookups guards every read).
         /// </summary>
         private unsafe JRBoxEdges* m_BoxEdges;
+        /// <summary>0.4.10 (sweep): the lane signals, for "a light inside the room window past a box" (SetBoxes).</summary>
+        private ComponentLookup<LaneSignal> m_BoxSignalData;
         /// <summary>The lane being checked (BeginLane, Whole junction) is a lane of a boxed junction: its decision is at the stop line.</summary>
         private bool m_BoxLane;
         /// <summary>Its turn spot (UK right-turn exception, driving coordinates; 2 = none) and that spot's index in the stretch spots (-1 = none).</summary>
@@ -702,7 +704,7 @@ namespace JunctionRules.Stage2
         /// <paramref name="boxNode"/> (further lanes of the same boxed junction) likewise. The zebra rule passes -1 /
         /// Entity.Null: exactly the 0.4.1 scan.
         /// </summary>
-        private bool HasRoomPast(Entity lane, float fromDriving, bool inverse, float length, float queueFrom, Entity boxNode, Entity self, float safeTimeStep,
+        private unsafe bool HasRoomPast(Entity lane, float fromDriving, bool inverse, float length, float queueFrom, Entity boxNode, Entity self, float safeTimeStep,
             ref ComponentLookup<Game.Net.CarLane> carLanes, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves,
             ref ComponentLookup<Moving> moving, ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs,
             ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars,
@@ -719,6 +721,18 @@ namespace JunctionRules.Stage2
                     ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted);
             }
             float read = (1f - fromDriving) * length;
+            // 0.4.10 (sweep): a further box on this same lane inside the reach (the car's own band merge covers its length +
+            // margin; vehicles queued in the box push its waiting spot further): room needed past it too
+            if (freeNow && m_BoxEntrances && m_BoxEdges != null && m_EdgeLaneData.HasComponent(lane) && m_OwnerData.TryGetComponent(lane, out Owner laneOwner)
+                && carLanes.TryGetComponent(lane, out Game.Net.CarLane laneCar)
+                && LaneBands(lane, laneOwner.m_Owner, length, inverse, laneCar.m_CarriagewayGroup, ref curves, out FixedList128Bytes<float2> sameBands))
+            {
+                for (int i = 0; i < sameBands.Length; i++)
+                {
+                    if (!(sameBands[i].x > fromDriving + WholePathRule.SpotEpsilon)) continue;   // the box itself / boxes behind
+                    if (BoxDriving.BandInWindow(sameBands[i].x, sameBands[i].y, fromDriving, 1f, length, 0f, scan.Reach, out float pastEnd)) scan.ExtendPast(pastEnd);
+                }
+            }
             ScanLane(ref scan, lane, StretchGeometry.ToDriving(fromDriving, inverse), inverse, length, read, 0f, false, self, safeTimeStep, ref laneObjects, ref curves,
                 ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted);
             if (!scan.Done(read) && m_HasPath)
@@ -739,6 +753,10 @@ namespace JunctionRules.Stage2
                     bool inBox = boxNode != Entity.Null && m_OwnerData.TryGetComponent(nav.m_Lane, out Owner navOwner) && navOwner.m_Owner == boxNode;
                     if (!inBox && FurtherZebras(ref scan, nav.m_Lane, nav.m_CurvePosition, navInverse, navCurve.m_Length, read, ref overlapData, ref pedestrianLanes, ref laneObjects)
                         && Counting) m_ZebraFurtherSeen = true;
+                    // 0.4.10 (sweep, UK yellow box: no part of a waiting vehicle in any box): where the car would wait after
+                    // this box must not be inside another box or before a red light
+                    if (freeNow && !inBox) FurtherBoxes(ref scan, nav, navInverse, navCurve, read, ref carLanes, ref curves);
+                    if (scan.Blocked) break;
                     ScanLane(ref scan, nav.m_Lane, nav.m_CurvePosition.x, navInverse, navCurve.m_Length, span, inBox ? 0f : read, inBox, self, safeTimeStep, ref laneObjects,
                         ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted);
                     if (!inBox) read += span;
@@ -752,6 +770,51 @@ namespace JunctionRules.Stage2
             NoteRoomBlocker(scan);
             m_FreeNowHeld = scan.HeldForMovingQueue;
             return scan.HasRoom;
+        }
+
+        /// <summary>
+        /// 0.4.10 (JR-T-016 sweep, owner: "no part of a waiting vehicle inside any painted box"): a yellow box room test reads
+        /// the room window (whole vehicle + margin past the box). A car that has room there drives on and may then have to
+        /// wait at the far end of that window; it must not wait in another box or with its tail in this one:
+        /// - a later lane of a BOXED junction starting inside the window (an exit box near a boxed junction, or a box right
+        ///   after a junction box): the room is needed past that junction box too (RoomScan.ExtendPast);
+        /// - an exit / entrance box on a later road lane starting inside the window: the room is needed past it too (the
+        ///   painted window, JRYellowBox.LaneBands);
+        /// - a later junction lane held by a red or amber light, starting inside the window: the car would stand at the
+        ///   light with part of it in the box: no room now (RoomScan.Block; no vehicle named). A light that turns green
+        ///   frees it (no loop: lights cycle).
+        /// A give-way / STOP line inside the window is not treated as a stop (the car would wait forever before the box: that
+        /// geometry is the paint's mouth margin, PROBE 20.5). Only for box room tests (freeNow).
+        /// </summary>
+        private unsafe void FurtherBoxes(ref RoomScan scan, CarNavigationLane nav, bool navInverse, Curve navCurve, float read,
+            ref ComponentLookup<Game.Net.CarLane> carLanes, ref ComponentLookup<Curve> curves)
+        {
+            if (scan.Blocked || !(read < scan.Reach)) return;
+            float len = navCurve.m_Length;
+            float span = math.abs(nav.m_CurvePosition.y - nav.m_CurvePosition.x) * len;
+            if (m_NodeLaneData.HasComponent(nav.m_Lane))
+            {
+                if (m_BoxSignalData.TryGetComponent(nav.m_Lane, out LaneSignal sig)
+                    && BoxDriving.LightStopsInWindow((int)sig.m_Signal))
+                {
+                    scan.Block();
+                    return;
+                }
+                if (m_BoxJunctions && m_OwnerData.TryGetComponent(nav.m_Lane, out Owner o) && m_BoxJunctionData.HasComponent(o.m_Owner))
+                    scan.ExtendPast(read + span);
+                return;
+            }
+            if (!m_BoxEntrances || m_BoxEdges == null || !m_EdgeLaneData.HasComponent(nav.m_Lane) || !m_OwnerData.TryGetComponent(nav.m_Lane, out Owner eo)
+                || !carLanes.TryGetComponent(nav.m_Lane, out Game.Net.CarLane cl)) return;
+            if (!LaneBands(nav.m_Lane, eo.m_Owner, len, navInverse, cl.m_CarriagewayGroup, ref curves, out FixedList128Bytes<float2> bands)) return;
+            float startD = StretchGeometry.ToDriving(nav.m_CurvePosition.x, navInverse);
+            float endD = StretchGeometry.ToDriving(nav.m_CurvePosition.y, navInverse);
+            for (int i = 0; i < bands.Length && !scan.Blocked; i++)
+            {
+                float b0 = bands[i].x, b1 = bands[i].y;
+                if (!BoxDriving.BandInWindow(b0, b1, startD, endD, len, read, scan.Reach, out float pastEnd)) continue;
+                scan.ExtendPast(pastEnd);
+            }
         }
 
         /// <summary>

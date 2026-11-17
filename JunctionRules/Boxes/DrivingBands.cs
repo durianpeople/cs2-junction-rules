@@ -33,9 +33,12 @@ namespace JunctionRules.Boxes
             public bool Derived;
         }
 
-        private static string s_Signature;
-        private static List<ExitBand> s_Bands = new List<ExitBand>();
-        private static int s_NotPainted, s_Joint;
+        /// <summary>
+        /// 0.4.10 review F3 / F4: the window of each source, cached by its own fingerprint (only a changed source runs the
+        /// shape code again), and each joint window's verdict by its own key.
+        /// </summary>
+        private static Dictionary<string, (bool Ok, double From, double To, uint Mask)> s_Windows = new Dictionary<string, (bool, double, double, uint)>();
+        private static Dictionary<string, bool> s_Joint = new Dictionary<string, bool>();
 
         /// <summary>
         /// The bands for these sources (one per drawn box; a joint box once). 'notPainted' = sources the paint would not draw
@@ -44,47 +47,48 @@ namespace JunctionRules.Boxes
         internal static List<ExitBand> Build(EntityManager em, List<Source> sources, out int notPainted, out int joint)
         {
             BoxShapeParams p = BoxStore.Params;
-            string sig = Signature(em, sources, p);
-            if (sig == s_Signature)
-            {
-                notPainted = s_NotPainted;
-                joint = s_Joint;
-                return new List<ExitBand>(s_Bands);
-            }
+            string prm = p.Describe();
             var bands = new List<ExitBand>();
             notPainted = 0;
             joint = 0;
             var ok = new List<int>();
             var windows = new List<ExitWindow>();
-            var masks = new List<uint>();
+            var keys = new List<string>();
+            var nextWindows = new Dictionary<string, (bool, double, double, uint)>();
             for (int i = 0; i < sources.Count; i++)
             {
                 Source src = sources[i];
-                BoxShapes.Shape shape = BoxShapes.Entrance(em, src.Access, p.KerbInset, p.EntranceLength, p.MarkingMargin, src.BuildingPos);
-                if (shape.Outline == null) { notPainted++; continue; }
+                string key = prm + "|" + Fingerprint(em, src);
+                if (!s_Windows.TryGetValue(key, out var w))
+                {
+                    BoxShapes.Shape shape = BoxShapes.Entrance(em, src.Access, p.KerbInset, p.EntranceLength, p.MarkingMargin, src.BuildingPos);
+                    w = (shape.Outline != null, shape.From, shape.To, shape.Carriageways);
+                }
+                nextWindows[key] = w;
+                if (!w.Ok) { notPainted++; continue; }
                 Entity e = src.Access.Edge;
                 ok.Add(i);
-                windows.Add(new ExitWindow(SortedKeys.KeyOf(e.Index, e.Version), shape.Carriageways, shape.From, shape.To));
-                masks.Add(shape.Carriageways);
+                keys.Add(key);
+                windows.Add(new ExitWindow(SortedKeys.KeyOf(e.Index, e.Version), w.Mask, w.From, w.To));
             }
-            var done = new bool[ok.Count];
-            foreach (var chain in ExitBoxWindows.Chains(windows, ExitBands.MergeGapMetres))
+            s_Windows = nextWindows;
+            var nextJoint = new Dictionary<string, bool>();
+            bool Fits(int m, double from, double to)
             {
-                Source first = sources[ok[chain.Members[0]]];
-                BoxShapes.Shape shape = BoxShapes.Entrance(em, first.Access, p.KerbInset, p.EntranceLength, p.MarkingMargin, first.BuildingPos, chain.From, chain.To);
-                if (shape.Outline == null) continue;   // the paint keeps them apart (logged by the paint): each its own band below
-                foreach (int m in chain.Members) done[m] = true;
-                if (Window(em, first.Access.Edge, chain.From, chain.To, masks[chain.Members[0]], out ExitBand b)) { bands.Add(b); joint++; }
+                Source first = sources[ok[m]];
+                string jk = keys[m] + "|joint " + from.ToString("R", CultureInfo.InvariantCulture) + ".." + to.ToString("R", CultureInfo.InvariantCulture);
+                if (!s_Joint.TryGetValue(jk, out bool fits))
+                    fits = BoxShapes.Entrance(em, first.Access, p.KerbInset, p.EntranceLength, p.MarkingMargin, first.BuildingPos, from, to).Outline != null;
+                nextJoint[jk] = fits;
+                return fits;
             }
-            for (int k = 0; k < ok.Count; k++)
+            foreach (var box in ExitBoxWindows.Assemble(windows, ExitBands.MergeGapMetres, Fits))
             {
-                if (done[k]) continue;
-                if (Window(em, sources[ok[k]].Access.Edge, windows[k].From, windows[k].To, masks[k], out ExitBand b)) bands.Add(b);
+                int m0 = box.Members[0];
+                if (box.Members.Count > 1) joint++;
+                if (Window(em, sources[ok[m0]].Access.Edge, box.From, box.To, windows[m0].Carriageways, out ExitBand b)) bands.Add(b);
             }
-            s_Signature = sig;
-            s_Bands = new List<ExitBand>(bands);
-            s_NotPainted = notPainted;
-            s_Joint = joint;
+            s_Joint = nextJoint;
             return bands;
         }
 
@@ -101,35 +105,40 @@ namespace JunctionRules.Boxes
         }
 
         /// <summary>
-        /// Everything the windows depend on that is cheap to read: the shape parameters, the paint's merged-box version
-        /// (bumped whenever the paint regroups: a box or a tracked road / node changed), and per source its road edge, the
-        /// edge's composition pieces (a crosswalk / marking change on the edge or its ends), its geometry ends (mouths), the
-        /// exit point and the building position.
+        /// Everything one source's window depends on that is cheap to read (review F3 / F4: per source, no global version):
+        /// its road edge (index, version), the exit point and the building position (median side), the edge's composition
+        /// pieces and geometry ends (mouths), and the sub-lane counts of the edge and its two end nodes (stop / give-way
+        /// lines are the edge's secondary lanes, crosswalks the nodes' lanes: BoxShapes.StopLines / MarkedCrossings).
         /// </summary>
-        private static string Signature(EntityManager em, List<Source> sources, BoxShapeParams p)
+        private static string Fingerprint(EntityManager em, Source s)
         {
             var ci = CultureInfo.InvariantCulture;
             var sb = new StringBuilder();
-            sb.Append(p.Describe()).Append('|').Append(MergedBoxes.Version).Append('|');
-            foreach (Source s in sources)
+            Entity e = s.Access.Edge;
+            sb.Append(e.Index).Append('.').Append(e.Version).Append('@').Append(s.Access.T.ToString("R", ci))
+              .Append('/').Append(s.BuildingPos.X.ToString("0.###", ci)).Append(',').Append(s.BuildingPos.Z.ToString("0.###", ci));
+            if (!em.Exists(e)) return sb.Append("|gone").ToString();
+            if (em.HasComponent<Composition>(e))
             {
-                Entity e = s.Access.Edge;
-                sb.Append(s.Building.Index).Append(':').Append(e.Index).Append('.').Append(e.Version).Append('@').Append(s.Access.T.ToString("R", ci))
-                  .Append('/').Append(s.BuildingPos.X.ToString("0.###", ci)).Append(',').Append(s.BuildingPos.Z.ToString("0.###", ci));
-                if (em.Exists(e) && em.HasComponent<Composition>(e))
-                {
-                    Composition comp = em.GetComponentData<Composition>(e);
-                    sb.Append('c').Append(comp.m_Edge.Index).Append('.').Append(comp.m_StartNode.Index).Append('.').Append(comp.m_EndNode.Index);
-                }
-                if (em.Exists(e) && em.HasComponent<EdgeGeometry>(e))
-                {
-                    EdgeGeometry g = em.GetComponentData<EdgeGeometry>(e);
-                    sb.Append('g').Append(g.m_Start.m_Left.a.x.ToString("0.##", ci)).Append(',').Append(g.m_Start.m_Left.a.z.ToString("0.##", ci))
-                      .Append(',').Append(g.m_End.m_Right.d.x.ToString("0.##", ci)).Append(',').Append(g.m_End.m_Right.d.z.ToString("0.##", ci));
-                }
-                sb.Append(';');
+                Composition comp = em.GetComponentData<Composition>(e);
+                sb.Append('c').Append(comp.m_Edge.Index).Append('.').Append(comp.m_StartNode.Index).Append('.').Append(comp.m_EndNode.Index);
+            }
+            if (em.HasComponent<EdgeGeometry>(e))
+            {
+                EdgeGeometry g = em.GetComponentData<EdgeGeometry>(e);
+                sb.Append('g').Append(g.m_Start.m_Left.a.x.ToString("0.##", ci)).Append(',').Append(g.m_Start.m_Left.a.z.ToString("0.##", ci))
+                  .Append(',').Append(g.m_End.m_Right.d.x.ToString("0.##", ci)).Append(',').Append(g.m_End.m_Right.d.z.ToString("0.##", ci));
+            }
+            sb.Append('l').Append(SubLanes(em, e));
+            if (em.HasComponent<Edge>(e))
+            {
+                Edge ed = em.GetComponentData<Edge>(e);
+                sb.Append(',').Append(SubLanes(em, ed.m_Start)).Append(',').Append(SubLanes(em, ed.m_End));
             }
             return sb.ToString();
         }
+
+        private static int SubLanes(EntityManager em, Entity e) =>
+            e != Entity.Null && em.Exists(e) && em.HasBuffer<Game.Net.SubLane>(e) ? em.GetBuffer<Game.Net.SubLane>(e, true).Length : -1;
     }
 }

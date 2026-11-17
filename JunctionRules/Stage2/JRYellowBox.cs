@@ -27,10 +27,12 @@ namespace JunctionRules.Stage2
         /// navigation job's single copy (0.4.3 review F1: no ~1 KB copy per car). No building is read (no
         /// one-box-per-building assumption; the 0.4.2 entrance / building / ConnectedBuilding lookups are gone).
         /// </summary>
-        public unsafe void SetBoxes(ComponentLookup<JunctionRules.Boxes.YellowBoxJunction> junctions, ComponentLookup<Game.Net.EdgeLane> edgeLanes, ref JRBoxEdges boxEdges)
+        public unsafe void SetBoxes(ComponentLookup<JunctionRules.Boxes.YellowBoxJunction> junctions, ComponentLookup<Game.Net.EdgeLane> edgeLanes, ref JRBoxEdges boxEdges,
+            ComponentLookup<LaneSignal> signals)
         {
             m_BoxJunctionData = junctions;
             m_EdgeLaneData = edgeLanes;
+            m_BoxSignalData = signals;   // 0.4.10 (sweep): a red / amber light inside a box's room window = no room
             m_BoxEdges = (JRBoxEdges*)UnsafeUtility.AddressOf(ref boxEdges);
             m_BoxLookups = true;
         }
