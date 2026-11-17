@@ -49,7 +49,9 @@ namespace JunctionRules.Tests
             {
                 Check(BoxSelection.Toggle(false, false) == ToggleAction.None && BoxSelection.Toggle(true, false) == ToggleAction.Remove, "F3: invalid without a box = nothing; with a box = remove");
                 string tool = Code("Boxes", "YellowBoxToolSystem.cs");
-                Check(Regex.IsMatch(tool, @"h\.Segments\.Count == 0 && !m_Hover\.HasBox\)[\s\S]{0,200}m_Hover\.Valid = false;"), "F3: a target with no outline and no box is made invalid (no invisible box saved)");
+                // 0.4.13 (JR-T-019): the rule moved to Boxes/BoxTargeting.ApplyShapeRule (shared with the API); the tool calls it on its hover
+                string shared = Code("Boxes", "BoxTargeting.cs");
+                Check(Regex.IsMatch(shared, @"s\.Segments\.Count != 0 \|\| t\.HasBox\) return false;[\s\S]{0,80}t\.Valid = false;") && tool.Contains("BoxTargeting.ApplyShapeRule(ref m_Hover, h)"), "F3: a target with no outline and no box is made invalid (no invisible box saved)");
                 Check(tool.Contains("m_NoShapeWarned.Add((m_Hover.Entity, ExitSub(m_Hover)))") && tool.Contains("Mod.log.Warn($\"yellow box tool:"), "F3: shape failure warned once per target (0.4.3: per exit of a building)");
                 Check(Code("Paint", "YellowBoxPaintSystem.cs").Contains("Mod.log.Warn($\"yellow boxes: {b.Label}: building {b.Building}: not painted"), "F3: entrance rebuild failure logged at Warn");
             }

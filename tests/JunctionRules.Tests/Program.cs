@@ -165,6 +165,13 @@ namespace JunctionRules.Tests
             ("BoxScenarioTests", BoxScenarioTests),
             ("ChainTests", ChainTests),
             ("MergedOutlineTests", MergedOutlineTests),
+            ("ApiTargetParseTests", ApiTargetParseTests),
+            ("ApiFilterParseTests", ApiFilterParseTests),
+            ("ApiDecisionTests", ApiDecisionTests),
+            ("ApiExitPickTests", ApiExitPickTests),
+            ("ApiResultShapeTests", ApiResultShapeTests),
+            ("ApiMiscTests", ApiMiscTests),
+            ("ApiRepoTests", ApiRepoTests),
         };
 
         private static int Main(string[] args)

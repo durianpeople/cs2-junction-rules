@@ -59,6 +59,18 @@ namespace JunctionRules.Core
 
         /// <summary>Sub-identity of a building's exit box (its saved key packed in 40 bits, never 0); 0 = junction box.</summary>
         public static long ExitSub(ExitKey k) => 1L + ((long)k.Kind << 32 | (long)(ushort)k.X10 << 16 | (ushort)k.Z10);
+
+        /// <summary>0.4.13 (JR-T-019): the exit key an ExitSub packed (inverse of ExitSub; sub &lt;= 0 = no key).</summary>
+        public static bool KeyOfSub(long sub, out ExitKey k)
+        {
+            k = default;
+            if (sub <= 0) return false;
+            long v = sub - 1;
+            k.Kind = (byte)((v >> 32) & 0xFF);
+            k.X10 = unchecked((short)(ushort)((v >> 16) & 0xFFFF));
+            k.Z10 = unchecked((short)(ushort)(v & 0xFFFF));
+            return true;
+        }
     }
 
     public sealed class BoxMergeParams
@@ -571,8 +583,15 @@ namespace JunctionRules.Core
         /// the drawn boxes without the target, plus the target's own outline, merged. Just the target's outline when it
         /// touches nothing.
         /// </summary>
-        public static List<List<V3>> HoverRings(BoxMergeInput target)
+        public static List<List<V3>> HoverRings(BoxMergeInput target) => HoverGroup(target, out _);
+
+        /// <summary>
+        /// 0.4.13 (JR-T-019): HoverRings plus the OTHER drawn boxes in the target's group (the API's mergedGroup: the boxes
+        /// drawn as one with this one by the merge rules, incl. the &lt; 6 m joint exit boxes, which share one outline).
+        /// </summary>
+        public static List<List<V3>> HoverGroup(BoxMergeInput target, out List<BoxMergeInput> others)
         {
+            others = new List<BoxMergeInput>();
             var r = new List<List<V3>>();
             if (target?.Outline == null) return r;
             var inputs = new List<BoxMergeInput>();
@@ -581,7 +600,25 @@ namespace JunctionRules.Core
             List<MergedBoxGroup> groups = BoxMerge.Merge(inputs, Params);
             int g = BoxMerge.GroupOf(groups, inputs, target.Key, target.Sub);
             if (g < 0) { r.Add(target.Outline); return r; }
+            foreach (int m in groups[g].Members) if (!inputs[m].SameBox(target.Key, target.Sub)) others.Add(inputs[m]);
             return groups[g].Rings;
+        }
+
+        /// <summary>0.4.13 (JR-T-019): the other drawn boxes in the published group of a drawn box (List's mergedGroup); empty when alone or not drawn.</summary>
+        public static List<BoxMergeInput> GroupMates(long key, long sub)
+        {
+            var r = new List<BoxMergeInput>();
+            int g = BoxMerge.GroupOf(s_Groups, s_Inputs, key, sub);
+            if (g < 0) return r;
+            foreach (int m in s_Groups[g].Members) if (!s_Inputs[m].SameBox(key, sub)) r.Add(s_Inputs[m]);
+            return r;
+        }
+
+        /// <summary>0.4.13 (JR-T-019): the drawn outline of a box (null when the paint did not draw it).</summary>
+        public static List<V3> DrawnOutline(long key, long sub)
+        {
+            foreach (BoxMergeInput b in s_Inputs) if (b.SameBox(key, sub)) return b.Outline;
+            return null;
         }
     }
 }

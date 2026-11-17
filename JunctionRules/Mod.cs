@@ -33,6 +33,8 @@ namespace JunctionRules
         {
             log.Info($"{nameof(OnLoad)} version {typeof(Mod).Assembly.GetName().Version}, copy made from game {MadeFrom.GameVersion}");
 
+            // 0.4.13 (JR-T-019): the API answers on this (Unity main) thread only
+            Api.JunctionRulesApi.MarkMainThread();
             Settings = new JunctionRulesSettings(this);
             // 0.4.0 (JR-T-007-r): a key binding problem must not take the driving rules down with it (the tool then has no shortcut).
             try { Settings.RegisterKeyBindings(); }

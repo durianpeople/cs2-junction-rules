@@ -325,7 +325,9 @@ namespace JunctionRules.Tests
             Check(paint.Contains("g.Anchor"), "paint anchors each group's hatch once (group anchor)");
             Check(paint.Contains("MergedBoxes.Clear()"), "paint clears the snapshot on load / deactivate");
             string tool = File.ReadAllText(Path.Combine(src, "Boxes", "YellowBoxToolSystem.cs"));
-            Check(tool.Contains("MergedBoxes.HoverRings(self)") && tool.Contains("key.GroupsVersion = MergedBoxes.Version"), "hover draws the merged group outline, cache keyed on the groups version");
+            // 0.4.13 (JR-T-019): the solve moved to Boxes/BoxTargeting.cs (shared with the API); HoverRings = HoverGroup's rings
+            string shared = File.ReadAllText(Path.Combine(src, "Boxes", "BoxTargeting.cs"));
+            Check(shared.Contains("MergedBoxes.HoverGroup(self") && tool.Contains("m_Targeting.Solve(t)") && tool.Contains("key.GroupsVersion = MergedBoxes.Version"), "hover draws the merged group outline, cache keyed on the groups version");
             string yb = File.ReadAllText(Path.Combine(src, "Stage2", "JRYellowBox.cs"));
             Check(yb.Contains("MedianSplit.InMask(bands->Mask(i), carriageway)"), "driving: bands apply only to lanes of the exit's side");
             Check(yb.Contains("ExitBands.JunctionJoinMetres") && yb.Contains("NextBoxedJunction(lane)"), "driving: a band near a boxed junction needs room past the junction box too");

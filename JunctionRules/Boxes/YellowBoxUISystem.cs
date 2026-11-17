@@ -26,6 +26,9 @@ namespace JunctionRules.Boxes
         private ProxyAction m_ToggleAction;
         private bool m_InCity;
 
+        /// <summary>0.4.13 (JR-T-019): a city (or the editor) is loaded (the API's readiness check).</summary>
+        internal static bool InCity => s_Instance != null && s_Instance.m_InCity;
+
         [Preserve]
         protected override void OnCreate()
         {
