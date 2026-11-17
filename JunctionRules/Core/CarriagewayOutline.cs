@@ -578,16 +578,51 @@ namespace JunctionRules.Core
             // when that is refused, and a corner between different footways carries the game's corner data or a marking
             // lies past an arm's kerb lines, is it built again the 0.4.8 way: those corners' kerbs as the game draws them
             // (KerbRemap) and such an arm's mouth held clear of its marking (BoxMouth.MinShift) instead of left at the mouth.
-            CarriagewayResult first = Straight(arms, centre, ok, margin, conflictPoints, signals, false, res.Notes, out int gamePairs, out int held);
-            if (first.Outline != null || (gamePairs == 0 && held == 0)) return first;
-            CarriagewayResult game = Straight(arms, centre, ok, margin, conflictPoints, signals, true, res.Notes, out _, out _);
-            if (game.Outline != null)
+            // 0.4.11 (JR-T-017, G24, owner rule 17 Nov: "the box never covers a zebra or any road marking (0.5 m margin)"):
+            // an arm whose marking lies past its kerb lines ALWAYS has its mouth held clear of it (BoxMouth.MinShift), also a
+            // priority arm and also when the 0.4.7 shape would build: 0.4.8-0.4.10 held it only when that shape was refused,
+            // so a priority arm's mouth stayed at the mouth, ON the zebra (Capper Street node 1205548, arms 1 / 2: "marking
+            // (+ margin) ends 2.8 m in, past the kerb lines; box starts at the mouth", shape rule priority-road). The rule
+            // "priority arms stay put" yields to "never on a marking": StraightBox.Search gives every arm at least its MinShift.
+            // Corners as the game draws them (KerbRemap) are still tried only when the plain corners are refused.
+            // Order keeps every box that covers no marking exactly as before: (1) the 0.4.7 shape, taken only when no marking lies
+            // past an arm's kerb lines (held == 0); (2) the 0.4.8 way (game corners + held mouths) when there are game corners;
+            // (3) plain corners with the held mouths; else no box (never one on a marking).
+            CarriagewayResult first = Straight(arms, centre, ok, margin, conflictPoints, signals, false, false, res.Notes, out int gamePairs, out int held);
+            if (first.Outline != null && held == 0) return first;
+            if (first.Outline == null && gamePairs == 0 && held == 0) return first;
+            string why = first.Outline != null ? $"the 0.4.7 shape would cover a marking past the kerb lines on {held} arm(s) (G24: never on a marking)" : $"the 0.4.7 shape was refused ({first.Failure})";
+            CarriagewayResult game = null;
+            if (gamePairs > 0)
             {
-                game.GameCorners = gamePairs;
-                game.Notes.Add($"built the 0.4.8 way ({gamePairs} corner kerb(s) as the game draws them, {held} mouth(s) held clear of a marking past the kerb lines); the 0.4.7 shape was refused ({first.Failure})");
-                return game;
+                game = Straight(arms, centre, ok, margin, conflictPoints, signals, true, true, res.Notes, out _, out _);
+                if (game.Outline != null)
+                {
+                    game.GameCorners = gamePairs;
+                    game.Notes.Add($"built the 0.4.8 way ({gamePairs} corner kerb(s) as the game draws them, {held} mouth(s) held clear of a marking past the kerb lines); {why}");
+                    return game;
+                }
             }
-            first.Notes.Add($"the 0.4.8 way ({gamePairs} corner kerb(s) as the game draws them, {held} mouth(s) held clear of a marking) tried too, also refused: {game.Failure}");
+            if (held > 0)
+            {
+                CarriagewayResult hold = Straight(arms, centre, ok, margin, conflictPoints, signals, false, true, res.Notes, out _, out _);
+                if (hold.Outline != null)
+                {
+                    hold.Notes.Add($"built with {held} mouth(s) held clear of a marking past the kerb lines (priority arms too: never on a marking); {why}");
+                    return hold;
+                }
+                if (first.Outline != null)
+                {
+                    // Never a box on a marking: no box, saying why.
+                    var refused = new CarriagewayResult();
+                    refused.Notes.AddRange(hold.Notes);
+                    refused.StopDistance = hold.StopDistance;
+                    refused.Kerbs = hold.Kerbs;
+                    refused.Failure = $"no box clear of the marking(s) past the kerb lines: {hold.Failure}" + (game != null ? $"; game corners: {game.Failure}" : "");
+                    return refused;
+                }
+            }
+            first.Notes.Add($"the 0.4.8 way ({gamePairs} corner kerb(s) as the game draws them, {held} mouth(s) held clear of a marking) tried too, also refused: {game?.Failure}");
             return first;
         }
 
@@ -597,11 +632,12 @@ namespace JunctionRules.Core
         /// (BoxMouth.MinShift) instead of left at the mouth, on the marking. gamePairs / held: how many such corners /
         /// arms there are (counted in either mode).
         /// </summary>
-        private static CarriagewayResult Straight(IList<ArmInput> arms, V2 centre, List<CrosswalkStrip> ok, double margin, IList<V2> conflictPoints, bool signals, bool fix048, List<string> preNotes, out int gamePairs, out int held)
+        private static CarriagewayResult Straight(IList<ArmInput> arms, V2 centre, List<CrosswalkStrip> ok, double margin, IList<V2> conflictPoints, bool signals, bool gameCornersOn, bool holdMarkings, List<string> preNotes, out int gamePairs, out int held)
         {
             var res = new CarriagewayResult();
             res.Notes.AddRange(preNotes);
-            bool gameCorners = fix048;
+            bool gameCorners = gameCornersOn;
+            bool fix048 = holdMarkings;
             held = 0;
             ShareJoinedInsets(arms, JoinTolerance, gameCorners, out double[] insetA, out double[] insetB, out bool[] remapA, out bool[] remapB, out gamePairs, res.Notes);
             var kerbs = new List<ArmSlice>(arms.Count);

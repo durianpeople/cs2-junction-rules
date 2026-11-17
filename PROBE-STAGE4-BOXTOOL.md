@@ -1834,3 +1834,39 @@ with the blocker: `[person at (x, z), speed v m/s / not moving, on lane L at p, 
   spot).
 - Watch (owner may confirm): a boxed turner that could not stop before the box line (already in the band, moving) crosses
   with the game's own checks only (counter `could not stop before the spot`); it is never held inside the box.
+
+### 21.10 G24: box painted over zebras (Capper Street)
+
+Owner (live): "marking over zebra". Capper Street node 1205548 at (488.085, 603.923, 536.799), 4 arms (1 / 2 Capper
+Street priority, 3 / 4 Lilac Street give way), 4 zebras. Log 19:32:38: "arm 1: marking (+ margin) ends 2.8 m in, past the
+kerb lines; box starts at the mouth" (arm 2 the same), shape rule priority-road, mouth shifts [0.00, 0.00, 1.23, 1.11]:
+the hatch and border lay over both Capper Street zebras.
+
+**Cause** (`Core/CarriagewayOutline.cs BuildStraight`): when a marking lies past an arm's kerb lines (the node's arm slices
+are short; their kerbs do not meet), the arm cannot be trimmed to the marking. 0.4.8 (G5) added "hold that mouth at
+least that far in" (`BoxMouth.MinShift`), but only on the second try, after the 0.4.7 shape was REFUSED. At Capper Street
+the 0.4.7 shape built, so the priority arms stayed at their mouths, on the zebras.
+
+**Now** (owner rule: the box never covers a zebra or any road marking, 0.5 m margin; "priority arms stay put" yields to
+"never on a marking"): (1) the 0.4.7 shape is taken only when no marking lies past any arm's kerb lines, so every such
+box keeps its shape cm for cm (all earlier tests unchanged, including Crescent x Eastgate); (2) otherwise the 0.4.8 way
+(game corners + held mouths) when the junction has game corners; (3) else plain corners with every such mouth held clear,
+priority arms included (`StraightBox.Search` gives every arm at least its MinShift; straight sides, conflict points still
+inside where they can be); (4) if no box can clear the marking: no box, logged `no box clear of the marking(s) past the
+kerb lines: ...`. The note says `the 0.4.7 shape would cover a marking past the kerb lines on N arm(s) (G24: never on a
+marking)` and `built with N mouth(s) held clear ...`.
+
+Saved boxes whose log showed the same note in this session (all rebuilt this way at the next load, no action needed):
+nodes 1205548 (Capper Street), 1205897, 730419, 831949, 839498, 1205085. Check each one's `saved junction box` line after
+load: `held clear` or `0.4.8 way`, never `box starts at the mouth`.
+
+Test (`G24Tests`, Capper Street numbers: 16 m roads, footways 3 / 3 / 3 / 0.5, zebras whose edge + margin is 2.8 m in, past
+short kerb stubs that do not meet, priority on arms 1 / 2): the 0.4.10 shape is recognised as covering the zebras and not
+taken; both priority mouths move back >= 2.8 m; every box edge keeps the 0.5 m margin from every zebra and no zebra lies
+inside; central conflict points stay inside; straight-sided; a box with no marking past its kerb lines is built the 0.4.7
+way, unchanged.
+
+| # | Do | Expect |
+|---|---|---|
+| 24-1 | Capper Street x Lilac Street after load | the box stops 0.5 m short of all four zebras, also on the Capper Street arms |
+| 24-2 | Log after load, the six nodes above | no `box starts at the mouth`; any `no box clear of the marking(s)` = report (that junction lost its box) |
