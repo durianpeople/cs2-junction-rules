@@ -350,3 +350,14 @@ because they rely on game code:
 
 
 0.4.8-probe G7 (JR-T-014; owner, 0.4.7 live 17 Nov, Alderwood Street, left-hand traffic): trucks from the SOUTH lots (driveway exits of buildings 1011673 and 688899, boxed) turned right across the westbound near lane into a stopped eastbound queue and stood across the road, in front of a westbound truck. Causes (code): S2-29 waited before the first ROAD lane with no room test on the joined lane; the only room test was the 0.4.3 band hold S2-28 role `Leaving` on the joined (far) road lane, i.e. with the vehicle already across the near lane (timing `entrance band holds: leaving driveway` stuck at 128 car-steps per window for ~15 minutes); `ExitGiveWay.VehicleBlocks` let a road vehicle standing before the conflict never block (the westbound truck held before the band by `entrance band holds: main road` ~384); the scan ran only when the exit hold was binding; crossed lanes used the time to reach, not to clear. Owner rule 17 Nov: the sidewalk an exit crosses is a zebra Z directly followed by the road lanes: the whole decision before the sidewalk (S2-25 zebra sections now count a driveway lane's pedestrian overlaps as Z). Building-road `not judged` (== `building road` in almost every 0.4.7 window) was a counting artefact: the hand-over update has the front past the stop point, so no decision in that update; a recent recorded Go now counts.
+
+0.4.10-probe (JR-T-016: G18 / G19 / G20 and the owner's box-rule sweep). Block count and lines unchanged (39 blocks, 314
+lines); three block conditions and one call changed: S2-28 / S2-28b / S2-37 `if (m_JR.m_BoxRule && !JunctionRules.Core
+.ExitGiveWay.IsEmergency(m_Priority))` (on-duty emergency vehicles, stock priority 108, pass yellow boxes as they pass
+exits: stock behaviour for them); S2-26 `SetBoxes(..., ref m_JRBoxEdges, m_LaneSignalData)` (the job's existing
+read-only signal lookup, for "a red / amber light inside the room window past a box = no room"). Everything else is job
+side: the exit / entrance bands are the painted windows projected onto each lane (Core/LaneWindow.cs; 0.4.3's "known
+limit" above is gone: 0.4.3-0.4.9 mapped the edge t through `EdgeLane.m_EdgeDelta`, but lanes are built on the cut
+`EdgeGeometry` (`Game.Net/LaneSystem.cs` 2652, 2661-2662, 4101-4105), so bands sat up to 13 m off the paint); box room
+is free now (RoomScan.FreeNow); the room window extends past a further box / boxed junction and stops at a red / amber
+light (`JRWholeJunction.FurtherBoxes`).
