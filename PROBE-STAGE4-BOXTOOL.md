@@ -2214,7 +2214,7 @@ and the counter.
 
 ## 23. 0.4.13-probe: JunctionRulesApi v1 (JR-T-019)
 
-Contract: `~/.claude/skills/cs2-city-ops/technical/briefs/YBOX_API_CONTRACT.md` (v1, Technical 17 Nov 2026). Owner
+Contract: the yellow box API contract v1 (17 Nov 2026; summarised in this section). Owner
 request: crew agents list, add and remove yellow boxes through the normal tool stack with the SAME rules and refusal
 reasons as the Ctrl+Y tool; boxes only where the owner or a plan asks (the API never boxes on its own).
 
