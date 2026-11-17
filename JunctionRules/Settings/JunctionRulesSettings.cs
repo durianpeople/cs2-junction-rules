@@ -213,7 +213,7 @@ namespace JunctionRules.Settings
         [SettingsUISection(kSection, kBoxesGroup)]
         public bool NoParkingInBoxes { get; set; }
 
-        // ---- stage 3 probe (0.3.0-probe): yellow box paint test, draw-only, default off ----
+        // ---- stage 3 probe (0.3.0-probe): yellow box paint test, draw-only, default off; 1.0.0: developer options ----
 
         private bool m_YellowBoxPaintTest;
         private BoxPaintMode m_PaintMode;
@@ -224,6 +224,7 @@ namespace JunctionRules.Settings
         /// the game's surface shader. Draw-only (nothing saved, no entity touched, no driving change). Default off; off =
         /// the paint system does not run at all.
         /// </summary>
+        [SettingsUIDeveloper] // 1.0.0: developer option, shown only with the -developerMode launch option
         [SettingsUISection(kSection, kPaintGroup)]
         public bool YellowBoxPaintTest
         {
@@ -232,6 +233,7 @@ namespace JunctionRules.Settings
         }
 
         /// <summary>What the paint test draws: hatch (border + diagonals), plain fill, or outline only.</summary>
+        [SettingsUIDeveloper] // 1.0.0: developer option, shown only with the -developerMode launch option
         [SettingsUISection(kSection, kPaintGroup)]
         public BoxPaintMode PaintMode
         {
@@ -240,6 +242,7 @@ namespace JunctionRules.Settings
         }
 
         /// <summary>Decal layers the paint goes onto: Roads (2, default) or Roads + Other (34), or 39 like G87 (debug).</summary>
+        [SettingsUIDeveloper] // 1.0.0: developer option, shown only with the -developerMode launch option
         [SettingsUISection(kSection, kPaintGroup)]
         public BoxPaintLayers PaintLayers
         {
@@ -257,48 +260,56 @@ namespace JunctionRules.Settings
         public int PaintSettingsVersion { get; set; }
 
         /// <summary>
-        /// Hidden (0.4.8): diagnostics schema. Owner 17 Nov: the probe's evidence must not depend on switching settings on, so
-        /// the first load of 0.4.8 turns "Log navigation timing" and "Exit trace (log)" on once (a saved off from an older
-        /// build is overridden once and logged); the owner may switch them off again afterwards. Not reset in SetDefaults.
+        /// Hidden: diagnostics schema (Core/DiagnosticsMigration). 0.4.8-0.4.12-probe wrote 1 after switching "Log navigation
+        /// timing" and "Exit trace (log)" on once for the probe's evidence. 1.0.0 (first public release) never switches them
+        /// on: a fresh install keeps them off, and a probe's saved 1 switches both off once (they are developer options now).
+        /// Not reset in SetDefaults.
         /// </summary>
         [SettingsUIHidden]
         public int DiagnosticsVersion { get; set; }
 
-        public const int DiagnosticsCurrent = 1;
+        public const int DiagnosticsCurrent = DiagnosticsMigration.Current;
 
-        /// <summary>0.4.8: the one-time diagnostics switch-on (Mod.OnLoad, after MigrateAfterLoad); returns a log line or null.</summary>
+        /// <summary>1.0.0: the one-time diagnostics migration (Mod.OnLoad, after MigrateAfterLoad); returns a log line or null.</summary>
         public string MigrateDiagnostics()
         {
-            if (DiagnosticsVersion >= DiagnosticsCurrent) return null;
             bool timing = DebugTiming, trace = ExitTrace;
-            DebugTiming = true;
-            ExitTrace = true;
+            if (!DiagnosticsMigration.Migrate(DiagnosticsVersion, ref timing, ref trace, out bool changed)) return null;
+            int from = DiagnosticsVersion;
+            DebugTiming = timing;
+            ExitTrace = trace;
             DiagnosticsVersion = DiagnosticsCurrent;
             ApplyAndSave();
-            return "settings: 0.4.8 probe diagnostics switched on once (Log navigation timing " + (timing ? "on" : "off -> on") + ", Exit trace (log) " + (trace ? "on" : "off -> on")
-                + "; compact; switch off in Options if not wanted)";
+            return changed
+                ? $"settings: diagnostics schema {from} -> {DiagnosticsCurrent}: the probe's timing log and exit trace switched off (developer options; -developerMode shows them)"
+                : $"settings: diagnostics schema {from} -> {DiagnosticsCurrent}: timing log {(timing ? "on" : "off")}, exit trace {(trace ? "on" : "off")} kept";
         }
 
         /// <summary>Re-reads the test list file and rebuilds every box.</summary>
         [SettingsUIButton]
+        [SettingsUIDeveloper] // 1.0.0: developer option, shown only with the -developerMode launch option
         [SettingsUISection(kSection, kPaintGroup)]
         public bool PaintRefresh { set { PaintControl.Refresh(); } }
 
         /// <summary>Adds the junction node at the camera centre to the test list file (read-only pick; writes only the list file).</summary>
         [SettingsUIButton]
+        [SettingsUIDeveloper] // 1.0.0: developer option, shown only with the -developerMode launch option
         [SettingsUISection(kSection, kPaintGroup)]
         public bool PaintAddCameraJunction { set { PaintControl.AddCameraJunction(); } }
 
         /// <summary>Writes the paint cost line to the log now.</summary>
         [SettingsUIButton]
+        [SettingsUIDeveloper] // 1.0.0: developer option, shown only with the -developerMode launch option
         [SettingsUISection(kSection, kPaintGroup)]
         public bool PaintLogCost { set { PaintControl.LogCost(); } }
 
         /// <summary>Read-only: what the paint test does now.</summary>
+        [SettingsUIDeveloper] // 1.0.0: developer option, shown only with the -developerMode launch option
         [SettingsUISection(kSection, kPaintGroup)]
         public string PaintStatus => PaintControl.Status();
 
         /// <summary>Logs per-window timing of the active navigation job (game's or copy's). Off: no cost.</summary>
+        [SettingsUIDeveloper] // 1.0.0: developer option, shown only with the -developerMode launch option
         [SettingsUISection(kSection, kDebugGroup)]
         public bool DebugTiming { get; set; }
 
@@ -307,6 +318,7 @@ namespace JunctionRules.Settings
         /// exit, its hand-over to the road lane): vehicle, building, path, decision, boxed. At most Core
         /// ExitTrace.MaxLinesPerSecond lines a second. Needs "Vehicles leaving buildings give way". Default off.
         /// </summary>
+        [SettingsUIDeveloper] // 1.0.0: developer option, shown only with the -developerMode launch option
         [SettingsUISection(kSection, kDebugGroup)]
         public bool ExitTrace { get; set; }
 
@@ -315,6 +327,7 @@ namespace JunctionRules.Settings
         /// hashing difference between runtimes can cause that on an unchanged game). Never skips the version check.
         /// Read at game start (restart the game after changing it).
         /// </summary>
+        [SettingsUIDeveloper] // 1.0.0: developer option, shown only with the -developerMode launch option
         [SettingsUISection(kSection, kDebugGroup)]
         public bool SkipCodeHashCheck { get; set; }
 
@@ -323,11 +336,13 @@ namespace JunctionRules.Settings
         /// not). Default off: nothing is watched until this is pressed; not saved (a load clears it).
         /// </summary>
         [SettingsUIButton]
+        [SettingsUIDeveloper] // 1.0.0: developer option, shown only with the -developerMode launch option
         [SettingsUISection(kSection, kDebugGroup)]
         public bool WatchCameraJunction { set { WatchHandoff.PickRequested = true; } }
 
         /// <summary>JR-T-013b (G4): stops the watch-one-junction log.</summary>
         [SettingsUIButton]
+        [SettingsUIDeveloper] // 1.0.0: developer option, shown only with the -developerMode launch option
         [SettingsUISection(kSection, kDebugGroup)]
         public bool WatchStop { set { WatchHandoff.StopRequested = true; } }
 
@@ -352,8 +367,8 @@ namespace JunctionRules.Settings
             PaintMode = BoxPaintMode.Hatch;
             PaintLayers = PaintSettingsMigration.Default;
             NoParkingInBoxes = true;
-            DebugTiming = true;    // 0.4.8 probe: diagnostics on by default (owner 17 Nov)
-            ExitTrace = true;      // 0.4.8 probe: compact exit trace on by default
+            DebugTiming = false;   // 1.0.0: developer option, off for players
+            ExitTrace = false;     // 1.0.0: developer option, off for players
             SkipCodeHashCheck = false;
         }
 
@@ -399,13 +414,13 @@ namespace JunctionRules.Settings
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.CarDriving)), "Car driving" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.CarDriving)),
-                    "Which car-driving system runs. Game's own (default): the game's CarNavigationSystem. Junction Rules copy (stage 1 test): an unchanged copy of it, built with Burst, in the same place in the simulation. Changes take effect at the next simulation step, also while a city is running. The copy only runs on the game version it was made from; otherwise the game's own keeps running and the mod log says why." },
+                    "Which car-driving system runs. Game's own (default): the game's own car driving; the driving rules below do nothing. Junction Rules: the game's car driving with Junction Rules' changes (a Burst-compiled copy that runs in the same place in the simulation); switch to it to use the driving rules below and the yellow box rules. Changes take effect at the next simulation step, also while a city is running. Junction Rules only runs on the game version it was made for; otherwise the game's own keeps running and Status says why." },
                 { m_Setting.GetEnumValueLocaleID(CarDrivingMode.GameOwn), "Game's own" },
-                { m_Setting.GetEnumValueLocaleID(CarDrivingMode.JunctionRulesCopy), "Junction Rules copy" },
+                { m_Setting.GetEnumValueLocaleID(CarDrivingMode.JunctionRulesCopy), "Junction Rules" },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.GapRule)), "Junction gap rule" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.GapRule)),
-                    "How cars judge the conflicts on their path through a junction. Stock (default): the game's own, conflict by conflict. Whole junction (stage 2 test): a car that has to wait stops just before the first point where its path crosses another lane's path (at the stop line if that is at the junction edge; STOP signs still stop at the line first), then goes only when the game's own judgement finds every conflict on its whole path clear, with the other cars projected to the time this car needs to reach each conflict (cars on the approach lanes count too). There is no waiting spot inside the junction, also not on a central reservation. While crossing it keeps checking the conflicts it has not reached yet in the same way: if one is no longer clear and it can still stop with normal braking, it stops just before it (safety stop) and waits until the rest is clear; otherwise it brakes only to avoid hitting anything. Acts only while Car driving is the Junction Rules copy. Changes take effect at the next simulation step." },
+                    "How cars judge the conflicts on their path through a junction. Stock (default): the game's own, conflict by conflict. Whole junction: a car that has to wait stops just before the first point where its path crosses another lane's path (at the stop line if that is at the junction edge; STOP signs still stop at the line first), then goes only when the game's own judgement finds every conflict on its whole path clear, with the other cars projected to the time this car needs to reach each conflict (cars on the approach lanes count too). There is no waiting spot inside the junction, also not on a central reservation. While crossing it keeps checking the conflicts it has not reached yet in the same way: if one is no longer clear and it can still stop with normal braking, it stops just before it (safety stop) and waits until the rest is clear; otherwise it brakes only to avoid hitting anything. Acts only while Car driving is Junction Rules. Changes take effect at the next simulation step." },
                 { m_Setting.GetEnumValueLocaleID(JunctionGapRule.Stock), "Stock (conflict by conflict)" },
                 { m_Setting.GetEnumValueLocaleID(JunctionGapRule.WholeJunction), "Whole junction" },
 
@@ -421,7 +436,7 @@ namespace JunctionRules.Settings
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.NoPushThroughPeople)), "Cars never push through people on crossings" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.NoPushThroughPeople)),
-                    "On (default): a car waiting for people on a crossing of its path (a zebra, a crossing at a junction, a footway across a driveway), or for a cyclist riding across it, keeps waiting until they are clear, however long that takes. Off: the game's own behaviour, where after about 5 seconds the car creeps on at walking pace through the people (and creeps at once past a person standing still). Cars waiting for other cars are not changed. Works with either junction gap rule, only while Car driving is the Junction Rules copy. Changes take effect at the next simulation step." },
+                    "On (default): a car waiting for people on a crossing of its path (a zebra, a crossing at a junction, a footway across a driveway), or for a cyclist riding across it, keeps waiting until they are clear, however long that takes. Off: the game's own behaviour, where after about 5 seconds the car creeps on at walking pace through the people (and creeps at once past a person standing still). Cars waiting for other cars are not changed. Works with either junction gap rule, only while Car driving is Junction Rules. Changes take effect at the next simulation step." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.PeoplePassOn)), "People pass a car that blocks them" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.PeoplePassOn)),
@@ -432,19 +447,19 @@ namespace JunctionRules.Settings
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.ZebraNonBlocking)), "Cars never stop on a zebra" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.ZebraNonBlocking)),
-                    "On (default): a car drives onto a zebra only when it can also leave it. The zebra must be clear of people, there must be room for the whole vehicle (trailers included) past it in the queue ahead, and with the Whole junction rule every crossing point with other lanes after the zebra up to the next zebra (or the end of the junction) must be clear too; it waits before the zebra until then. Where the whole vehicle cannot wait between two zebras (or between a zebra and the crossing points before it), it waits before the earlier one until everything up to the later one is clear. Applies to every zebra, also mid-block ones, with either junction gap rule (the Stock rule gets the room check only). Off: the 0.4.0 behaviour. Only while Car driving is the Junction Rules copy. Changes take effect at the next simulation step." },
+                    "On (default): a car drives onto a zebra only when it can also leave it. The zebra must be clear of people, there must be room for the whole vehicle (trailers included) past it in the queue ahead, and with the Whole junction rule every crossing point with other lanes after the zebra up to the next zebra (or the end of the junction) must be clear too; it waits before the zebra until then. Where the whole vehicle cannot wait between two zebras (or between a zebra and the crossing points before it), it waits before the earlier one until everything up to the later one is clear. Applies to every zebra, also mid-block ones, with either junction gap rule (the Stock rule gets the room check only). Off: as in the game. Only while Car driving is Junction Rules. Changes take effect at the next simulation step." },
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.ZebraRoomMargin)), "Room margin past a zebra or yellow box (m)" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.ZebraRoomMargin)),
                     "Extra space, on top of the vehicle's own length, that must be free past a zebra (setting Cars never stop on a zebra) or past a yellow box (setting Cars obey yellow boxes) before a car drives onto it. A moving queue counts the distance the car ahead needs to stop (the game's own measure), so a queue that keeps moving lets cars in. Default 1 m. Larger: fewer tails left on a zebra, more waiting. Changes take effect at the next simulation step." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.ExitGiveWay)), "Vehicles leaving buildings give way" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.ExitGiveWay)),
-                    "\"Cars coming out of ANY building must give way, and when that building exit is a yellow box, must ALSO obey the yellow box rules.\" On (default): a car, van, truck or bus leaving any building (a drive, a car park or a depot gate) waits at the exit until every road lane it crosses or merges into is clear: no vehicle on that lane, in the junction before it or on the road before that junction would reach the exit before it is out of the way, judged from the approaching vehicles' speed as with the Whole junction gap rule (a vehicle stopped by a red light, or by amber when it can stop, does not count). This works at every exit, boxed or not. At an exit you gave a yellow box, the car must also have room past the box (Cars obey yellow boxes): both must hold. Vehicles on the road are not held for it (apart from the yellow box rules). On-duty emergency vehicles leave as in the game. There is no time limit: an exit onto a road that never clears waits until it does. 0.4.11: a vehicle turning INTO a building across traffic (a right turn in where cars drive on the left) also gives way, judged the same way with its whole length: it waits in its own lane before the yellow box (or, without a box, where it would leave its lane), never across the oncoming lane; a turn in that crosses no other lane does not wait. Off: the 0.4.3 behaviour (also for turning in). Works with either junction gap rule, only while Car driving is the Junction Rules copy. Changes take effect at the next simulation step." },
+                    "On (default): a car, van, truck or bus leaving any building (a drive, a car park or a depot gate) waits at the exit until every road lane it crosses or merges into is clear: no vehicle on that lane, in the junction before it or on the road before that junction would reach the exit before it is out of the way, judged from the approaching vehicles' speed as with the Whole junction gap rule (a vehicle stopped by a red light, or by amber when it can stop, does not count). This works at every exit, boxed or not. At an exit you gave a yellow box, the car must also have room past the box (Cars obey yellow boxes): both must hold. Vehicles on the road are not held for it (apart from the yellow box rules). On-duty emergency vehicles leave as in the game. There is no time limit: an exit onto a road that never clears waits until it does. A vehicle turning into a building across traffic (a right turn in where cars drive on the left) also gives way, judged the same way with its whole length: it waits in its own lane before the yellow box (or, without a box, where it would leave its lane), never across the oncoming lane; a turn in that crosses no other lane does not wait. Off: vehicles leave and turn in as in the game. Works with either junction gap rule, only while Car driving is Junction Rules. Changes take effect at the next simulation step." },
 
                 // JR-T-014d (G11) BEGIN
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.PeopleGiveWayUnmarked)), "People give way at unmarked crossings" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.PeopleGiveWayUnmarked)),
-                    "On (default): people crossing a road where there is no zebra and no signal (an unmarked crossing) have no right of way. They wait at the kerb until the approaching cars leave a safe gap: no car on the lanes they cross, or about to turn into them, would reach them before they are across plus one second, judged from the cars' speed and braking distance. Cars do not stop for people waiting at or walking up to an unmarked crossing, but a car always stops for a person already on the road. Zebras and signal crossings work as before. Off: the 0.4.7 behaviour (cars give way to people at unmarked crossings as at zebras). Only while Car driving is the Junction Rules copy. Changes take effect at the next simulation step." },
+                    "On (default): people crossing a road where there is no zebra and no signal (an unmarked crossing) have no right of way. They wait at the kerb until the approaching cars leave a safe gap: no car on the lanes they cross, or about to turn into them, would reach them before they are across plus one second, judged from the cars' speed and braking distance. Cars do not stop for people waiting at or walking up to an unmarked crossing, but a car always stops for a person already on the road. Zebras and signal crossings work as before. Off: as in the game (cars give way to people at unmarked crossings as at zebras). Only while Car driving is Junction Rules. Changes take effect at the next simulation step." },
                 // JR-T-014d (G11) END
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.Status)), "Status" },
@@ -463,7 +478,7 @@ namespace JunctionRules.Settings
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.HideMarkingsUnderBoxes)), "On: the road's own markings inside a yellow box (lane lines, centre lines, arrows, painted speed numbers) are not drawn, so only the box hatch shows. Markings outside the box stay; on a divided road the box stops at the median, so the far side keeps its markings. Removing a box brings its markings back. Only the drawing changes: nothing is saved with the city and driving is not affected. Off (default): markings show through the box as before." },
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.BoxObey)), "Cars obey yellow boxes" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.BoxObey)),
-                    "On (default): at a junction or building car exit you gave a yellow box, a car does not drive into the box unless there is room for its whole length (trailers included) plus the room margin on its exit beyond the box. A queue that keeps moving counts as room (the same measure as Cars never stop on a zebra); a queue that stands does not. Cars already in the box drive on. With the Whole junction gap rule, cars also take their give-way decision at the box's stop line instead of inside the box. At an exit box, cars on the main road do not stop inside the band in front of that exit, and cars leaving the building there wait until there is room past the band on their lane; cars turning in are not held. A building with several boxed exits: each exit's band counts on its own. Only the boxes you placed count. Off: cars drive as in 0.4.1 (the boxes are paint only). Changes take effect at the next simulation step." },
+                    "On (default): at a junction or building car exit you gave a yellow box, a car does not drive into the box unless there is room for its whole length (trailers included) plus the room margin on its exit beyond the box. A queue that keeps moving counts as room (the same measure as Cars never stop on a zebra); a queue that stands does not. Cars already in the box drive on. With the Whole junction gap rule, cars also take their give-way decision at the box's stop line instead of inside the box. At an exit box, cars on the main road do not stop inside the band in front of that exit, and cars leaving the building there wait until there is room past the band on their lane; cars turning in are not held. A building with several boxed exits: each exit's band counts on its own. Only the boxes you placed count. Off: the boxes are paint only. Changes take effect at the next simulation step." },
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.BoxTurnWait)), "Yellow boxes: turning across oncoming traffic may wait in the box" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.BoxTurnWait)),
                     "On (default, as UK law): a car turning across oncoming traffic (right in a left-hand traffic city, left in a right-hand traffic city) may drive into the box and wait there for a gap when its exit has room and only oncoming traffic stops it (with the Whole junction gap rule it waits just before the oncoming lanes; never on a zebra). Off: it waits at the stop line like everyone else. With the Stock gap rule the game's own give-ways decide where cars wait, so this switch changes nothing there." },
@@ -494,7 +509,7 @@ namespace JunctionRules.Settings
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.PaintStatus)), "Off, on (how many junctions are painted), or failed (what failed; restart the game to try again). Reopen the options page to refresh." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.ExitTrace)), "Exit trace (log)" },
-                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.ExitTrace)), "Writes one line to the mod log for each vehicle leaving a building or a parking space: when it starts waiting at the exit and when it joins the road. Each line names the vehicle, the building, the way out (lot, gate, spawn point, building or kerbside parking, building road, drive), the decision (wait or go, and why) and whether the exit has a yellow box. 0.4.8 compact: every notable event (let out without a full judgement, held 25 s+, standing on the road after leaving), a sample of 6 normal events a minute and one summary line a minute; at most 20 lines a second. Needs Vehicles leaving buildings give way and the Junction Rules copy. Default on in the 0.4.8 probe. Changes take effect at the next simulation step." },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.ExitTrace)), "Writes one line to the mod log for each vehicle leaving a building or a parking space: when it starts waiting at the exit and when it joins the road. Each line names the vehicle, the building, the way out (lot, gate, spawn point, building or kerbside parking, building road, drive), the decision (wait or go, and why) and whether the exit has a yellow box. 0.4.8 compact: every notable event (let out without a full judgement, held 25 s+, standing on the road after leaving), a sample of 6 normal events a minute and one summary line a minute; at most 20 lines a second. Needs Vehicles leaving buildings give way and the Junction Rules copy. Default off (developer option). Changes take effect at the next simulation step." },
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.DebugTiming)), "Log navigation timing" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.DebugTiming)), "Every 1024 simulation frames, write the timing of the running car-navigation job (game's own or copy, measured the same way) and the simulation rate to the mod log; the copy's line also names the junction gap rule that ran and its stage 2 counters. Off: nothing is measured. Only available when the version check passed at game start." },
 

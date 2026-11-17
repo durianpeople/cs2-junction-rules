@@ -5,8 +5,8 @@
     <LangVersion>10.0</LangVersion>
     <AssemblyName>JunctionRules</AssemblyName>
     <RootNamespace>JunctionRules</RootNamespace>
-    <Version>0.4.12</Version>
-    <InformationalVersion>0.4.12-probe</InformationalVersion>
+    <Version>1.0.0</Version>
+    <InformationalVersion>1.0.0</InformationalVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <Nullable>disable</Nullable>
@@ -84,8 +84,12 @@
        toolchain's Mod.targets does; it writes JunctionRules_win_x86_64.dll (the Burst code) beside the assembly. -->
   <PropertyGroup Condition="'$(Burst)' == 'true'">
     <DefineConstants>$(DefineConstants);JUNCTIONRULES_BURST</DefineConstants>
-    <ModPostProcessorPath>$(CSII_MODPOSTPROCESSORPATH)</ModPostProcessorPath>
-    <UnityModProjectPath>$(CSII_UNITYMODPROJECTPATH)</UnityModProjectPath>
+  </PropertyGroup>
+  <!-- 1.0.0: unconditional, because a publish profile sets Burst=true only after this file's property groups have been
+       evaluated (the SDK imports the .pubxml later); the targets below read Burst when they run, so they see it. -->
+  <PropertyGroup>
+    <ModPostProcessorPath Condition="'$(ModPostProcessorPath)' == ''">$(CSII_MODPOSTPROCESSORPATH)</ModPostProcessorPath>
+    <UnityModProjectPath Condition="'$(UnityModProjectPath)' == ''">$(CSII_UNITYMODPROJECTPATH)</UnityModProjectPath>
   </PropertyGroup>
 
   <!-- Game closed only. ModPostProcessor.sh runs Proton Experimental's wine inside the game's own Proton prefix
@@ -130,4 +134,63 @@
   <ItemGroup>
     <None Include="UI/JunctionRules.mjs" Link="JunctionRules.mjs" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!-- ===== Publishing to Paradox Mods (1.0.0) =====
+       Same files and commands as the official CS2 mod template (Properties/PublishConfiguration.xml,
+       Properties/PublishProfiles/*.pubxml with ModPublisherCommand Publish / NewVersion / Update, ModPublisher args
+       "<command> <config> -c <content> -v"), run from the project folder:
+         dotnet publish -c Release -p:PublishProfile=PublishNewMod        (first upload; then commit the printed ModId)
+         dotnet publish -c Release -p:PublishProfile=PublishNewVersion    (later versions: bump ModVersion + ChangeLog)
+         dotnet publish -c Release -p:PublishProfile=UpdatePublishedConfiguration   (texts / images only)
+       Add -p:PublishDryRun=true to validate the configuration without logging in or uploading.
+       Why not import the toolchain's Mod.props / Mod.targets: they switch the project to net48 and the toolchain's own
+       references, clear the output folder, post-process for Windows + macOS + Linux and deploy by deleting and refilling
+       the live Mods/JunctionRules folder (the installed build). Here the profile's Burst=true runs this project's own
+       Windows Burst build (BurstPostProcess above, game closed only), the upload content is staged in
+       bin/PublishContent/JunctionRules (the same five files the probe installs used), and ModPublisher is called the way
+       Mod.targets calls it. ModPublisher logs in with the Paradox account the game last logged in with (no password
+       prompt); it runs under Wine in the game's Proton prefix, which is one more reason the game must be closed. -->
+  <PropertyGroup>
+    <PublishConfigurationPath Condition="'$(PublishConfigurationPath)' == ''">Properties\PublishConfiguration.xml</PublishConfigurationPath>
+    <ModPublisherPath Condition="'$(ModPublisherPath)' == ''">$(CSII_MODPUBLISHERPATH)</ModPublisherPath>
+    <JRPublishContentDir>$(MSBuildProjectDirectory)/bin/PublishContent/JunctionRules</JRPublishContentDir>
+  </PropertyGroup>
+
+  <!-- Fails before the (long) build when a publish could not work. -->
+  <Target Name="JRPublishChecks" BeforeTargets="BeforeBuild;Publish" Condition="'$(ModPublisherCommand)' != ''">
+    <PropertyGroup>
+      <JRPublishConfigFullPath>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/$(PublishConfigurationPath.Replace('\','/'))'))</JRPublishConfigFullPath>
+    </PropertyGroup>
+    <Error Condition="'$(Configuration)' != 'Release'" Text="Publishing needs a Release build: run dotnet publish -c Release -p:PublishProfile=$(PublishProfile) (the profile's Configuration=Release comes too late for the output path)." />
+    <Error Condition="'$(Burst)' != 'true' And '$(PublishDryRun)' != 'true'" Text="Publishing needs the Burst build (Burst=true, set by the publish profiles in Properties/PublishProfiles)." />
+    <Warning Condition="'$(Burst)' != 'true' And '$(PublishDryRun)' == 'true'" Text="Dry run without the Burst build: the Burst files are left out of the staged content (nothing is uploaded in a dry run)." />
+    <Error Condition="'$(ModPublisherPath)' == '' Or !Exists('$(ModPublisherPath)')" Text="ModPublisher not found ('$(ModPublisherPath)'). Load the modding toolchain env vars (CSII_MODPUBLISHERPATH, ~/.config/environment.d/60-cs2-modding.conf) or pass -p:ModPublisherPath=..." />
+    <Error Condition="!Exists('$(JRPublishConfigFullPath)')" Text="Publish configuration not found: $(JRPublishConfigFullPath)" />
+  </Target>
+
+  <Target Name="JRPublishToParadoxMods" AfterTargets="Publish" Condition="'$(ModPublisherCommand)' != ''">
+    <ItemGroup>
+      <JRPublishContent Include="$(TargetDir)$(TargetName).dll;$(TargetDir)$(TargetName).pdb;$(TargetDir)JunctionRules.mjs" />
+      <JRPublishContent Include="$(TargetDir)$(TargetName)_win_x86_64.dll;$(TargetDir)$(TargetName)_win_x86_64.pdb" Condition="'$(Burst)' == 'true'" />
+    </ItemGroup>
+    <Error Condition="!Exists('%(JRPublishContent.FullPath)')" Text="Upload content missing: %(JRPublishContent.FullPath) (the Burst build did not produce it)." />
+    <RemoveDir Directories="$(JRPublishContentDir)" />
+    <Copy SourceFiles="@(JRPublishContent)" DestinationFolder="$(JRPublishContentDir)" />
+    <!-- As Mod.targets' CheckPublishFilesAction: the SDK's own publish folder is not the upload content. -->
+    <RemoveDir Directories="$(PublishDir)" Condition="'$(PublishDir)' != '$(OutDir)'" />
+    <PropertyGroup>
+      <JRModPublisherArgs>"$(ModPublisherPath)" $(ModPublisherCommand) "$(JRPublishConfigFullPath)" -c "$(JRPublishContentDir)" -v</JRModPublisherArgs>
+      <!-- Dry run: ModPublisher's own validation of the whole configuration runs, then sandbox mode stops it before it
+           creates a session, logs in or uploads (it answers "Not supported in release mode"). -->
+      <JRModPublisherArgs Condition="'$(PublishDryRun)' == 'true'">$(JRModPublisherArgs) --sandbox</JRModPublisherArgs>
+    </PropertyGroup>
+    <Message Importance="high" Text="Upload content: $(JRPublishContentDir)" />
+    <Message Importance="high" Text="Run mod publisher: $(JRModPublisherArgs)" />
+    <Exec Command="$(JRModPublisherArgs)" Condition="'$(PublishDryRun)' != 'true'" LogStandardErrorAsError="true" />
+    <Exec Command="$(JRModPublisherArgs)" Condition="'$(PublishDryRun)' == 'true'" IgnoreExitCode="true" ConsoleToMSBuild="true" StandardOutputImportance="high">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_JRDryRunOutput" />
+    </Exec>
+    <Error Condition="'$(PublishDryRun)' == 'true' And ('$(_JRDryRunOutput.Contains(`Error while processing args`))' == 'True' Or '$(_JRDryRunOutput.Contains(`Not supported in release mode`))' != 'True')" Text="Dry run: ModPublisher rejected the configuration (see its output above)." />
+    <Message Importance="high" Condition="'$(PublishDryRun)' == 'true'" Text="Dry run OK: ModPublisher accepted the configuration and stopped before logging in. Nothing was uploaded." />
+  </Target>
 </Project>

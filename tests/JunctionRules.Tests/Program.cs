@@ -83,6 +83,7 @@ namespace JunctionRules.Tests
             ("UnmarkedTraceTests", UnmarkedTraceTests),
             ("UnmarkedRepoTests", UnmarkedRepoTests),
             ("PaintMigrationTests", PaintMigrationTests),
+            ("ReleaseTests", ReleaseTests),
             ("PaintConfigTests", PaintConfigTests),
             ("PaintRepoTests", PaintRepoTests),
             ("PeoplePassTests", PeoplePassTests),

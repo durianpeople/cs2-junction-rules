@@ -76,7 +76,7 @@ namespace JunctionRules.Tests
 
             string csproj = File.ReadAllText(Path.Combine(src, "JunctionRules.csproj"));
             // JR-T-007b-r F7: the version lives only in the csproj (single source); the test reads it from there.
-            Check(ProjectVersion(out string ver, out string info) && info.StartsWith(ver + "-"), $"version from the csproj: {info} (Version {ver})");
+            Check(ProjectVersion(out string ver, out string info) && (info == ver || info.StartsWith(ver + "-")), $"version from the csproj: {info} (Version {ver})");
 
             // 0.4.0 (JR-T-007): saved boxes are added / removed only by Boxes/BoxStore.cs, and only our own two components;
             // the paint code drops an invalid saved box through it (its sole write) and never names the tool.

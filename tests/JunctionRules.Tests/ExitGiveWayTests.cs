@@ -269,7 +269,7 @@ namespace JunctionRules.Tests
             Check(dh > 0 && dhEnd > dh && glue.Substring(dh, dhEnd - dh).Contains("ExitBandBlocks(joinNav.m_Lane") && glue.Substring(dh, dhEnd - dh).Contains("HasRoomPast(lane, 1f"), "0.4.8: the driveway decision includes the box band room (boxed) and the room on the lane it joins (unboxed), before the sidewalk");
             Check(glue.Contains("ExitGiveWay.IsEmergency(priority)"), "both hooks let on-duty emergency vehicles through");
             Check(settings.Contains("ExitGiveWay = true;") && settings.Contains("\"Vehicles leaving buildings give way\""), "setting default on, label");
-            Check(settings.Contains("Cars coming out of ANY building must give way, and when that building exit is a yellow box, must ALSO obey the yellow box rules."), "settings description quotes the owner rule");
+            Check(settings.Contains("On (default): a car, van, truck or bus leaving any building") && settings.Contains("both must hold"), "settings description states the owner rule (any building gives way; a boxed exit must also obey the box; 1.0.0 plain wording)");
         }
     }
 }

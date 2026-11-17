@@ -235,8 +235,8 @@ namespace JunctionRules.Tests
             Check(glue.Contains("float back = lot ? SidewalkBack("), "lot exits stop before the sidewalk line");
             string settings = File.ReadAllText(Path.Combine(root, "JunctionRules", "Settings", "JunctionRulesSettings.cs"));
             string mod = File.ReadAllText(Path.Combine(root, "JunctionRules", "Mod.cs"));
-            Check(settings.Contains("DebugTiming = true;") && settings.Contains("ExitTrace = true;") && settings.Contains("public string MigrateDiagnostics()") && mod.Contains("Settings.MigrateDiagnostics()"),
-                "0.4.8 probe: timing log and compact exit trace on by default, switched on once over an older saved off");
+            Check(settings.Contains("DebugTiming = false;") && settings.Contains("ExitTrace = false;") && settings.Contains("public string MigrateDiagnostics()") && settings.Contains("DiagnosticsMigration.Migrate(") && mod.Contains("Settings.MigrateDiagnostics()"),
+                "1.0.0: timing log and exit trace off by default; the 0.4.8 probe switch-on is gone (ReleaseTests)");
             Check(glue.Contains("Add(counters, Stage2Counters.ExitStuckOnRoad, 1)"), "standing on the road after leaving is counted");
             Check(glue.Contains("if (unjudged && FreshGo(eventTable, self, frame)) unjudged = false;"), "a hand-over after a recent Go is judged (0.4.7 building-road 'not judged' artefact)");
         }

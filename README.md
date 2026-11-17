@@ -3,7 +3,11 @@
 A Cities: Skylines II mod that makes traffic behave more like real (UK-style) traffic at junctions, crossings and
 building driveways, and adds painted **yellow box junctions** that drivers actually obey.
 
-Status: working probe builds (0.4.x), tested on a left-hand-traffic city. Expect rough edges.
+Status: 1.0.0, the first public release (on Paradox Mods), tested on a left-hand-traffic city. Expect rough edges.
+
+**Getting started:** Options → Junction Rules → set **Car driving** to **Junction Rules** (it starts on the game's own
+driving, so nothing changes until you switch); for the whole-junction gap rule also set **Junction gap rule** to
+**Whole junction**.
 
 ## How it works
 
@@ -81,8 +85,9 @@ Options → Junction Rules. The main groups:
   and zebra rules; building exits give way; people give way at unmarked crossings.
 - **Yellow boxes:** the tool shortcut; cars obey yellow boxes; the turning-across exception; no parking in boxes;
   hiding markings under boxes; the gap to road markings.
-- **Debug:** timing log, exit trace, and "watch the junction at camera centre", all of which write to
-  `Logs/JunctionRules.Mod.log`.
+- **Developer options** (hidden; shown only when the game is started with the `-developerMode` launch option): timing
+  log, exit trace, "watch the junction at camera centre" (all write to `Logs/JunctionRules.Mod.log`), skip code hash
+  check, and the old yellow box paint test. All off by default.
 
 ## Compatibility
 
@@ -99,6 +104,20 @@ Options → Junction Rules. The main groups:
 checked with `python3 tools/vanilla_copy.py check`.
 
 Development notes, probe logs and design history are in `docs/` and the `PROBE-*.md` files.
+
+## Publishing to Paradox Mods
+
+The official mod template's files: `JunctionRules/Properties/PublishConfiguration.xml` (texts, images, version) and the
+three profiles in `JunctionRules/Properties/PublishProfiles/`. Run from the `JunctionRules/` folder with the game closed
+(the Burst build and ModPublisher both use the game's Proton prefix); each profile builds with Burst first and uploads
+`bin/PublishContent/JunctionRules`. ModPublisher signs in with the Paradox account the game last signed in with.
+
+- First upload: `dotnet publish -c Release -p:PublishProfile=PublishNewMod`, then put the printed
+  `Mod published with Id=NNNNN` into `<ModId Value="NNNNN" />` and commit it.
+- A new version: bump `<Version>`/`<InformationalVersion>` in the csproj and `<ModVersion>` (tests keep them equal),
+  write `<ChangeLog>`, then `dotnet publish -c Release -p:PublishProfile=PublishNewVersion`.
+- Texts or images only: `dotnet publish -c Release -p:PublishProfile=UpdatePublishedConfiguration`.
+- Add `-p:PublishDryRun=true` to any of them to have ModPublisher check the configuration and stop before signing in.
 
 ## License
 

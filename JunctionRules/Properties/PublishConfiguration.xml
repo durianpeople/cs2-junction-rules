@@ -1,0 +1,74 @@
+﻿<Publish>
+	<!--Id must be set in order to update existed mod. it is not required for publishing mod for the first time-->
+	<!--After the first upload ModPublisher prints "Mod published with Id=NNNNN": put that number here and commit it.-->
+	<ModId Value="" />
+	<!--Name of the mod to display to players-->
+	<DisplayName Value="Junction Rules" />
+	<!--Short description of the mod-->
+	<ShortDescription Value="UK-style junction rules for drivers and yellow box junctions they actually obey." />
+	<!--Long description of the mod. Single line or multi line. Supports minimal markdown subset-->
+	<LongDescription>
+Junction Rules makes traffic behave more like real (UK-style) traffic at junctions, crossings and building driveways, and adds painted **yellow box junctions** that drivers actually obey.
+
+## Getting started
+
+Open **Options → Junction Rules** and set **Car driving** to **Junction Rules** (it starts on the game's own driving, so nothing changes until you switch). For the whole-junction gap rule below, also set **Junction gap rule** to **Whole junction**. Every rule can be switched on or off on its own, and **Car driving: Game's own** brings back stock behaviour at any time, also in a running city.
+
+## How it works
+
+The game's car-driving system is switched off and replaced by a Burst-compiled copy of it with Junction Rules' changes inside. The copy is checked against the game's own code at load: if the game updates and the code no longer matches, the mod falls back to the game's driving and the **Status** line in Options says why.
+
+## Junction rules
+
+- **Whole-junction gap.** A car that has to give way stops at one spot, just before the first place its path crosses another lane, and decides once for the whole junction: it goes only when every conflict on its path is clear for the time it needs to get through. It never creeps into a junction and stops halfway across another lane. Vehicles stopped at a red light don't count as approaching.
+- **Turning across oncoming traffic gives way.** Straight-ahead traffic has priority over vehicles turning across it (right turns in left-hand traffic, left turns in right-hand traffic).
+- **Zebras.** People on a zebra have priority: cars never push through them, and cars don't stop on a zebra unless there's room past it for the whole vehicle. If a car does end up blocking a crossing, people walk past it after a short wait (2 s by default), so nobody is trapped.
+- **Unmarked crossings.** People give way to cars instead of cars giving way to people. Cars only wait for people actually crossing, not for someone standing at the kerb.
+- **Leaving and entering buildings.** A vehicle leaving any building treats the pavement like a zebra and pulls out only when people, the lanes it crosses and the lane it joins are all clear, with room for its whole length. A vehicle turning into a building across oncoming traffic gives way to that traffic.
+
+## Yellow boxes
+
+- Open the tool with **Ctrl+Y** or the toolbar button. Hover a junction or a building: a white outline means click to add a box, orange means click to remove it. Boxes are saved with your city.
+- A box on a building covers each of its real car exits and entrances.
+- Boxes have straight sides, kerb to kerb, and never cover zebras, stop or give-way lines or medians. Boxes closer than a car length merge into one. No parking inside a box. Road markings under a box can optionally be hidden.
+- A vehicle enters a box only if there is free space past it, right now, for its whole length (trailers included). Otherwise it stops with its front bumper at the line.
+- UK exception (optional): a vehicle turning across oncoming traffic may wait inside a junction box when its exit is clear and only oncoming traffic stops it.
+- The mod never adds a starvation timeout: a vehicle that can't go legally waits.
+- Some spots can't take a box (elevated or tunnel roads, highways, roundabouts and so on); the tool says why.
+
+## Compatibility
+
+- Built for game version 1.6.4. After a game update the mod falls back to the game's own driving until it is updated.
+- Saves stay loadable without the mod: boxes are stored as small components the game skips when the mod is missing.
+- Works alongside Traffic (lane connections, priorities) and Road Builder roads.
+- Not compatible with other mods that replace the game's car driving system.
+
+## Source and issues
+
+Source code, issue tracker and design notes: https://github.com/durianpeople/cs2-junction-rules (MIT licence for Junction Rules' own code; the copied game code remains the property of Colossal Order / Paradox Interactive).
+	</LongDescription>
+	<!--Thumbnail-->
+	<Thumbnail Value="Properties/Thumbnail.png" />
+	<!--Screenshot, can be set multiple times-->
+	<Screenshot Value="Properties/Screenshot1.png" />
+	<Screenshot Value="Properties/Screenshot2.png" />
+	<Screenshot Value="Properties/Screenshot3.png" />
+	<!--Tag, can be set multiple times. ModPublisher always adds "Code Mod"; it is listed here for clarity.-->
+	<Tag Value="Code Mod" />
+	<!--Link to the forum post where the mod can be discussed-->
+	<ForumLink Value="https://github.com/durianpeople/cs2-junction-rules" />
+	<!--Version of the mod-->
+	<ModVersion Value="1.0.0" />
+	<!--Recommended version of the base game to use the mod-->
+	<GameVersion Value="1.6.4" />
+	<!--Dependency for the mod, can be set multiple times-->
+	<Dependency Id="" />
+	<!--Required DLC, can be set multiple times. Supported values are "Landmark Buildings", "San Fransisco Set", "Beach Properties", "Urban Promenades", "Modern Architecture"-->
+	<RequiredDLC Value="" />
+	<!--Change log for new version. Single line or multi line. Supports minimal markdown subset-->
+	<ChangeLog Value="First public release" />
+	<!--<ChangeLog>
+	</ChangeLog>-->
+	<!--External link, can be set multiple times. supported types are "discord", "github", "youtube", "twitch", "twitter", "x", "paypal", "patreon", "buymeacoffee", "kofi", "crowdin", "gitlab", "gofundme", "bluesky"-->
+	<ExternalLink Type="github" Url="https://github.com/durianpeople/cs2-junction-rules" />
+</Publish>
