@@ -1891,3 +1891,26 @@ way, unchanged.
 - Doc of CrossingPush.PedestrianSpeed restored to its method.
 - Checked and confirmed by the review against the decompile: signs on junction lanes (LaneSystem.CreateNodeLane), same
   exit lane = Lane.m_EndNode, the S2-08b root cause, LaneEndsAtRed semantics.
+
+### 21.12 G25: right-turners wait at an unboxed T for room in a slow exit queue (STOCK behaviour)
+
+Owner (live, T near (-1765, 272), main road N-S, side street W): right-turners wait at their entry spot though nothing
+crosses their path; the side-street lane they join holds a slow lorry queue (van 752263 went once lorry 184673 crawled to
+x -1783; artic 216255 then waited). Owner rule: an exit-room hold outside a junction is yellow-box behaviour only.
+
+**Finding: this is the game's own rule, not Junction Rules.** `CarLaneSpeedIterator.IterateNextLane` (decompile
+2026-11-13 ~430-480; copy 429 / 473 / 480, outside every JR block, test `G25Tests`): a car entering a junction lane with
+turn / forward flags from an approach lane (also at STOP signs and signals) stops at the entry (`driveSpeed = 0`, blocker
+type Continuing) when `CheckSpace` fails. `CheckSpace` (~642+) applies only when the junction lane has at least one true
+CROSSING overlap (a right turn crosses the northbound lane even when it is empty) and then needs room for the car's
+length on the next lane past the mouth (counting vehicles merging into it). Junction Rules adds no room hold at an
+unboxed junction: `BoxHold` returns at once without a yellow box, the zebra room rule needs a zebra on the path (none
+there), the whole-junction gap rule judges only crossing / merging traffic. The scene had cleared when read (frame
+36833959, nothing within 80 m).
+
+**Not changed (owner to decide).** Turning the stock check off at unboxed junctions would be a deviation in the copy
+(the three `CheckSpace` calls, or a JR override after them). Effect: the turner drives in and waits inside the junction,
+across the lane it crosses, until the exit queue moves; with traffic on that lane this can block it (the stock rule
+exists to prevent that). Options: (a) keep stock; (b) drop the stock room check at unboxed junctions everywhere;
+(c) drop it only where the junction lane crosses nothing that is moving or approaching (the whole-junction projection
+says "clear"), so the turner never sits across live traffic.
