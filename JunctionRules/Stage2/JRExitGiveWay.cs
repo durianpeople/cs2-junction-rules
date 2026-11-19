@@ -1550,7 +1550,8 @@ namespace JunctionRules.Stage2
                 Entity joined = (1f - b1) * length <= ExitBands.JunctionJoinMetres ? NextBoxedJunction(road) : Entity.Null;
                 // 0.4.10 (G19): a vehicle leaving into a box needs room free NOW past it, as road traffic does.
                 bool room = HasRoomPast(road, b1, false, length, t, joined, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
-                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, freeNow: true);
+                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, freeNow: true,
+                    frontToStart: (b1 - t) * length);   // JR-T-022 sight: from the join point (the vehicle waits at it) to the band end
                 // review R1: a leaving vehicle held for a light asks it for green. Review 3 F4: recorded as binding (speed 0), not tied
                 // to the vehicle's final limit as the other three sites are: at worst one extra signal request (harmless).
                 if (!room) { NoteLightPetition(0f); return true; }

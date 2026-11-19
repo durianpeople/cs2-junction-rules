@@ -154,7 +154,8 @@ namespace JunctionRules.Stage2
                 // queue in the box behind other turners (Highway Code 174), so standing vehicles on its own path in the box do not block it.
                 m_QueuedTurnersMayStand = m_BoxTurnWait && BoxDriving.TurnerMayWait(true, (uint)carLanes[lane].m_Flags, m_BoxLeftHand);
                 bool room = HasRoomPast(lane, 1f, inverse, laneLength, 0f, owner.m_Owner, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
-                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, freeNow: true);
+                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, freeNow: true,
+                    frontToStart: wait0 + margin + laneLength * (1f - start));   // JR-T-022 sight: front bumper to the box's far end
                 m_QueuedTurnersMayStand = false;
                 if (!BoxDriving.Holds(a, room)) return float.MaxValue;
                 // 0.4.11 (G22, owner): a car from the lowest-priority approach may enter although its exit lane is full when the
@@ -232,7 +233,7 @@ namespace JunctionRules.Stage2
                 // 0.4.10 (G19): room free NOW past the band, for through traffic and for a vehicle leaving into it alike.
                 bool room = HasRoomPast(lane, b1, inverse, laneLength, entry, joined, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
                     ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, role == BoxDriving.EntranceRole.Main,
-                    freeNow: true);
+                    freeNow: true, frontToStart: wait0 + margin + laneLength * (b1 - start));   // JR-T-022 sight: front bumper to the band end
                 if (!BoxDriving.Holds(a, room)) { m_LastBlocker = keepBand; continue; }
                 // 0.4.12 (G28): a vehicle leaving a drive into this band under the same-exit-lane exception (S2-29 G28Check this
                 // update: near-side merge, footprint over only this lane's own traffic) waits in the box at the back of the queue.
@@ -417,7 +418,8 @@ namespace JunctionRules.Stage2
             // standing ahead of it on its path in the box do not block it: Highway Code 174).
             m_QueuedTurnersMayStand = true;
             bool room = HasRoomPast(lane, 1f, inverse, length, math.max(0f, m_Stretch.CurveX), owner.m_Owner, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
-                ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, freeNow: true);
+                ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, freeNow: true,
+                frontToStart: m_Stretch.Wait(1f) + m_Stretch.Margin);   // JR-T-022 sight: front bumper to the box lane's end
             m_QueuedTurnersMayStand = false;
             if (room) return float.MaxValue;
             // 0.4.11 (G22): the same-exit-lane exception also at the UK turn spot (a turner that entered under it is not stopped

@@ -35,7 +35,7 @@ namespace JunctionRules.Tests
             string wj = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRWholeJunction.cs"));
             string yb = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRYellowBox.cs"));
             string ex = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRExitGiveWay.cs"));
-            Check(yb.Contains("ref overlapData, ref pedestrianLanes, role == BoxDriving.EntranceRole.Main,\n                    freeNow: true);") && !ex.Contains("ref pedestrianLanes, true)")
+            Check(yb.Contains("ref overlapData, ref pedestrianLanes, role == BoxDriving.EntranceRole.Main,\n                    freeNow: true, frontToStart: wait0 + margin + laneLength * (b1 - start));") && !ex.Contains("ref pedestrianLanes, true)")
                 && !ex.Contains("sideObstacles: true"), "review 1: side obstacles only for traffic through a band, never in an exit's own room checks (no exit <-> entrant loop)");
             Check(yb.Contains("if (!BoxDriving.Holds(a, room)) { m_LastBlocker = keepBand; continue; }") && yb.Contains("else m_LastBlocker = keepEnter;")
                 && yb.Contains("m_LastBlocker = keepLog;") && yb.Contains("m_LastBlocker = keepF1;"), "review 2: only the binding hold's scan names the blocker");

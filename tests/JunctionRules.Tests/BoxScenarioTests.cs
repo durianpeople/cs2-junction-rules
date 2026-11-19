@@ -41,6 +41,13 @@ namespace JunctionRules.Tests
             /// <summary>At its last box line decision the vehicle could still stop before the line.</summary>
             public bool LastCanStop = true;
             public bool HeldForLight;
+            /// <summary>JR-T-022 sim: top speed (a slow lorry), and a box line whose hold this vehicle ignores (counterfactual run).</summary>
+            public float VMax = SimVmax;
+            public float IgnoreLine = float.NaN;
+            /// <summary>JR-T-022 sim: its last box decision let it go only by the look-past; it entered the current box so.</summary>
+            public bool LastLookAdmit, EnteredByLook;
+
+            public SimVehicle Clone() => (SimVehicle)MemberwiseClone();
         }
 
         private sealed class SimLane
@@ -56,6 +63,7 @@ namespace JunctionRules.Tests
             public bool Petition;                     // a car of this approach asked for green this step
             public bool RequestFromBoxHold = true;    // 0.4.10 review R1 (block S2-52): a car held before a box for the light asks for it
             public int YardCap, Yard;
+            public float NextJunction = -1f;          // JR-T-022: a junction further on where the queue may stop (look-past sight ends there)
         }
 
         private const float SimMargin = 1f, SimDt = 0.5f, SimVmax = 8f;
@@ -116,14 +124,29 @@ namespace JunctionRules.Tests
         /// The box room test for a vehicle entering [b0, b1] (0.4.10 rule when 'robust', else 0.4.9: moving credit, no further
         /// box / light in the window): vehicles ahead inside the box take room first; vehicles past it by rear position.
         /// </summary>
-        private static bool SimRoom(SimLane lane, List<SimVehicle> vs, SimVehicle me, float b0, float b1, int step, bool robust) =>
-            SimRoom(lane, vs, me, b0, b1, step, robust, out _);
+        private static bool SimRoom(SimLane lane, List<SimVehicle> vs, SimVehicle me, float b0, float b1, int step, bool robust, bool lookPast = false) =>
+            SimRoom(lane, vs, me, b0, b1, step, robust, out _, lookPast);
 
-        private static bool SimRoom(SimLane lane, List<SimVehicle> vs, SimVehicle me, float b0, float b1, int step, bool robust, out bool lightBlocked)
+        /// <summary>
+        /// JR-T-022: the game's braking distance of a sim vehicle at its speed (VehicleUtils.GetBrakingDistance with its own
+        /// deceleration and the sim step), the credit the job reads for the look-past.
+        /// </summary>
+        private static float SimBraking(SimVehicle o) => o.Speed > 0.001f ? 0.5f * o.Speed * o.Speed / o.Decel + o.Speed * SimDt : 0f;
+
+        /// <summary>
+        /// JR-T-022: <paramref name="legacy"/> = the 1.0.1 calls verbatim (RoomScan.Add / AddQueued without speeds); else the
+        /// JR-T-022 calls (speeds, guaranteed travel, FinishLookPast) with RoomScan.LookPast = <paramref name="lookPast"/>.
+        /// </summary>
+        private static bool SimRoom(SimLane lane, List<SimVehicle> vs, SimVehicle me, float b0, float b1, int step, bool robust, out bool lightBlocked, bool lookPast = false, bool legacy = false)
         {
             bool lb = false;
             RoomScan scan = RoomScan.Begin(me.Length, SimMargin);
             scan.FreeNow = robust;
+            if (!legacy) scan.LookPast = lookPast;
+            if (scan.LookPast) scan.SightLeft = RoomScan.SightPast(b1 - me.Front);   // JR-T-022: sight from the front bumper
+            // JR-T-022: the next junction (the lane end: a light or a junction; a stop point further on) ends the look-past
+            if (scan.LookPast && lane.End >= b1) scan.LimitSight(lane.End - b1);
+            if (scan.LookPast && lane.NextJunction >= b1) scan.LimitSight(lane.NextJunction - b1);
             var past = new List<SimVehicle>();
             foreach (SimVehicle o in vs)
             {
@@ -135,7 +158,8 @@ namespace JunctionRules.Tests
                 {
                     // 0.4.10 (chains): a STANDING vehicle ahead in the box / before its line blocks (free now); a moving one goes first
                     if (robust && o.Speed < 0.5f) scan.BlockBy(o.Id, 1);
-                    else scan.AddQueued(o.Length);
+                    else if (legacy) scan.AddQueued(o.Length);
+                    else scan.AddQueued(o.Length, o.Speed, o.Id, 1);
                 }
                 else if (rear >= b1) past.Add(o);
             }
@@ -170,15 +194,33 @@ namespace JunctionRules.Tests
             {
                 if (scan.Blocked) break;
                 float credit = o.Speed > 0.01f ? o.Speed * o.Speed / (2f * 4f) + o.Speed * 0.5f : 0f;
-                scan.Add(o.Front - o.Length - b1, o.Length, credit, o.Id, 1);
+                if (legacy) scan.Add(o.Front - o.Length - b1, o.Length, credit, o.Id, 1);
+                else scan.Add(o.Front - o.Length - b1, o.Length, credit, o.Id, 1, o.Speed, RoomScan.GuaranteedTravel(SimBraking(o), o.Speed, SimDt));
                 Extensions();
             }
+            if (!legacy) scan.FinishLookPast();
             lightBlocked = !scan.HasRoom && scan.BlockerIndex == -1;
             return scan.HasRoom;
         }
 
-        private static (int violations, int residual, bool drained, int served, int entered, int exited, int nose, int enteredNoRoom, int residualCommitted, int noseLight) SimRun(SimLane lane, int seed, bool robust, int steps, int drainSteps)
+        private static (int violations, int residual, bool drained, int served, int entered, int exited, int nose, int enteredNoRoom, int residualCommitted, int noseLight) SimRun(SimLane lane, int seed, bool robust, int steps, int drainSteps,
+            bool lookPast = false, bool legacy = false, bool follow = false)
         {
+            return SimRun(lane, seed, robust, steps, drainSteps, lookPast, legacy, out _, follow);
+        }
+
+        /// <summary>
+        /// JR-T-022: the least distance a sim vehicle covers when it brakes now as hard as it can (its deceleration, whole
+        /// steps), a lower bound (as RoomScan.GuaranteedTravel of the game's braking distance).
+        /// </summary>
+        private static float SimMinStop(SimVehicle o) => Math.Max(0f, 0.5f * o.Speed * o.Speed / o.Decel - o.Speed * SimDt);
+
+        /// <summary>JR-T-022: <paramref name="trace"/> = a hash of every room decision and every vehicle position, step by step.</summary>
+        private static (int violations, int residual, bool drained, int served, int entered, int exited, int nose, int enteredNoRoom, int residualCommitted, int noseLight) SimRun(SimLane lane, int seed, bool robust, int steps, int drainSteps,
+            bool lookPast, bool legacy, out long trace, bool follow = false)
+        {
+            long h = 1469598103934665603L;
+            void Mix(long x) { h ^= x; h *= 1099511628211L; }
             var rnd = new Random(seed);
             var vs = new List<SimVehicle>();
             var yardDwell = new List<int>();
@@ -198,6 +240,9 @@ namespace JunctionRules.Tests
                     float hard = sinkOpen ? 1e9f : lane.JunctionEnd + SimDownstream;
                     if (ahead != null) hard = Math.Min(hard, ahead.Front - ahead.Length - 1f);
                     float soft = 1e9f;
+                    // JR-T-022 (follow): keep a gap the vehicle can stop in even if the one ahead brakes as hard as it can (the game's
+                    // car following counts the leader's braking distance); off = the 0.4.10 model (only the 1 m physical clamp)
+                    if (follow && ahead != null) soft = Math.Min(soft, ahead.Front - ahead.Length - 1f + SimMinStop(ahead));
                     // the stock light: red and amber stop a car that can still stop (amber = SafeStop)
                     if (lane.Light && SimLightStops(lane, step) && v.Front <= lane.End + 1e-3f && SimCanStop(v, lane.End - v.Front)) soft = Math.Min(soft, lane.End);
                     v.WaitingToEnter = false;
@@ -211,7 +256,8 @@ namespace JunctionRules.Tests
                         v.LastCanStop = canStop;
                         bool entering = v.Entrant && lane.Drive > band.b0 && lane.Drive < band.b1;
                         bool lightBlocked = false;
-                        bool room = entering ? v.Reserved || lane.Yard + Reserved(vs) < lane.YardCap : SimRoom(lane, vs, v, band.b0, band.b1, step, robust, out lightBlocked);
+                        bool room = entering ? v.Reserved || lane.Yard + Reserved(vs) < lane.YardCap : SimRoom(lane, vs, v, band.b0, band.b1, step, robust, out lightBlocked, lookPast, legacy);
+                        Mix(room ? 1 : 2);
                         if (entering && room && !v.Reserved && canStop) v.Reserved = true;
                         if (!room && canStop)
                         {
@@ -243,6 +289,7 @@ namespace JunctionRules.Tests
                         }
                     v.Speed = move / SimDt;
                     v.Front += move;
+                    Mix(BitConverter.SingleToInt32Bits(v.Front));
                     ahead = v;
                 }
                 // turn in / leave the model
@@ -273,7 +320,9 @@ namespace JunctionRules.Tests
                             foreach (var band in SimBands(lane, me.Length))
                             {
                                 if (lane.ExitJoin < band.b0 || lane.ExitJoin > band.b1) continue;
-                                if (!SimRoom(lane, vs, me, lane.ExitJoin, band.b1, step, robust)) clear = false;
+                                bool exitRoom = SimRoom(lane, vs, me, lane.ExitJoin, band.b1, step, robust, out _, lookPast, legacy);
+                                Mix(exitRoom ? 3 : 4);
+                                if (!exitRoom) clear = false;
                             }
                         }
                         if (clear) { nextId++; vs.Add(me); yardDwell.RemoveAt(ready); lane.Yard--; exited++; }
@@ -323,6 +372,7 @@ namespace JunctionRules.Tests
                 SimAdvanceLight(lane);
             }
             bool drained = vs.Count == 0 && lane.Yard == 0 && yardDwell.Count == 0;
+            trace = h;
             return (violations, residual, drained, served, entered, exited, nose, enteredNoRoom, residualCommitted, noseLight);
         }
 

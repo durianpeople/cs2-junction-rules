@@ -205,6 +205,16 @@ namespace JunctionRules.Settings
         public bool BoxTurnWait { get; set; }
 
         /// <summary>
+        /// JR-T-022 (owner 19 Nov 2026): a car about to enter a box judges the whole stretch ahead (every vehicle before, in
+        /// and past the box, their speeds, the room beyond them), not only the car right in front: when the vehicles past the
+        /// box are clearly moving away and the room is certain to be there even if they brake now, it does not pause at the
+        /// line (Core RoomScan.LookPast). Default on; off = 1.0.1 driving. Greyed out while the box rule is off.
+        /// </summary>
+        [SettingsUIDisableByCondition(typeof(JunctionRulesSettings), nameof(BoxTurnWaitDisabled))]
+        [SettingsUISection(kSection, kBoxesGroup)]
+        public bool BoxLookPast { get; set; }
+
+        /// <summary>
         /// 0.4.7 (JR-T-013d, gap G6, owner rule 17 Nov 2026): no car parks inside a yellow box, whether or not the road has
         /// kerbside parking there. Every parking slot whose space overlaps a box (junction or exit box) is blocked the way
         /// the game blocks slots at driveways (Parking/BoxParkingSystem.cs); cars already parked there leave normally.
@@ -363,6 +373,7 @@ namespace JunctionRules.Settings
             BoxObey = true;
             HideMarkingsUnderBoxes = false;
             BoxTurnWait = true;
+            BoxLookPast = true;   // JR-T-022
             YellowBoxPaintTest = false;
             PaintMode = BoxPaintMode.Hatch;
             PaintLayers = PaintSettingsMigration.Default;
@@ -482,6 +493,9 @@ namespace JunctionRules.Settings
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.BoxTurnWait)), "Yellow boxes: turning across oncoming traffic may wait in the box" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.BoxTurnWait)),
                     "On (default, as UK law): a car turning across oncoming traffic (right in a left-hand traffic city, left in a right-hand traffic city) may drive into the box and wait there for a gap when its exit has room and only oncoming traffic stops it (with the Whole junction gap rule it waits just before the oncoming lanes; never on a zebra). Off: it waits at the stop line like everyone else. With the Stock gap rule the game's own give-ways decide where cars wait, so this switch changes nothing there." },
+                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.BoxLookPast)), "Look past the car in front at a box" },
+                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.BoxLookPast)),
+                    "On (default): a car about to drive into a yellow box looks at the whole stretch ahead, not only at the car right in front: every vehicle before, in and past the box, how fast they move and the free road beyond them. When the traffic past the box is clearly moving away and there is certain to be room for its whole length (trailers included) plus the room margin by the time it gets there, even if that traffic brakes now, it drives on instead of pausing at the line for the car in front to clear the box first. When that is not clear (a vehicle ahead standing or crawling, a red light, a queue that brakes), it waits at the line as before; it still never stops inside the box. Off: a car enters only when the room past the box is free now." },
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.NoParkingInBoxes)), "No parking in yellow boxes" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.NoParkingInBoxes)),
                     "On (default): no car parks inside a yellow box you placed (junction or building exit box), even where the road has kerbside parking. Every parking space that overlaps a box is closed the way the game closes spaces in front of a driveway: new cars do not choose it and a car arriving there looks for another space. Cars already parked in the box drive off normally when they leave. Removing a box, or turning this off, opens the spaces again. Nothing extra is saved with the city: a save loaded without the mod has all its parking. Off: cars may park in boxes as before." },

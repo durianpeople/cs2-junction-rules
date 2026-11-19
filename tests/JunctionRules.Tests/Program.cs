@@ -164,6 +164,7 @@ namespace JunctionRules.Tests
             ("PedPathTests", PedPathTests),
             ("BoxWindowUnitTests", BoxWindowUnitTests),
             ("BoxScenarioTests", BoxScenarioTests),
+            ("BoxLookPastTests", BoxLookPastTests),
             ("ChainTests", ChainTests),
             ("MergedOutlineTests", MergedOutlineTests),
             ("ApiTargetParseTests", ApiTargetParseTests),

@@ -83,9 +83,14 @@ namespace JunctionRules.Core
         /// </summary>
         public const int UnmarkedGiveWay = 1 << 7;
         // JR-T-014d (G11) END
+        /// <summary>
+        /// JR-T-022, with <see cref="BoxObey"/> only: setting "Look past the car in front at a box" (RoomScan.LookPast, default
+        /// on). Bit 31, the last free bit (the int's sign bit; the handed-over mode is only ever tested bit by bit).
+        /// </summary>
+        public const int BoxLookPast = 1 << 31;
         /// <summary>Every bit the job side strips from the stage 2 mode (settings that are not part of the 0.2.x rule).</summary>
         public const int Stripped = NoPushPeople | ZebraClear | ZebraMarginMask | BoxObey | BoxTurnWait | BoxLeftHand | BoxJunctions | BoxEntrances | BoxEntranceMask
-            | ExitGiveWay | UnmarkedGiveWay;
+            | ExitGiveWay | UnmarkedGiveWay | BoxLookPast;
 
         /// <summary>0.4.2: the room margin bits alone (shared by the zebra and the yellow box rules).</summary>
         public static int MarginBits(float marginMetres)
@@ -99,13 +104,15 @@ namespace JunctionRules.Core
         /// 0.4.2: the yellow box bits for the settings (0 when "Cars obey yellow boxes" is off). anyJunction / anyEntrance =
         /// boxes of that kind exist in the city; entranceLength = the band length in metres.
         /// </summary>
-        public static int BoxBits(bool obey, bool turnWait, bool leftHandTraffic, bool anyJunction, bool anyEntrance, float entranceLength)
+        public static int BoxBits(bool obey, bool turnWait, bool leftHandTraffic, bool anyJunction, bool anyEntrance, float entranceLength, bool lookPast = false)
         {
             if (!obey) return 0;
             int dm = (int)System.Math.Round((entranceLength > 0f ? entranceLength : 0f) * 10f);
             if (dm > 0x1FF) dm = 0x1FF;
             return BoxObey | (turnWait ? BoxTurnWait : 0) | (leftHandTraffic ? BoxLeftHand : 0) | (anyJunction ? BoxJunctions : 0)
-                | (anyEntrance ? BoxEntrances : 0) | (dm << BoxEntranceShift);
+                | (anyEntrance ? BoxEntrances : 0) | (dm << BoxEntranceShift)
+                // JR-T-022: look past the car in front at a box
+                | (lookPast ? BoxLookPast : 0);
         }
 
         /// <summary>0.4.2: the entrance band length (m) carried in a mode.</summary>
@@ -143,6 +150,7 @@ namespace JunctionRules.Core
             + ((mode & BoxObey) != 0 ? "; cars obey yellow boxes (room margin " + ZebraMargin(mode).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)
                 + " m, exit boxes driven over their painted windows (box length setting " + BoxEntranceLength(mode).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " m); "
                 + ((mode & BoxTurnWait) != 0 ? "turning across oncoming may wait in the box, " + ((mode & BoxLeftHand) != 0 ? "left" : "right") + "-hand traffic" : "no waiting in the box")
+                + ((mode & BoxLookPast) != 0 ? ", looking past the car in front" : "")
                 + ")" : "")
             + ((mode & ExitGiveWay) != 0 ? "; vehicles leaving buildings give way" : "")
             + ((mode & UnmarkedGiveWay) != 0 ? "; people give way at unmarked crossings" : "");

@@ -178,6 +178,10 @@ namespace JunctionRules.Stage2
         private bool m_BoxLeftHand;
         private bool m_BoxJunctions;
         private bool m_BoxEntrances;
+        /// <summary>JR-T-022: setting "Look past the car in front at a box" (Stage2Mode.BoxLookPast; RoomScan.LookPast in box room tests).</summary>
+        private bool m_BoxLookPast;
+        /// <summary>JR-T-022 (probe): this car-step a box room test let the car go only because it looked past the car in front.</summary>
+        private bool m_LookPastAdmitted;
         // 0.4.10 (G18): m_BoxEntranceLength removed: bands are the painted windows (JRBoxEdges), not t + the box length.
         /// <summary>SetBoxes ran (the box lookups below are valid).</summary>
         private bool m_BoxLookups;
@@ -409,6 +413,7 @@ namespace JunctionRules.Stage2
             j.m_BoxLeftHand = (mode & Stage2Mode.BoxLeftHand) != 0;
             j.m_BoxJunctions = (mode & Stage2Mode.BoxJunctions) != 0;
             j.m_BoxEntrances = (mode & Stage2Mode.BoxEntrances) != 0;
+            j.m_BoxLookPast = (mode & Stage2Mode.BoxLookPast) != 0;   // JR-T-022
             j.m_BoxTurnSpot = 2f;
             j.m_LightPetitionSpeed = float.MaxValue;   // 0.4.10 (review R1): no light to ask for
             j.m_BoxTurnIndex = -1;
@@ -851,12 +856,17 @@ namespace JunctionRules.Stage2
             ref ComponentLookup<Game.Net.CarLane> carLanes, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves,
             ref ComponentLookup<Moving> moving, ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs,
             ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars,
-            ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes, bool sideObstacles = false, bool freeNow = false)
+            ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes, bool sideObstacles = false, bool freeNow = false,
+            float frontToStart = -1f)
         {
             RoomScan scan = RoomScan.Begin(m_VehicleLength, m_RoomMargin);
             // 0.4.10 (G19): yellow boxes count only room that is free now (no credit for a moving queue); zebras keep the credit.
             scan.FreeNow = freeNow;
             scan.QueuedMayStand = m_QueuedTurnersMayStand;
+            // JR-T-022: box room tests look past the car in front (setting); off = exactly the 1.0.1 scan.
+            scan.LookPast = freeNow && m_BoxLookPast;
+            // JR-T-022 (limited sight): what the car sees past the window start; unknown distance = nothing seen (free-now rule)
+            if (scan.LookPast) scan.SightLeft = frontToStart >= 0f ? RoomScan.SightPast(frontToStart) : 0f;
             m_FreeNowHeld = false;
             m_LastLightLane = Entity.Null;
             bool unsorted = false;
@@ -914,12 +924,15 @@ namespace JunctionRules.Stage2
                 }
             }
             if (unsorted && Counting) m_ZebraUnsortedSeen = true;
+            // JR-T-022: the look-past verdict once the whole stretch is read (a slow vehicle ahead refuses it).
+            if (scan.LookPast) scan.FinishLookPast();
             // 0.4.9 (G15b): a vehicle turning into (or out of) a driveway whose body still lies across this lane is not one of
             // this lane's objects (the game lists a car only on its current lane), so the scan above did not see it.
             if (sideObstacles && scan.HasRoom) SideObstacles(ref scan, lane, queueFrom >= 0f && queueFrom < fromDriving ? queueFrom : fromDriving, fromDriving, inverse, length, self,
                 ref carLanes, ref laneObjects, ref controllers, ref prefabRefs, ref geometries, ref curves, ref overlapData);
             NoteRoomBlocker(scan);
             m_FreeNowHeld = scan.HeldForMovingQueue;
+            if (scan.LookPast && Counting && scan.AdmittedByLookPast) m_LookPastAdmitted = true;   // JR-T-022 (probe)
             return scan.HasRoom;
         }
 
@@ -1022,6 +1035,9 @@ namespace JunctionRules.Stage2
             ref ComponentLookup<Game.Net.CarLane> carLanes, ref ComponentLookup<Curve> curves)
         {
             if (scan.Blocked) return;
+            // JR-T-022: with the look-past, the next junction on the path ends what the car counts on: the queue ahead may stop at
+            // it for anything the scan does not see (a light that turns, a give-way / STOP line, turning traffic, people)
+            if (scan.LookPast && m_NodeLaneData.HasComponent(nav.m_Lane)) scan.LimitSight(read);
             // 0.4.10 (chains): a red / amber light is a standing obstacle at its stop line (where the path enters its lane, 'read'
             // metres from the window start): the vehicles between the box and the light (already added, in path order) will
             // queue at it, so the room is the space before the line minus them (RoomScan.Add at the line, zero length).
@@ -1293,6 +1309,13 @@ namespace JunctionRules.Stage2
                         scan.BlockBy(qw.Index, qw.Version);
                         continue;
                     }
+                    if (scan.LookPast)
+                    {
+                        // JR-T-022: a vehicle the car follows through the box: its forward speed decides whether the queue is clearly moving
+                        Entity lw = controllers.TryGetComponent(e, out Controller lc) && lc.m_Controller != Entity.Null ? lc.m_Controller : e;
+                        scan.AddQueued(MathUtils.Size(g.m_Bounds.z), ForwardSpeed(e, o.m_CurvePosition.x, inverse, hasCurve, curve, ref moving), lw.Index, lw.Version);
+                        continue;
+                    }
                     scan.AddQueued(MathUtils.Size(g.m_Bounds.z));
                     continue;
                 }
@@ -1305,8 +1328,28 @@ namespace JunctionRules.Stage2
                 }
                 // 0.4.9 (G17): the vehicle (its controller for a trailer) is named, for the hold's Blocker.
                 Entity who = controllers.TryGetComponent(e, out Controller wc) && wc.m_Controller != Entity.Null ? wc.m_Controller : e;
+                if (scan.LookPast)
+                {
+                    // JR-T-022: its forward speed and the distance it covers at the least if it brakes now (from the same braking distance)
+                    float fwd = noCredit ? 0f : ForwardSpeed(e, o.m_CurvePosition.x, inverse, hasCurve, curve, ref moving);
+                    scan.Add(baseDistance + d + g.m_Bounds.min.z, MathUtils.Size(g.m_Bounds.z), credit, who.Index, who.Version, fwd,
+                        RoomScan.GuaranteedTravel(credit, fwd, safeTimeStep));
+                    continue;
+                }
                 scan.Add(baseDistance + d + g.m_Bounds.min.z, MathUtils.Size(g.m_Bounds.z), credit, who.Index, who.Version);
             }
+        }
+
+        /// <summary>
+        /// JR-T-022: a lane object's speed along the lane in the driving direction (m/s; 0 when it does not move or the lane has
+        /// no curve), the same projection as the room credit above.
+        /// </summary>
+        private static float ForwardSpeed(Entity e, float curvePosition, bool inverse, bool hasCurve, Curve curve, ref ComponentLookup<Moving> moving)
+        {
+            if (!hasCurve || !moving.TryGetComponent(e, out Moving m)) return 0f;
+            float3 dir = math.normalizesafe(MathUtils.Tangent(curve.m_Bezier, curvePosition));
+            float v = math.dot(m.m_Velocity, inverse ? -dir : dir);
+            return v > 0f ? v : 0f;
         }
 
         /// <summary>
@@ -1874,6 +1917,7 @@ namespace JunctionRules.Stage2
             }
             if (m_EntryEntrantIgnored) Add(counters, Stage2Counters.EntryEntrantIgnored, 1);
             if (Stage2Counters.IsBinding(m_HasBoxFreeNow, m_BoxFreeNowSpeed, finalMaxSpeed)) Add(counters, Stage2Counters.BoxHeldFreeNow, 1);   // 0.4.10 (G19)
+            if (m_LookPastAdmitted) Add(counters, Stage2Counters.BoxLookPastAdmitted, 1);   // JR-T-022 (probe)
             // 0.4.10 probes; the UK right-turn spot (waiting for the oncoming gap or, review 3 F2, for exit room) is excluded
             bool turnSpot = Stage2Counters.IsStandingOn(m_HasBoxTurnWait, m_BoxTurnWaitSpeed, finalMaxSpeed, currentSpeed)
                 || Stage2Counters.IsStandingOn(m_HasBoxTurnRoom, m_BoxTurnRoomSpeed, finalMaxSpeed, currentSpeed);

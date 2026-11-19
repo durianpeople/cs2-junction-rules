@@ -43,16 +43,16 @@ namespace JunctionRules.Core
         public string Step(JunctionGapRule rule, bool counting, out int mode, JunctionWaitingSpot spot = JunctionWaitingSpot.BeforeFirstCrossing,
             bool turnGivesWay = false, bool leftHandTraffic = false, bool noPushPeople = false, bool zebraClear = false,
             float zebraMargin = RoomScan.DefaultMargin, bool boxObey = false, bool boxTurnWait = true, bool anyJunctionBox = false,
-            bool anyEntranceBox = false, float entranceLength = 8f, bool exitGiveWay = false, bool unmarkedGiveWay = false)
+            bool anyEntranceBox = false, float entranceLength = 8f, bool exitGiveWay = false, bool unmarkedGiveWay = false, bool boxLookPast = false)
         {
             // 0.4.2 (JR-T-010): the yellow box bits (traffic side from the same leftHandTraffic the turn rule reads).
-            int boxBits = Stage2Mode.BoxBits(boxObey, boxTurnWait, leftHandTraffic, anyJunctionBox, anyEntranceBox, entranceLength);
+            int boxBits = Stage2Mode.BoxBits(boxObey, boxTurnWait, leftHandTraffic, anyJunctionBox, anyEntranceBox, entranceLength, boxLookPast);
             mode = Stage2Mode.For(rule, counting, spot, turnGivesWay, leftHandTraffic, noPushPeople, zebraClear, zebraMargin, boxBits, exitGiveWay, unmarkedGiveWay);
             if (m_Has && mode == m_Mode) return null;
             bool first = !m_Has;
             bool ruleChanged = !first && ((mode ^ m_Mode) & (Stage2Mode.Rule | Stage2Mode.AtLine | Stage2Mode.TurnGivesWay | Stage2Mode.LeftHandTraffic | Stage2Mode.NoPushPeople | Stage2Mode.ZebraClear | Stage2Mode.ZebraMarginMask
                 | Stage2Mode.BoxObey | Stage2Mode.BoxTurnWait | Stage2Mode.BoxLeftHand | Stage2Mode.BoxEntranceMask | Stage2Mode.ExitGiveWay
-                | Stage2Mode.UnmarkedGiveWay)) != 0;
+                | Stage2Mode.UnmarkedGiveWay | Stage2Mode.BoxLookPast)) != 0;
             bool boxesChanged = !first && ((mode ^ m_Mode) & (Stage2Mode.BoxJunctions | Stage2Mode.BoxEntrances)) != 0;
             m_Has = true;
             int old = m_Mode;
@@ -272,7 +272,12 @@ namespace JunctionRules.Core
         /// <summary>0.4.12 OWNER DECISION REVISED: vehicles (episodes) admitted under the same-exit-lane exception whose waiting
         /// footprint has a zebra under it (allowed by the owner: "it can block ANY pedestrian paths for the yielding exit at the box").</summary>
         public const int BoxSameExitZebraTail = FeedingScans + 75;
-        public const int Count = FeedingScans + 76;
+        /// <summary>
+        /// JR-T-022 (probe): car-steps in which a yellow box room test let the car go only because it looked past the car in
+        /// front (setting "Look past the car in front at a box"): the free-now rule alone would have held it at the line.
+        /// </summary>
+        public const int BoxLookPastAdmitted = FeedingScans + 76;
+        public const int Count = FeedingScans + 77;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -442,7 +447,9 @@ namespace JunctionRules.Core
                    // 0.4.10 (G19): newest, at the end.
                    (boxMask >= 2 ? "; box holds only because the queue past the box was moving (free-now rule) " + deltas[BoxHeldFreeNow].ToString(ci)
                        + "; standing with the front bumper past a box line (nose in the box) " + deltas[BoxNosePast].ToString(ci) + " (must be 0; at a red / amber light, game's amber rule, apart: " + deltas[BoxNoseAtLight].ToString(ci) + ")"
-                       + "; standing inside a box (not at the right-turn spot) " + deltas[BoxStoodInside].ToString(ci) : "") +
+                       + "; standing inside a box (not at the right-turn spot) " + deltas[BoxStoodInside].ToString(ci)
+                       // JR-T-022
+                       + "; let into a box by looking past the car in front (free-now room short, queue clearly moving) " + deltas[BoxLookPastAdmitted].ToString(ci) : "") +
                    // 0.4.11 (G23)
                    (exitMask >= 2 || deltas[PeopleBesideCrossingCreep] > 0 || deltas[HeldForWaitingPerson] > 0
                        ? "; people beside a crossing passed at the game's creep (not on the car's way) " + deltas[PeopleBesideCrossingCreep].ToString(ci) +
