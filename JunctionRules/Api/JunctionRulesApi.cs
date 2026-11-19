@@ -152,7 +152,7 @@ namespace JunctionRules.Api
         }
 
         /// <summary>
-        /// The target an API target means. Returns a not_found reason, or sets errJson (ambiguous_exit / entrance_derived /
+        /// The target an API target means. Returns a not_found reason, or sets errJson (ambiguous_exit /
         /// exit out of range with the building's accesses listed). Node / building ids are checked; x / z = the tool's pick.
         /// </summary>
         private static string Pick(BoxTargeting tg, ApiTarget at, string action, out Target t, out string errJson)

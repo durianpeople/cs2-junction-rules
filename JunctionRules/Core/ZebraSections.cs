@@ -2,17 +2,17 @@ using System.Runtime.CompilerServices;
 
 namespace JunctionRules.Core
 {
-    /// <summary>
-    /// 0.4.1 (JR-T-009): the overlaps of one car lane as path elements for the zebra sections, in driving coordinates
-    /// (0 = where the car enters the lane). The job side wraps the game's LaneOverlap buffer (Stage2/JRWholeJunction.cs),
-    /// the tests an array. Burst: generic constraint only.
-    /// </summary>
     /// <summary>1.0.1: has the car's front passed a point (driving coordinates)? Job: StretchState.FrontPast arithmetic.</summary>
     public interface IFrontPast
     {
         bool Past(float u);
     }
 
+    /// <summary>
+    /// 0.4.1 (JR-T-009): the overlaps of one car lane as path elements for the zebra sections, in driving coordinates
+    /// (0 = where the car enters the lane). The job side wraps the game's LaneOverlap buffer (Stage2/JRWholeJunction.cs),
+    /// the tests an array. Burst: generic constraint only.
+    /// </summary>
     public interface IPathElements
     {
         int Count { get; }
@@ -72,6 +72,13 @@ namespace JunctionRules.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int ZebraKind(int pedestrianLaneFlags, bool hasSignal, int signal) =>
             !IsZebra(pedestrianLaneFlags) ? 0 : hasSignal && (signal == WholePathRule.SignalStop || signal == WholePathRule.SignalSafeStop) ? SoftZebra : Zebra;
+
+        /// <summary>
+        /// JR-T-021C (G17): does the soft-zebra hold bind over the zebra-section hold (BeginZebras returns their minimum)? Only
+        /// then is its blocker the hook's blocker; on a tie the section hold names it.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool SoftHoldBinds(float sectionHold, float softHold) => softHold < sectionHold;
 
         /// <summary>
         /// 1.0.1: the room-past hold for soft zebras. The first soft zebra the car's front has not reached
