@@ -391,3 +391,23 @@ G25 (0.4.11, owner option c): new block S2-54 (6 lines, table above): 42 blocks,
 (`docs/vanilla_copy_check_0.4.12.txt`: 0 unexplained differences). Box shapes only (`Core/MedianSplit.cs`,
 `Core/MedianNose.cs`, `Boxes/BoxShapes.cs`, `CrosswalkStrip.Median`); the driving rule reads the same shape and mask.
 PROBE section 22.
+
+1.1.0 (JR-T-022 / 022b / 022c: look past the car in front at a box; owner 19 Nov 2026). No copy change: the
+`JunctionRules/Vanilla/` files are as 1.0.1 (`vanilla_copy.py check` unchanged). Job side only
+(`Stage2/JRWholeJunction.cs` box room test, `Core/ZebraSections.cs` RoomScan, `Core/SightLine.cs`), all behind the new
+setting **Look past the car in front at a box** (default on; off = 1.0.1 bit for bit, proven by a 20000-case RoomScan
+differential and a step-by-step trace hash over the box scenario set):
+- Mode bit 31 (`Stage2Mode.BoxLookPast = 1 << 31`, set only with the box rule; in `Stage2Mode.Stripped`; every use is a
+  bit test). New counter `Stage2Counters.BoxLookPastAdmitted` (last index), on the timing line only while the setting is on.
+- Rule: in a box room test (free-now rule) a vehicle past the box whose free-now room is short still gives room when it
+  moves away at 3 m/s or more and its rear plus `GuaranteedTravel` (its braking distance less two steps of travel) leaves
+  the car's length plus margin; a vehicle the car follows through the box below 3 m/s refuses.
+- Sight: a 50 m straight-line radius around the driver (`SightLine.FirstExit` per path lane); the room relied on must end
+  inside it, before the next junction on the path (interim stand-in for corner buildings, not modelled yet) and within
+  the path read. Cars and vans never block the view; a large vehicle (`CarData.m_SizeClass` Large) is judged itself and
+  hides every vehicle beyond it (no credit: free-now rule for them); a large vehicle queued in / before the box hides the
+  road past it. An articulated vehicle is one vehicle: its trailer and tractor (separate lane objects, named by the same
+  controller) never hide each other and the whole artic is credited by its leading element in path order (JR-T-022c).
+- The safety stop is untouched (the decision runs again every step while the car can still stop at the line). Rare
+  misjudgements that end with a car standing in the box (offline: a queue past the box that stops dead, harder than any
+  game vehicle can brake) are accepted by design.

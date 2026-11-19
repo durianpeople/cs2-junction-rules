@@ -333,9 +333,10 @@ namespace JunctionRules.Core
         /// The suffix of the copy's timing line. ruleMask: bit 0 = a step ran with stock, bit 1 = with whole junction
         /// (both = the rule was switched inside the window). deltas: null when counters were not on for the whole window.
         /// pushMask (0.3.2), same encoding for the setting "Cars never push through people on crossings" (bit 0 = a step ran
-        /// with it off, bit 1 = on); 0 = not reported.
+        /// with it off, bit 1 = on); 0 = not reported. lookPastMask (JR-T-022c), same encoding for "Look past the car in front
+        /// at a box": its counter is printed only when a step of the window ran with it on (1.0.1 text with it off).
         /// </summary>
-        public static string Format(int ruleMask, long[] deltas, int pushMask = 0, int zebraMask = 0, int boxMask = 0, int exitMask = 0)
+        public static string Format(int ruleMask, long[] deltas, int pushMask = 0, int zebraMask = 0, int boxMask = 0, int exitMask = 0, int lookPastMask = 0)
         {
             string rule = ruleMask == 1 ? "stock" : ruleMask == 2 ? "whole junction" : ruleMask == 3 ? "mixed (switched in this window)" : "none";
             string push = pushMask == 1 ? "off" : pushMask == 2 ? "on" : pushMask == 3 ? "switched in this window" : null;
@@ -448,8 +449,8 @@ namespace JunctionRules.Core
                    (boxMask >= 2 ? "; box holds only because the queue past the box was moving (free-now rule) " + deltas[BoxHeldFreeNow].ToString(ci)
                        + "; standing with the front bumper past a box line (nose in the box) " + deltas[BoxNosePast].ToString(ci) + " (must be 0; at a red / amber light, game's amber rule, apart: " + deltas[BoxNoseAtLight].ToString(ci) + ")"
                        + "; standing inside a box (not at the right-turn spot) " + deltas[BoxStoodInside].ToString(ci)
-                       // JR-T-022
-                       + "; let into a box by looking past the car in front (free-now room short, queue clearly moving) " + deltas[BoxLookPastAdmitted].ToString(ci) : "") +
+                       // JR-T-022 (JR-T-022c: only with the look-past setting on in this window)
+                       + (lookPastMask >= 2 ? "; let into a box by looking past the car in front (free-now room short, queue clearly moving) " + deltas[BoxLookPastAdmitted].ToString(ci) : "") : "") +
                    // 0.4.11 (G23)
                    (exitMask >= 2 || deltas[PeopleBesideCrossingCreep] > 0 || deltas[HeldForWaitingPerson] > 0
                        ? "; people beside a crossing passed at the game's creep (not on the car's way) " + deltas[PeopleBesideCrossingCreep].ToString(ci) +

@@ -169,6 +169,21 @@ PROBE-STAGE3-PAINT.md section 10.
 - **Cars obey yellow boxes** (0.4.2): on (default) or off (= 0.4.1); **Yellow boxes: turning across oncoming traffic may wait in the box**
   on (default, UK) or off. Only boxes placed with the yellow box tool; shares the room margin slider (now "Room
   margin past a zebra or yellow box"). Timing log: box entries held, right-turn waits, entrance band holds.
+- **Look past the car in front at a box** (1.1.0, Yellow boxes, default on; off = 1.0.1 bit for bit): acts only in a
+  yellow box room test (free-now rule). The car judges every vehicle it can see past the box: one whose free-now room is
+  short still gives room when it moves away at 3 m/s or more and its rear plus the distance it is certain to cover even
+  if it brakes as hard as it can leaves the car's length plus margin; any vehicle the car follows through the box below
+  3 m/s refuses. Sight rule: a 50 m straight-line radius around the driver (on a turn it reaches into the road turned
+  into); the room relied on must end inside it, before the next junction on the path (interim stand-in for corner
+  buildings, which are not modelled yet) and within the path read. Ordinary cars and vans never block the view; a large
+  vehicle (the game's `CarData.m_SizeClass` Large: lorries, buses, artics) is seen and credited itself, and every vehicle
+  beyond it is hidden (no credit, free-now rule); a large vehicle queued in or before the box hides the road past it. An
+  artic is one vehicle (trailer and tractor share a controller): credited by its leading element, its elements never
+  hide each other (1.1.0 review fix). Lights are always seen. The decision runs again every step while the car can still
+  stop at the line, so the safety stop stays; rare misjudgements that end with a car in the box (a queue past it that
+  stops harder than any game vehicle brakes) are accepted by design. Mode bit 31 (`Stage2Mode.BoxLookPast`, stripped from
+  the job's stage 2 mode, toggling it logs a rule switch). Timing log: "let into a box by looking past the car in front"
+  (`Stage2Counters.BoxLookPastAdmitted`), printed only when the setting was on in the window.
 - **Yellow box paint test** (stage 3 probe): off (default) or on; **what to draw** (Box / Plain fill / Outline only);
   **paint onto** (Roads (default) / Roads + Other / Everything but vehicles); buttons Refresh test list, Add junction at
   camera centre, Log paint cost now; Paint test status. See PROBE-STAGE3-PAINT.md.

@@ -217,6 +217,7 @@ namespace JunctionRules.Tests
         {
             SimLane Exit() => new SimLane { Name = "exit box", End = 1000f, JunctionEnd = 1000f, Painted = new List<(float a, float b)> { (40f, 48f) } };
             SimLane Junction() => new SimLane { Name = "boxed junction", End = 60f, JunctionEnd = 74f, JunctionBoxed = true };
+            SimLane Junction2() => new SimLane { Name = "boxed junction", End = 60f, JunctionEnd = 74f, JunctionBoxed = true, TwoElementArtics = true };
             SimLane Chain() => new SimLane { Name = "two boxes", End = 1000f, JunctionEnd = 1000f, Painted = new List<(float a, float b)> { (40f, 48f), (62f, 70f) } };
             return new List<LpScene>
             {
@@ -229,6 +230,8 @@ namespace JunctionRules.Tests
                 new LpScene { Name = "ADV queue ahead stops dead (no braking distance)", Lane = Exit(), Sink = 66f, HardStop = true, OpenRun = 10, ClosedRun = 8, Arrival = 0.25 },
                 new LpScene { Name = "ADV slow lorries", Lane = Exit(), Sink = 120f, OpenRun = 30, ClosedRun = 12, SlowShare = 0.25f },
                 new LpScene { Name = "ADV trailers (artics)", Lane = Junction(), Sink = 110f, OpenRun = 20, ClosedRun = 14, Lengths = new[] { 16.5f, 16.5f, 12f, 4.2f } },
+                // JR-T-022c: the same, the scan reading each artic as the game does (trailer + tractor, two objects of one vehicle)
+                new LpScene { Name = "ADV trailers (artics as trailer + tractor)", Lane = Junction2(), Sink = 110f, OpenRun = 20, ClosedRun = 14, Lengths = new[] { 16.5f, 16.5f, 12f, 4.2f } },
             };
         }
 
@@ -252,9 +255,9 @@ namespace JunctionRules.Tests
         /// <paramref name="xStart"/>.
         /// </summary>
         private static OwnerOutcome OwnerCase(bool lookPast, float vq, float pastRear, float inBoxSpeed, float pastSpeed, float xLength, float boxEnd, int brakeAt, float inGap = 6f, float xStart = 26f,
-            float aheadLen = 4.2f, float beyondGap = 5f)
+            float aheadLen = 4.2f, float beyondGap = 5f, bool twoElements = false)
         {
-            var lane = new SimLane { Name = "owner", End = 1000f, JunctionEnd = 1000f, Painted = new List<(float a, float b)> { (40f, boxEnd) } };
+            var lane = new SimLane { Name = "owner", End = 1000f, JunctionEnd = 1000f, Painted = new List<(float a, float b)> { (40f, boxEnd) }, TwoElementArtics = twoElements };
             var sc = new LpScene { Name = "owner", Lane = lane, Sink = 1e6f };
             SimVehicle Car(int id, float front, float len, float v) => new SimVehicle
             {
@@ -549,8 +552,15 @@ namespace JunctionRules.Tests
             string flip = gs.Step(JunctionGapRule.Stock, false, out int m2, boxObey: true, boxLookPast: false);
             Check(flip != null && flip.Contains("switched") && (m1 & Stage2Mode.BoxLookPast) != 0 && (m2 & Stage2Mode.BoxLookPast) == 0 && Stage2Mode.RuleName(m1).Contains("looking past the car in front"),
                 "turning the setting on / off is logged as a rule switch");
-            Check(Stage2Counters.BoxLookPastAdmitted == Stage2Counters.Count - 1 && Stage2Counters.Format(2, new long[Stage2Counters.Count], 0, 0, 2, 2).Contains("let into a box by looking past the car in front"),
-                "probe counter at the end, on the timing line");
+            Check(Stage2Counters.BoxLookPastAdmitted == Stage2Counters.Count - 1 && Stage2Counters.Format(2, new long[Stage2Counters.Count], 0, 0, 2, 2, 2).Contains("let into a box by looking past the car in front")
+                && Stage2Counters.Format(2, new long[Stage2Counters.Count], 0, 0, 2, 2, 3).Contains("let into a box by looking past the car in front"),
+                "probe counter at the end, on the timing line (setting on / switched in the window)");
+            // JR-T-022c (review finding 2): with the setting off the timing line is the 1.0.1 text
+            Check(!Stage2Counters.Format(2, new long[Stage2Counters.Count], 0, 0, 2, 2, 1).Contains("looking past") && !Stage2Counters.Format(2, new long[Stage2Counters.Count], 0, 0, 2, 2).Contains("looking past"),
+                "timing line: no look-past text with the setting off");
+            string probe = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Systems", "NavTimingProbeSystems.cs"));
+            Check(probe.Contains("m_LookPastMask |= (mode & Stage2Mode.BoxLookPast) != 0 ? 2 : 1;") && probe.Contains("m_BoxMask, m_ExitMask, m_LookPastMask);"),
+                "the timing probe hands the look-past setting's mask to the timing line");
         }
 
         /// <summary>
@@ -559,9 +569,9 @@ namespace JunctionRules.Tests
         /// at <paramref name="aheadSpeed"/>; <paramref name="gap"/> m beyond its front a car at <paramref name="beyondSpeed"/>.
         /// Does X have room (look-past on / off), and who blocks?
         /// </summary>
-        private static bool TruckRoom(bool lookPast, float aheadLen, float aheadSpeed, float beyondSpeed, float gap, out int blocker)
+        private static bool TruckRoom(bool lookPast, float aheadLen, float aheadSpeed, float beyondSpeed, float gap, out int blocker, bool twoElements = false)
         {
-            var lane = new SimLane { Name = "truck", End = 1000f, JunctionEnd = 1000f, Painted = new List<(float a, float b)> { (40f, 56f) } };
+            var lane = new SimLane { Name = "truck", End = 1000f, JunctionEnd = 1000f, Painted = new List<(float a, float b)> { (40f, 56f) }, TwoElementArtics = twoElements };
             float aheadFront = 56f + 2f + aheadLen;
             var vs = new List<SimVehicle>
             {
@@ -581,11 +591,14 @@ namespace JunctionRules.Tests
             scan.LookPast = lookPast;
             if (scan.LookPast) scan.SightLeft = RoomScan.SightPast(b1 - me.Front);
             var past = new List<SimVehicle>();
-            foreach (SimVehicle o in vs)
+            foreach (SimVehicle v in vs)
             {
-                if (o == me || o.Front <= me.Front) continue;
-                if (o.Front - o.Length < b1) { if (o.Speed < 0.5f) scan.BlockBy(o.Id, 1); else scan.AddQueued(o.Length, o.Speed, o.Id, 1, SimLarge(o)); }
-                else past.Add(o);
+                if (v == me || v.Front <= me.Front) continue;
+                foreach (SimVehicle o in SimElements(lane, v))   // JR-T-022c: an artic as trailer + tractor on a two-element lane
+                {
+                    if (o.Front - o.Length < b1) { if (o.Speed < 0.5f) scan.BlockBy(o.Id, 1); else scan.AddQueued(o.Length, o.Speed, o.Id, 1, SimLarge(o)); }
+                    else past.Add(o);
+                }
             }
             past.Sort((x, y) => x.Front.CompareTo(y.Front));
             foreach (SimVehicle o in past)
@@ -711,6 +724,132 @@ namespace JunctionRules.Tests
             far.Add(30f, 4.2f, 30f, 7, 1, 8f, 20f);                          // pred 24 >= 17.5, but the room ends 43.5 m past the box end > 40
             far.FinishLookPast();
             Check(!far.HasRoom, "radius on a turn: room that ends beyond 50 m straight line (43.5 m round the corner > 40) is not seen: free-now rule");
+
+            BoxArticTests();
+        }
+
+        /// <summary>
+        /// JR-T-022c (review finding 1): the game reads an articulated vehicle as two lane objects, its trailer (first in path
+        /// order when it drives away) and its tractor, both Large, both named by the controller. The trailer must not hide its
+        /// own tractor: the whole artic is credited as ONE vehicle by its leading element (position + guaranteed travel), and
+        /// vehicles beyond the whole artic stay hidden.
+        /// </summary>
+        private static void BoxArticTests()
+        {
+            // RoomScan: X 4.2 m + 1 m margin (needed 5.2). Trailer 12 m (rear 2 m past the box), tractor 5.5 m over its front by 1 m.
+            RoomScan Artic(bool lookPast, bool split, float speed, float travel, float beyondRear = -1f, float beyondSpeed = 0f, float beyondTravel = 0f)
+            {
+                RoomScan r = RoomScan.Begin(4.2f, 1f);
+                r.FreeNow = true; r.LookPast = lookPast; r.SightLeft = 40f;
+                float credit = speed > 0f ? travel + 2f * speed * 0.25f : 0f;
+                if (split)
+                {
+                    r.Add(2f, 12f, credit, 3, 1, speed, travel, true);      // trailer (named by its controller 3)
+                    r.Add(13f, 5.5f, credit, 3, 1, speed, travel, true);    // tractor
+                }
+                else r.Add(2f, 16.5f, credit, 3, 1, speed, travel, true);  // the same artic as one object
+                if (beyondRear >= 0f) r.Add(beyondRear, 4.2f, beyondTravel + 2f * beyondSpeed * 0.25f, 4, 1, beyondSpeed, beyondTravel);
+                r.FinishLookPast();
+                return r;
+            }
+            RoomScan fastSplit = Artic(true, true, 10f, 12f), fastWhole = Artic(true, false, 10f, 12f), fastOff = Artic(false, true, 10f, 12f);
+            Check(fastSplit.HasRoom && fastSplit.AdmittedByLookPast && fastSplit.HiddenSeen == 0 && fastSplit.ElementsJoined == 1 && fastWhole.HasRoom && !fastOff.HasRoom,
+                "artic as trailer + tractor: a fast artic is credited like one object (the trailer does not hide its own tractor); off: held");
+            RoomScan slowSplit = Artic(true, true, 2.5f, 2f), slowWhole = Artic(true, false, 2.5f, 2f);
+            Check(!slowSplit.HasRoom && slowSplit.BlockerIndex == 3 && !slowWhole.HasRoom, "artic as trailer + tractor: a slow artic gives no credit (held, naming the artic)");
+            // whole artic: rear 2, front 18.5; occupied after it 17.5. A fast car beyond it (rear 21): now 3.5 < 5.2 (pred 8.5 if seen)
+            RoomScan beyondSplit = Artic(true, true, 10f, 12f, 21f, 8f, 5f), beyondWhole = Artic(true, false, 10f, 12f, 21f, 8f, 5f);
+            Check(!beyondSplit.HasRoom && beyondSplit.BlockerIndex == 4 && beyondSplit.HiddenSeen == 1 && !beyondWhole.HasRoom && beyondWhole.BlockerIndex == 4,
+                "artic as trailer + tractor: a car beyond the whole artic stays hidden (no look-past credit: held, naming it)");
+            RoomScan roomSplit = Artic(true, true, 10f, 12f, 23f, 8f, 5f), roomWhole = Artic(true, false, 10f, 12f, 23f, 8f, 5f);
+            Check(roomSplit.HasRoom && roomWhole.HasRoom && roomSplit.Reach == roomWhole.Reach && roomSplit.Done(30f) == roomWhole.Done(30f),
+                "artic as trailer + tractor: room free now behind the car beyond it -> X goes; the two elements occupy what the one object does");
+            // a different vehicle with the same length pattern is not joined; a hidden vehicle is never the hider's own element only
+            RoomScan two = RoomScan.Begin(4.2f, 1f);
+            two.FreeNow = true; two.LookPast = true; two.SightLeft = 40f;
+            two.Add(2f, 12f, 20f, 3, 1, 10f, 12f, true);
+            two.Add(15f, 5.5f, 20f, 5, 1, 10f, 12f, true);   // another lorry, 1 m gap: hidden (now 15 - 13 = 2 < 5.2)
+            two.FinishLookPast();
+            Check(!two.HasRoom && two.BlockerIndex == 5 && two.ElementsJoined == 0 && two.HiddenSeen == 1, "a different large vehicle right beyond a lorry is not taken as its tractor: hidden, held");
+            // an artic whose trailer is still crossing the box ahead of X and whose tractor is past it: the tractor is not hidden by its own trailer
+            RoomScan straddle = RoomScan.Begin(4.2f, 1f);
+            straddle.FreeNow = true; straddle.LookPast = true; straddle.SightLeft = 40f;
+            straddle.AddQueued(12f, 10f, 3, 1, true);           // occupied 13
+            straddle.Add(11f, 5.5f, 20f, 3, 1, 10f, 12f, true); // now -2, pred 10 >= 5.2
+            straddle.FinishLookPast();
+            Check(straddle.HasRoom && straddle.AdmittedByLookPast && straddle.HiddenSeen == 0, "an artic straddling the box: its tractor past the box is not hidden by its own trailer in the box");
+            // setting off: the same calls give 1.0.1 exactly (no join, no hiding)
+            RoomScan o1 = RoomScan.Begin(4.2f, 1f), o2 = RoomScan.Begin(4.2f, 1f);
+            o1.FreeNow = o2.FreeNow = true;
+            o1.Add(2f, 12f, 20f, 3, 1); o1.Add(13f, 5.5f, 20f, 3, 1);
+            o2.Add(2f, 12f, 20f, 3, 1, 10f, 12f, true); o2.Add(13f, 5.5f, 20f, 3, 1, 10f, 12f, true); o2.FinishLookPast();
+            Check(o1.HasRoom == o2.HasRoom && o1.BlockerIndex == o2.BlockerIndex && o1.Reach == o2.Reach && o1.Obstacles == o2.Obstacles && o2.ElementsJoined == 0,
+                "setting off: an artic's two elements give the 1.0.1 scan exactly");
+
+            // ON never refuses what OFF allows, with artics read as two elements (random scans)
+            var ra = new Random(2231);
+            int superViol = 0, joinedRuns = 0;
+            for (int i = 0; i < 20000; i++)
+            {
+                RoomScan off = RoomScan.Begin(4.2f + (float)ra.NextDouble() * 12f, 1f);
+                off.FreeNow = true;
+                RoomScan on = off;
+                on.LookPast = true; on.SightLeft = 20f + (float)ra.NextDouble() * 40f;
+                float pos = (float)ra.NextDouble() * 6f - 2f;
+                int ops = ra.Next(1, 6);
+                for (int k = 0; k < ops; k++)
+                {
+                    float sp = (float)ra.NextDouble() * 12f, tr = (float)ra.NextDouble() * 15f, cr = tr + 2f * sp * 0.25f;
+                    bool large = ra.Next(2) == 0;
+                    int id = 10 + k;
+                    if (ra.Next(3) == 0)
+                    {
+                        // an artic: trailer then tractor (coupled, overlap 0-1.5 m), the same name
+                        float tl = 8f + (float)ra.NextDouble() * 6f, cl = 4f + (float)ra.NextDouble() * 3f, ov = (float)ra.NextDouble() * 1.5f;
+                        off.Add(pos, tl, cr, id, 1); off.Add(pos + tl - ov, cl, cr, id, 1);
+                        on.Add(pos, tl, cr, id, 1, sp, tr, true); on.Add(pos + tl - ov, cl, cr, id, 1, sp, tr, true);
+                        pos += tl - ov + cl + (float)ra.NextDouble() * 8f;
+                    }
+                    else
+                    {
+                        float l = 4f + (float)ra.NextDouble() * 12f;
+                        off.Add(pos, l, cr, id, 1); on.Add(pos, l, cr, id, 1, sp, tr, large);
+                        pos += l + (float)ra.NextDouble() * 8f;
+                    }
+                }
+                on.FinishLookPast();
+                if (off.HasRoom && !on.HasRoom) superViol++;
+                if (on.ElementsJoined > 0) joinedRuns++;
+            }
+            Check(superViol == 0 && joinedRuns > 1000, $"look-past with artics as two elements admits a superset of the setting off (20000 random scans, {joinedRuns} with a joined artic, {superViol} refusals)");
+
+            // ---- the sim's truck snapshot with the artic read as two elements: as the one-object artic
+            bool fastTruck2 = TruckRoom(true, 16.5f, 10f, 2.5f, 6f, out _, true);
+            bool fastTruck2Off = TruckRoom(false, 16.5f, 10f, 2.5f, 6f, out _, true);
+            bool slowTruck2 = TruckRoom(true, 16.5f, 2.5f, 2.5f, 6f, out int bSlow2, true);
+            bool hides2 = TruckRoom(true, 16.5f, 10f, 10f, 2f, out int bHide2, true);
+            Console.WriteLine($"  truck snapshot, artic as trailer + tractor: fast {fastTruck2} (off {fastTruck2Off}); slow {slowTruck2} (blocker {bSlow2}); fast car close beyond {hides2} (blocker {bHide2})");
+            Check(fastTruck2 && !fastTruck2Off && !slowTruck2 && bSlow2 == 3 && !hides2 && bHide2 == 4,
+                "truck snapshot, artic as trailer + tractor: fast -> credited (off: held); slow -> no credit; the car close beyond it -> hidden");
+
+            // ---- driven, artic as two elements: as the one-object artic
+            OwnerOutcome aOn = OwnerCase(true, 8f, 10f, 0f, 0f, 4.2f, 56f, -1, 7f, 18f, 16.5f, 12f, true);
+            OwnerOutcome aOff = OwnerCase(false, 8f, 10f, 0f, 0f, 4.2f, 56f, -1, 7f, 18f, 16.5f, 12f, true);
+            OwnerOutcome aSlow = OwnerCase(true, 8f, 10f, 0f, 2.5f, 4.2f, 56f, -1, 7f, 18f, 16.5f, 12f, true);
+            OwnerOutcome aSlowOff = OwnerCase(false, 8f, 10f, 0f, 2.5f, 4.2f, 56f, -1, 7f, 18f, 16.5f, 12f, true);
+            int aRuns = 0, aStood = 0, aLook = 0;
+            foreach (float pr in new[] { 8f, 10f })
+                for (int k = 0; k < 8; k++)
+                {
+                    OwnerOutcome d = OwnerCase(true, 8f, pr, 0f, 0f, 4.2f, 56f, k, 7f, 18f, 16.5f, 12f, true);
+                    aRuns++;
+                    if (d.StoodInBox) aStood++;
+                    if (d.LookUsed) aLook++;
+                }
+            Console.WriteLine($"  truck driven, artic as trailer + tractor: fast on min {aOn.MinSpeed:0.0} m/s (look-past {aOn.LookUsed}), off min {aOff.MinSpeed:0.0}; slow on min {aSlow.MinSpeed:0.0} (off {aSlowOff.MinSpeed:0.0}); brakes hard at step 0-7 ({aRuns} runs): look-past {aLook}, stood in box {aStood}");
+            Check(aOn.LookUsed && aOn.Cleared && !aOn.StoodInBox && aOn.MinSpeed > aOff.MinSpeed, "truck driven, artic as trailer + tractor: a fast artic -> X goes on the look-past, never in the box");
+            Check(!aSlow.LookUsed && !aSlow.StoodInBox && aSlow.MinSpeed == aSlowOff.MinSpeed, "truck driven, artic as trailer + tractor: a slow artic -> as off");
+            Check(aStood == 0 && aLook > 0, "truck driven, artic as trailer + tractor, braking hard after X decided: never in the box");
         }
     }
 }

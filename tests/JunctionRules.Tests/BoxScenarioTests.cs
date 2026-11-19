@@ -46,6 +46,8 @@ namespace JunctionRules.Tests
             public float IgnoreLine = float.NaN;
             /// <summary>JR-T-022 sim: its last box decision let it go only by the look-past; it entered the current box so.</summary>
             public bool LastLookAdmit, EnteredByLook;
+            /// <summary>JR-T-022c sim: a scan object that is one element of an artic (trailer / tractor): Large whatever its length.</summary>
+            public bool ArticElement;
 
             public SimVehicle Clone() => (SimVehicle)MemberwiseClone();
         }
@@ -64,6 +66,32 @@ namespace JunctionRules.Tests
             public bool RequestFromBoxHold = true;    // 0.4.10 review R1 (block S2-52): a car held before a box for the light asks for it
             public int YardCap, Yard;
             public float NextJunction = -1f;          // JR-T-022: a junction further on where the queue may stop (look-past sight ends there)
+            /// <summary>
+            /// JR-T-022c sim: the room scan reads an artic (16.5 m) as the game does: two scan objects of the same vehicle
+            /// (<see cref="SimElements"/>: trailer first, then its tractor). Driving is unchanged (one body).
+            /// </summary>
+            public bool TwoElementArtics;
+        }
+
+        /// <summary>JR-T-022c sim: an artic's trailer (12 m, rear part) and tractor (5.5 m, front part, 1 m over the trailer's front).</summary>
+        private const float SimArticLength = 16.5f, SimTrailerLength = 12f, SimTractorLength = 5.5f;
+
+        /// <summary>
+        /// JR-T-022c sim: the scan objects of a vehicle, rear first (path order when it drives away): one, or for an artic on a
+        /// lane with <see cref="SimLane.TwoElementArtics"/> its trailer then its tractor, both under the vehicle's id (the job
+        /// names a trailer by its controller) and both Large.
+        /// </summary>
+        private static IEnumerable<SimVehicle> SimElements(SimLane lane, SimVehicle o)
+        {
+            if (!lane.TwoElementArtics || Math.Abs(o.Length - SimArticLength) > 1e-3f) { yield return o; yield break; }
+            SimVehicle trailer = o.Clone();
+            trailer.ArticElement = true;
+            trailer.Front = o.Front - o.Length + SimTrailerLength; trailer.Length = SimTrailerLength;
+            SimVehicle tractor = o.Clone();
+            tractor.ArticElement = true;
+            tractor.Length = SimTractorLength;
+            yield return trailer;
+            yield return tractor;
         }
 
         private const float SimMargin = 1f, SimDt = 0.5f, SimVmax = 8f;
@@ -135,7 +163,7 @@ namespace JunctionRules.Tests
         /// JR-T-022b sim: the vehicle blocks the view (the job reads the game's SizeClass Large, RoomScan.BlocksView; the sim has
         /// only lengths: the 12 m rigid lorry and the 16.5 m artic are Large, cars 4.2 m and vans 6.5 m are not).
         /// </summary>
-        private static bool SimLarge(SimVehicle o) => o.Length >= 12f;
+        private static bool SimLarge(SimVehicle o) => o.Length >= 12f || o.ArticElement;
 
         private static float SimBraking(SimVehicle o) => o.Speed > 0.001f ? 0.5f * o.Speed * o.Speed / o.Decel + o.Speed * SimDt : 0f;
 
@@ -154,24 +182,27 @@ namespace JunctionRules.Tests
             if (scan.LookPast && lane.End >= b1) scan.LimitSight(lane.End - b1);
             if (scan.LookPast && lane.NextJunction >= b1) scan.LimitSight(lane.NextJunction - b1);
             var past = new List<SimVehicle>();
-            foreach (SimVehicle o in vs)
+            foreach (SimVehicle v in vs)
             {
-                if (o == me || o.Front <= me.Front) continue;
-                float rear = o.Front - o.Length;
-                // 0.4.10 ahead-first (the job's AheadFirst): every vehicle ahead not yet past the box goes through it first;
-                // 0.4.9 counted only those already inside it
-                if (rear < b1 && (robust || o.Front > b0))
+                if (v == me || v.Front <= me.Front) continue;
+                foreach (SimVehicle o in SimElements(lane, v))
                 {
-                    // 0.4.10 (chains): a STANDING vehicle ahead in the box / before its line blocks (free now); a moving one goes first
-                    if (robust && o.Speed < 0.5f) scan.BlockBy(o.Id, 1);
-                    else if (legacy) scan.AddQueued(o.Length);
-                    else scan.AddQueued(o.Length, o.Speed, o.Id, 1, SimLarge(o));
+                    float rear = o.Front - o.Length;
+                    // 0.4.10 ahead-first (the job's AheadFirst): every vehicle ahead not yet past the box goes through it first;
+                    // 0.4.9 counted only those already inside it
+                    if (rear < b1 && (robust || o.Front > b0))
+                    {
+                        // 0.4.10 (chains): a STANDING vehicle ahead in the box / before its line blocks (free now); a moving one goes first
+                        if (robust && o.Speed < 0.5f) scan.BlockBy(o.Id, 1);
+                        else if (legacy) scan.AddQueued(o.Length);
+                        else scan.AddQueued(o.Length, o.Speed, o.Id, 1, SimLarge(o));
+                    }
+                    else if (rear >= b1) past.Add(o);
                 }
-                else if (rear >= b1) past.Add(o);
             }
             // 0.4.10 (chains): a red / amber light is a standing obstacle at its line (the job's FurtherBoxes: RoomScan.Add at the line)
             if (robust && lane.Light && lane.End >= b1 && SimLightStops(lane, step)) past.Add(new SimVehicle { Id = -1, Front = lane.End, Length = 0f, Speed = 0f });
-            past.Sort((x, y) => x.Front.CompareTo(y.Front));
+            past.Sort((x, y) => x.Front.CompareTo(y.Front));   // JR-T-022c: an artic's trailer (front 4.5 m behind its tractor's) comes first
             var further = new List<(float b0, float b1)>();
             foreach (var b in SimBands(lane, me.Length)) if (b.b0 > b1 + 1e-3f) further.Add(b);
             var applied = new bool[further.Count];

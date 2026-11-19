@@ -504,7 +504,9 @@ namespace JunctionRules.Core
         /// JR-T-022b (owner sight rule): it judges only what the driver sees: a <see cref="LookPastSightMetres"/> radius around
         /// the driver (<see cref="SightLeft"/>), cut at the next junction (stand-in for corner buildings); ordinary cars never
         /// block the view, a large vehicle does (<see cref="BlocksView"/>): it is judged itself, the vehicles beyond it get no
-        /// look-past credit (free-now rule).
+        /// look-past credit (free-now rule). JR-T-022c: an articulated vehicle (trailer and tractor read as separate lane
+        /// objects, named by the same controller) is ONE vehicle: credited by its leading element in path order, its own
+        /// elements never hide each other; vehicles beyond the whole artic stay hidden.
         /// </summary>
         public bool LookPast;
 
@@ -563,10 +565,44 @@ namespace JunctionRules.Core
         /// (owner: "unseen vehicle = no look-past credit, today's free-now rule for that part"). Not skipped: a hidden queue
         /// that is already stopping makes the large vehicle stop short of its own braking distance (measured: skipping them
         /// let cars stand in the box 0 -> 455 vehicle-steps in the offline scenes).
+        /// JR-T-022c: never the hiding vehicle's own other elements (an artic's tractor behind its trailer): see
+        /// <see cref="m_HiderIndex"/> and the join in <see cref="AddLook"/>.
         /// </summary>
         private bool m_Hidden;
+        /// <summary>
+        /// JR-T-022c (review finding 1): the vehicle that set <see cref="m_Hidden"/>, named as passed to Add / AddQueued (its
+        /// controller for a trailer). An element never hides another element of the same vehicle: the trailer of an
+        /// articulated vehicle (read first when it drives away) does not hide its own tractor.
+        /// </summary>
+        private int m_HiderIndex, m_HiderVersion;
+        /// <summary>
+        /// JR-T-022c: the vehicle the last <see cref="AddLook"/> judged (by name), its rear and front in the scan's
+        /// coordinates and the occupied length before it. A further element of the same vehicle read straight after it
+        /// (an articulated vehicle's tractor after its trailer) is part of that one object: it only stretches the object's
+        /// length; the object is judged once, by its leading element in path order (the one nearest the car: its rear),
+        /// with that element's position + guaranteed travel.
+        /// </summary>
+        private bool m_GroupOpen;
+        private int m_GroupIndex, m_GroupVersion;
+        private float m_GroupRear, m_GroupFront, m_GroupOccupied;
         /// <summary>JR-T-022b (tests / probe): vehicles judged free-now because a large vehicle hid them.</summary>
         public int HiddenSeen;
+        /// <summary>JR-T-022c (tests / probe): further elements of a vehicle just read, taken as part of it (artic tractors).</summary>
+        public int ElementsJoined;
+
+        /// <summary>JR-T-022c: two names (index / version as passed to Add) are the same vehicle; the unnamed 0 / 0 never is.</summary>
+        private static bool SameVehicle(int index, int version, int otherIndex, int otherVersion)
+            => (index != 0 || version != 0) && index == otherIndex && version == otherVersion;
+
+        /// <summary>JR-T-022c: hidden behind a large vehicle that is not this vehicle itself.</summary>
+        private readonly bool HiddenFor(int index, int version) => m_Hidden && !SameVehicle(index, version, m_HiderIndex, m_HiderVersion);
+
+        /// <summary>JR-T-022c: from here on the view is blocked by the vehicle named (the first such vehicle is kept).</summary>
+        private void Hide(int index, int version)
+        {
+            if (m_Hidden) return;
+            m_Hidden = true; m_HiderIndex = index; m_HiderVersion = version;
+        }
 
         /// <summary>
         /// JR-T-022: the distance a vehicle moving at <paramref name="speed"/> still covers at the least when it brakes now at its
@@ -645,11 +681,31 @@ namespace JunctionRules.Core
         private void AddLook(float rear, float length, float credit, int index, int version, float speed, float travel, bool large, bool fixedObstacle)
         {
             if (Blocked) return;
+            float len = length > 0f ? length : 0f;
+            // JR-T-022c: a further element of the vehicle just judged (an artic's tractor after its trailer): one object,
+            // already judged by its leading element; it only stretches the object's length (no spacing inside a vehicle).
+            // Coupled only (it starts within Spacing of the object's front): the joined object never occupies more than the
+            // two elements read apart would, so joining can only relax the verdict.
+            if (!fixedObstacle && m_GroupOpen && SameVehicle(index, version, m_GroupIndex, m_GroupVersion) && rear >= m_GroupRear && rear <= m_GroupFront + Spacing)
+            {
+                if (rear + len > m_GroupFront)
+                {
+                    m_GroupFront = rear + len;
+                    m_Occupied = m_GroupOccupied + (m_GroupFront - m_GroupRear) + Spacing;
+                }
+                ElementsJoined++;
+                if (large) Hide(index, version);
+                return;
+            }
+            m_GroupOpen = !fixedObstacle;
+            m_GroupIndex = index; m_GroupVersion = version;
+            m_GroupRear = rear; m_GroupFront = rear + len; m_GroupOccupied = m_Occupied;
             float c = credit > 0f ? credit : 0f;
             float now = rear - m_Occupied;
-            // JR-T-022b: hidden behind a large vehicle: no look-past credit (free now)
-            if (m_Hidden && !fixedObstacle) HiddenSeen++;
-            float pred = speed >= LookPastMinSpeed && !m_Hidden ? now + (travel > 0f ? travel : 0f) : now;
+            // JR-T-022b: hidden behind a large vehicle: no look-past credit (free now); JR-T-022c: never by itself
+            bool hidden = !fixedObstacle && HiddenFor(index, version);
+            if (hidden) HiddenSeen++;
+            float pred = speed >= LookPastMinSpeed && !hidden ? now + (travel > 0f ? travel : 0f) : now;
             if (now < m_MinRoom) { m_MinRoom = now; m_MinIndex = index; m_MinVersion = version; }
             if (pred < m_MinPred) { m_MinPred = pred; m_MinPredIndex = index; m_MinPredVersion = version; }
             if (!(now >= Needed))
@@ -666,9 +722,9 @@ namespace JunctionRules.Core
                     if (now + c >= Needed) HeldForMovingQueue = true;
                 }
             }
-            m_Occupied += (length > 0f ? length : 0f) + Spacing;
+            m_Occupied += len + Spacing;
             Obstacles++;
-            if (large && !fixedObstacle) m_Hidden = true;
+            if (large && !fixedObstacle) Hide(index, version);
         }
 
         /// <summary>
@@ -688,7 +744,8 @@ namespace JunctionRules.Core
             {
                 m_LookSlow = true; m_SlowIndex = index; m_SlowVersion = version;
             }
-            if (LookPastOn && large && !Blocked) m_Hidden = true;
+            if (LookPastOn && large && !Blocked) Hide(index, version);
+            if (LookPastOn) m_GroupOpen = false;   // JR-T-022c: a queued element has no position: nothing joins it
             AddQueued(length);
         }
 
