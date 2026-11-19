@@ -21,9 +21,13 @@ namespace JunctionRules.Stage2
     /// the buildings near it: the game's static object search tree (the navigation job's own m_StaticObjectSearchTree, whose
     /// reader dependency the stock system already handles: GetStaticSearchTree(readOnly) before scheduling,
     /// AddStaticSearchTreeReader after), only tree cells meeting the segment's bounding box, only entities with a Building
-    /// component; footprint = the prefab's ObjectGeometryData bounds (x / z) placed by the building's Transform
-    /// (Core SightLine.SegmentHitsBox). Fields live in JRWholeJunction.cs; set by block S2-26 (SetSight). Burst-safe: pointers to the job's
-    /// fields (as m_BoxEdges: no copy per car), struct iterators, no allocations.
+    /// component; footprint = the prefab's ObjectGeometryData bounds (x / z) placed by the building's Transform: the LOT box
+    /// for ordinary buildings, the mesh bounds for standing ones (BuildingInitializeSystem). A footprint that contains the eye
+    /// does not block (JR-T-022e, review F2: a car leaving its own building or in a car park lot stands inside its lot box);
+    /// Core SightLine.SightBlocked. Tree cells and items are pruned by the segment itself, not only its bounding box
+    /// (SightLine.SegmentHitsAabb, review F5). With the driver's position known this test replaces the next-junction cut,
+    /// which lives in FurtherBoxes (kept only without the eye). Fields live in JRWholeJunction.cs; set by block S2-26
+    /// (SetSight). Burst-safe: pointers to the job's fields (as m_BoxEdges: no copy per car), struct iterators, no allocations.
     /// </summary>
     public partial struct JRWholeJunction
     {
@@ -61,7 +65,7 @@ namespace JunctionRules.Stage2
         /// <summary>
         /// JR-T-022d: RoomScan.FinishSight's test: the point of the car's path <c>pathMetres</c> past the window start (placed
         /// on the spans read; not on them = not seen) is seen from the eye when no building footprint crosses the straight
-        /// line to it.
+        /// line to it (a footprint containing the eye does not count).
         /// </summary>
         private unsafe struct BuildingSight : ISightTest
         {
@@ -121,23 +125,34 @@ namespace JunctionRules.Stage2
             public ComponentLookup<PrefabRef>* PrefabRefs;
             public ComponentLookup<ObjectGeometryData>* Geometries;
 
-            public bool Intersect(QuadTreeBoundsXZ bounds) => !Hit && MathUtils.Intersect(bounds.m_Bounds.xz, Box);
+            /// <summary>JR-T-022e (review F5): float slack on the tree bounds before the segment test (they hold the footprint).</summary>
+            public const float Pad = 0.05f;
+
+            public bool Intersect(QuadTreeBoundsXZ bounds) => !Hit && OnLine(bounds);
 
             public void Iterate(QuadTreeBoundsXZ bounds, Entity item)
             {
-                if (Hit || !MathUtils.Intersect(bounds.m_Bounds.xz, Box) || !Buildings->HasComponent(item)) return;
+                if (Hit || !OnLine(bounds) || !Buildings->HasComponent(item)) return;
                 if (!Transforms->TryGetComponent(item, out Transform tr) || !PrefabRefs->TryGetComponent(item, out PrefabRef pr)
                     || !Geometries->TryGetComponent(pr.m_Prefab, out ObjectGeometryData g)) return;
                 float3 f = math.mul(tr.m_Rotation, new float3(0f, 0f, 1f));
-                if (SightLine.SegmentHitsBox(A.x, A.y, B.x, B.y, tr.m_Position.x, tr.m_Position.z, f.x, f.z,
+                if (SightLine.SightBlocked(A.x, A.y, B.x, B.y, tr.m_Position.x, tr.m_Position.z, f.x, f.z,
                     g.m_Bounds.min.x, g.m_Bounds.max.x, g.m_Bounds.min.z, g.m_Bounds.max.z)) Hit = true;
+            }
+
+            /// <summary>JR-T-022e (review F5): the line's bounding box first (cheap), then the segment itself vs the cell / item box.</summary>
+            private bool OnLine(QuadTreeBoundsXZ bounds)
+            {
+                Bounds3 b = bounds.m_Bounds;
+                return MathUtils.Intersect(b.xz, Box)
+                    && SightLine.SegmentHitsAabb(A.x, A.y, B.x, B.y, b.min.x - Pad, b.max.x + Pad, b.min.z - Pad, b.max.z + Pad);
             }
         }
 
         /// <summary>
         /// JR-T-022d: after FinishLookPast, when the look-past is about to give the room: the building test of its targets
         /// (RoomScan.FinishSight). Nothing to do without the driver's position or the lookups (the sight then keeps the
-        /// next-junction cut, HasRoomPast).
+        /// next-junction cut, FurtherBoxes).
         /// </summary>
         private unsafe void BuildingSightCheck(ref RoomScan scan, bool hasEye, float2 eye, ref FixedList512Bytes<SightSpan> spans,
             ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<ObjectGeometryData> geometries)

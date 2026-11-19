@@ -422,9 +422,10 @@ differential and a step-by-step trace hash over the box scenario set):
     front. A large vehicle queued ahead of the car in / before the box hides the exit: the car waits at the line.
   - Buildings block the view: when the look-past is about to give the room, the straight 2D line from the driver to each
     vehicle it credited and to the end of the room relied on must cross no building footprint (prefab
-    `ObjectGeometryData` bounds placed by the `Transform`; `SightLine.SegmentHitsBox`). Buildings are found per line in
-    the stock static object search tree (cells meeting the line's bounding box, `Building` entities only). No stored
-    data. This replaces the interim "next junction ends the sight" cut, which stays only when the driver's position is
+    `ObjectGeometryData` bounds placed by the `Transform`: the lot box for ordinary buildings, the mesh bounds for
+    standing ones; a footprint that contains the driver does not block, JR-T-022e; `SightLine.SightBlocked`). Buildings
+    are found per line in the stock static object search tree (cells and items the line itself crosses,
+    `SightLine.SegmentHitsAabb`; `Building` entities only). No stored data. This replaces the interim "next junction ends the sight" cut, which stays only when the driver's position is
     not known.
   - An articulated vehicle is one vehicle: its trailer and tractor (separate lane objects, named by the same controller)
     never hide each other and the whole artic is credited by its leading element in path order (JR-T-022c).

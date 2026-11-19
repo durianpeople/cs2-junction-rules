@@ -897,9 +897,12 @@ namespace JunctionRules.Stage2
             {
                 hasEye = frontToStart >= 0f && Eye(self, ref laneObjects, ref curves, out eye);
                 scan.SightLeft = hasEye ? float.MaxValue : frontToStart >= 0f ? RoomScan.SightPast(frontToStart) : 0f;
+                // JR-T-022d: buildings are tested on the straight line to each target (JRSight.cs) with the lookups and the eye
+                // (JR-T-022e: set only here; FurtherBoxes reads it only when scan.LookPast)
+                m_SightEye = hasEye && m_SightLookups;
             }
-            // JR-T-022d: buildings are tested on the straight line to each target (JRSight.cs) with the lookups and the eye
-            m_SightEye = hasEye && m_SightLookups;
+            // JR-T-022d: the lane spans read (filled only with the eye). The declaration stays out here: C# needs it assigned
+            // for the ref uses below, and the job's locals are zero-initialised anyway.
             FixedList512Bytes<SightSpan> sightSpans = default;
             m_FreeNowHeld = false;
             m_LastLightLane = Entity.Null;

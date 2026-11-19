@@ -13,7 +13,7 @@ namespace JunctionRules.Tests
         /// <summary>
         /// The tests' sight: the car's path past the window start as a polyline (path metres along it), the driver's eye and a
         /// list of building footprints (cx, cz, fx, fz, minX, maxX, minZ, maxZ each), tested with the same Core geometry as the
-        /// job (SightLine.SegmentHitsBox). Counts its queries (the job queries the search tree once per call).
+        /// job (SightLine.SightBlocked: a footprint containing the eye does not block). Counts its queries (the job queries the search tree once per call).
         /// </summary>
         private struct PolySight : ISightTest
         {
@@ -42,7 +42,7 @@ namespace JunctionRules.Tests
                 }
                 if (!placed) return false;   // beyond the path read: not seen (as the job)
                 for (int b = 0; Boxes != null && b + 7 < Boxes.Length; b += 8)
-                    if (SightLine.SegmentHitsBox(Ex, Ez, x, z, Boxes[b], Boxes[b + 1], Boxes[b + 2], Boxes[b + 3], Boxes[b + 4], Boxes[b + 5], Boxes[b + 6], Boxes[b + 7]))
+                    if (SightLine.SightBlocked(Ex, Ez, x, z, Boxes[b], Boxes[b + 1], Boxes[b + 2], Boxes[b + 3], Boxes[b + 4], Boxes[b + 5], Boxes[b + 6], Boxes[b + 7]))
                         return false;
                 return true;
             }
@@ -115,6 +115,43 @@ namespace JunctionRules.Tests
             Check(Hit(0f, 0f, 20f, 0f, 0f, 1f, 10f, 0f, 0f, 4f, -1f, 1f) && !Hit(0f, 0f, 9f, 0f, 0f, 1f, 10f, 0f, 0f, 4f, -1f, 1f) && !Hit(0f, 0f, 20f, 0f, 0f, 0f, 10f, 3f, -1f, 1f, -1f, 1f),
                 "sight geometry: off-centre bounds are placed by the building's position; a zero rotation axis is taken as unrotated");
 
+            // JR-T-022e (review F2): a footprint that contains the eye does not block (the lot box a car leaves its building through)
+            bool Blk(float ax, float az, float bx, float bz, float fx = 0f, float fz = 1f, float cx = 0f, float cz = 0f, float minX = -1f, float maxX = 1f, float minZ = -1f, float maxZ = 1f)
+                => SightLine.SightBlocked(ax, az, bx, bz, cx, cz, fx, fz, minX, maxX, minZ, maxZ);
+            Check(!Blk(0f, 0f, 5f, 0f) && !Blk(0.9f, 0.9f, 5f, 5f) && !Blk(1f, 0f, 5f, 0f) && !Blk(0f, 0f, 0f, 0f)
+                && Blk(-5f, 0f, 5f, 0f) && Blk(-5f, 0f, 0f, 0f) && !Blk(-5f, 2f, 5f, 2f),
+                "F2: the eye inside (or on the edge of) a footprint: that footprint does not block; from outside it blocks as before, also when the target is inside it");
+            Check(SightLine.PointInBox(0.9f, 0.9f, 0f, 0f, 0f, 1f, -1f, 1f, -1f, 1f) && !SightLine.PointInBox(0.9f, 0.9f, 0f, 0f, r, r, -1f, 1f, -1f, 1f)
+                && SightLine.PointInBox(1.3f, 0f, 0f, 0f, r, r, -1f, 1f, -1f, 1f) && !SightLine.PointInBox(1.3f, 0f, 0f, 0f, 0f, 1f, -1f, 1f, -1f, 1f)
+                && SightLine.PointInBox(1.3f, 0f, 0f, 0f, 0f, 0f, -1f, 1.4f, -1f, 1f)
+                && SightLine.PointInBox(10.5f, 0.5f, 10f, 0f, 0f, 1f, 0f, 4f, -1f, 1f) && !SightLine.PointInBox(9.5f, 0f, 10f, 0f, 0f, 1f, 0f, 4f, -1f, 1f),
+                "F2: point in footprint follows the rotation and the off-centre bounds");
+            // the frame of PointInBox matches SegmentHitsBox: a point is inside iff the zero-length segment at it hits, at any angle
+            var rng = new Random(2219);
+            int frameMismatch = 0, aabbMismatch = 0, aabbTrue = 0, eyeInBlocked = 0;
+            for (int i = 0; i < 200000; i++)
+            {
+                float px = (float)(rng.NextDouble() * 40 - 20), pz = (float)(rng.NextDouble() * 40 - 20);
+                float qx = (float)(rng.NextDouble() * 40 - 20), qz = (float)(rng.NextDouble() * 40 - 20);
+                double ang = rng.NextDouble() * 2 * Math.PI;
+                float fx = (float)Math.Sin(ang), fz = (float)Math.Cos(ang), cx = (float)(rng.NextDouble() * 10 - 5), cz = (float)(rng.NextDouble() * 10 - 5);
+                float x0 = (float)(rng.NextDouble() * -8), x1 = (float)(rng.NextDouble() * 8), z0 = (float)(rng.NextDouble() * -8), z1 = (float)(rng.NextDouble() * 8);
+                bool inside = SightLine.PointInBox(px, pz, cx, cz, fx, fz, x0, x1, z0, z1);
+                if (inside != SightLine.SegmentHitsBox(px, pz, px, pz, cx, cz, fx, fz, x0, x1, z0, z1)) frameMismatch++;
+                if (inside && SightLine.SightBlocked(px, pz, qx, qz, cx, cz, fx, fz, x0, x1, z0, z1)) eyeInBlocked++;
+                // F5: the axis-aligned segment test = the box test unrotated (and placed at the origin)
+                bool a = SightLine.SegmentHitsAabb(px, pz, qx, qz, cx + x0, cx + x1, cz + z0, cz + z1);
+                if (a) aabbTrue++;
+                if (a != SightLine.SegmentHitsBox(px, pz, qx, qz, cx, cz, 0f, 1f, x0, x1, z0, z1)) aabbMismatch++;
+            }
+            Check(frameMismatch == 0 && eyeInBlocked == 0, $"F2: PointInBox uses SegmentHitsBox's frame (200000 random rotated boxes: {frameMismatch} mismatches); an eye inside never blocks ({eyeInBlocked})");
+            Check(aabbMismatch <= 2 && aabbTrue > 20000, $"F5: SegmentHitsAabb = SegmentHitsBox unrotated (200000 cases, {aabbTrue} hits, {aabbMismatch} float-edge mismatches)");
+            // F5: a diagonal 50 m line skips a box in the corner of its bounding box (the old prune visited it), keeps one on it
+            Check(!SightLine.SegmentHitsAabb(0f, 0f, 35f, 35f, 25f, 34f, 0f, 9f) && SightLine.SegmentHitsAabb(0f, 0f, 35f, 35f, 15f, 20f, 16f, 22f)
+                && SightLine.SegmentHitsAabb(0f, 0f, 35f, 35f, 35f, 40f, 35f, 40f) && SightLine.SegmentHitsAabb(3f, 3f, 3f, 3f, 0f, 9f, 0f, 9f)
+                && !SightLine.SegmentHitsAabb(0f, 0f, 0f, 30f, 0.01f, 5f, -5f, 40f),
+                "F5: the tree prune follows the line itself: a box beside a diagonal line in its bounding box is skipped; on the line, touching its end, holding a point: visited");
+
             // the scan on a turn: eye (0, 0); the box's far end (window start) at (0, 30); the path runs on to the corner (0, 40)
             // then east along z = 40. X an artic (needs 17.5) behind a car queued in the box (occupied 5.2); a car past the box,
             // rear 12 m (2 m round the corner) moving away: now 6.8, pred 26.8 -> credited; the room relied on ends 22.7 m
@@ -167,14 +204,32 @@ namespace JunctionRules.Tests
             PolySight sp = new PolySight { Ex = 0f, Ez = 0f, Px = new[] { 0f, 0f, 10f }, Pz = new[] { 30f, 40f, 40f } };   // 20 m read
             shortPath.FinishSight(ref sp);
             Check(!shortPath.HasRoom, "ruling 2: a target past the road read is not seen");
+            // F2: the driver stands in a lot box (leaving its building: a lot x -10..10, z -12..2 around the eye): the look-past
+            // still works; a building on the line beyond it still blocks; standing in one lot does not exempt another
+            RoomScan inLot = TurnScan();
+            PolySight inLotSight = Path(new[] { 0f, -5f, 0f, 1f, -10f, 10f, -7f, 7f });
+            inLot.FinishSight(ref inLotSight);
+            RoomScan inLotCorner = TurnScan();
+            PolySight inLotCornerSight = Path(new[] { 0f, -5f, 0f, 1f, -10f, 10f, -7f, 7f, 9f, 30f, 0f, 1f, -5f, 5f, -5f, 5f });
+            inLotCorner.FinishSight(ref inLotCornerSight);
+            RoomScan nextToLot = TurnScan();
+            PolySight nextToLotSight = Path(new[] { 0f, -5f, 0f, 1f, -10f, 10f, -7f, 7f, 0f, 20f, 0f, 1f, -2f, 2f, -1f, 1f });
+            nextToLot.FinishSight(ref nextToLotSight);
+            // without the rule the same lot would withdraw every credit (the eye is inside it)
+            bool lotWouldBlock = SightLine.SegmentHitsBox(0f, 0f, 2f, 40f, 0f, -5f, 0f, 1f, -10f, 10f, -7f, 7f);
+            Check(lotWouldBlock && inLot.HasRoom && inLot.AdmittedByLookPast && !inLot.BuildingCut && inLotSight.Queries == 2
+                && !inLotCorner.HasRoom && inLotCorner.BuildingCut && !nextToLot.HasRoom && nextToLot.BuildingCut,
+                "F2: a car standing in a lot box (building exit, car park) still looks past: its own lot does not block, a corner building or another building on the line still does");
 
             // ======== the job wiring (source)
             string root = RepoRoot();
             string js = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Stage2", "JRSight.cs"));
             string wj = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Stage2", "JRWholeJunction.cs"));
             string nav = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Vanilla", "JRCarNavigationSystem.cs"));
-            Check(js.Contains("Tree->Iterate(ref it);") && js.Contains("!Buildings->HasComponent(item)") && js.Contains("SightLine.SegmentHitsBox(A.x, A.y, B.x, B.y, tr.m_Position.x, tr.m_Position.z, f.x, f.z,")
-                && js.Contains("g.m_Bounds.min.x, g.m_Bounds.max.x, g.m_Bounds.min.z, g.m_Bounds.max.z") && js.Contains("public bool Intersect(QuadTreeBoundsXZ bounds) => !Hit && MathUtils.Intersect(bounds.m_Bounds.xz, Box);")
+            Check(js.Contains("Tree->Iterate(ref it);") && js.Contains("!Buildings->HasComponent(item)") && js.Contains("SightLine.SightBlocked(A.x, A.y, B.x, B.y, tr.m_Position.x, tr.m_Position.z, f.x, f.z,")
+                && js.Contains("g.m_Bounds.min.x, g.m_Bounds.max.x, g.m_Bounds.min.z, g.m_Bounds.max.z") && js.Contains("public bool Intersect(QuadTreeBoundsXZ bounds) => !Hit && OnLine(bounds);")
+                && js.Contains("if (Hit || !OnLine(bounds) || !Buildings->HasComponent(item)) return;")
+                && js.Contains("&& SightLine.SegmentHitsAabb(A.x, A.y, B.x, B.y, b.min.x - Pad, b.max.x + Pad, b.min.z - Pad, b.max.z + Pad);")
                 && js.Contains("if (!hasEye || !m_SightLookups || !scan.AdmittedByLookPast) return;") && js.Contains("if (!m_BoxLookPast) return;"),
                 "job: buildings from the static object search tree near the line only, Building entities only, footprint = prefab bounds placed by the Transform; queried only when the look-past is about to give room");
             Check(wj.Contains("BuildingSightCheck(ref scan, hasEye, eye, ref sightSpans, ref prefabRefs, ref geometries);") && wj.Contains("m_SightEye = hasEye && m_SightLookups;")

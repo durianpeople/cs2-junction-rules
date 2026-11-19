@@ -76,6 +76,42 @@ namespace JunctionRules.Core
             return Slab(lax, lbx - lax, minX, maxX, ref t0, ref t1) && Slab(laz, lbz - laz, minZ, maxZ, ref t0, ref t1);
         }
 
+        /// <summary>
+        /// JR-T-022e (review F2): is the point (px, pz) inside the footprint (same box arguments as <see cref="SegmentHitsBox"/>;
+        /// the edge counts as inside)?
+        /// </summary>
+        public static bool PointInBox(float px, float pz, float cx, float cz, float fx, float fz, float minX, float maxX, float minZ, float maxZ)
+        {
+            float n = fx * fx + fz * fz;
+            if (n > 1e-12f) { n = 1f / (float)System.Math.Sqrt(n); fx *= n; fz *= n; }
+            else { fx = 0f; fz = 1f; }
+            float dx = px - cx, dz = pz - cz;
+            float lx = dx * fz - dz * fx, lz = dx * fx + dz * fz;
+            return lx >= minX && lx <= maxX && lz >= minZ && lz <= maxZ;
+        }
+
+        /// <summary>
+        /// JR-T-022e (review F2, general rule of ruling 2): does the footprint block the sight line from the eye (ax, az) to the
+        /// target (bx, bz)? It blocks when the line crosses it (<see cref="SegmentHitsBox"/>), except a footprint that contains
+        /// the eye: the driver cannot be looking through the box he stands in. (For ordinary buildings the footprint is the LOT
+        /// box, so a car leaving its own building, or in a car park lot, stands inside one.)
+        /// </summary>
+        public static bool SightBlocked(float ax, float az, float bx, float bz, float cx, float cz, float fx, float fz,
+            float minX, float maxX, float minZ, float maxZ)
+            => SegmentHitsBox(ax, az, bx, bz, cx, cz, fx, fz, minX, maxX, minZ, maxZ)
+               && !PointInBox(ax, az, cx, cz, fx, fz, minX, maxX, minZ, maxZ);
+
+        /// <summary>
+        /// JR-T-022e (review F5): does the 2D segment cross the axis-aligned box [minX, maxX] x [minZ, maxZ] (edge counts)? The
+        /// search tree walk prunes cells and items with it, so a diagonal line visits only what lies along it, not every object
+        /// in its bounding box. Same slab test as <see cref="SegmentHitsBox"/>, unrotated.
+        /// </summary>
+        public static bool SegmentHitsAabb(float ax, float az, float bx, float bz, float minX, float maxX, float minZ, float maxZ)
+        {
+            float t0 = 0f, t1 = 1f;
+            return Slab(ax, bx - ax, minX, maxX, ref t0, ref t1) && Slab(az, bz - az, minZ, maxZ, ref t0, ref t1);
+        }
+
         /// <summary>JR-T-022d: clips [t0, t1] of p + t d to [lo, hi] on one axis; false = empty.</summary>
         private static bool Slab(float p, float d, float lo, float hi, ref float t0, ref float t1)
         {

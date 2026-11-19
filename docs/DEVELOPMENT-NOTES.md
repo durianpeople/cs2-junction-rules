@@ -181,11 +181,13 @@ PROBE-STAGE3-PAINT.md section 10.
   must end by its front; a large vehicle queued ahead in or before the box hides the exit, so the car waits at the line.
   Buildings block the view (owner ruling 19 Nov): before the look-past gives the room, the straight 2D line from the
   driver to each vehicle it credited and to the end of the room relied on is tested against the footprints of the
-  buildings near that line (stock static object search tree, prefab bounds placed by the building's Transform; no stored
-  data); a crossed footprint withdraws the look-past credit. This replaced the interim "next junction ends the sight"
-  cut (kept only when the driver's position is unknown). An artic is one vehicle (trailer and tractor share a
-  controller): credited by its leading element, its elements never hide each other (1.1.0 review fix). Lights are always seen. The decision runs again every step while the car can still
-  stop at the line, so the safety stop stays; rare misjudgements that end with a car in the box (a queue past it that
+  buildings near that line (stock static object search tree, cells and items pruned by the line itself; no stored
+  data). Footprint = the prefab's bounds placed by the building's Transform: the lot box for ordinary buildings, the mesh
+  bounds for standing ones; a footprint that contains the driver does not block (a car leaving its own building or in a
+  car park lot stands inside its lot box). A crossed footprint withdraws the look-past credit. This replaced the interim
+  "next junction ends the sight" cut (kept only when the driver's position is unknown). An artic is one vehicle
+  (trailer and tractor share a controller): credited by its leading element, its elements never hide each other (1.1.0
+  review fix). Lights are always seen. The decision runs again every step while the car can still stop at the line, so the safety stop stays; rare misjudgements that end with a car in the box (a queue past it that
   stops harder than any game vehicle brakes) are accepted by design. Mode bit 31 (`Stage2Mode.BoxLookPast`, stripped from
   the job's stage 2 mode, toggling it logs a rule switch). Timing log: "let into a box by looking past the car in front"
   (`Stage2Counters.BoxLookPastAdmitted`), printed only when the setting was on in the window.
