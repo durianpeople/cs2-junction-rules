@@ -253,6 +253,7 @@ namespace JunctionRules.Stage2
             }
             Min(ref m_HasDriveHold, ref m_DriveHoldSpeed, hold);
             m_DriveRoomHold = d == ExitGiveWay.Decision.WaitRoom;
+            WhyNoteExit(d);   // JR-T-025
             if (Counting)
             {
                 if (d == ExitGiveWay.Decision.WaitGap) Min(ref m_HasExitHold, ref m_ExitHoldSpeed, hold);
@@ -466,6 +467,7 @@ namespace JunctionRules.Stage2
             if (!EntryGiveWay.Holds(true, spot, !busy)) return float.MaxValue;
             // Waiting to turn in: other entrants' gap scans do not treat this standing vehicle as present (no facing-entrances loop).
             NoteEntryGapHeld(self);
+            WhyNote(WhyRule.JrEntryGiveWay, float.NaN, float.NaN);   // JR-T-025
             if (boxed && spot == EntryGiveWay.Spot.BoxLine)
                 EntranceWrite(self, m_OwnerData.TryGetComponent(lane, out Owner logOwner) ? logOwner.m_Owner : Entity.Null,
                     EntranceLog.Pack(EntranceLog.Event.HeldGap, true, currentSpeed, bandStart));
@@ -678,6 +680,7 @@ namespace JunctionRules.Stage2
                 return float.MaxValue;
             }
             m_ExitWaiting = true;
+            WhyNoteExit(d);   // JR-T-025
             if (Counting)
             {
                 if (d == ExitGiveWay.Decision.WaitGap) { Min(ref m_HasExitHold, ref m_ExitHoldSpeed, 0f); m_ExitSpawn = true; }
@@ -798,6 +801,7 @@ namespace JunctionRules.Stage2
                 return float.MaxValue;
             }
             m_ExitWaiting = true;
+            WhyNoteExit(d);   // JR-T-025
             if (Counting)
             {
                 if (d == ExitGiveWay.Decision.WaitGap) { Min(ref m_HasExitHold, ref m_ExitHoldSpeed, hold); m_ExitSpawn = true; }
@@ -849,6 +853,7 @@ namespace JunctionRules.Stage2
                 return float.MaxValue;
             }
             m_ExitWaiting = true;
+            WhyNoteExit(d);   // JR-T-025
             float wait = parking ? 0f : math.distance(position.xz, target.xz);
             float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, wait, safeTimeStep), speedRange);
             if (Counting)

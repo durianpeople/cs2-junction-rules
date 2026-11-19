@@ -6,7 +6,7 @@
 // tools/vanilla_rules.json (and DEVIATIONS.md) and run `python3 tools/vanilla_copy.py generate`.
 // Changes applied: R-01, R-02, R-03, D-01 (see DEVIATIONS.md). Logic is otherwise the game's, unchanged.
 // Exception: hand-written code only inside '// JR-STAGE2 BEGIN <id>' ... '// JR-STAGE2 END' blocks
-// (S2-20, S2-21, S2-22, S2-23, S2-24, S2-26, S2-30, S2-31, S2-32, S2-33, S2-34, S2-35, S2-36, S2-51, S2-51b, S2-52; see DEVIATIONS.md). `check` proves everything outside them is the above.
+// (S2-20, S2-21, S2-22, S2-23, S2-24, S2-26, S2-30, S2-31, S2-32, S2-33, S2-34, S2-35, S2-36, S2-51, S2-51b, S2-52, S2-57, S2-58, S2-59; see DEVIATIONS.md). `check` proves everything outside them is the above.
 // ==== end of header; the code below is the game's, changed only as listed in DEVIATIONS.md ====
 
 using System.Runtime.CompilerServices;
@@ -423,6 +423,16 @@ public class JRCarNavigationSystem : GameSystemBase
 		[NativeDisableParallelForRestriction]
 		[Unity.Collections.LowLevel.Unsafe.NativeDisableContainerSafetyRestriction]
 		public NativeArray<long> m_JRWatch;
+		// JR-T-025: why slowed: the ONE tracked car (Entity.Null = none), its shared slot, and its step record (scratch written only by the tracked car's worker: no job field is written per car)
+		public Entity m_JRWhyEntity;
+
+		[NativeDisableParallelForRestriction]
+		[Unity.Collections.LowLevel.Unsafe.NativeDisableContainerSafetyRestriction]
+		public NativeArray<long> m_JRWhySlot;
+
+		[NativeDisableParallelForRestriction]
+		[Unity.Collections.LowLevel.Unsafe.NativeDisableContainerSafetyRestriction]
+		public NativeArray<JunctionRules.Core.WhyTrack> m_JRWhyScratch;
 		// JR-STAGE2 END
 
 		public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
@@ -517,6 +527,12 @@ public class JRCarNavigationSystem : GameSystemBase
 					}
 					UpdateNavigationLanes(ref random, priority, entity2, transform2, moving2, target, car, isBicycle, prefabCarData, ref laneSelectBuffer, ref currentLane2, ref blocker2, ref pathOwner2, navigationLanes2, pathElements2);
 					UpdateNavigationTarget(ref random, priority, entity2, transform2, moving2, car, pseudoRandomSeed, prefabRef2, prefabCarData, objectGeometryData2, isBicycle, ref navigation, ref currentLane2, ref blocker2, ref odometer, ref pathOwner2, ref tempBuffer, navigationLanes2, pathElements2);
+					// JR-STAGE2 BEGIN S2-59: JR-T-025 why slowed: the tracked car (only it) writes its binding limit to the one shared slot
+					if (m_JRWhyEntity != Entity.Null && entity2 == m_JRWhyEntity)
+					{
+						JunctionRules.Stage2.JRWhy.Write(m_JRWhySlot, m_JRWhyScratch, navigation.m_MaxSpeed, m_SimulationFrame, entity2, math.length(moving2.m_Velocity), transform2.m_Position.x, transform2.m_Position.z, blocker2.m_Blocker, blocker2.m_Type);
+					}
+					// JR-STAGE2 END
 					ReserveNavigationLanes(ref random, priority, entity2, prefabCarData, objectGeometryData2, car, ref navigation, ref currentLane2, navigationLanes2);
 					currentLaneCache2.CheckChanges(entity2, ref currentLane2, default(NativeList<BlockedLane>), m_LaneObjectBuffer, m_LaneObjects, transform2, moving2, navigation, objectGeometryData2);
 					m_TrafficAmbienceEffects.Enqueue(new TrafficAmbienceEffect
@@ -1617,6 +1633,15 @@ public class JRCarNavigationSystem : GameSystemBase
 			{
 				carLaneSpeedIterator.m_JR.SetWatch(m_JRWatch);
 			}
+			// JR-T-025: only the tracked car records why it slows (one entity compare per car otherwise; a local, never a job field)
+			bool jrWhyOn = m_JRWhyEntity != Entity.Null && entity == m_JRWhyEntity;
+			carLaneSpeedIterator.m_WhyOn = jrWhyOn;
+			carLaneSpeedIterator.m_JR.m_WhyOn = jrWhyOn;
+			if (jrWhyOn)
+			{
+				carLaneSpeedIterator.m_Why.Begin(speedRange.max);
+				JunctionRules.Stage2.JRWhy.Ref(m_JRWhyScratch).Begin(speedRange.max);
+			}
 			// JR-STAGE2 END
 			// JR-STAGE2 BEGIN S2-26: 0.4.1 cars never stop on a zebra / 0.4.2 cars obey yellow boxes: the navigation lanes for the room-past scan; whole vehicle length (trailers incl.) also with the stock gap rule; 0.4.2 the box lookups
 			if (carLaneSpeedIterator.m_JR.m_BoxRule)
@@ -1679,6 +1704,11 @@ public class JRCarNavigationSystem : GameSystemBase
 				navigation.m_MaxSpeed = laneIterator.m_MaxSpeed;
 				CheckBlocker(ref currentLane, ref blocker, ref laneIterator);
 				// JR-STAGE2 BEGIN S2-35: 0.4.7 vehicles leaving buildings give way, spawn point / parking: a vehicle at a building's spawn location (TransformTarget: the 0.4.6 'other') or in a parking space (building, garage or kerbside) whose next navigation lane is a public road lane waits there while the road lanes it joins / crosses are busy or, at a boxed exit, there is no room past the band (this branch never iterates the road lane)
+				if (jrWhyOn)
+				{
+					JunctionRules.Stage2.JRWhy.Settle(ref laneIterator.m_Why, laneIterator.m_MaxSpeed, laneIterator.m_Blocker, laneIterator.m_BlockerType, currentLane.m_Lane);
+					JunctionRules.Stage2.JRWhy.Ref(m_JRWhyScratch) = laneIterator.m_Why;   // JR-T-025
+				}
 				if (laneIterator.m_JR.m_ExitRule && navigationLanes.Length > 0)
 				{
 					float jrTargetExit = laneIterator.m_JR.ExitTargetHold(entity, priority, currentLane.m_Lane, currentLane.m_LaneFlags, navigationLanes[0], transform.m_Position, navigation.m_TargetPosition, prefabCarData, laneIterator.m_SafeTimeStep, speedRange, ref laneIterator.m_CarLaneData, ref laneIterator.m_LaneSignalData, ref laneIterator.m_LaneObjectData, ref laneIterator.m_CurveData, ref laneIterator.m_MovingData, ref laneIterator.m_CarData, ref laneIterator.m_ControllerData, ref laneIterator.m_PrefabRefData, ref laneIterator.m_PrefabCarData, ref laneIterator.m_PrefabObjectGeometryData, ref laneIterator.m_LaneOverlapData, ref laneIterator.m_PedestrianLaneData);
@@ -1686,6 +1716,7 @@ public class JRCarNavigationSystem : GameSystemBase
 					{
 						navigation.m_MaxSpeed = jrTargetExit;
 						blocker.m_Blocker = laneIterator.m_JR.HoldBlocker;   // 0.4.9 (G17)
+						if (jrWhyOn) JunctionRules.Stage2.JRWhy.Ref(m_JRWhyScratch).Bind(laneIterator.m_JR.WhyRuleOr(JunctionRules.Core.WhyRule.JrExitGiveWay), jrTargetExit, JunctionRules.Stage2.JRWhy.Key(blocker.m_Blocker), JunctionRules.Stage2.JRWhy.Key(currentLane.m_Lane), laneIterator.m_JR.WhyDistance, laneIterator.m_JR.WhyExtra);   // JR-T-025
 						blocker.m_Type = BlockerType.Crossing;
 						blocker.m_MaxSpeed = (byte)math.clamp(Mathf.RoundToInt(jrTargetExit * 2.2949998f), 0, 255);   // 0.4.9 (G17): as CheckBlocker, so a standing held vehicle reads as stopped
 					}
@@ -1763,6 +1794,11 @@ public class JRCarNavigationSystem : GameSystemBase
 				blocker.m_Type = BlockerType.None;
 				blocker.m_MaxSpeed = byte.MaxValue;
 				// JR-STAGE2 BEGIN S2-32: 0.4.5 / 0.4.6 vehicles leaving buildings give way, lot exit: a vehicle on an AREA lane (a building's lot) whose next navigation lane is a public road lane brakes to stop short of the join point while the road lanes it joins / crosses are busy (the area branch never reaches the lane speed iterator)
+				if (jrWhyOn)
+				{
+					JunctionRules.Stage2.JRWhy.Settle(ref laneIterator.m_Why, laneIterator.m_MaxSpeed, laneIterator.m_Blocker, laneIterator.m_BlockerType, currentLane.m_Lane);
+					JunctionRules.Stage2.JRWhy.Ref(m_JRWhyScratch) = laneIterator.m_Why;   // JR-T-025
+				}
 				if (laneIterator.m_JR.m_ExitRule && (currentLane.m_LaneFlags & Game.Vehicles.CarLaneFlags.Area) != 0 && navigationLanes.Length > 0)
 				{
 					float jrAreaExit = laneIterator.m_JR.ExitAreaHold(entity, priority, currentLane.m_Lane, navigationLanes[0], transform.m_Position, prefabObjectGeometryData.m_Bounds.max.z, prefabCarData, num2, num, laneIterator.m_SafeTimeStep, speedRange, navigation.m_MaxSpeed, ref laneIterator.m_CarLaneData, ref laneIterator.m_LaneSignalData, ref laneIterator.m_LaneObjectData, ref laneIterator.m_CurveData, ref laneIterator.m_MovingData, ref laneIterator.m_CarData, ref laneIterator.m_ControllerData, ref laneIterator.m_PrefabRefData, ref laneIterator.m_PrefabCarData, ref laneIterator.m_PrefabObjectGeometryData, ref laneIterator.m_LaneOverlapData, ref laneIterator.m_PedestrianLaneData);
@@ -1770,6 +1806,7 @@ public class JRCarNavigationSystem : GameSystemBase
 					{
 						navigation.m_MaxSpeed = jrAreaExit;
 						blocker.m_Blocker = laneIterator.m_JR.HoldBlocker;   // 0.4.9 (G17)
+						if (jrWhyOn) JunctionRules.Stage2.JRWhy.Ref(m_JRWhyScratch).Bind(laneIterator.m_JR.WhyRuleOr(JunctionRules.Core.WhyRule.JrExitGiveWay), jrAreaExit, JunctionRules.Stage2.JRWhy.Key(blocker.m_Blocker), JunctionRules.Stage2.JRWhy.Key(currentLane.m_Lane), laneIterator.m_JR.WhyDistance, laneIterator.m_JR.WhyExtra);   // JR-T-025
 						blocker.m_Type = BlockerType.Crossing;
 						blocker.m_MaxSpeed = (byte)math.clamp(Mathf.RoundToInt(jrAreaExit * 2.2949998f), 0, 255);   // 0.4.9 (G17): as CheckBlocker, so a standing held vehicle reads as stopped
 					}
@@ -1787,6 +1824,7 @@ public class JRCarNavigationSystem : GameSystemBase
 			goto IL_0a0a;
 			IL_09cd:
 			// JR-STAGE2 BEGIN S2-30: 0.4.4 vehicles leaving buildings give way: a vehicle on a building's Connection lane (spawn location / car park gate) whose next lane is a public road lane waits until the lanes it crosses / merges into are clear and, at a boxed exit, there is room past the band
+			if (jrWhyOn) JunctionRules.Stage2.JRWhy.Settle(ref laneIterator.m_Why, laneIterator.m_MaxSpeed, laneIterator.m_Blocker, laneIterator.m_BlockerType, currentLane.m_Lane);   // JR-T-025: the lanes iterated so far
 			if (laneIterator.m_JR.m_ExitRule && (currentLane.m_LaneFlags & Game.Vehicles.CarLaneFlags.Connection) != 0 && navigationLanes.Length > 0)
 			{
 				float jrExitWait = laneIterator.m_JR.ExitConnectionHold(entity, laneIterator.m_Priority, currentLane.m_Lane, navigationLanes[0], laneIterator.m_SafeTimeStep, ref laneIterator.m_CarLaneData, ref laneIterator.m_LaneSignalData, ref laneIterator.m_LaneObjectData, ref laneIterator.m_CurveData, ref laneIterator.m_MovingData, ref laneIterator.m_CarData, ref laneIterator.m_ControllerData, ref laneIterator.m_PrefabRefData, ref laneIterator.m_PrefabCarData, ref laneIterator.m_PrefabObjectGeometryData, ref laneIterator.m_LaneOverlapData, ref laneIterator.m_PedestrianLaneData);
@@ -1795,6 +1833,7 @@ public class JRCarNavigationSystem : GameSystemBase
 					laneIterator.m_MaxSpeed = jrExitWait;
 					laneIterator.m_Blocker = laneIterator.m_JR.HoldBlocker;   // 0.4.9 (G17)
 					laneIterator.m_BlockerType = BlockerType.Crossing;
+					if (jrWhyOn) laneIterator.m_Why.Bind(laneIterator.m_JR.WhyRuleOr(JunctionRules.Core.WhyRule.JrExitGiveWay), jrExitWait, JunctionRules.Stage2.JRWhy.Key(laneIterator.m_Blocker), JunctionRules.Stage2.JRWhy.Key(currentLane.m_Lane), laneIterator.m_JR.WhyDistance, laneIterator.m_JR.WhyExtra);   // JR-T-025
 				}
 				// 0.4.7: the exit trace's first-wait line
 				laneIterator.m_JR.TraceWait(m_JRSafetyEvents, entity, m_SimulationFrame);
@@ -1809,6 +1848,7 @@ public class JRCarNavigationSystem : GameSystemBase
 					laneIterator.m_MaxSpeed = jrLaneExit;
 					laneIterator.m_Blocker = laneIterator.m_JR.HoldBlocker;   // 0.4.9 (G17)
 					laneIterator.m_BlockerType = BlockerType.Crossing;
+					if (jrWhyOn) laneIterator.m_Why.Bind(laneIterator.m_JR.WhyRuleOr(JunctionRules.Core.WhyRule.JrExitGiveWay), jrLaneExit, JunctionRules.Stage2.JRWhy.Key(laneIterator.m_Blocker), JunctionRules.Stage2.JRWhy.Key(currentLane.m_Lane), laneIterator.m_JR.WhyDistance, laneIterator.m_JR.WhyExtra);   // JR-T-025
 				}
 				laneIterator.m_JR.TraceWait(m_JRSafetyEvents, entity, m_SimulationFrame);
 			}
@@ -1822,6 +1862,11 @@ public class JRCarNavigationSystem : GameSystemBase
 			navigation.m_MaxSpeed = laneIterator.m_MaxSpeed;
 			CheckBlocker(ref currentLane, ref blocker, ref laneIterator);
 			// JR-STAGE2 BEGIN S2-22: debug counters (only when counting); JR-T-013b: watch-one-junction events; 0.4.7 review: vehicles placed straight onto a road lane; 0.4.8 driveway Go records / trace
+			if (jrWhyOn)
+			{
+				JunctionRules.Stage2.JRWhy.Settle(ref laneIterator.m_Why, laneIterator.m_MaxSpeed, laneIterator.m_Blocker, laneIterator.m_BlockerType, currentLane.m_Lane);
+				JunctionRules.Stage2.JRWhy.Ref(m_JRWhyScratch) = laneIterator.m_Why;   // JR-T-025
+			}
 			if ((m_JRMode & JunctionRules.Core.Stage2Mode.Count) != 0)
 			{
 				laneIterator.m_JR.AddCounts(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, laneIterator.m_MaxSpeed, num2);
@@ -2170,6 +2215,9 @@ public class JRCarNavigationSystem : GameSystemBase
 					blocker.m_Blocker = vehicleCollisionIterator2.m_Blocker;
 					blocker.m_Type = vehicleCollisionIterator2.m_BlockerType;
 					blocker.m_MaxSpeed = (byte)math.clamp(Mathf.RoundToInt(vehicleCollisionIterator2.m_MaxSpeed * 2.2949998f), 0, 255);
+					// JR-STAGE2 BEGIN S2-57: JR-T-025 why slowed (tracked car only): the game's collision check (VehicleCollisionIterator)
+					if (jrWhyOn) JunctionRules.Stage2.JRWhy.Ref(m_JRWhyScratch).Offer(JunctionRules.Core.WhyRule.StockCollision, navigation.m_MaxSpeed, JunctionRules.Stage2.JRWhy.Key(blocker.m_Blocker), JunctionRules.Stage2.JRWhy.Key(currentLane.m_Lane), float.NaN, float.NaN);
+					// JR-STAGE2 END
 				}
 				navigation.m_MaxSpeed = math.min(navigation.m_MaxSpeed, math.distance(transform.m_Position.xz, navigation.m_TargetPosition.xz) / num);
 			}
@@ -2177,6 +2225,13 @@ public class JRCarNavigationSystem : GameSystemBase
 			{
 				navigation.m_MaxSpeed = math.min(navigation.m_MaxSpeed, math.distance(transform.m_Position, navigation.m_TargetPosition) / num);
 			}
+			// JR-STAGE2 BEGIN S2-58: JR-T-025 why slowed (tracked car only): the game's one-step target cap; the limit before the turning / reversing tail
+			if (jrWhyOn)
+			{
+				JunctionRules.Stage2.JRWhy.Ref(m_JRWhyScratch).Offer(JunctionRules.Core.WhyRule.StockTargetDistance, navigation.m_MaxSpeed, 0, JunctionRules.Stage2.JRWhy.Key(currentLane.m_Lane), math.distance(transform.m_Position, navigation.m_TargetPosition), float.NaN);
+				JunctionRules.Stage2.JRWhy.Ref(m_JRWhyScratch).BeforeSteer = navigation.m_MaxSpeed;
+			}
+			// JR-STAGE2 END
 			if ((currentLane.m_LaneFlags & (Game.Vehicles.CarLaneFlags.Connection | Game.Vehicles.CarLaneFlags.ResetSpeed)) != 0)
 			{
 				return;
@@ -3312,6 +3367,9 @@ public class JRCarNavigationSystem : GameSystemBase
 		jobData.m_JRExitTraceOn = JunctionRules.Stage2.JRStage2Bridge.TraceOn;
 		jobData.m_JRExitTrace = JunctionRules.Stage2.JRStage2Bridge.TraceRing;
 		jobData.m_JRWatch = JunctionRules.Stage2.JRStage2Bridge.Watch;
+		jobData.m_JRWhyEntity = JunctionRules.Stage2.JRStage2Bridge.WhyEntity;   // JR-T-025 (Entity.Null = nothing tracked)
+		jobData.m_JRWhySlot = JunctionRules.Stage2.JRStage2Bridge.WhySlot;
+		jobData.m_JRWhyScratch = JunctionRules.Stage2.JRStage2Bridge.WhyScratch;
 		// JR-STAGE2 END
 		JobHandle jobHandle = JobChunkExtensions.ScheduleParallel(jobData, m_VehicleQuery, JobUtils.CombineDependencies(base.Dependency, dependencies, dependencies2, dependencies3, dependencies4));
 		m_NetSearchSystem.AddNetSearchTreeReader(jobHandle);

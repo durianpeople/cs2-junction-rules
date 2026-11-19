@@ -306,6 +306,36 @@
           "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
         },
         "reason": "0.4.10 (JR-T-016, review R1): UpdateNavigationTarget, after S2-36 and before navigation.m_MaxSpeed: a car whose binding limit is a yellow box hold that waits for a red / amber light inside the room past the box enqueues the game's own signal request (CarNavigationHelpers.LaneSignal, as IterateNextLane's needSignal does) for that light's lane: its look-ahead ends at the box, so it never reaches the light's lane, and a signal changes only to a group a car has asked for (TrafficLightSystem.GetNextSignalGroup)."
+      },
+      "S2-55": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "1.1.1 (JR-T-025, why slowed; tracked car only, m_WhyOn): IterateNextLane, inside the stock 'num3 < m_MaxSpeed' assignment of the junction entry chain: names the rule of that limit (STOP sign, red / amber light, the game's room check CheckSpace, or lane speed; Core WhyRules.EntryChain from driveSpeed 0 and the blocker type) with its blocker, lane and distance. Record only: no limit, blocker or lane changes."
+      },
+      "S2-56": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
+        },
+        "reason": "1.1.1 (JR-T-025, why slowed; tracked car only): CheckOverlappingLanes, inside the stock priority slow-down assignment (half the lane limit at a priority overlap): names it StockGiveWaySlow. Record only."
+      },
+      "S2-57": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
+        },
+        "reason": "1.1.1 (JR-T-025, why slowed; tracked car only, m_JRWhyOn): UpdateNavigationTarget tail, inside the stock VehicleCollisionIterator branch after it set the limit and blocker: offers StockCollision when the collision check lowered the limit. Record only."
+      },
+      "S2-58": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
+        },
+        "reason": "1.1.1 (JR-T-025, why slowed; tracked car only): UpdateNavigationTarget tail, right after the stock one-step target cap: offers StockTargetDistance when the cap lowered the limit and keeps the limit before the stock turning / reversing tail (StockSteering when that tail changes it). Record only."
+      },
+      "S2-59": {
+        "files": {
+          "JunctionRules/Vanilla/JRCarNavigationSystem.cs": 1
+        },
+        "reason": "1.1.1 (JR-T-025, why slowed): Execute, right after UpdateNavigationTarget: the tracked car only (m_JRWhyOn and its entity) resolves its record against its final limit and writes the one shared slot (Stage2/JRWhy.Write, seqlock). No other car writes; nothing changes the car's driving."
       }
     }
   }

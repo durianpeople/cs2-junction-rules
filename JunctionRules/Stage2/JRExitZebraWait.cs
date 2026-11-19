@@ -129,6 +129,7 @@ namespace JunctionRules.Stage2
             if (people == ExitZebraWait.Stationary) m_LastBlocker = stander;   // the room scan named its blocker otherwise
             else NoteLightPetition(hold);   // review R1: a light inside the room window holds it: ask that light for green
             if (Counting) Min(ref m_HasBoxZebraLine, ref m_BoxZebraLineSpeed, hold);
+            WhyNote(WhyRule.JrExitZebraWait, float.NaN, people);   // JR-T-025 (extra = ExitZebraWait people code)
             return hold;
         }
 

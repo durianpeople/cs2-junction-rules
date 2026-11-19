@@ -213,7 +213,7 @@ namespace JunctionRules.Tests
             int s33 = nav.IndexOf("// JR-STAGE2 BEGIN S2-33", StringComparison.Ordinal);
             Check(b33.Contains("if (laneIterator.m_JR.ExitWaiting)") && !b33.Contains("CarLaneFlags.Area) != 0 &&") && nav.IndexOf("ApplySideEffects(ref currentLane", s33, StringComparison.Ordinal) > s33,
                 "S2-33 keeps EVERY held exit off the road lane, before the lane switch");
-            Check(nav.Contains("S2-34, S2-35, S2-36, S2-51, S2-51b, S2-52; see DEVIATIONS.md") && dev.Contains("S2-35") && dev.Contains("S2-36"), "new blocks listed in the copy header and DEVIATIONS.md");
+            Check(nav.Contains("S2-34, S2-35, S2-36, S2-51, S2-51b, S2-52, S2-57, S2-58, S2-59; see DEVIATIONS.md") && dev.Contains("S2-35") && dev.Contains("S2-36"), "new blocks listed in the copy header and DEVIATIONS.md");
             Check(Block("S2-23").Contains("JRStage2Bridge.TraceOn") && Block("S2-23").Contains("JRStage2Bridge.TraceRing") && Block("S2-26").Contains("SetTrace(m_JRExitTrace)"), "trace setting and ring handed to the job and the vehicle");
             int vb = glue.IndexOf("private bool VehiclesBlock", StringComparison.Ordinal);
             string vblock = vb < 0 ? "" : glue.Substring(vb);

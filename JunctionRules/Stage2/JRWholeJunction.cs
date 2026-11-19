@@ -822,6 +822,7 @@ namespace JunctionRules.Stage2
             }
             if (Counting) Min(ref m_HasZebraRoom, ref m_ZebraRoomSpeed, hold);
             if (ZebraSections.SoftHoldBinds(hold, softHold)) m_LastBlocker = softBlocker;
+            else WhyNoteRoom(WhyRule.JrZebraSection, m_Stretch.Wait(m_Stretch.Spots[k]));   // JR-T-025 (the soft hold noted itself)
             return math.min(hold, softHold);
         }
 
@@ -874,6 +875,7 @@ namespace JunctionRules.Stage2
                 return float.MaxValue;
             }
             if (Counting) Min(ref m_HasZebraRoom, ref m_ZebraRoomSpeed, hold);
+            WhyNote(WhyRule.JrSoftZebra, front.m_S.Wait(zebraStart), m_WhyRoomShort);   // JR-T-025
             return hold;
         }
 
@@ -1200,6 +1202,7 @@ namespace JunctionRules.Stage2
             b.Index = scan.BlockerIndex;
             b.Version = scan.BlockerVersion;
             m_LastBlocker = b;
+            WhyNoteScan(in scan);   // JR-T-025: room short by / look-past refusal (tracked car only)
         }
 
         /// <summary>
@@ -1212,7 +1215,11 @@ namespace JunctionRules.Stage2
         /// </summary>
         public Entity HoldBlocker => m_LastBlocker;
 
-        private void BeginHoldBlocker() => m_LastBlocker = Entity.Null;
+        private void BeginHoldBlocker()
+        {
+            m_LastBlocker = Entity.Null;
+            if (m_WhyOn) WhyReset();   // JR-T-025: the hook's why note, only for the tracked car
+        }
 
         /// <summary>
         /// 0.4.9 (G15b): no braking-distance credit for vehicles moving ahead on the way IN: a yard queue that moves can stop

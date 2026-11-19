@@ -178,6 +178,7 @@ namespace JunctionRules.Stage2
                     return float.MaxValue;
                 }
                 NoteLightPetition(hold);   // review R1
+                WhyNoteRoom(WhyRule.JrBoxRoom, wait);   // JR-T-025
                 if (Counting)
                 {
                     Min(ref m_HasBoxRoom, ref m_BoxRoomSpeed, hold);
@@ -222,7 +223,7 @@ namespace JunctionRules.Stage2
                     float enterHold = EnteringHold(lane, edgeOwner.m_Owner, start, b0, laneLength, wait0, margin, car, currentSpeed, timeStep, safeTimeStep, speedRange,
                         currentMax < result ? currentMax : result, self, ref braking, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs,
                         ref geometries, ref prefabCars);
-                    if (enterHold < result) result = enterHold;
+                    if (enterHold < result) { result = enterHold; WhyNote(WhyRule.JrBoxEntering, float.NaN, m_WhyRoomShort); }   // JR-T-025
                     else m_LastBlocker = keepEnter;
                     continue;
                 }
@@ -256,6 +257,7 @@ namespace JunctionRules.Stage2
                 }
                 result = hold;
                 NoteLightPetition(hold);   // review R1
+                WhyNoteRoom(role == BoxDriving.EntranceRole.Leaving ? WhyRule.JrExitBoxRoom : WhyRule.JrBoxRoom, wait);   // JR-T-025
                 if (Counting && m_FreeNowHeld) Min(ref m_HasBoxFreeNow, ref m_BoxFreeNowSpeed, hold);
                 // 0.4.9 (G15b, final review): held only because a vehicle turning into (or out of) a driveway stands across the
                 // lane: it waits for that building like an entrant, so an exit within 10 m does not wait for it (no
@@ -442,6 +444,7 @@ namespace JunctionRules.Stage2
                 return float.MaxValue;
             }
             NoteLightPetition(hold);   // review R1
+            WhyNoteRoom(WhyRule.JrBoxTurnSpot, m_Stretch.Wait(spot));   // JR-T-025
             if (Counting)
             {
                 Min(ref m_HasBoxTurnRoom, ref m_BoxTurnRoomSpeed, hold);

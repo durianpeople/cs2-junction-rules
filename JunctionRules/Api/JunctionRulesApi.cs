@@ -65,6 +65,32 @@ namespace JunctionRules.Api
         public static string Add(string targetJson) => Run("add", targetJson, s => TargetCall("add", s));
         public static string Remove(string targetJson) => Run("remove", targetJson, s => TargetCall("remove", s));
 
+        /// <summary>
+        /// JR-T-025 (1.1.1): why is this car slowing. argsJson: null / "{}" = read; {"car":"index:version"} (or
+        /// {"car":{"index":I,"version":V}}) = track that car (the game's selected vehicle wins while one is selected);
+        /// {"car":null} / {"clear":true} = stop tracking it; {"history":"index:version"} = that car's kept history. Returns
+        /// {"ok":true,...,"action":"why_slowed","tracking":{car,source},"current":{...}|null,"historyCar":..,
+        /// "changes":[newest first, max 20],"knownCars":[..],"notes":[..]}. A new car's first reading comes with the next
+        /// driving step. Only one car is recorded at a time.
+        /// </summary>
+        public static string WhySlowed(string argsJson) => Run("why_slowed", argsJson, WhySlowedCore);
+
+        private static long s_WhyStepsAtCall;
+
+        private static string WhySlowedCore(string json)
+        {
+            if (!WhyBook.ParseArgs(json, out bool set, out long car, out long history, out string bad))
+                return BoxApi.Error(ModVersion, "why_slowed", BoxApiErrors.BadTarget, bad);
+            if (set) WhyHandoff.ApiCar = car;
+            WhyBook book = WhyHandoff.Book;
+            List<string> notes = WhyHandoff.Notes(s_WhyStepsAtCall, WhyHandoff.Steps, book.HasCurrent, book.Car);
+            s_WhyStepsAtCall = WhyHandoff.Steps;
+            if (set && car != 0 && book.Car != car)
+                notes.Add(book.Source == "selection" ? "a selected vehicle is tracked now; the API car is tracked when nothing is selected" : "the API car is tracked from the next driving step");
+            if (history != 0 && book.HistoryOf(history) == null) notes.Add("no kept history for " + WhyBook.KeyText(history));
+            return book.Json(ModVersion, notes, history);
+        }
+
         // ------------------------------------------------------------------ plumbing
 
         private static string Run(string action, string input, Func<string, string> body)

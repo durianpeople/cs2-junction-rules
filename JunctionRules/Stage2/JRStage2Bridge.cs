@@ -8,7 +8,7 @@ namespace JunctionRules.Stage2
     /// Stage 2, main-thread side, used only by the copy's navigation system (JR-STAGE2 blocks) and the copy's timing
     /// probe. Like the copy types it is never named by Mod or CarDrivingSwitchSystem (CopyIsolationTests).
     /// </summary>
-    public static class JRStage2Bridge
+    public static partial class JRStage2Bridge
     {
         private static NativeArray<long> s_Counters;
         private static NativeArray<long> s_SafetyEvents;
@@ -51,6 +51,7 @@ namespace JunctionRules.Stage2
             DrainEntrance();
             Steps++;
             UpdateWatch();
+            UpdateWhy();   // JR-T-025
             return AppliedMode;
         }
 
@@ -303,6 +304,7 @@ namespace JunctionRules.Stage2
             if (s_Watch.IsCreated) s_Watch.Dispose();
             s_Watch = default;
             s_WatchVersion = -1;
+            ReleaseWhy();   // JR-T-025
         }
     }
 }
