@@ -27,6 +27,8 @@ namespace JunctionRules.Tests
             ("JrT021MigrationTests", JrT021MigrationTests),
             ("JrT021SaveTests", JrT021SaveTests),
             ("JrT021RepoTests", JrT021RepoTests),
+            ("JrT023PickTests", JrT023PickTests),
+            ("JrT023RepoTests", JrT023RepoTests),
             ("VersionGateTests", VersionGateTests),
             ("VersionGateCheckTests", VersionGateCheckTests),
             ("DrivingSwitchTests", DrivingSwitchTests),

@@ -47,6 +47,9 @@ namespace JunctionRules.Boxes
     /// - 0.4.13 (JR-T-019): the pick, the shape solve, the no-shape rule and the click's writes live in Boxes/BoxTargeting.cs
     ///   (decision: Core/BoxCommand.Decide), shared with JunctionRules.Api.JunctionRulesApi; this system keeps the raycast,
     ///   the hover cache / drawing and the input.
+    /// - 1.0.3 (JR-T-023, owner 19 Nov 2026): a bigger hover target for building accesses: the cursor anywhere on an access's
+    ///   box area on the road or on the strip from the road to the building's access point lights it (Core/AccessPick,
+    ///   BoxTargeting.PickAt); the raycast also takes the terrain for that ground point.
     /// </summary>
     public partial class YellowBoxToolSystem : ToolBaseSystem
     {
@@ -107,7 +110,10 @@ namespace JunctionRules.Boxes
         {
             base.InitializeRaycast();
             m_ToolRaycastSystem.collisionMask = CollisionMask.OnGround | CollisionMask.Overground;
-            m_ToolRaycastSystem.typeMask = TypeMask.Net | TypeMask.StaticObjects;
+            // 1.0.3 (JR-T-023): + Terrain, so a cursor on the pavement / driveway / verge / lot between road and building has a
+            // ground point (Boxes/BoxTargeting.PickAt). The game ranks a terrain hit just behind a net or object at the same
+            // spot (Game.Common/RaycastSystem RaycastTerrainJob: distance + 1 / ray length), so road and building hits win as before.
+            m_ToolRaycastSystem.typeMask = TypeMask.Net | TypeMask.StaticObjects | TypeMask.Terrain;
             m_ToolRaycastSystem.netLayerMask = Layer.Road;
         }
 

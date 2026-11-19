@@ -54,6 +54,8 @@ A yellow box marks an area drivers must not stop in.
 - Click to add or remove. Boxes are saved with your city.
 - Each real car access of a building (exit, entrance or two-way) is boxed on its own: hover the access you want and
   click; an arrow shows which access a box belongs to.
+- An access lights up with the cursor anywhere on its box area on the road, or on the pavement, driveway or verge
+  between the road and the building's access; where two overlap, the nearer one wins.
 - If a spot can't take a box (elevated or tunnel roads, highways, roundabouts and so on), the tool says why.
 
 **How boxes are drawn.**

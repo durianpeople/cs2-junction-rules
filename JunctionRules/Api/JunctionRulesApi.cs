@@ -196,9 +196,10 @@ namespace JunctionRules.Api
                 case ApiTargetForm.Point:
                 {
                     var xz = new float2((float)at.X, (float)at.Z);
-                    if (!tg.PointHit(xz, out Entity hit, out float3 pos)) return $"nothing the tool can pick at ({at.X:0.##}, {at.Z:0.##}) (no road, node or building there)";
-                    t = tg.Resolve(hit, pos);
-                    if (t.Kind == Kind.None) return $"no junction or building car exit at ({at.X:0.##}, {at.Z:0.##}) (hit {hit})";
+                    // 1.0.3 (JR-T-023): nothing hit (pavement, driveway, verge) is the tool's ground hit: Resolve picks by the access hover areas
+                    bool any = tg.PointHit(xz, out Entity hit, out float3 pos);
+                    t = tg.Resolve(any ? hit : Entity.Null, pos);
+                    if (t.Kind == Kind.None) return any ? $"no junction or building car exit at ({at.X:0.##}, {at.Z:0.##}) (hit {hit})" : $"nothing the tool can pick at ({at.X:0.##}, {at.Z:0.##}) (no road, node, building or access hover area there)";
                     return null;
                 }
                 default: return "no target";
