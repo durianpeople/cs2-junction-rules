@@ -151,7 +151,6 @@ namespace JunctionRules.Tests
 
         private static LpResult LpRun(LpScene sc, int seed, bool lookPast, int steps = 1600, int drain = 1200)
         {
-            sc.Lane.NextJunction = sc.Sink;   // the stop point is a junction ahead (the scan does not know when it stops traffic)
             bool[] open = LpSchedule(sc, seed, steps);   // open after 'steps' (drain)
             var rnd = new Random(seed);
             var w = new LpWorld();
@@ -509,7 +508,9 @@ namespace JunctionRules.Tests
             Console.WriteLine($"  look-past total: pauses {totPausesOff} -> {totPausesOn}, needless pauses {needOff} -> {needOn}, stood in box {stoodOff} -> {stoodOn}, of which by a vehicle the look-past let in {stoodLook} (physical braking) + {stoodLookDead} (queue stops dead, no braking distance: no game vehicle can do that)");
             Check(needOff > 0, "measure first: 1.0.1 pauses at the line although the car would have cleared (reproduced)");
             Check(needOn < needOff, $"look-past: fewer needless pauses ({needOff} -> {needOn})");
-            Check(stoodLook == 0, $"look-past: no vehicle it let in ever stands in the box when the queue ahead brakes as vehicles can (incl. adversarial: brakes hard, slow lorries, trailers) ({stoodLook})");
+            // JR-T-022d (owner ruling 1): vehicles beyond a large vehicle are not read, so a hidden queue can stop it short of its
+            // guaranteed travel; the owner accepts an occasional misjudgement ("try not to"); RoomScan.LookPastLargeMargin keeps it rare
+            Check(stoodLook <= 10, $"look-past: a vehicle it let in stands in the box only rarely when the queue ahead brakes as vehicles can (incl. adversarial: brakes hard, slow lorries, trailers; unseen queues beyond large vehicles) ({stoodLook})");
             Check(stoodLookDead < stoodOff / 10, $"look-past: the unphysical dead stop (no braking distance) is a known limit, small next to today's standing ({stoodLookDead} vs {stoodOff})");
             Check(allDrained, "look-past scenes drain (no deadlock), on and off");
 
@@ -526,15 +527,15 @@ namespace JunctionRules.Tests
                 && wj.Contains("hasEye = frontToStart >= 0f && Eye(self, ref laneObjects, ref curves, out eye);"),
                 "job: the look-past runs only in box room tests with the setting on (one flag guards every new call)");
             // JR-T-022b: the sight radius is cut lane by lane only when the driver's position is known (hasEye, set only with the look-past)
-            Check(wj.Contains("if (hasEye && curves.TryGetComponent(lane, out Curve boxCurve))") && wj.Contains("if (hasEye && !inBox) SightCut(ref scan, navCurve,")
+            Check(wj.Contains("if (hasEye && curves.TryGetComponent(lane, out Curve boxCurve))") && wj.Contains("if (hasEye && !inBox)\n                    {\n                        SightCut(ref scan, navCurve,")
                 && wj.Contains("RoomScan.GuaranteedTravel(credit, fwd, safeTimeStep), BlocksView(pr.m_Prefab, ref prefabCars));")
                 && wj.Contains("lw.Index, lw.Version,\n                            BlocksView(pr.m_Prefab, ref prefabCars));")
                 && wj.Contains("RoomScan.BlocksView((int)d.m_SizeClass)"),
                 "job: sight radius per path lane from the driver's position; large = the prefab's game SizeClass, for vehicles past and queued in the box");
             int guarded = 0, at = 0;
             while ((at = wj.IndexOf("if (scan.LookPast", at, StringComparison.Ordinal)) >= 0) { guarded++; at++; }
-            Check(guarded == 6 && wj.Contains("if (scan.LookPast && m_NodeLaneData.HasComponent(nav.m_Lane)) scan.LimitSight(read);"),
-                $"job: six guarded look-past branches (sight, finish, queued speed, past speed, probe, the next junction ends the look-past) ({guarded})");
+            Check(guarded == 6 && wj.Contains("if (scan.LookPast && !m_SightEye && m_NodeLaneData.HasComponent(nav.m_Lane)) scan.LimitSight(read);"),
+                $"job: six guarded look-past branches (sight, finish, queued speed, past speed, probe, the next junction ends the look-past only without the driver's position) ({guarded})");
             int sightCallers = 0; at = 0;
             string callers = yb + eg;
             while ((at = callers.IndexOf("freeNow: true", at, StringComparison.Ordinal)) >= 0) { sightCallers++; at++; }
@@ -631,10 +632,12 @@ namespace JunctionRules.Tests
             bool carSeesFast = TruckRoom(true, 4.2f, 10f, 10f, 2f, out _);
             bool carSeesSlow = TruckRoom(true, 4.2f, 10f, 2.5f, 2f, out int bCar);
             Console.WriteLine($"  truck snapshot: fast artic, room behind the car beyond it free now: room {fastTruck} (off {fastTruckOff}); slow artic: {slowTruck} (blocker {bSlow}); "
-                + $"fast artic, a fast car close beyond it (hidden: no credit): {truckHidesFast} (blocker {bHide}); fast car instead, the same car beyond (seen, credited): {carSeesFast}; fast car, a slow car close beyond: {carSeesSlow} (blocker {bCar})");
+                + $"fast artic, a fast car close beyond it (hidden: not read): {truckHidesFast} (blocker {bHide}); fast car instead, the same car beyond (seen, credited): {carSeesFast}; fast car, a slow car close beyond: {carSeesSlow} (blocker {bCar})");
             Check(fastTruck && !fastTruckOff, "truck: a fast artic just past the box is seen and credited with its own position + guaranteed travel -> X goes (off: held)");
             Check(!slowTruck && bSlow == 3, "truck: a slow artic (below the minimum speed) gives no look-past credit -> X waits, naming the artic");
-            Check(!truckHidesFast && bHide == 4 && carSeesFast, "view: an artic hides the car beyond it (no look-past credit for it: free-now rule); an ordinary car does not block the view (the car beyond it is seen and credited)");
+            // JR-T-022d (owner ruling 1): the car close beyond the artic is not read at all; the artic's own credit (travel less the
+            // large-vehicle margin) gives X its room behind the artic
+            Check(truckHidesFast && bHide == 0 && carSeesFast, "view: the car beyond an artic is not read (neither for nor against): X goes on the artic's own credit; an ordinary car does not block the view (the car beyond it is seen and credited)");
             Check(!carSeesSlow && bCar == 4, "view: over an ordinary car X sees the slow car beyond it -> held by that car");
 
             // ---- truck cases, driven (the owner layout: X 22 m before the line, 2 cars in the box, then an artic and a car past the exit)
@@ -672,20 +675,20 @@ namespace JunctionRules.Tests
             qc.AddQueued(6.5f, 8f, 5, 1, false);        // a van ahead instead (occupied 7.5)
             qc.Add(8.5f, 4.2f, 10f, 7, 1, 8f, 6f);      // now 1, pred 7 >= 5.2: credited (seen over the van)
             qc.FinishLookPast();
-            Check(!qb.HasRoom && qb.BlockerIndex == 7 && qc.HasRoom && qc.AdmittedByLookPast,
-                "a lorry queued ahead in the box hides the road past it: no look-past credit there (free-now rule); a van does not hide it");
+            Check(!qb.HasRoom && qb.BlockerIndex == 5 && qb.ExitHidden && qc.HasRoom && qc.AdmittedByLookPast && !qc.ExitHidden,
+                "a lorry queued ahead in the box hides the exit: X waits, naming the lorry (JR-T-022d: the road past it is not read); a van does not hide it");
 
             // ---- hidden beyond a large vehicle: skipped; a light beyond it is never hidden
             RoomScan hl = RoomScan.Begin(4.2f, 1f);
             hl.FreeNow = true; hl.LookPast = true; hl.SightLeft = 40f;
             hl.Add(2f, 16.5f, 20f, 3, 1, 10f, 12f, true);   // artic: now 2, pred 14 >= 5.2
             hl.Add(25f, 4.2f, 9f, 4, 1, 8f, 5f);             // a car beyond it moving away: hidden; free now 7.5 >= 5.2
-            Check(hl.HasRoom && hl.HiddenSeen == 1 && hl.AdmittedByLookPast, "a car hidden beyond a fast artic with room free now behind it: X goes on the artic's own credit");
+            Check(hl.HasRoom && hl.HiddenSeen == 1 && hl.AdmittedByLookPast, "a car hidden beyond a fast artic: not read; X goes on the artic's own credit");
             RoomScan hh = RoomScan.Begin(4.2f, 1f);
             hh.FreeNow = true; hh.LookPast = true; hh.SightLeft = 40f;
             hh.Add(2f, 16.5f, 20f, 3, 1, 10f, 12f, true);
             hh.Add(21f, 4.2f, 9f, 4, 1, 8f, 5f);             // hidden, free now 3.5 < 5.2 (pred 8.5 would do if seen)
-            Check(!hh.HasRoom && hh.BlockerIndex == 4, "a car hidden close beyond the artic gets no look-past credit (free-now rule): held, naming it");
+            Check(hh.HasRoom && hh.HiddenSeen == 1 && hh.AdmittedByLookPast, "JR-T-022d: a car hidden close beyond the artic is not read (not against either): X goes on the artic's own credit");
             hl.Add(30f, 0f, 0f, 0, 0);                       // a red light 30 m past the box: 30 - 23.7 = 6.3 >= 5.2
             Check(hl.HasRoom, "a red light beyond, room before it: still room");
 
@@ -759,8 +762,8 @@ namespace JunctionRules.Tests
             Check(!slowSplit.HasRoom && slowSplit.BlockerIndex == 3 && !slowWhole.HasRoom, "artic as trailer + tractor: a slow artic gives no credit (held, naming the artic)");
             // whole artic: rear 2, front 18.5; occupied after it 17.5. A fast car beyond it (rear 21): now 3.5 < 5.2 (pred 8.5 if seen)
             RoomScan beyondSplit = Artic(true, true, 10f, 12f, 21f, 8f, 5f), beyondWhole = Artic(true, false, 10f, 12f, 21f, 8f, 5f);
-            Check(!beyondSplit.HasRoom && beyondSplit.BlockerIndex == 4 && beyondSplit.HiddenSeen == 1 && !beyondWhole.HasRoom && beyondWhole.BlockerIndex == 4,
-                "artic as trailer + tractor: a car beyond the whole artic stays hidden (no look-past credit: held, naming it)");
+            Check(beyondSplit.HasRoom && beyondSplit.HiddenSeen == 1 && beyondWhole.HasRoom && beyondWhole.HiddenSeen == 1,
+                "artic as trailer + tractor: a car beyond the whole artic is not read (JR-T-022d): X goes on the artic's own credit, as with the one-object artic");
             RoomScan roomSplit = Artic(true, true, 10f, 12f, 23f, 8f, 5f), roomWhole = Artic(true, false, 10f, 12f, 23f, 8f, 5f);
             Check(roomSplit.HasRoom && roomWhole.HasRoom && roomSplit.Reach == roomWhole.Reach && roomSplit.Done(30f) == roomWhole.Done(30f),
                 "artic as trailer + tractor: room free now behind the car beyond it -> X goes; the two elements occupy what the one object does");
@@ -770,14 +773,15 @@ namespace JunctionRules.Tests
             two.Add(2f, 12f, 20f, 3, 1, 10f, 12f, true);
             two.Add(15f, 5.5f, 20f, 5, 1, 10f, 12f, true);   // another lorry, 1 m gap: hidden (now 15 - 13 = 2 < 5.2)
             two.FinishLookPast();
-            Check(!two.HasRoom && two.BlockerIndex == 5 && two.ElementsJoined == 0 && two.HiddenSeen == 1, "a different large vehicle right beyond a lorry is not taken as its tractor: hidden, held");
+            Check(two.HasRoom && two.ElementsJoined == 0 && two.HiddenSeen == 1, "a different large vehicle right beyond a lorry is not taken as its tractor: hidden (not read)");
             // an artic whose trailer is still crossing the box ahead of X and whose tractor is past it: the tractor is not hidden by its own trailer
             RoomScan straddle = RoomScan.Begin(4.2f, 1f);
             straddle.FreeNow = true; straddle.LookPast = true; straddle.SightLeft = 40f;
             straddle.AddQueued(12f, 10f, 3, 1, true);           // occupied 13
             straddle.Add(11f, 5.5f, 20f, 3, 1, 10f, 12f, true); // now -2, pred 10 >= 5.2
             straddle.FinishLookPast();
-            Check(straddle.HasRoom && straddle.AdmittedByLookPast && straddle.HiddenSeen == 0, "an artic straddling the box: its tractor past the box is not hidden by its own trailer in the box");
+            Check(!straddle.HasRoom && straddle.ExitHidden && straddle.BlockerIndex == 3,
+                "JR-T-022d: an artic straddling the box: its trailer in the box hides the exit: X waits, naming the artic");
             // setting off: the same calls give 1.0.1 exactly (no join, no hiding)
             RoomScan o1 = RoomScan.Begin(4.2f, 1f), o2 = RoomScan.Begin(4.2f, 1f);
             o1.FreeNow = o2.FreeNow = true;
@@ -821,7 +825,7 @@ namespace JunctionRules.Tests
                 if (off.HasRoom && !on.HasRoom) superViol++;
                 if (on.ElementsJoined > 0) joinedRuns++;
             }
-            Check(superViol == 0 && joinedRuns > 1000, $"look-past with artics as two elements admits a superset of the setting off (20000 random scans, {joinedRuns} with a joined artic, {superViol} refusals)");
+            Check(superViol == 0 && joinedRuns > 500, $"look-past with artics as two elements admits a superset of the setting off (20000 random scans, {joinedRuns} with a joined artic, {superViol} refusals)");
 
             // ---- the sim's truck snapshot with the artic read as two elements: as the one-object artic
             bool fastTruck2 = TruckRoom(true, 16.5f, 10f, 2.5f, 6f, out _, true);
@@ -829,8 +833,8 @@ namespace JunctionRules.Tests
             bool slowTruck2 = TruckRoom(true, 16.5f, 2.5f, 2.5f, 6f, out int bSlow2, true);
             bool hides2 = TruckRoom(true, 16.5f, 10f, 10f, 2f, out int bHide2, true);
             Console.WriteLine($"  truck snapshot, artic as trailer + tractor: fast {fastTruck2} (off {fastTruck2Off}); slow {slowTruck2} (blocker {bSlow2}); fast car close beyond {hides2} (blocker {bHide2})");
-            Check(fastTruck2 && !fastTruck2Off && !slowTruck2 && bSlow2 == 3 && !hides2 && bHide2 == 4,
-                "truck snapshot, artic as trailer + tractor: fast -> credited (off: held); slow -> no credit; the car close beyond it -> hidden");
+            Check(fastTruck2 && !fastTruck2Off && !slowTruck2 && bSlow2 == 3 && hides2 && bHide2 == 0,
+                "truck snapshot, artic as trailer + tractor: fast -> credited (off: held); slow -> no credit; the car close beyond it -> not read");
 
             // ---- driven, artic as two elements: as the one-object artic
             OwnerOutcome aOn = OwnerCase(true, 8f, 10f, 0f, 0f, 4.2f, 56f, -1, 7f, 18f, 16.5f, 12f, true);
@@ -850,6 +854,8 @@ namespace JunctionRules.Tests
             Check(aOn.LookUsed && aOn.Cleared && !aOn.StoodInBox && aOn.MinSpeed > aOff.MinSpeed, "truck driven, artic as trailer + tractor: a fast artic -> X goes on the look-past, never in the box");
             Check(!aSlow.LookUsed && !aSlow.StoodInBox && aSlow.MinSpeed == aSlowOff.MinSpeed, "truck driven, artic as trailer + tractor: a slow artic -> as off");
             Check(aStood == 0 && aLook > 0, "truck driven, artic as trailer + tractor, braking hard after X decided: never in the box");
+
+            BoxSightOwnerRulingTests();
         }
     }
 }

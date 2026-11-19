@@ -402,9 +402,11 @@ the zebra sections. Unsignalised zebras, zebras with people on green and further
 in 1.0.0; people on the crossing still stop cars (stock check). JR-T-021C: the hook's blocker (G17) is the one of the
 hold actually returned (soft or section hold, the smaller; `ZebraSections.SoftHoldBinds`).
 
-1.1.0 (JR-T-022 / 022b / 022c: look past the car in front at a box; owner 19 Nov 2026). No copy change: the
-`JunctionRules/Vanilla/` files are as 1.0.1 (`vanilla_copy.py check` unchanged). Job side only
-(`Stage2/JRWholeJunction.cs` box room test, `Core/ZebraSections.cs` RoomScan, `Core/SightLine.cs`), all behind the new
+1.1.0 (JR-T-022 / 022b / 022c / 022d: look past the car in front at a box; owner 19 Nov 2026). Copy change: one call
+added inside block S2-26 (JR-T-022d: `SetSight` hands the job's own stock `m_StaticObjectSearchTree`, `m_TransformData`
+and `m_JRExitBuildings` to the iterator by reference; the stock system already takes the tree read-only and registers the
+job as its reader, so no dependency changes; `vanilla_copy.py check` unchanged outside the blocks). Job side
+(`Stage2/JRWholeJunction.cs` box room test, `Stage2/JRSight.cs`, `Core/ZebraSections.cs` RoomScan, `Core/SightLine.cs`), all behind the new
 setting **Look past the car in front at a box** (default on; off = 1.0.1 bit for bit, proven by a 20000-case RoomScan
 differential and a step-by-step trace hash over the box scenario set):
 - Mode bit 31 (`Stage2Mode.BoxLookPast = 1 << 31`, set only with the box rule; in `Stage2Mode.Stripped`; every use is a
@@ -413,11 +415,19 @@ differential and a step-by-step trace hash over the box scenario set):
   moves away at 3 m/s or more and its rear plus `GuaranteedTravel` (its braking distance less two steps of travel) leaves
   the car's length plus margin; a vehicle the car follows through the box below 3 m/s refuses.
 - Sight: a 50 m straight-line radius around the driver (`SightLine.FirstExit` per path lane); the room relied on must end
-  inside it, before the next junction on the path (interim stand-in for corner buildings, not modelled yet) and within
-  the path read. Cars and vans never block the view; a large vehicle (`CarData.m_SizeClass` Large) is judged itself and
-  hides every vehicle beyond it (no credit: free-now rule for them); a large vehicle queued in / before the box hides the
-  road past it. An articulated vehicle is one vehicle: its trailer and tractor (separate lane objects, named by the same
-  controller) never hide each other and the whole artic is credited by its leading element in path order (JR-T-022c).
+  inside it and within the path read. Cars and vans never block the view. JR-T-022d (owner rulings 19 Nov, binding):
+  - A large vehicle (`CarData.m_SizeClass` Large) ends the view: it is judged itself with its position plus guaranteed
+    travel less `RoomScan.LookPastLargeMargin` (5 m, the one general caution: room for a car standing unseen ahead of
+    it), the vehicles beyond it are not read at all (neither for nor against), and the room relied on must end by its
+    front. A large vehicle queued ahead of the car in / before the box hides the exit: the car waits at the line.
+  - Buildings block the view: when the look-past is about to give the room, the straight 2D line from the driver to each
+    vehicle it credited and to the end of the room relied on must cross no building footprint (prefab
+    `ObjectGeometryData` bounds placed by the `Transform`; `SightLine.SegmentHitsBox`). Buildings are found per line in
+    the stock static object search tree (cells meeting the line's bounding box, `Building` entities only). No stored
+    data. This replaces the interim "next junction ends the sight" cut, which stays only when the driver's position is
+    not known.
+  - An articulated vehicle is one vehicle: its trailer and tractor (separate lane objects, named by the same controller)
+    never hide each other and the whole artic is credited by its leading element in path order (JR-T-022c).
 - The safety stop is untouched (the decision runs again every step while the car can still stop at the line). Rare
   misjudgements that end with a car standing in the box (offline: a queue past the box that stops dead, harder than any
   game vehicle can brake) are accepted by design.

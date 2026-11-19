@@ -509,11 +509,16 @@ namespace JunctionRules.Core
         /// runs again at every step while the car can still stop at the line, so a queue that brakes holds it there (the
         /// existing safety stop). False = 1.0.1 behaviour bit for bit (every new path tests this flag first).
         /// JR-T-022b (owner sight rule): it judges only what the driver sees: a <see cref="LookPastSightMetres"/> radius around
-        /// the driver (<see cref="SightLeft"/>), cut at the next junction (stand-in for corner buildings); ordinary cars never
-        /// block the view, a large vehicle does (<see cref="BlocksView"/>): it is judged itself, the vehicles beyond it get no
-        /// look-past credit (free-now rule). JR-T-022c: an articulated vehicle (trailer and tractor read as separate lane
-        /// objects, named by the same controller) is ONE vehicle: credited by its leading element in path order, its own
-        /// elements never hide each other; vehicles beyond the whole artic stay hidden.
+        /// the driver (<see cref="SightLeft"/>); ordinary cars never block the view, a large vehicle does
+        /// (<see cref="BlocksView"/>). JR-T-022d (owner rulings 19 Nov 2026, binding): the view ENDS at a large vehicle: it is
+        /// judged itself (position + guaranteed travel), the vehicles beyond it are NOT READ AT ALL (neither for nor against),
+        /// and the room the look-past relies on must end within what is seen (at the latest the large vehicle's front); a large
+        /// vehicle queued ahead of the car before / inside the box hides the whole exit: the car waits (it cannot see its exit
+        /// is clear). Buildings block the view: every target the look-past credits (each vehicle credited, the end of the room
+        /// relied on) must be in a straight 2D line from the driver that crosses no building footprint
+        /// (<see cref="FinishSight{T}"/>, Core <see cref="SightLine.SegmentHitsBox"/>). JR-T-022c: an articulated vehicle
+        /// (trailer and tractor read as separate lane objects, named by the same controller) is ONE vehicle: credited by its
+        /// leading element in path order, its own elements never hide each other; the view ends at the whole artic's front.
         /// </summary>
         public bool LookPast;
 
@@ -532,8 +537,9 @@ namespace JunctionRules.Core
         /// <summary>
         /// JR-T-022b: how far past the window start (the box's far end), along the car's path in the scan's coordinates, the
         /// road is seen: where the path first leaves the <see cref="LookPastSightMetres"/> radius around the driver
-        /// (<see cref="SightLine.FirstExit"/>), cut further by <see cref="LimitSight"/> (the next junction: the interim stand-in
-        /// for corner buildings). Set by the caller with the look-past; float.MaxValue = no cut found yet.
+        /// (<see cref="SightLine.FirstExit"/>), cut further by <see cref="LimitSight"/> (the end of the path read; the next
+        /// junction only when the driver's position is unknown, JR-T-022d: buildings are tested instead,
+        /// <see cref="FinishSight{T}"/>). Set by the caller with the look-past; float.MaxValue = no cut found yet.
         /// </summary>
         public float SightLeft;
 
@@ -567,15 +573,20 @@ namespace JunctionRules.Core
         /// <summary>
         /// JR-T-022b: the view is blocked from here on: a LARGE vehicle past the box was read (it is seen and judged itself,
         /// with its own position + guaranteed travel), or one is queued ahead of the car before / inside the box (it hides the
-        /// whole road past the box; its own position credit is not modelled: the queued part of the scan has no positions).
-        /// Every vehicle after it in path order is hidden: it gives NO look-past credit and is judged by the free-now rule
-        /// (owner: "unseen vehicle = no look-past credit, today's free-now rule for that part"). Not skipped: a hidden queue
-        /// that is already stopping makes the large vehicle stop short of its own braking distance (measured: skipping them
-        /// let cars stand in the box 0 -> 455 vehicle-steps in the offline scenes).
+        /// whole road past the box). JR-T-022d (owner ruling 1, 19 Nov 2026: "I don't want it to see the hidden queue, so just
+        /// limit the visibility"): every vehicle after it in path order is NOT READ AT ALL: no credit, no block, no room taken
+        /// (<see cref="HiddenSeen"/> counts them); the view ends at the large vehicle (<see cref="m_ViewEnd"/>).
         /// JR-T-022c: never the hiding vehicle's own other elements (an artic's tractor behind its trailer): see
         /// <see cref="m_HiderIndex"/> and the join in <see cref="AddLook"/>.
         /// </summary>
         private bool m_Hidden;
+        /// <summary>
+        /// JR-T-022d: where the view ends (metres past the window start, scan coordinates): the front of the large vehicle
+        /// that hides the rest (the whole artic's front once its other elements joined), 0 for a large vehicle queued ahead
+        /// before / inside the box. The room the look-past relies on must end here at the latest (<see cref="FinishLookPast"/>).
+        /// float.MaxValue = nothing hides the view.
+        /// </summary>
+        private float m_ViewEnd;
         /// <summary>
         /// JR-T-022c (review finding 1): the vehicle that set <see cref="m_Hidden"/>, named as passed to Add / AddQueued (its
         /// controller for a trailer). An element never hides another element of the same vehicle: the trailer of an
@@ -592,8 +603,31 @@ namespace JunctionRules.Core
         private bool m_GroupOpen;
         private int m_GroupIndex, m_GroupVersion;
         private float m_GroupRear, m_GroupFront, m_GroupOccupied;
-        /// <summary>JR-T-022b (tests / probe): vehicles judged free-now because a large vehicle hid them.</summary>
+        /// <summary>JR-T-022b / 022d (tests / probe): vehicles behind a large vehicle, not read (022b: judged free-now).</summary>
         public int HiddenSeen;
+        /// <summary>
+        /// JR-T-022d (owner ruling 1): the car waits before the box because a large vehicle queued ahead of it (before / inside
+        /// the box) hides its exit (tests / probe).
+        /// </summary>
+        public bool ExitHidden;
+        /// <summary>JR-T-022d (owner ruling 2, tests / probe): a building blocked the line of sight to a look-past target.</summary>
+        public bool BuildingCut;
+
+        /// <summary>JR-T-022d: at most this many credited vehicles are kept as sight targets (the nearest ones and the furthest).</summary>
+        public const int MaxSightTargets = 4;
+
+        /// <summary>
+        /// JR-T-022d (owner ruling 1: "a cheap GENERAL way to be careful with a view-blocking vehicle is fine if needed, but
+        /// it must not use hidden information"): a large vehicle's look-past credit is its guaranteed travel LESS this many
+        /// metres: the driver allows for one car (4.2 m + the 1 m spacing) standing unseen just ahead of it. Measured in the
+        /// offline scenes (JR-T-022d digest): without it the cars the look-past let in stood in a box 575 vehicle-steps under
+        /// physical braking, with 2 m 198, 4 m 55, 5 m 2. One constant, no special cases.
+        /// </summary>
+        public const float LookPastLargeMargin = 5f;
+        /// <summary>JR-T-022d: the vehicles the look-past credited (rear, scan coordinates; name), for the building test.</summary>
+        private float m_T0, m_T1, m_T2, m_T3;
+        private int m_TI0, m_TV0, m_TI1, m_TV1, m_TI2, m_TV2, m_TI3, m_TV3;
+        private int m_Targets;
         /// <summary>JR-T-022c (tests / probe): further elements of a vehicle just read, taken as part of it (artic tractors).</summary>
         public int ElementsJoined;
 
@@ -609,6 +643,19 @@ namespace JunctionRules.Core
         {
             if (m_Hidden) return;
             m_Hidden = true; m_HiderIndex = index; m_HiderVersion = version;
+        }
+
+        /// <summary>JR-T-022d: a vehicle credited by the look-past at <paramref name="rear"/>: it must be seen (building test).</summary>
+        private void NoteTarget(float rear, int index, int version)
+        {
+            int k = m_Targets < MaxSightTargets ? m_Targets++ : MaxSightTargets - 1;   // full: the furthest replaces the last
+            switch (k)
+            {
+                case 0: m_T0 = rear; m_TI0 = index; m_TV0 = version; break;
+                case 1: m_T1 = rear; m_TI1 = index; m_TV1 = version; break;
+                case 2: m_T2 = rear; m_TI2 = index; m_TV2 = version; break;
+                default: m_T3 = rear; m_TI3 = index; m_TV3 = version; break;
+            }
         }
 
         /// <summary>
@@ -631,6 +678,7 @@ namespace JunctionRules.Core
             r.m_MinRoom = float.MaxValue;
             r.m_MinPred = float.MaxValue;
             r.SightLeft = float.MaxValue;
+            r.m_ViewEnd = float.MaxValue;
             return r;
         }
 
@@ -702,17 +750,21 @@ namespace JunctionRules.Core
                 }
                 ElementsJoined++;
                 if (large) Hide(index, version);
+                // JR-T-022d: the view ends at the whole vehicle's front (an artic's tractor after its trailer)
+                if (m_Hidden && SameVehicle(index, version, m_HiderIndex, m_HiderVersion)) m_ViewEnd = m_GroupFront;
                 return;
             }
+            // JR-T-022d (owner ruling 1): behind a large vehicle the driver sees nothing: not read at all (neither for nor
+            // against); JR-T-022c: never hidden by itself. A light's stop line (fixed) is always seen.
+            if (!fixedObstacle && HiddenFor(index, version)) { HiddenSeen++; return; }
             m_GroupOpen = !fixedObstacle;
             m_GroupIndex = index; m_GroupVersion = version;
             m_GroupRear = rear; m_GroupFront = rear + len; m_GroupOccupied = m_Occupied;
             float c = credit > 0f ? credit : 0f;
             float now = rear - m_Occupied;
-            // JR-T-022b: hidden behind a large vehicle: no look-past credit (free now); JR-T-022c: never by itself
-            bool hidden = !fixedObstacle && HiddenFor(index, version);
-            if (hidden) HiddenSeen++;
-            float pred = speed >= LookPastMinSpeed && !hidden ? now + (travel > 0f ? travel : 0f) : now;
+            float tr = travel > 0f ? travel : 0f;
+            if (large && !fixedObstacle) tr = tr > LookPastLargeMargin ? tr - LookPastLargeMargin : 0f;   // JR-T-022d: careful with a vehicle that blocks the view
+            float pred = speed >= LookPastMinSpeed ? now + tr : now;
             if (now < m_MinRoom) { m_MinRoom = now; m_MinIndex = index; m_MinVersion = version; }
             if (pred < m_MinPred) { m_MinPred = pred; m_MinPredIndex = index; m_MinPredVersion = version; }
             if (!(now >= Needed))
@@ -722,6 +774,7 @@ namespace JunctionRules.Core
                 {
                     LookPastUsed = true;
                     if (Needed + m_Occupied > m_LookNeedEnd) m_LookNeedEnd = Needed + m_Occupied;
+                    NoteTarget(rear, index, version);   // JR-T-022d: credited: it must be seen (buildings)
                 }
                 else
                 {
@@ -731,7 +784,12 @@ namespace JunctionRules.Core
             }
             m_Occupied += len + Spacing;
             Obstacles++;
-            if (large && !fixedObstacle) Hide(index, version);
+            if (large && !fixedObstacle && !m_Hidden)
+            {
+                // JR-T-022d: the view ends at this vehicle's front (stretched when its other elements join)
+                Hide(index, version);
+                m_ViewEnd = rear + len;
+            }
         }
 
         /// <summary>
@@ -751,7 +809,16 @@ namespace JunctionRules.Core
             {
                 m_LookSlow = true; m_SlowIndex = index; m_SlowVersion = version;
             }
-            if (LookPastOn && large && !Blocked) Hide(index, version);
+            if (LookPastOn && large && !Blocked)
+            {
+                // JR-T-022d (owner ruling 1): a large vehicle ahead of the car before / inside the box hides the whole exit: the
+                // room past the box cannot be seen, so the car waits (UK: do not enter unless you can see your exit is clear).
+                // The vehicles past the box are not read (neither for nor against).
+                Hide(index, version);
+                m_ViewEnd = 0f;
+                ExitHidden = true;
+                BlockBy(index, version);
+            }
             if (LookPastOn) m_GroupOpen = false;   // JR-T-022c: a queued element has no position: nothing joins it
             AddQueued(length);
         }
@@ -764,16 +831,49 @@ namespace JunctionRules.Core
         {
             if (!LookPastOn || Blocked || !LookPastUsed) return;
             if (m_LookSlow) { Blocked = true; BlockerIndex = m_SlowIndex; BlockerVersion = m_SlowVersion; }
-            // the room relied on ends beyond a junction found later on the path (LimitSight): not clear
+            // JR-T-022d: the room relied on ends beyond the large vehicle that ends the view: not seen, not clear
+            else if (m_LookNeedEnd > m_ViewEnd) { Blocked = true; BlockerIndex = m_HiderIndex; BlockerVersion = m_HiderVersion; }
+            // the room relied on ends beyond what was seen (the radius, the path read; LimitSight): not clear
             else if (m_LookNeedEnd > SightLeft) { Blocked = true; BlockerIndex = m_MinIndex; BlockerVersion = m_MinVersion; }
         }
 
         /// <summary>
+        /// JR-T-022d (owner ruling 2, 19 Nov 2026: "building = blocked"; "the building is a box and higher than the car"; "just
+        /// calculate the straight-line geometry"): after <see cref="FinishLookPast"/>, only when the look-past is about to give
+        /// the room: every target it relies on must be seen in a straight line from the driver: each vehicle it credited (its
+        /// rear) and the end of the room relied on. <paramref name="sight"/> answers for a path distance (metres past the window
+        /// start); false = a building (or anything the caller tests) is in the way: the look-past credit is withdrawn and the
+        /// car is held as by the free-now rule, naming the vehicle not seen (the end of the room: the one with least room).
+        /// </summary>
+        public void FinishSight<T>(ref T sight) where T : struct, ISightTest
+        {
+            if (!LookPastOn || Blocked || !LookPastUsed) return;
+            for (int k = 0; k < m_Targets; k++)
+            {
+                float d; int i, v;
+                switch (k)
+                {
+                    case 0: d = m_T0; i = m_TI0; v = m_TV0; break;
+                    case 1: d = m_T1; i = m_TI1; v = m_TV1; break;
+                    case 2: d = m_T2; i = m_TI2; v = m_TV2; break;
+                    default: d = m_T3; i = m_TI3; v = m_TV3; break;
+                }
+                if (!sight.Seen(d)) { BuildingCut = true; Blocked = true; BlockerIndex = i; BlockerVersion = v; return; }
+            }
+            if (!sight.Seen(m_LookNeedEnd)) { BuildingCut = true; Blocked = true; BlockerIndex = m_MinIndex; BlockerVersion = m_MinVersion; }
+        }
+
+        /// <summary>JR-T-022d (tests): the credited vehicles kept as sight targets.</summary>
+        public readonly int SightTargets => m_Targets;
+
+        /// <summary>JR-T-022d (tests): where the room the look-past relies on ends (metres past the window start).</summary>
+        public readonly float LookNeedEnd => m_LookNeedEnd;
+
+        /// <summary>
         /// JR-T-022: a cut of the sight <paramref name="at"/> metres past the window start (along the path): where the path
-        /// leaves the sight radius (JR-T-022b), or the next junction on the path (a light in any state, a give-way / STOP line,
-        /// turning traffic: the vehicles ahead may all stop there for something the scan does not see; JR-T-022b: also the
-        /// interim stand-in for corner buildings cutting the view into the road turned into). The look-past does not count on
-        /// room beyond it.
+        /// leaves the sight radius (JR-T-022b) or the end of the path read; the next junction on the path only when the
+        /// driver's position is not known (JR-T-022d: otherwise buildings are tested on the straight line, FinishSight). The
+        /// look-past does not count on room beyond it.
         /// </summary>
         public void LimitSight(float at)
         {
@@ -877,6 +977,16 @@ namespace JunctionRules.Core
         /// destination lies there and holding for it could hold forever.
         /// </summary>
         public readonly bool HasRoom => !Blocked;
+    }
+
+    /// <summary>
+    /// JR-T-022d: the driver sees the point of its path <paramref name="pathMetres"/> past the window start in a straight line
+    /// (no building footprint in the way). The job tests the game's buildings (Stage2/JRSight.cs), the tests a list of boxes.
+    /// Burst: used only as a generic struct constraint.
+    /// </summary>
+    public interface ISightTest
+    {
+        bool Seen(float pathMetres);
     }
 
     /// <summary>0.4.2: order keys of a list read in an order of its own (float.MaxValue = skip the entry).</summary>

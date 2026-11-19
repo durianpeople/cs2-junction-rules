@@ -174,12 +174,17 @@ PROBE-STAGE3-PAINT.md section 10.
   short still gives room when it moves away at 3 m/s or more and its rear plus the distance it is certain to cover even
   if it brakes as hard as it can leaves the car's length plus margin; any vehicle the car follows through the box below
   3 m/s refuses. Sight rule: a 50 m straight-line radius around the driver (on a turn it reaches into the road turned
-  into); the room relied on must end inside it, before the next junction on the path (interim stand-in for corner
-  buildings, which are not modelled yet) and within the path read. Ordinary cars and vans never block the view; a large
-  vehicle (the game's `CarData.m_SizeClass` Large: lorries, buses, artics) is seen and credited itself, and every vehicle
-  beyond it is hidden (no credit, free-now rule); a large vehicle queued in or before the box hides the road past it. An
-  artic is one vehicle (trailer and tractor share a controller): credited by its leading element, its elements never
-  hide each other (1.1.0 review fix). Lights are always seen. The decision runs again every step while the car can still
+  into); the room relied on must end inside it and within the path read. Ordinary cars and vans never block the view. A
+  large vehicle (the game's `CarData.m_SizeClass` Large: lorries, buses, artics) ends the view: it is seen and credited
+  itself, with its guaranteed travel less 5 m (`RoomScan.LookPastLargeMargin`: room for a car standing unseen ahead of
+  it), the vehicles beyond it are not read at all (owner ruling 19 Nov: neither for nor against), and the room relied on
+  must end by its front; a large vehicle queued ahead in or before the box hides the exit, so the car waits at the line.
+  Buildings block the view (owner ruling 19 Nov): before the look-past gives the room, the straight 2D line from the
+  driver to each vehicle it credited and to the end of the room relied on is tested against the footprints of the
+  buildings near that line (stock static object search tree, prefab bounds placed by the building's Transform; no stored
+  data); a crossed footprint withdraws the look-past credit. This replaced the interim "next junction ends the sight"
+  cut (kept only when the driver's position is unknown). An artic is one vehicle (trailer and tractor share a
+  controller): credited by its leading element, its elements never hide each other (1.1.0 review fix). Lights are always seen. The decision runs again every step while the car can still
   stop at the line, so the safety stop stays; rare misjudgements that end with a car in the box (a queue past it that
   stops harder than any game vehicle brakes) are accepted by design. Mode bit 31 (`Stage2Mode.BoxLookPast`, stripped from
   the job's stage 2 mode, toggling it logs a rule switch). Timing log: "let into a box by looking past the car in front"

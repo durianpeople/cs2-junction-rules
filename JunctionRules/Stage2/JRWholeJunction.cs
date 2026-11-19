@@ -182,6 +182,18 @@ namespace JunctionRules.Stage2
         private bool m_BoxLookPast;
         /// <summary>JR-T-022 (probe): this car-step a box room test let the car go only because it looked past the car in front.</summary>
         private bool m_LookPastAdmitted;
+        // ---- JR-T-022d: the look-past's building test (Stage2/JRSight.cs) ----
+        /// <summary>JR-T-022d: SetSight ran (the pointers below are valid inside the job's Execute).</summary>
+        private bool m_SightLookups;
+        private unsafe Colossal.Collections.NativeQuadTree<Entity, QuadTreeBoundsXZ>* m_SightTree;
+        private unsafe ComponentLookup<Transform>* m_SightTransforms;
+        private unsafe ComponentLookup<Game.Buildings.Building>* m_SightBuildings;
+        /// <summary>
+        /// JR-T-022d: the current look-past room scan knows the driver's position, so buildings are tested on the straight line
+        /// and the next junction no longer ends the sight (FurtherBoxes); without it the next-junction cut stays (conservative).
+        /// </summary>
+        private bool m_SightEye;
+
         // 0.4.10 (G18): m_BoxEntranceLength removed: bands are the painted windows (JRBoxEdges), not t + the box length.
         /// <summary>SetBoxes ran (the box lookups below are valid).</summary>
         private bool m_BoxLookups;
@@ -886,6 +898,9 @@ namespace JunctionRules.Stage2
                 hasEye = frontToStart >= 0f && Eye(self, ref laneObjects, ref curves, out eye);
                 scan.SightLeft = hasEye ? float.MaxValue : frontToStart >= 0f ? RoomScan.SightPast(frontToStart) : 0f;
             }
+            // JR-T-022d: buildings are tested on the straight line to each target (JRSight.cs) with the lookups and the eye
+            m_SightEye = hasEye && m_SightLookups;
+            FixedList512Bytes<SightSpan> sightSpans = default;
             m_FreeNowHeld = false;
             m_LastLightLane = Entity.Null;
             bool unsorted = false;
@@ -914,7 +929,10 @@ namespace JunctionRules.Stage2
                 }
             }
             if (hasEye && curves.TryGetComponent(lane, out Curve boxCurve))
+            {
                 SightCut(ref scan, boxCurve, StretchGeometry.ToDriving(fromDriving, inverse), inverse ? 0f : 1f, length, 0f, eye);   // JR-T-022b
+                NoteSpan(ref sightSpans, boxCurve, StretchGeometry.ToDriving(fromDriving, inverse), inverse ? 0f : 1f, length, 0f);   // JR-T-022d
+            }
             ScanLane(ref scan, lane, StretchGeometry.ToDriving(fromDriving, inverse), inverse, length, read, 0f, false, self, safeTimeStep, ref laneObjects, ref curves,
                 ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted);
             if (!scan.Done(read) && m_HasPath)
@@ -939,7 +957,11 @@ namespace JunctionRules.Stage2
                     // this box must not be inside another box or before a red light
                     if (freeNow && !inBox) FurtherBoxes(ref scan, nav, navInverse, navCurve, read, ref carLanes, ref curves);
                     if (scan.Blocked) break;
-                    if (hasEye && !inBox) SightCut(ref scan, navCurve, nav.m_CurvePosition.x, nav.m_CurvePosition.y, navCurve.m_Length, read, eye);   // JR-T-022b
+                    if (hasEye && !inBox)
+                    {
+                        SightCut(ref scan, navCurve, nav.m_CurvePosition.x, nav.m_CurvePosition.y, navCurve.m_Length, read, eye);   // JR-T-022b
+                        NoteSpan(ref sightSpans, navCurve, nav.m_CurvePosition.x, nav.m_CurvePosition.y, navCurve.m_Length, read);   // JR-T-022d
+                    }
                     ScanLane(ref scan, nav.m_Lane, nav.m_CurvePosition.x, navInverse, navCurve.m_Length, span, inBox ? 0f : read, inBox, self, safeTimeStep, ref laneObjects,
                         ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted);
                     if (!inBox) read += span;
@@ -952,6 +974,8 @@ namespace JunctionRules.Stage2
             {
                 if (hasEye) scan.LimitSight(read);
                 scan.FinishLookPast();
+                // JR-T-022d (owner ruling 2): about to give room on the look-past: every target must be seen past the buildings
+                BuildingSightCheck(ref scan, hasEye, eye, ref sightSpans, ref prefabRefs, ref geometries);
             }
             // 0.4.9 (G15b): a vehicle turning into (or out of) a driveway whose body still lies across this lane is not one of
             // this lane's objects (the game lists a car only on its current lane), so the scan above did not see it.
@@ -1062,9 +1086,10 @@ namespace JunctionRules.Stage2
             ref ComponentLookup<Game.Net.CarLane> carLanes, ref ComponentLookup<Curve> curves)
         {
             if (scan.Blocked) return;
-            // JR-T-022: with the look-past, the next junction on the path ends what the car counts on: the queue ahead may stop at
-            // it for anything the scan does not see (a light that turns, a give-way / STOP line, turning traffic, people)
-            if (scan.LookPast && m_NodeLaneData.HasComponent(nav.m_Lane)) scan.LimitSight(read);
+            // JR-T-022: with the look-past, the next junction on the path ends what the car counts on (JR-T-022b: the interim
+            // stand-in for corner buildings). JR-T-022d (owner ruling 2): replaced by the building test on the straight line
+            // (JRSight.cs), which covers corners; kept only when that test cannot run (the driver's position unknown)
+            if (scan.LookPast && !m_SightEye && m_NodeLaneData.HasComponent(nav.m_Lane)) scan.LimitSight(read);
             // 0.4.10 (chains): a red / amber light is a standing obstacle at its stop line (where the path enters its lane, 'read'
             // metres from the window start): the vehicles between the box and the light (already added, in path order) will
             // queue at it, so the room is the space before the line minus them (RoomScan.Add at the line, zero length).

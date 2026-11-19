@@ -65,7 +65,6 @@ namespace JunctionRules.Tests
             public bool Petition;                     // a car of this approach asked for green this step
             public bool RequestFromBoxHold = true;    // 0.4.10 review R1 (block S2-52): a car held before a box for the light asks for it
             public int YardCap, Yard;
-            public float NextJunction = -1f;          // JR-T-022: a junction further on where the queue may stop (look-past sight ends there)
             /// <summary>
             /// JR-T-022c sim: the room scan reads an artic (16.5 m) as the game does: two scan objects of the same vehicle
             /// (<see cref="SimElements"/>: trailer first, then its tractor). Driving is unchanged (one body).
@@ -178,9 +177,10 @@ namespace JunctionRules.Tests
             scan.FreeNow = robust;
             if (!legacy) scan.LookPast = lookPast;
             if (scan.LookPast) scan.SightLeft = RoomScan.SightPast(b1 - me.Front);   // JR-T-022: sight from the front bumper
-            // JR-T-022: the next junction (the lane end: a light or a junction; a stop point further on) ends the look-past
-            if (scan.LookPast && lane.End >= b1) scan.LimitSight(lane.End - b1);
-            if (scan.LookPast && lane.NextJunction >= b1) scan.LimitSight(lane.NextJunction - b1);
+            // JR-T-022: the next junction (the lane end: a light or a junction; a stop point further on) ended the look-past.
+            // JR-T-022d (owner ruling 2): buildings are tested on the straight line instead (the job's FinishSight, which knows
+            // the driver's position); the sim's road is straight with nothing beside it, so every target within the radius is
+            // seen (measured with the old cut kept: look-past stood-in-box 0 + 7 instead of 2 + 6, pauses 15818 vs 15814).
             var past = new List<SimVehicle>();
             foreach (SimVehicle v in vs)
             {

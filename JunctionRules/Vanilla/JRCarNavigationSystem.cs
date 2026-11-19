@@ -1623,6 +1623,11 @@ public class JRCarNavigationSystem : GameSystemBase
 			{
 				carLaneSpeedIterator.m_JR.SetBoxes(m_JRBoxJunctionData, m_JREdgeLaneData, ref m_JRBoxEdges, m_LaneSignalData);
 			}
+			if (carLaneSpeedIterator.m_JR.m_BoxRule)
+			{
+				// JR-T-022d: the look-past's building test (the job's static object search tree, read-only; stock reader dependency)
+				carLaneSpeedIterator.m_JR.SetSight(ref m_StaticObjectSearchTree, ref m_TransformData, ref m_JRExitBuildings);
+			}
 			if (carLaneSpeedIterator.m_JR.m_ZebraRule || carLaneSpeedIterator.m_JR.m_BoxRule || carLaneSpeedIterator.m_JR.m_ExitRule)
 			{
 				carLaneSpeedIterator.m_JR.SetPath(navigationLanes);

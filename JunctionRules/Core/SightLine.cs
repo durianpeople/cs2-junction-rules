@@ -53,6 +53,49 @@ namespace JunctionRules.Core
             return false;
         }
 
+        /// <summary>
+        /// JR-T-022d (owner ruling 2, 19 Nov 2026: "the building is a box and higher than the car"; "just calculate the
+        /// straight-line geometry"): does the 2D segment from (ax, az) to (bx, bz) cross a building footprint? The footprint is
+        /// the object's box: local bounds [minX, maxX] x [minZ, maxZ] (the prefab's ObjectGeometryData bounds), placed at
+        /// (cx, cz) with its local +z axis along (fx, fz) (the object's Transform rotation; normalised here; a zero axis = no
+        /// rotation). Height is not looked at: every building blocks. Touching the box edge counts as crossing. Slab test in
+        /// the box's own frame: Burst-safe float math, no allocations.
+        /// </summary>
+        public static bool SegmentHitsBox(float ax, float az, float bx, float bz, float cx, float cz, float fx, float fz,
+            float minX, float maxX, float minZ, float maxZ)
+        {
+            float n = fx * fx + fz * fz;
+            if (n > 1e-12f) { n = 1f / (float)System.Math.Sqrt(n); fx *= n; fz *= n; }
+            else { fx = 0f; fz = 1f; }
+            // local +x (right) of a yaw rotation in the game's left-handed frame: (fz, -fx)
+            float rx = fz, rz = -fx;
+            float pax = ax - cx, paz = az - cz, pbx = bx - cx, pbz = bz - cz;
+            float lax = pax * rx + paz * rz, laz = pax * fx + paz * fz;
+            float lbx = pbx * rx + pbz * rz, lbz = pbx * fx + pbz * fz;
+            float t0 = 0f, t1 = 1f;
+            return Slab(lax, lbx - lax, minX, maxX, ref t0, ref t1) && Slab(laz, lbz - laz, minZ, maxZ, ref t0, ref t1);
+        }
+
+        /// <summary>JR-T-022d: clips [t0, t1] of p + t d to [lo, hi] on one axis; false = empty.</summary>
+        private static bool Slab(float p, float d, float lo, float hi, ref float t0, ref float t1)
+        {
+            if (d > -1e-9f && d < 1e-9f) return p >= lo && p <= hi;
+            float u = (lo - p) / d, w = (hi - p) / d;
+            if (u > w) { float x = u; u = w; w = x; }
+            if (u > t0) t0 = u;
+            if (w < t1) t1 = w;
+            return t0 <= t1;
+        }
+
+        /// <summary>JR-T-022d: the Bezier a-b-c-d point (x / z) at t.</summary>
+        public static void PointAt(float ax, float az, float bx, float bz, float cx, float cz, float dx, float dz, float t, out float x, out float z)
+        {
+            float u = 1f - t;
+            float w0 = u * u * u, w1 = 3f * u * u * t, w2 = 3f * u * t * t, w3 = t * t * t;
+            x = w0 * ax + w1 * bx + w2 * cx + w3 * dx;
+            z = w0 * az + w1 * bz + w2 * cz + w3 * dz;
+        }
+
         private static bool In(float x, float z, float ex, float ez, float r2)
         {
             float dx = x - ex, dz = z - ez;
