@@ -319,13 +319,51 @@ namespace JunctionRules.Tests
             Check(bad.Count == 0, "every why-record line in the copy is behind m_WhyOn / jrWhyOn" + (bad.Count > 0 ? ": " + bad[0] : ""));
             // the hook side records only for the tracked car; the bridge hands Entity.Null when nothing is tracked
             string why = StripComments(File.ReadAllText(Path.Combine(root, "Stage2", "JRWhy.cs")));
-            Check(Regex.Matches(why, @"private void WhyNote(Room|Scan)?\([^)]*\)\s*\{\s*if \(!m_WhyOn\) return;").Count == 3, "WhyNote / WhyNoteRoom / WhyNoteScan return at once unless tracked");
+            Check(Regex.Matches(why, @"private void WhyNote(Room|Scan|Exit)?\([^)]*\)\s*\{\s*if \(!m_WhyOn\) return;").Count == 4, "WhyNote / WhyNoteRoom / WhyNoteScan / WhyNoteExit return at once unless tracked");
+            // JR-T-025b (A3): an exit / drive hold whose hook named no rule reads as jr_other, not as a specific rule
+            Check(!(nav + it).Contains("WhyRuleOr(JunctionRules.Core.WhyRule.JrExitGiveWay)") && Regex.Matches(nav + it, @"WhyRuleOr\(JunctionRules\.Core\.WhyRule\.JrOther\)").Count == 5,
+                  "exit holds (S2-29/30/32/35/36): fallback jr_other when the hook named no rule");
             string br = StripComments(File.ReadAllText(Path.Combine(root, "Stage2", "JRStage2BridgeWhy.cs")));
             Check(br.Contains("WhyEntity = car == 0 ? Entity.Null") && br.Contains("if (car == 0) return;"), "bridge: nothing tracked = Entity.Null to the job, no slot read");
             Check(br.Contains("em.HasComponent<Game.Vehicles.CarNavigation>(sel)"), "bridge: only a selected car (CarNavigation) counts as a selection");
             string api = StripComments(File.ReadAllText(Path.Combine(root, "Api", "JunctionRulesApi.cs")));
             Check(api.Contains("public static string WhySlowed(string argsJson) => Run(\"why_slowed\", argsJson, WhySlowedCore);"), "API: WhySlowed in v1 style (Run wrapper)");
             Check(!api.Contains("Stage2") && !api.Contains("Vanilla"), "API talks to the copy only through Core (WhyHandoff)");
+            // JR-T-025b (M1): nothing survives a city load / exit / the copy's release
+            Check(api.Contains("WhyHandoff.StepsAtApiCall") && !api.Contains("s_WhyStepsAtCall"), "API: its last-call step count lives in WhyHandoff (reset with it)");
+            Check(Regex.IsMatch(br, @"private static void ReleaseWhy\(\)\s*\{[^}]*WhyHandoff\.Reset\(\);"), "bridge: ReleaseWhy resets the readout (WhyHandoff.Reset)");
+            Check(br.Contains("if (s_WhyGeneration != WhyHandoff.Generation)") && br.Contains("s_WhySeenSeq = SlotSeqSeen();"), "bridge: after a reset the slot's old sample is marked seen (never fed to the new book)");
+            string sw = StripComments(File.ReadAllText(Path.Combine(root, "Systems", "CarDrivingSwitchSystem.cs")));
+            Check(Regex.IsMatch(sw, @"protected override void OnGameLoaded\([^)]*\)\s*\{[^}]*WhyHandoff\.Reset\(\);"), "OnGameLoaded (city load / leaving the city) resets the readout");
+        }
+
+        /// <summary>JR-T-025b (M1): WhyHandoff.Reset clears the API car, the step counts and the book (entity ids are reused across saves).</summary>
+        private static void WhyResetTests()
+        {
+            WhyHandoff.Reset();
+            int gen = WhyHandoff.Generation;
+            WhyBook b = WhyHandoff.Book;
+            WhyHandoff.ApiCar = WhyCar2;
+            WhyHandoff.Steps = 40;
+            WhyHandoff.StepsAtApiCall = 39;
+            WhyHandoff.TrackedExists = true;
+            b.Track(WhyCar, "selection");
+            b.Observe(WhyS(2, WhyRule.StockCarAhead, WhyBlk), 0.0);
+            b.Track(WhyCar2, "api");   // WhyCar's history goes to the earlier cars
+            b.Observe(WhyS(4, WhyRule.JrBoxRoom, WhyBlk, car: WhyCar2), 1.0);
+            Check(b.HistoryOf(WhyCar) != null && b.HistoryOf(WhyCar2) != null && b.HasCurrent, "before the reset: two cars with history and a current reading");
+
+            WhyHandoff.Reset();
+            WhyBook n = WhyHandoff.Book;
+            Check(WhyHandoff.ApiCar == 0 && WhyHandoff.Steps == 0 && WhyHandoff.StepsAtApiCall == 0 && !WhyHandoff.TrackedExists, "reset: API car, step counts and the tracked flag cleared");
+            Check(WhyHandoff.Generation == gen + 1, "reset: generation bumped (the bridge drops the slot's old sample)");
+            Check(!ReferenceEquals(n, b) && n.Car == 0 && n.Source == "none" && !n.HasCurrent && n.Changes.Count == 0 && n.DroppedLines == 0, "reset: a fresh book (no car, no reading, no changes)");
+            Check(n.HistoryOf(WhyCar) == null && n.HistoryOf(WhyCar2) == null && !n.KnownCars.GetEnumerator().MoveNext(), "reset: no old city's history for a reused id");
+            // a reused key in the new city starts empty (no TakePast of the old car's history)
+            n.Track(WhyCar, "selection");
+            Check(n.Changes.Count == 0 && !n.HasCurrent, "reused key after the reset: empty history");
+            Check(WhyHandoff.Notes(0, WhyHandoff.Steps, n.HasCurrent, 0).Exists(x => x.Contains("has not run")), "reset: API notes say the driving has not run (no step yet in the new city)");
+            WhyHandoff.Reset();
         }
     }
 }

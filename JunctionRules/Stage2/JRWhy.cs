@@ -110,6 +110,7 @@ namespace JunctionRules.Stage2
         /// <summary>An exit / drive hold: gives way (gap) or no room on the lane it joins / past its box.</summary>
         private void WhyNoteExit(ExitGiveWay.Decision d)
         {
+            if (!m_WhyOn) return;
             if (d == ExitGiveWay.Decision.WaitRoom) WhyNote(WhyRule.JrExitBoxRoom, float.NaN, m_WhyRoomShort);
             else WhyNote(WhyRule.JrExitGiveWay, float.NaN, float.NaN);
         }

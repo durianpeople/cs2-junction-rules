@@ -1300,7 +1300,7 @@ public struct JRCarLaneSpeedIterator
 				m_MaxSpeed = jrExitHold;
 				m_Blocker = m_JR.HoldBlocker;   // 0.4.9 (G17): the vehicle the hold waits for (stock names the car it stops behind)
 				m_BlockerType = BlockerType.Crossing;
-				if (m_WhyOn) m_Why.Bind(m_JR.WhyRuleOr(JunctionRules.Core.WhyRule.JrExitGiveWay), m_MaxSpeed, JunctionRules.Stage2.JRWhy.Key(m_Blocker), JunctionRules.Stage2.JRWhy.Key(lane), m_JR.WhyDistance, m_JR.WhyExtra);   // JR-T-025
+				if (m_WhyOn) m_Why.Bind(m_JR.WhyRuleOr(JunctionRules.Core.WhyRule.JrOther), m_MaxSpeed, JunctionRules.Stage2.JRWhy.Key(m_Blocker), JunctionRules.Stage2.JRWhy.Key(lane), m_JR.WhyDistance, m_JR.WhyExtra);   // JR-T-025
 			}
 		}
 		// JR-STAGE2 END

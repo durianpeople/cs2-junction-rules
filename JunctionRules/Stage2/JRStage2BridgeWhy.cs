@@ -17,6 +17,7 @@ namespace JunctionRules.Stage2
         private static NativeArray<WhyTrack> s_WhyScratch;
         private static Game.UI.InGame.SelectedInfoUISystem s_Selected;
         private static long s_WhySeenSeq;
+        private static int s_WhyGeneration;
 
         /// <summary>The car the job records (Entity.Null = none; S2-23 hands it to the job).</summary>
         public static Entity WhyEntity { get; private set; }
@@ -39,6 +40,13 @@ namespace JunctionRules.Stage2
         {
             if (!s_WhySlot.IsCreated) s_WhySlot = new NativeArray<long>(Core.WhySlot.Length, Allocator.Persistent, NativeArrayOptions.ClearMemory);
             if (!s_WhyScratch.IsCreated) s_WhyScratch = new NativeArray<WhyTrack>(1, Allocator.Persistent, NativeArrayOptions.ClearMemory);
+            if (s_WhyGeneration != WhyHandoff.Generation)
+            {
+                // JR-T-025b (M1): a city load reset the readout; the slot's last sample is of the old city (its car key may be
+                // reused by a new car), so mark it seen. The job of the previous step has completed (load / before scheduling).
+                s_WhyGeneration = WhyHandoff.Generation;
+                s_WhySeenSeq = SlotSeqSeen();
+            }
             WhyHandoff.Steps++;
             World world = World.DefaultGameObjectInjectionWorld;
             if (world == null || !world.IsCreated) { WhyEntity = Entity.Null; return; }
@@ -93,6 +101,14 @@ namespace JunctionRules.Stage2
             catch (System.Exception) { s.BlockerKind = WhyKind.Other; }
         }
 
+        /// <summary>The slot's sequence as "seen": the last complete sample (an odd = in-progress write counts as the one it completes).</summary>
+        private static unsafe long SlotSeqSeen()
+        {
+            long* p = (long*)NativeArrayUnsafeUtility.GetUnsafeBufferPointerWithoutChecks(s_WhySlot);
+            long seq = System.Threading.Interlocked.Read(ref p[Core.WhySlot.Seq]);
+            return (seq & 1) != 0 ? seq + 1 : seq;
+        }
+
         private static void ReleaseWhy()
         {
             if (s_WhySlot.IsCreated) s_WhySlot.Dispose();
@@ -102,6 +118,8 @@ namespace JunctionRules.Stage2
             s_Selected = null;
             s_WhySeenSeq = 0;
             WhyEntity = Entity.Null;
+            WhyHandoff.Reset();   // JR-T-025b (M1): nothing of this city survives the copy's release
+            s_WhyGeneration = WhyHandoff.Generation;
         }
     }
 }

@@ -6,7 +6,7 @@ namespace JunctionRules.Core
     // JR-T-025 (1.1.1): "why is this car slowing". For ONE car (the game's selected vehicle, else one the API names) the
     // copy's navigation job records which limit bound the car's speed this step: the binding (smallest) limit and the code
     // path that set it, game code and Junction Rules code alike. Every place in the copy that lowers the car's limit tags
-    // itself (blocks S2-55 .. S2-60); a limit lowered by a path with no tag is reported as "stock/other", never as a
+    // itself (blocks S2-55 .. S2-59, plus record lines in existing blocks); a limit lowered by a path with no tag is reported as "stock/other", never as a
     // Junction Rules rule (WhyTrack.Resolve). Off-cost: with no car tracked the job compares one entity per car and does
     // nothing else; only the tracked car writes the one shared slot (WhySlot). Pure helpers here (no Unity, Burst-safe
     // structs); job side Stage2/JRWhy.cs, main thread Stage2/JRStage2Bridge.cs, API JunctionRulesApi.WhySlowed.
@@ -292,7 +292,7 @@ namespace JunctionRules.Core
     }
 
     /// <summary>
-    /// JR-T-025: the per-car tracker the copy carries (iterator field m_Why, job field m_JRWhyOut). The iterator's limit
+    /// JR-T-025: the per-car tracker the copy carries (iterator field m_Why, job scratch m_JRWhyScratch: one element, only the tracked car's worker touches it). The iterator's limit
     /// only goes down; every site that lowers it calls <see cref="Bind"/> right where it assigns (the site already decided
     /// it binds), or <see cref="Offer"/> where the comparison is not the site's own. Binding = the smallest limit; ties
     /// keep the first (the game's own "&lt;" test). <see cref="Resolve"/> checks the final limit against the record: a
@@ -389,8 +389,8 @@ namespace JunctionRules.Core
     }
 
     /// <summary>
-    /// JR-T-025: the one shared slot (a persistent NativeArray of longs owned by the copy's bridge). [0] = the tracked car
-    /// (main thread writes, job reads; 0 = nothing tracked, then no car writes anything). Single writer: the job, for the
+    /// JR-T-025: the one shared slot (a persistent NativeArray of longs owned by the copy's bridge). [0] is reserved and
+    /// unused (the tracked car reaches the job as an entity, S2-23; nothing tracked = no car writes anything). Single writer: the job, for the
     /// tracked car only. Seqlock: the writer makes the sequence odd, writes, makes it even; the main thread accepts only an
     /// even sequence that did not change while it read. Values are fixed point (no float bit casts).
     /// </summary>
@@ -762,12 +762,31 @@ namespace JunctionRules.Core
     {
         /// <summary>The car the API asked to track (0 = none).</summary>
         public static long ApiCar;
-        /// <summary>The readout book (the bridge feeds it each copy step).</summary>
-        public static readonly WhyBook Book = new WhyBook();
+        /// <summary>The readout book (the bridge feeds it each copy step). Replaced by <see cref="Reset"/>.</summary>
+        public static WhyBook Book { get; private set; } = new WhyBook();
         /// <summary>Copy steps the bridge has run (0 = the Junction Rules car driving has not run: game's own driving or not loaded).</summary>
         public static long Steps;
+        /// <summary>The API's step count at its last call (API notes: "no driving step since the last call").</summary>
+        public static long StepsAtApiCall;
         /// <summary>The tracked car exists and is a car the navigation job drives (main thread, each copy step).</summary>
         public static bool TrackedExists;
+        /// <summary>Bumped by <see cref="Reset"/>; the bridge drops the slot's last sample when it changes (that sample is of the old city).</summary>
+        public static int Generation;
+
+        /// <summary>
+        /// JR-T-025b (M1): a city load, leaving the city or the copy's release. Entity index:version values are reused across
+        /// saves, so nothing of the old city may survive: the API car, the step counts, and the book (current reading, the
+        /// histories and the earlier cars) all start fresh. Main thread.
+        /// </summary>
+        public static void Reset()
+        {
+            ApiCar = 0;
+            Steps = 0;
+            StepsAtApiCall = 0;
+            TrackedExists = false;
+            Book = new WhyBook();
+            Generation++;
+        }
 
         /// <summary>Lines for the API caller about the state of the readout.</summary>
         public static List<string> Notes(long stepsAtLastCall, long stepsNow, bool hasCurrent, long car)

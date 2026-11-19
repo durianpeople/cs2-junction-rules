@@ -498,4 +498,6 @@ S2-20, S2-21, S2-22, S2-23, S2-30, S2-32, S2-35, S2-36 (nav). The binding (small
 is classified from the game's own blocker record (`WhyTrack.Settle`) and anything still unexplained reports as stock
 "other", never as a Junction Rules rule. One car is tracked: the game's selected vehicle wins, else the car the API asked
 for (`JunctionRulesApi.WhySlowed`). Output: JR log lines (tracking change, each reason change, at most 2 per second)
-and the API (current reason and the last 20 changes per car). No info-panel line in 1.1.1.
+and the API (current reason and the last 20 changes per car). A Junction Rules hold whose hook named no rule reports as
+"jr_other". The readout (tracked API car, histories) is reset on every city load and on the copy's release, so a reused
+entity id never maps to an old car. No info-panel line in 1.1.1.

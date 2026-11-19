@@ -1716,7 +1716,7 @@ public class JRCarNavigationSystem : GameSystemBase
 					{
 						navigation.m_MaxSpeed = jrTargetExit;
 						blocker.m_Blocker = laneIterator.m_JR.HoldBlocker;   // 0.4.9 (G17)
-						if (jrWhyOn) JunctionRules.Stage2.JRWhy.Ref(m_JRWhyScratch).Bind(laneIterator.m_JR.WhyRuleOr(JunctionRules.Core.WhyRule.JrExitGiveWay), jrTargetExit, JunctionRules.Stage2.JRWhy.Key(blocker.m_Blocker), JunctionRules.Stage2.JRWhy.Key(currentLane.m_Lane), laneIterator.m_JR.WhyDistance, laneIterator.m_JR.WhyExtra);   // JR-T-025
+						if (jrWhyOn) JunctionRules.Stage2.JRWhy.Ref(m_JRWhyScratch).Bind(laneIterator.m_JR.WhyRuleOr(JunctionRules.Core.WhyRule.JrOther), jrTargetExit, JunctionRules.Stage2.JRWhy.Key(blocker.m_Blocker), JunctionRules.Stage2.JRWhy.Key(currentLane.m_Lane), laneIterator.m_JR.WhyDistance, laneIterator.m_JR.WhyExtra);   // JR-T-025
 						blocker.m_Type = BlockerType.Crossing;
 						blocker.m_MaxSpeed = (byte)math.clamp(Mathf.RoundToInt(jrTargetExit * 2.2949998f), 0, 255);   // 0.4.9 (G17): as CheckBlocker, so a standing held vehicle reads as stopped
 					}
@@ -1806,7 +1806,7 @@ public class JRCarNavigationSystem : GameSystemBase
 					{
 						navigation.m_MaxSpeed = jrAreaExit;
 						blocker.m_Blocker = laneIterator.m_JR.HoldBlocker;   // 0.4.9 (G17)
-						if (jrWhyOn) JunctionRules.Stage2.JRWhy.Ref(m_JRWhyScratch).Bind(laneIterator.m_JR.WhyRuleOr(JunctionRules.Core.WhyRule.JrExitGiveWay), jrAreaExit, JunctionRules.Stage2.JRWhy.Key(blocker.m_Blocker), JunctionRules.Stage2.JRWhy.Key(currentLane.m_Lane), laneIterator.m_JR.WhyDistance, laneIterator.m_JR.WhyExtra);   // JR-T-025
+						if (jrWhyOn) JunctionRules.Stage2.JRWhy.Ref(m_JRWhyScratch).Bind(laneIterator.m_JR.WhyRuleOr(JunctionRules.Core.WhyRule.JrOther), jrAreaExit, JunctionRules.Stage2.JRWhy.Key(blocker.m_Blocker), JunctionRules.Stage2.JRWhy.Key(currentLane.m_Lane), laneIterator.m_JR.WhyDistance, laneIterator.m_JR.WhyExtra);   // JR-T-025
 						blocker.m_Type = BlockerType.Crossing;
 						blocker.m_MaxSpeed = (byte)math.clamp(Mathf.RoundToInt(jrAreaExit * 2.2949998f), 0, 255);   // 0.4.9 (G17): as CheckBlocker, so a standing held vehicle reads as stopped
 					}
@@ -1833,7 +1833,7 @@ public class JRCarNavigationSystem : GameSystemBase
 					laneIterator.m_MaxSpeed = jrExitWait;
 					laneIterator.m_Blocker = laneIterator.m_JR.HoldBlocker;   // 0.4.9 (G17)
 					laneIterator.m_BlockerType = BlockerType.Crossing;
-					if (jrWhyOn) laneIterator.m_Why.Bind(laneIterator.m_JR.WhyRuleOr(JunctionRules.Core.WhyRule.JrExitGiveWay), jrExitWait, JunctionRules.Stage2.JRWhy.Key(laneIterator.m_Blocker), JunctionRules.Stage2.JRWhy.Key(currentLane.m_Lane), laneIterator.m_JR.WhyDistance, laneIterator.m_JR.WhyExtra);   // JR-T-025
+					if (jrWhyOn) laneIterator.m_Why.Bind(laneIterator.m_JR.WhyRuleOr(JunctionRules.Core.WhyRule.JrOther), jrExitWait, JunctionRules.Stage2.JRWhy.Key(laneIterator.m_Blocker), JunctionRules.Stage2.JRWhy.Key(currentLane.m_Lane), laneIterator.m_JR.WhyDistance, laneIterator.m_JR.WhyExtra);   // JR-T-025
 				}
 				// 0.4.7: the exit trace's first-wait line
 				laneIterator.m_JR.TraceWait(m_JRSafetyEvents, entity, m_SimulationFrame);
@@ -1848,7 +1848,7 @@ public class JRCarNavigationSystem : GameSystemBase
 					laneIterator.m_MaxSpeed = jrLaneExit;
 					laneIterator.m_Blocker = laneIterator.m_JR.HoldBlocker;   // 0.4.9 (G17)
 					laneIterator.m_BlockerType = BlockerType.Crossing;
-					if (jrWhyOn) laneIterator.m_Why.Bind(laneIterator.m_JR.WhyRuleOr(JunctionRules.Core.WhyRule.JrExitGiveWay), jrLaneExit, JunctionRules.Stage2.JRWhy.Key(laneIterator.m_Blocker), JunctionRules.Stage2.JRWhy.Key(currentLane.m_Lane), laneIterator.m_JR.WhyDistance, laneIterator.m_JR.WhyExtra);   // JR-T-025
+					if (jrWhyOn) laneIterator.m_Why.Bind(laneIterator.m_JR.WhyRuleOr(JunctionRules.Core.WhyRule.JrOther), jrLaneExit, JunctionRules.Stage2.JRWhy.Key(laneIterator.m_Blocker), JunctionRules.Stage2.JRWhy.Key(currentLane.m_Lane), laneIterator.m_JR.WhyDistance, laneIterator.m_JR.WhyExtra);   // JR-T-025
 				}
 				laneIterator.m_JR.TraceWait(m_JRSafetyEvents, entity, m_SimulationFrame);
 			}

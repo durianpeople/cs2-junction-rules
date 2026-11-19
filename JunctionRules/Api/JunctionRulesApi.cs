@@ -75,16 +75,14 @@ namespace JunctionRules.Api
         /// </summary>
         public static string WhySlowed(string argsJson) => Run("why_slowed", argsJson, WhySlowedCore);
 
-        private static long s_WhyStepsAtCall;
-
         private static string WhySlowedCore(string json)
         {
             if (!WhyBook.ParseArgs(json, out bool set, out long car, out long history, out string bad))
                 return BoxApi.Error(ModVersion, "why_slowed", BoxApiErrors.BadTarget, bad);
             if (set) WhyHandoff.ApiCar = car;
             WhyBook book = WhyHandoff.Book;
-            List<string> notes = WhyHandoff.Notes(s_WhyStepsAtCall, WhyHandoff.Steps, book.HasCurrent, book.Car);
-            s_WhyStepsAtCall = WhyHandoff.Steps;
+            List<string> notes = WhyHandoff.Notes(WhyHandoff.StepsAtApiCall, WhyHandoff.Steps, book.HasCurrent, book.Car);
+            WhyHandoff.StepsAtApiCall = WhyHandoff.Steps;
             if (set && car != 0 && book.Car != car)
                 notes.Add(book.Source == "selection" ? "a selected vehicle is tracked now; the API car is tracked when nothing is selected" : "the API car is tracked from the next driving step");
             if (history != 0 && book.HistoryOf(history) == null) notes.Add("no kept history for " + WhyBook.KeyText(history));

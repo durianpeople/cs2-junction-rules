@@ -37,6 +37,7 @@ namespace JunctionRules.Tests
             ("WhyBookTests", WhyBookTests),
             ("WhyJsonTests", WhyJsonTests),
             ("WhyRepoTests", WhyRepoTests),
+            ("WhyResetTests", WhyResetTests),
             ("VersionGateTests", VersionGateTests),
             ("VersionGateCheckTests", VersionGateCheckTests),
             ("DrivingSwitchTests", DrivingSwitchTests),

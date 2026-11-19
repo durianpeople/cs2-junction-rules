@@ -259,6 +259,7 @@ namespace JunctionRules.Systems
         {
             base.OnGameLoaded(serializationContext);
             WatchHandoff.Clear();
+            WhyHandoff.Reset();   // JR-T-025b (M1): the why-slowed car, histories and API car never outlive their city
         }
 
         /// <summary>0.2.4: the game's own traffic side (CityConfigurationSystem.leftHandTraffic, as LaneOverlapSystem reads it).</summary>

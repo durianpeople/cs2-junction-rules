@@ -60,7 +60,7 @@ Source code, issue tracker and design notes: https://github.com/durianpeople/cs2
 	<!--Link to the forum post where the mod can be discussed (Paradox forum URLs only; the GitHub link is the ExternalLink below)-->
 	<ForumLink Value="" />
 	<!--Version of the mod-->
-	<ModVersion Value="1.1.0" />
+	<ModVersion Value="1.1.1" />
 	<!--Recommended version of the base game to use the mod. "major.minor.*" as the game's own asset uploader writes it; the mod itself runs its driving copy only on 1.6.4 (version gate) and falls back to the game's driving otherwise.-->
 	<GameVersion Value="1.6.*" />
 	<!--Dependency for the mod, can be set multiple times-->
@@ -68,7 +68,7 @@ Source code, issue tracker and design notes: https://github.com/durianpeople/cs2
 	<!--Required DLC, can be set multiple times. Supported values are "Landmark Buildings", "San Fransisco Set", "Beach Properties", "Urban Promenades", "Modern Architecture"-->
 	<RequiredDLC Value="" />
 	<!--Change log for new version. Single line or multi line. Supports minimal markdown subset-->
-	<ChangeLog Value="Yellow boxes: new setting Look past the car in front at a box (on by default). A car no longer pauses at the box line for the car right in front when the traffic past the box is clearly moving away and leaves room for it even if that traffic brakes. It judges only what a driver could see: 50 m around it, nothing behind a lorry or bus, nothing hidden by a building (with a lorry or bus in front of it in the box it judges as with the setting off); it still never stops inside a box for traffic. With the same setting, a car may drive into a box and wait just before its exit zebra while people walk across it (room past the box free for its whole length); someone standing on the zebra in its way keeps it at the line. Also from 1.0.2/1.0.3: every building access is boxed on its own; yellow box tool (Ctrl+Y): a bigger hover target for building accesses. An exit or entrance now lights up with the cursor anywhere on its box area on the road or on the pavement, driveway or verge between the road and the building's access; where two overlap the nearer one wins. Junctions as before." />
+	<ChangeLog Value="Select a car to see why it slows: while a car is selected and Junction Rules drives the cars, each change of reason (a game rule or a Junction Rules rule, what it waits for and how far) goes to the Junction Rules log, and other mods and tools can read it through the API. Diagnostics only: driving is unchanged from 1.1.0." />
 	<!--<ChangeLog>
 	</ChangeLog>-->
 	<!--External link, can be set multiple times. supported types are "discord", "github", "youtube", "twitch", "twitter", "x", "paypal", "patreon", "buymeacoffee", "kofi", "crowdin", "gitlab", "gofundme", "bluesky"-->
