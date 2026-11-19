@@ -111,7 +111,7 @@ namespace JunctionRules.Tests
         {
             string root = RepoRoot();
             string box = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Stage2", "JRYellowBox.cs"));
-            int hold = box.IndexOf("if (!BoxDriving.Holds(a, room)) return float.MaxValue;\n                // 0.4.11 (G22", StringComparison.Ordinal);
+            int hold = box.IndexOf("if (!BoxDriving.Holds(a, room)) return m_BoxLookPast ? ExitZebraHold(", StringComparison.Ordinal);   // JR-T-024: the room-ok return (exit zebra, setting on)
             Check(hold > 0 && box.IndexOf("if (SameExitAdmits(lane, owner.m_Owner, laneLength, inverse, start, self,", hold, StringComparison.Ordinal) > hold,
                 "junction box: the exception is tested only after the room test failed at the stop line (the gap rule is untouched)");
             Check(box.Contains("if (SameExitAdmits(lane, owner.m_Owner, length, inverse, math.max(0f, m_Stretch.CurveX), self,"), "also at the UK turn spot's room re-check");
@@ -120,7 +120,7 @@ namespace JunctionRules.Tests
             Check(se.Contains("m_VehicleLength > 0f ? m_VehicleLength : 4f, m_RoomMargin"), "whole length incl. trailers + the room margin");
             string wj = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Stage2", "JRWholeJunction.cs"));
             Check(wj.Contains("if (m_BoxSameExitEntry && ExitEvent(eventTable, entity, frame, ExitGiveWay.SameExitEntryKind))") && wj.Contains("Add(counters, Stage2Counters.BoxSameExitEntries, 1);"), "counter: entered a box under the same-exit-lane exception (per vehicle)");
-            Check(Stage2Counters.BoxSameExitEntries == Stage2Counters.Count - 11 && Stage2Counters.BoxSameExitStanding == Stage2Counters.Count - 10, "G22 counters at the end");
+            Check(Stage2Counters.BoxSameExitEntries == Stage2Counters.Count - 13 && Stage2Counters.BoxSameExitStanding == Stage2Counters.Count - 12, "G22 counters at the end");
             Check(Stage2Counters.Format(2, new long[Stage2Counters.Count], 0, 0, 2, 2).Contains("entered a box under the same-exit-lane exception 0"), "timing line names the counter");
         }
     }

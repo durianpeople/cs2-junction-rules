@@ -521,7 +521,7 @@ namespace JunctionRules.Tests
             string eg = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Stage2", "JRExitGiveWay.cs"));
             string settings = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Settings", "JunctionRulesSettings.cs"));
             string sw = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Systems", "CarDrivingSwitchSystem.cs"));
-            Check(wj.Contains("scan.LookPast = freeNow && m_BoxLookPast;") && wj.Contains("j.m_BoxLookPast = (mode & Stage2Mode.BoxLookPast) != 0;")
+            Check(wj.Contains("scan.LookPast = freeNow && m_BoxLookPast && lookPast;") && wj.Contains("j.m_BoxLookPast = (mode & Stage2Mode.BoxLookPast) != 0;")
                 && wj.Contains("if (hasEye) scan.LimitSight(read);\n                scan.FinishLookPast();")
                 && wj.Contains("scan.SightLeft = hasEye ? float.MaxValue : frontToStart >= 0f ? RoomScan.SightPast(frontToStart) : 0f;")
                 && wj.Contains("hasEye = frontToStart >= 0f && Eye(self, ref laneObjects, ref curves, out eye);"),
@@ -553,7 +553,7 @@ namespace JunctionRules.Tests
             string flip = gs.Step(JunctionGapRule.Stock, false, out int m2, boxObey: true, boxLookPast: false);
             Check(flip != null && flip.Contains("switched") && (m1 & Stage2Mode.BoxLookPast) != 0 && (m2 & Stage2Mode.BoxLookPast) == 0 && Stage2Mode.RuleName(m1).Contains("looking past the car in front"),
                 "turning the setting on / off is logged as a rule switch");
-            Check(Stage2Counters.BoxLookPastAdmitted == Stage2Counters.Count - 1 && Stage2Counters.Format(2, new long[Stage2Counters.Count], 0, 0, 2, 2, 2).Contains("let into a box by looking past the car in front")
+            Check(Stage2Counters.BoxLookPastAdmitted == Stage2Counters.Count - 3 && Stage2Counters.Format(2, new long[Stage2Counters.Count], 0, 0, 2, 2, 2).Contains("let into a box by looking past the car in front")
                 && Stage2Counters.Format(2, new long[Stage2Counters.Count], 0, 0, 2, 2, 3).Contains("let into a box by looking past the car in front"),
                 "probe counter at the end, on the timing line (setting on / switched in the window)");
             // JR-T-022c (review finding 2): with the setting off the timing line is the 1.0.1 text

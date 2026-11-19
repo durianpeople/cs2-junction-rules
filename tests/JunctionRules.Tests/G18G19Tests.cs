@@ -227,7 +227,7 @@ namespace JunctionRules.Tests
             int freeNowCalls = 0, at = 0;
             while ((at = yb.IndexOf("freeNow: true", at, StringComparison.Ordinal)) >= 0) { freeNowCalls++; at++; }
             Check(freeNowCalls == 3 && ex.Contains("ref pedestrianLanes, freeNow: true,\n                    frontToStart: (b1 - t) * length);"), "free now: junction box line, exit / entrance band (through and leaving), right-turner's turn-spot re-check, and a vehicle leaving into a box");
-            Check(wj.Contains("scan.FreeNow = freeNow;") && wj.Contains("bool sideObstacles = false, bool freeNow = false,\n            float frontToStart = -1f)"), "HasRoomPast: free now only on request (zebras keep the moving-queue credit)");
+            Check(wj.Contains("scan.FreeNow = freeNow;") && wj.Contains("bool sideObstacles = false, bool freeNow = false,\n            float frontToStart = -1f, bool lookPast = true)"), "HasRoomPast: free now only on request (zebras keep the moving-queue credit)");
             int zebra = wj.IndexOf("if (HasRoomPast(lane, layout.SectionEnd(k), inverse, length, -1f, Entity.Null, self, safeTimeStep,", StringComparison.Ordinal);
             int zebraEnd = zebra < 0 ? -1 : wj.IndexOf(")", wj.IndexOf("ref pedestrianLanes", zebra, StringComparison.Ordinal), StringComparison.Ordinal);
             Check(zebra >= 0 && zebraEnd > zebra && !wj.Substring(zebra, zebraEnd - zebra).Contains("freeNow"), "the zebra room test is unchanged");

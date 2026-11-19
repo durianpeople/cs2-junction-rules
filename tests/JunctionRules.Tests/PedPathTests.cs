@@ -47,7 +47,7 @@ namespace JunctionRules.Tests
             Check(!ex.Contains("walkEnd = e * wayOutLength"), "repo: G28: no pedestrian path limits the leaving-lane footprint");
             Check(wj.Contains("if (m_BoxRule && SameExitZebraExempt(lane, overlaps, curveX, length, inverse, self,") && wj.IndexOf("SameExitZebraExempt(lane") > wj.IndexOf("if (HasRoomPast(lane, layout.SectionEnd(k)"),
                 "repo: the zebra room hold is skipped only for a car the exception admits (after the room test, so cars with room are unaffected)");
-            Check(wj.Contains("if (m_SameExitZebraTail) Add(counters, Stage2Counters.BoxSameExitZebraTail, 1);") && Stage2Counters.BoxSameExitZebraTail == Stage2Counters.Count - 2,
+            Check(wj.Contains("if (m_SameExitZebraTail) Add(counters, Stage2Counters.BoxSameExitZebraTail, 1);") && Stage2Counters.BoxSameExitZebraTail == Stage2Counters.Count - 4,
                 "counter: admitted under the exception with a tail on a zebra (per entry episode), the last before the JR-T-022 look-past counter");
         }
     }

@@ -28,8 +28,10 @@ namespace JunctionRules.Stage2
         /// one-box-per-building assumption; the 0.4.2 entrance / building / ConnectedBuilding lookups are gone).
         /// </summary>
         public unsafe void SetBoxes(ComponentLookup<JunctionRules.Boxes.YellowBoxJunction> junctions, ComponentLookup<Game.Net.EdgeLane> edgeLanes, ref JRBoxEdges boxEdges,
-            ComponentLookup<LaneSignal> signals)
+            ComponentLookup<LaneSignal> signals, ComponentLookup<Game.Creatures.Creature> creatures, Entity carBlocker)
         {
+            m_BoxCreatures = creatures;   // JR-T-024b (O2): the game's people test for the exit zebra
+            m_CarBlocker = carBlocker;    // JR-T-024b (O3, counting only): what the car waited for last step
             m_BoxJunctionData = junctions;
             m_EdgeLaneData = edgeLanes;
             m_BoxSignalData = signals;   // 0.4.10 (sweep): a red / amber light inside a box's room window = no room
@@ -100,6 +102,7 @@ namespace JunctionRules.Stage2
             ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
         {
             BeginHoldBlocker();   // 0.4.9 (G17)
+            m_ZebraGoLane = Entity.Null;   // JR-T-024: set again below for this lane only
             // 0.4.11 (G21 box rule): BoxHold runs at the top of every lane's CheckCurrentLane, before that lane's BeginLane (S2-04):
             // keep the curve lookup for BeginLane's "is this way in boxed" test (WayInBoxed).
             m_BoxCurves = curves;
@@ -121,8 +124,13 @@ namespace JunctionRules.Stage2
                     // 0.4.10 probes (not counted at the right-turn spot, AddCounts): standing on the box's lanes, and a nose in the
                     // box (front bumper past the stop line, rear still before it). 0.4.11 (G22): a car standing in the box under
                     // the same-exit-lane exception is counted apart (allowed by the owner rule).
+                    // JR-T-024 (look-past setting only): waiting at this lane's exit zebra while people are on it is the owner's
+                    // short wait: counted apart, neither as standing inside the box nor as a nose
+                    bool zebraWait = inBox && m_BoxLookPast && StandingAtExitZebra(lane, laneLength, inverse, wait0, margin, start, ref overlapData,
+                        ref pedestrianLanes, ref laneObjects, ref moving, ref curves);
+                    if (zebraWait) m_BoxZebraWait = true;
                     bool sameExitChecked = false, sameExitOk = false;
-                    if (inBox)
+                    if (inBox && !zebraWait)
                     {
                         sameExitChecked = true;
                         sameExitOk = SameExitAdmits(lane, owner.m_Owner, laneLength, inverse, start, self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes, ref moving);
@@ -131,7 +139,7 @@ namespace JunctionRules.Stage2
                     }
                     float fl = BoxDriving.FrontToLine(wait, margin);
                     // Review 3 F3: a car admitted by the G22 exception is counted apart, never as a nose in the box.
-                    if (BoxDriving.NoseIn(fl, m_VehicleLength) && !m_BoxSameExitStanding
+                    if (BoxDriving.NoseIn(fl, m_VehicleLength) && !m_BoxSameExitStanding && !zebraWait
                         && !(sameExitChecked ? sameExitOk : SameExitAdmits(lane, owner.m_Owner, laneLength, inverse, start, self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes, ref moving)))
                     {
                         m_BoxStoodInside = true;
@@ -157,7 +165,10 @@ namespace JunctionRules.Stage2
                     ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, freeNow: true,
                     frontToStart: wait0 + margin + laneLength * (1f - start));   // JR-T-022 sight: front bumper to the box's far end
                 m_QueuedTurnersMayStand = false;
-                if (!BoxDriving.Holds(a, room)) return float.MaxValue;
+                // JR-T-024 (look-past setting only): the box lets the car in; people on its exit zebra may still hold it at the line
+                if (!BoxDriving.Holds(a, room)) return m_BoxLookPast ? ExitZebraHold(lane, laneLength, inverse, hold, margin, owner.m_Owner, wait0 + margin + laneLength * (1f - start),
+                    self, safeTimeStep, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars,
+                    ref overlapData, ref pedestrianLanes) : float.MaxValue;
                 // 0.4.11 (G22, owner): a car from the lowest-priority approach may enter although its exit lane is full when the
                 // spot where it would wait (whole body) crosses only paths into that same exit lane (Core/SameExitException.cs).
                 if (SameExitAdmits(lane, owner.m_Owner, laneLength, inverse, start, self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes, ref moving))

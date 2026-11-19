@@ -357,6 +357,17 @@ namespace JunctionRules.Stage2
         /// <summary>0.4.12 (G29 nose trace): the box (node, or the road edge of an exit band) and how far the front stood past its line.</summary>
         private Entity m_NoseOwner;
         private float m_NoseFront;
+        /// <summary>JR-T-024 (Stage2/JRExitZebraWait.cs): the box lane whose exit zebra (start, driving coordinates) the car may wait
+        /// before this car-step (people walking, room free now); set by BoxHold, read by PedestrianDistance; Null = none.</summary>
+        private Entity m_ZebraGoLane;
+        /// <summary>JR-T-024b (SetBoxes): the creature lookup (the game's people test, O2) and the car's own blocker of its last
+        /// step (the game's Blocker component, O3: counting only).</summary>
+        private ComponentLookup<Game.Creatures.Creature> m_BoxCreatures;
+        private Entity m_CarBlocker;
+        private float m_ZebraGoStart;
+        /// <summary>JR-T-024 (counters): standing in a box at its exit zebra while people are on it; held at the line for the exit zebra.</summary>
+        private bool m_BoxZebraWait, m_HasBoxZebraLine;
+        private float m_BoxZebraLineSpeed;
         /// <summary>G15b (final review): this car-step a room scan was blocked by a vehicle standing across the lane from a driveway.</summary>
         private bool m_SideHeld;
         /// <summary>0.4.10 (G19, probe): the last HasRoomPast with freeNow found no room only because a moving queue no longer counts.</summary>
@@ -874,21 +885,24 @@ namespace JunctionRules.Stage2
         /// <paramref name="queueFrom"/> &gt;= 0 = the vehicles on this lane between queueFrom and fromDriving are inside the
         /// box / band ahead of the car and take exit room first (RoomScan.AddQueued); path lanes owned by
         /// <paramref name="boxNode"/> (further lanes of the same boxed junction) likewise. The zebra rule passes -1 /
-        /// Entity.Null: exactly the 0.4.1 scan.
+        /// Entity.Null: exactly the 0.4.1 scan. JR-T-022e: <paramref name="lookPast"/> false = never the look-past (the free-now
+        /// rule alone, also with the setting on).
         /// </summary>
         private unsafe bool HasRoomPast(Entity lane, float fromDriving, bool inverse, float length, float queueFrom, Entity boxNode, Entity self, float safeTimeStep,
             ref ComponentLookup<Game.Net.CarLane> carLanes, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves,
             ref ComponentLookup<Moving> moving, ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs,
             ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars,
             ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes, bool sideObstacles = false, bool freeNow = false,
-            float frontToStart = -1f)
+            float frontToStart = -1f, bool lookPast = true)
         {
             RoomScan scan = RoomScan.Begin(m_VehicleLength, m_RoomMargin);
             // 0.4.10 (G19): yellow boxes count only room that is free now (no credit for a moving queue); zebras keep the credit.
             scan.FreeNow = freeNow;
             scan.QueuedMayStand = m_QueuedTurnersMayStand;
-            // JR-T-022: box room tests look past the car in front (setting); off = exactly the 1.0.1 scan.
-            scan.LookPast = freeNow && m_BoxLookPast;
+            // JR-T-022: box room tests look past the car in front (setting); off = exactly the 1.0.1 scan. JR-T-022e: lookPast
+            // false = a pure free-now verdict with the setting on (the exit zebra wait's re-ask): no credit, no sight test, no
+            // building query, no hidden-vehicle hold.
+            scan.LookPast = freeNow && m_BoxLookPast && lookPast;
             // JR-T-022b (sight = a radius around the driver): cut where the path first leaves it, lane by lane below. Driver's
             // position unknown: the 50 m along the path fallback (never longer than the radius allows); no distance = nothing seen.
             float2 eye = default;
@@ -1502,7 +1516,13 @@ namespace JunctionRules.Stage2
         public float PedestrianDistance(bool inScope, float stockDistance)
         {
             if (!inScope) return stockDistance;
-            return WholePathRule.Distance(StretchState.ForPedestrian(m_OvPhase), stockDistance, m_OvStopWait);
+            float today = WholePathRule.Distance(StretchState.ForPedestrian(m_OvPhase), stockDistance, m_OvStopWait);
+            // JR-T-024 (look-past setting only): people walking on the box's exit zebra, room free now: the game's own stop just
+            // before that zebra instead of the section's spot (the box line)
+            if (m_ZebraGoLane == Entity.Null) return today;
+            float d = m_OvStart - m_ZebraGoStart;
+            return ExitZebraWait.PedestrianDistance(m_ZebraGoLane == m_LaneEntity, d < WholePathRule.SpotEpsilon && d > -WholePathRule.SpotEpsilon,
+                stockDistance, today);
         }
 
         /// <summary>
@@ -2007,6 +2027,8 @@ namespace JunctionRules.Stage2
             if (m_EntryEntrantIgnored) Add(counters, Stage2Counters.EntryEntrantIgnored, 1);
             if (Stage2Counters.IsBinding(m_HasBoxFreeNow, m_BoxFreeNowSpeed, finalMaxSpeed)) Add(counters, Stage2Counters.BoxHeldFreeNow, 1);   // 0.4.10 (G19)
             if (m_LookPastAdmitted) Add(counters, Stage2Counters.BoxLookPastAdmitted, 1);   // JR-T-022 (probe)
+            if (m_BoxZebraWait && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.BoxExitZebraWait, 1);   // JR-T-024
+            if (Stage2Counters.IsStandingOn(m_HasBoxZebraLine, m_BoxZebraLineSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxExitZebraLine, 1);
             // 0.4.10 probes; the UK right-turn spot (waiting for the oncoming gap or, review 3 F2, for exit room) is excluded
             bool turnSpot = Stage2Counters.IsStandingOn(m_HasBoxTurnWait, m_BoxTurnWaitSpeed, finalMaxSpeed, currentSpeed)
                 || Stage2Counters.IsStandingOn(m_HasBoxTurnRoom, m_BoxTurnRoomSpeed, finalMaxSpeed, currentSpeed);

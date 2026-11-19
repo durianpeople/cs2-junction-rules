@@ -277,7 +277,14 @@ namespace JunctionRules.Core
         /// front (setting "Look past the car in front at a box"): the free-now rule alone would have held it at the line.
         /// </summary>
         public const int BoxLookPastAdmitted = FeedingScans + 76;
-        public const int Count = FeedingScans + 77;
+        /// <summary>
+        /// JR-T-024 (owner ruling 19 Nov 2026, look-past setting): car-steps standing in a junction box just before its exit zebra
+        /// while people are on it (the owner's short wait; not counted as standing inside a box or as a nose).
+        /// </summary>
+        public const int BoxExitZebraWait = FeedingScans + 77;
+        /// <summary>JR-T-024: car-steps standing at a box line held for its exit zebra (people standing on it, or walking while the road past is not free now).</summary>
+        public const int BoxExitZebraLine = FeedingScans + 78;
+        public const int Count = FeedingScans + 79;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -450,7 +457,10 @@ namespace JunctionRules.Core
                        + "; standing with the front bumper past a box line (nose in the box) " + deltas[BoxNosePast].ToString(ci) + " (must be 0; at a red / amber light, game's amber rule, apart: " + deltas[BoxNoseAtLight].ToString(ci) + ")"
                        + "; standing inside a box (not at the right-turn spot) " + deltas[BoxStoodInside].ToString(ci)
                        // JR-T-022 (JR-T-022c: only with the look-past setting on in this window)
-                       + (lookPastMask >= 2 ? "; let into a box by looking past the car in front (free-now room short, queue clearly moving) " + deltas[BoxLookPastAdmitted].ToString(ci) : "") : "") +
+                       + (lookPastMask >= 2 ? "; let into a box by looking past the car in front (free-now room short, queue clearly moving) " + deltas[BoxLookPastAdmitted].ToString(ci)
+                           // JR-T-024
+                           + "; waiting in a box just before its exit zebra while people cross " + deltas[BoxExitZebraWait].ToString(ci)
+                           + "; held at a box line for people standing on its exit zebra (or the road past not free now) " + deltas[BoxExitZebraLine].ToString(ci) : "") : "") +
                    // 0.4.11 (G23)
                    (exitMask >= 2 || deltas[PeopleBesideCrossingCreep] > 0 || deltas[HeldForWaitingPerson] > 0
                        ? "; people beside a crossing passed at the game's creep (not on the car's way) " + deltas[PeopleBesideCrossingCreep].ToString(ci) +
