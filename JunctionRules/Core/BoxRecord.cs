@@ -21,6 +21,12 @@ namespace JunctionRules.Core
         None = 0,
         /// <summary>Reserved: the owner turned the box off for driving but kept the paint (not used yet).</summary>
         PaintOnly = 1,
+        /// <summary>
+        /// JR-T-021 (building record only): the building's entrance boxes are explicit ExitKind.Entrance keys; the one-time
+        /// migration from 1.0.1's derived entrances (Core AccessRules.MigrateEntrances) has run or is not needed (record made
+        /// by this build). Older builds keep the byte as read and ignore the bit.
+        /// </summary>
+        EntrancesExplicit = 2,
     }
 
     /// <summary>Byte source for <see cref="BoxRecord.Decode"/>: the component wraps the game's IReader (its position is shared state, so a struct copy reads on).</summary>

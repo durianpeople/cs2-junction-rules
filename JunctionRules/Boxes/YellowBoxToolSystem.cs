@@ -35,9 +35,9 @@ namespace JunctionRules.Boxes
     ///   middle. An exit through the building's own access road is that junction node (junction box).
     /// - JR-T-014c (G9 / G10, owner 17 Nov 2026): building targets are its real car ACCESSES: exits and entrances
     ///   (BoxFacts.Accesses; Core/BuildingAccess.cs). Never the lot-front fallback: a building with no real car access is not
-    ///   selectable (a saved fallback key on it is offered for removal only). An entrance box comes with the building
-    ///   (derived, never saved): clicking a white entrance boxes the building (saves the lot-front marker key when no exit is
-    ///   boxed); clicking an orange one removes ALL the building's boxes. The hover draws an ARROW from the box mouth on the
+    ///   selectable (a saved fallback key on it is offered for removal only). JR-T-021 (owner 19 Nov 2026): every access
+    ///   (exit, entrance, two-way) is toggled on its own, like an exit (an entrance is its own saved key); clicking one never
+    ///   boxes or unboxes another access of the building. The hover draws an ARROW from the box mouth on the
     ///   kerb to the access (Core AccessArrow): head at the box = exit, at the building = entrance, both = two-way; dashed =
     ///   the lot-front fallback.
     /// - Left click (the game's Apply action): toggles the box component on the node / building (Boxes/BoxComponents.cs),

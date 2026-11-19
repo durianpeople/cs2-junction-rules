@@ -62,8 +62,6 @@ namespace JunctionRules.Paint
             /// <summary>0.4.4: exit box: its road edge key and the carriageways it covers (divided road: the building's side).</summary>
             public long EdgeKey;
             public uint Carriageways = MedianSplit.AllCarriageways;
-            /// <summary>JR-T-014c (G9): a box at a car ENTRANCE of a boxed building, derived at resolve time (Key kind Entrance, never saved).</summary>
-            public bool Derived;
             /// <summary>0.4.9 (G14): exit / entrance box built: its window along the edge (m), access and building side, for the joint-box pass (Regroup).</summary>
             public bool HasWindow;
             public double WinFrom, WinTo;
@@ -651,7 +649,8 @@ namespace JunctionRules.Paint
 
         /// <summary>
         /// 0.4.0: the saved boxes (tool): every node with YellowBoxJunction; 0.4.3: one box per boxed exit of every building
-        /// with YellowBoxEntrance. A 0.4.0-0.4.2 building box (no exit keys) is migrated first (MigrateLegacy).
+        /// with YellowBoxEntrance (JR-T-021: and per saved entrance key). A 0.4.0-0.4.2 building box (no exit keys) is migrated
+        /// first (MigrateLegacy), then a 1.0.1 record's derived entrances become saved keys (BoxStore.MigrateEntrances).
         /// </summary>
         private void ResolveSaved()
         {
@@ -664,10 +663,11 @@ namespace JunctionRules.Paint
                     if (!em.Exists(e[i]) || !em.HasComponent<YellowBoxEntrance>(e[i])) continue;
                     if (em.GetComponentData<YellowBoxEntrance>(e[i]).Legacy) MigrateLegacy(e[i]);
                     if (!em.HasComponent<YellowBoxEntrance>(e[i])) continue;
+                    BoxStore.MigrateEntrances(em, e[i]);   // JR-T-021: once per building saved by 1.0.1 or older
                     YellowBoxEntrance c = em.GetComponentData<YellowBoxEntrance>(e[i]);
                     for (int k = 0; k < c.m_Exits.Length; k++)
-                        m_Boxes.Add(new Box { Kind = BoxKind.SavedEntrance, Building = e[i], Key = c.m_Exits[k], Label = $"saved exit box (building {e[i]}, exit {c.m_Exits[k]})" });
-                    AddEntranceBoxes(e[i], c);
+                        m_Boxes.Add(new Box { Kind = BoxKind.SavedEntrance, Building = e[i], Key = c.m_Exits[k],
+                            Label = c.m_Exits[k].ExitKind == ExitKind.Entrance ? $"saved entrance box (building {e[i]}, entrance {c.m_Exits[k]})" : $"saved exit box (building {e[i]}, exit {c.m_Exits[k]})" });
                 }
             }
             finally
@@ -687,34 +687,6 @@ namespace JunctionRules.Paint
             bool any = false;
             foreach (Box b in m_Boxes) any |= b.Kind != BoxKind.ListJunction;
             s_SavedPresent = any;
-        }
-
-        /// <summary>
-        /// JR-T-014c (G9, owner 17 Nov 2026): a boxed building gets a box at every car ENTRANCE too (an entry-only sub-net node
-        /// on a public road's middle, BoxFacts.Accesses), derived here from the game data on every resolve: nothing is written
-        /// to the save, so boxes saved by 0.4.3-0.4.7 pick up their entrances on load. An entrance at the same place as a
-        /// boxed exit adds nothing (Core/BuildingAccess.EntranceBoxes); an entry-only access ROAD junction is not derived
-        /// (it would need a junction box on the node: the tool offers it). Logged once per box when built (RebuildEntrance).
-        /// </summary>
-        private void AddEntranceBoxes(Entity building, YellowBoxEntrance c)
-        {
-            EntityManager em = EntityManager;
-            if (!AccessRules.EntrancesBoxed(c.m_Exits.Length, c.Legacy)) return;
-            List<BoxFacts.Exit> exits = BoxFacts.Exits(em, building, null);
-            List<BoxFacts.Exit> entrances = BoxFacts.Entrances(em, building, null);
-            if (entrances.Count == 0) return;
-            var exitCands = new List<ExitCandidate>(exits.Count);
-            foreach (var x in exits) exitCands.Add(x.C);
-            var boxed = new List<ExitCandidate>();
-            for (int k = 0; k < c.m_Exits.Length; k++)
-            {
-                int i = ExitRules.Match(c.m_Exits[k], exitCands);
-                if (i >= 0) boxed.Add(exitCands[i]);
-            }
-            var inCands = new List<ExitCandidate>(entrances.Count);
-            foreach (var x in entrances) inCands.Add(x.C);
-            foreach (int i in AccessRules.EntranceBoxes(inCands, boxed))
-                m_Boxes.Add(new Box { Kind = BoxKind.SavedEntrance, Derived = true, Building = building, Key = entrances[i].C.Key, Label = $"entrance box (building {building}, entrance {entrances[i].C.Key}, derived)" });
         }
 
         /// <summary>
@@ -773,7 +745,7 @@ namespace JunctionRules.Paint
             b.Outline = null;
             EntityManager em = EntityManager;
             Entity e = b.Kind == BoxKind.SavedJunction ? b.Node : b.Building;
-            if (e != Entity.Null && em.Exists(e) && !b.Derived)   // JR-T-014c: a derived entrance box has nothing saved to drop
+            if (e != Entity.Null && em.Exists(e))
             {
                 // the one writer (Boxes/BoxStore.cs); 0.4.3: a building loses only this exit's box
                 if (b.Kind == BoxKind.SavedJunction) BoxStore.Remove(em, e, true, notify: false);
@@ -930,20 +902,15 @@ namespace JunctionRules.Paint
             var exitNotes = new List<string>();
             BoxFacts.Accesses(em, b.Building, exitNotes, out List<BoxFacts.Exit> exits, out List<BoxFacts.Exit> entrances, out _, out _);
             BoxFacts.Exit exit;
-            if (b.Derived)
+            if (b.Key.ExitKind == ExitKind.Entrance)
             {
-                // 0.4.8 review (G9 F1): the building lost its saved box component (its saved key was dropped): no phantom entrance box.
-                if (!BoxStore.Has(em, b.Building, false))
+                // JR-T-021: a saved entrance key finds its entrance (same kind within ExitRules.KeyMatch); an access that has
+                // turned two-way / exit at the same place keeps the box (re-keyed below)
+                if (!BoxFacts.FindExit(entrances, b.Key, out exit) && !BoxFacts.FindExit(exits, b.Key, out exit))
                 {
-                    b.Dropped = true;
-                    Mod.log.Info($"yellow boxes: {b.Label}: the building has no saved box any more, entrance box not drawn");
-                    return;
-                }
-                // JR-T-014c (G9): the entrance this derived box stands for (same kind within ExitRules.KeyMatch)
-                if (!BoxFacts.FindExit(entrances, b.Key, out exit) || !exit.IsEntrance)
-                {
-                    b.Dropped = true;
-                    Mod.log.Info($"yellow boxes: {b.Label}: entrance gone, box not drawn (nothing saved for it)");
+                    var have = new List<string>();
+                    foreach (var x in entrances) have.Add(x.C.Key.ToString());
+                    DropSaved(b, $"entrance {b.Key} not found any more (building entrances now: {(have.Count == 0 ? "none" : string.Join(", ", have))})");
                     return;
                 }
             }
@@ -954,9 +921,9 @@ namespace JunctionRules.Paint
                 // 0.4.8 review (G9 F2): once per building and session a WARN, so a box the owner saw before and no longer sees is explained.
                 if (m_FallbackWarned.Add(b.Building))
                     Mod.log.Warn($"yellow boxes: building {b.Building}: its saved lot-front box is no longer drawn (0.4.8: boxes only at real car accesses)"
-                        + (fate == SavedFallbackFate.Marker ? $"; its {entrances.Count} entrance box(es) are drawn instead" : "; it has no real car access: remove the box with the tool"));
+                        + (fate == SavedFallbackFate.Marker ? "; box the accesses you want with the tool (Ctrl+Y) and remove this key there" : "; it has no real car access: remove the box with the tool"));
                 Mod.log.Info($"yellow boxes: {b.Label}: lot-front fallback not drawn (boxes only at real car accesses); key kept as the building's box marker: "
-                    + (fate == SavedFallbackFate.Marker ? $"{exits.Count} real exit(s) not boxed by it, {entrances.Count} entrance(s) boxed through it"
+                    + (fate == SavedFallbackFate.Marker ? $"{exits.Count} real exit(s) and {entrances.Count} entrance(s), none boxed by it"
                        : "the building has no real car exit or entrance: nothing drawn or obeyed (remove it with the tool on the building)")
                     + (exitNotes.Count > 0 ? "; notes: " + string.Join("; ", exitNotes) : ""));
                 return;
@@ -968,7 +935,7 @@ namespace JunctionRules.Paint
                 DropSaved(b, $"exit {b.Key} not found any more (building exits now: {(have.Count == 0 ? "none" : string.Join(", ", have))})");
                 return;
             }
-            if (!b.Derived && !exit.C.Key.Equals(b.Key))
+            if (!exit.C.Key.Equals(b.Key))
             {
                 // same exit, read under another kind / a few cm off (e.g. a fallback key once the drive shows): re-key it
                 BoxStore.RemoveExit(em, b.Building, b.Key, notify: false);

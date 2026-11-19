@@ -39,7 +39,7 @@ namespace JunctionRules.Boxes
             public BoxFacts.Exit Exit;       // exit: which exit (key = the saved name)
             /// <summary>Junction reached from a building (its own access road meets the public road here).</summary>
             public Entity FromBuilding;
-            /// <summary>JR-T-014c (G9 / G10): the target is an entrance (derived box) / a saved lot-front fallback (remove only).</summary>
+            /// <summary>JR-T-014c (G10): the target is an entrance (JR-T-021: its own saved key) / a saved lot-front fallback (remove only).</summary>
             public bool Entrance, Fallback;
         }
 
@@ -235,6 +235,7 @@ namespace JunctionRules.Boxes
         internal AccessList ExitsOf(Entity building)
         {
             if (m_ExitCache.TryGetValue(building, out var list)) return list;
+            BoxStore.MigrateEntrances(EntityManager, building);   // JR-T-021: a 1.0.1 record's derived entrances become saved keys first
             list = new AccessList();
             BoxFacts.Accesses(EntityManager, building, null, out list.Exits, out list.Entrances, out list.FallbackExit, out list.HasFallback);
             m_ExitCache[building] = list;
@@ -327,8 +328,8 @@ namespace JunctionRules.Boxes
             EntityManager em = EntityManager;
             var t = new Target { Kind = Kind.Exit, Entity = building, Exit = exit, Entrance = exit.IsEntrance, Fallback = exit.IsFallback };
             t.Valid = BoxSelection.ExitOk(BoxFacts.ExitFacts(em, building, exit, out BoxFacts.Access a), out t.Why);
-            // JR-T-014c (G9): an entrance is boxed with its building (any saved key); a fallback has a box when a Fallback key is saved
-            t.HasBox = exit.IsEntrance ? BoxStore.Has(em, building, false) : exit.IsFallback ? HasFallbackKey(building) : BoxStore.HasExit(em, building, exit.C.Key);
+            // JR-T-021: an entrance has a box when its own key is saved (as an exit); a fallback when a Fallback key is saved
+            t.HasBox = exit.IsFallback ? HasFallbackKey(building) : BoxStore.HasExit(em, building, exit.C.Key);
             t.Access = a;
             if (a.Valid) t.Position = a.Point;
             else if (em.HasComponent<Game.Objects.Transform>(building)) t.Position = em.GetComponentData<Game.Objects.Transform>(building).m_Position;
@@ -426,7 +427,7 @@ namespace JunctionRules.Boxes
         internal Outcome Apply(Target t, BoxRequest req, string who, string shapeSummary)
         {
             EntityManager em = EntityManager;
-            var o = new Outcome { Decision = BoxCommand.Decide(req, KindOf(t), t.HasBox, t.Valid, t.Why, t.Entrance, t.Fallback) };
+            var o = new Outcome { Decision = BoxCommand.Decide(req, KindOf(t), t.HasBox, t.Valid, t.Why, t.Fallback) };
             BoxDecision d = o.Decision;
             if (d.Step == BoxStep.None)
             {
@@ -439,20 +440,6 @@ namespace JunctionRules.Boxes
             {
                 case BoxStep.AddJunction: BoxStore.Add(em, t.Entity); break;
                 case BoxStep.RemoveJunction: BoxStore.Remove(em, t.Entity, true); break;
-                case BoxStep.AddBuildingMarker:
-                {
-                    // JR-T-014c (G9 / G10): entrances come with the building (derived); not boxed yet (else HasBox): save the
-                    // lot-front marker key, an existing record kind, never drawn
-                    AccessList acc = ExitsOf(t.Entity);
-                    if (!acc.HasFallback || !BoxStore.AddExit(em, t.Entity, acc.FallbackExit.C.Key))
-                    {
-                        Mod.log.Info($"{who}: {What(t)}: {BoxCommand.NoMarkerEdgeReason}; nothing changed");
-                        o.Decision = new BoxDecision { Step = BoxStep.None, Error = BoxApiErrors.NotBoxable, Reason = BoxCommand.NoMarkerEdgeReason };
-                        return o;
-                    }
-                    break;
-                }
-                case BoxStep.RemoveBuilding: BoxStore.Remove(em, t.Entity, false); break;   // all the building's boxes (its entrances are boxed with it)
                 case BoxStep.RemoveFallbackKeys:
                 {
                     YellowBoxEntrance c = em.GetComponentData<YellowBoxEntrance>(t.Entity);
@@ -473,8 +460,7 @@ namespace JunctionRules.Boxes
             }
             o.Changed = true;
             m_ExitCache.Clear();
-            string where = t.Kind == Kind.Junction ? "junction " + What(t) : $"{What(t)} (source: {t.Exit.C.Source})"
-                + (t.Entrance ? (add ? "; the building's entrances are boxed with it" : "; removed ALL the building's boxes (entrances come with the building)") : "");
+            string where = t.Kind == Kind.Junction ? "junction " + What(t) : $"{What(t)} (source: {t.Exit.C.Source})";
             // 0.4.8 (JR-T-014b): an added junction box names its solved shape
             string shape = add && t.Kind == Kind.Junction ? shapeSummary : null;
             // Review G5 F2: a box that leaves conflict points outside is logged as a warning (the owner sees it in the log).

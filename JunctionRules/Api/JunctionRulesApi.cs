@@ -130,7 +130,7 @@ namespace JunctionRules.Api
 
             if (action == "preview")
             {
-                BoxDecision d = BoxCommand.Decide(t.HasBox ? BoxRequest.Remove : BoxRequest.Add, BoxTargeting.KindOf(t), t.HasBox, t.Valid, t.Why, t.Entrance, t.Fallback);
+                BoxDecision d = BoxCommand.Decide(t.HasBox ? BoxRequest.Remove : BoxRequest.Add, BoxTargeting.KindOf(t), t.HasBox, t.Valid, t.Why, t.Fallback);
                 r.Boxable = t.Valid;
                 r.Boxed = t.HasBox;
                 r.Changed = false;
@@ -229,7 +229,7 @@ namespace JunctionRules.Api
             int i = 0;
             foreach (BoxFacts.Exit x in acc.All())
             {
-                bool boxed = x.IsEntrance ? BoxStore.Has(em, b, false) : x.IsJunction ? BoxStore.Has(em, x.Node, true) : BoxStore.HasExit(em, b, x.C.Key);
+                bool boxed = x.IsJunction ? BoxStore.Has(em, x.Node, true) : BoxStore.HasExit(em, b, x.C.Key);   // JR-T-021: an entrance has its own key
                 string role = x.IsEntrance ? "entrance" : x.IsJunction ? "junction" : x.Way == AccessWay.Both ? "two-way access" : "exit";
                 r.Add(new ApiExitChoice { Exit = i++, Role = role, Key = x.C.Key.ToString(), Boxed = boxed, At = x.C.World });
             }
@@ -321,12 +321,14 @@ namespace JunctionRules.Api
                         {
                             info.Center = new V2(bp.x, bp.z);
                             info.Outline = new List<V3>();
-                            info.Note = "lot-front marker key (never drawn; boxes the building's entrances)";
+                            info.Note = "lot-front marker key (never drawn; remove it with the tool or Remove)";
                         }
-                        else if (BoxFacts.FindExit(acc.Exits, sk, out BoxFacts.Exit x))   // the paint matches saved keys against the exits only
+                        else if (sk.ExitKind == ExitKind.Entrance && (BoxFacts.FindExit(acc.Entrances, sk, out BoxFacts.Exit x) || BoxFacts.FindExit(acc.Exits, sk, out x))
+                                 || sk.ExitKind != ExitKind.Entrance && BoxFacts.FindExit(acc.Exits, sk, out x))   // the paint's match (RebuildEntrance; JR-T-021: entrance keys)
                         {
                             int k = all.FindIndex(e => e.C.Key.Equals(x.C.Key));
                             info.Ref.Exit = k;
+                            if (x.IsEntrance) info.Ref.Kind = ApiBoxKind.BuildingEntrance;
                             long sub = MergedBoxes.DrawnOutline(key, BoxMergeInput.ExitSub(sk)) != null ? BoxMergeInput.ExitSub(sk) : BoxMergeInput.ExitSub(x.C.Key);
                             FillOutline(tg, info, key, sub, () => tg.ExitTarget(b, x), x.C.World);
                         }
@@ -334,24 +336,10 @@ namespace JunctionRules.Api
                         {
                             info.Center = new V2(bp.x, bp.z);
                             info.Outline = new List<V3>();
-                            info.Note = "saved exit not found among the building's exits now (the paint drops or re-keys it on its next update)";
+                            info.Note = sk.ExitKind == ExitKind.Entrance
+                                ? "saved entrance not found among the building's accesses now (the paint drops or re-keys it on its next update)"
+                                : "saved exit not found among the building's exits now (the paint drops or re-keys it on its next update)";
                         }
-                        if (f.Passes(info.Center.X, info.Center.Z)) boxes.Add(info);
-                    }
-                    // derived entrance boxes: the paint's rule (YellowBoxPaintSystem derive step: Core AccessRules.EntrancesBoxed +
-                    // EntranceBoxes, one per entry-only access not already covered by a boxed exit on the same road)
-                    if (!AccessRules.EntrancesBoxed(c.m_Exits.Length, c.Legacy) || acc.Entrances.Count == 0) continue;
-                    var exitCands = new List<ExitCandidate>(acc.Exits.Count);
-                    foreach (BoxFacts.Exit x in acc.Exits) exitCands.Add(x.C);
-                    var boxedCands = new List<ExitCandidate>();
-                    foreach (ExitKey sk in saved) { int m = ExitRules.Match(sk, exitCands); if (m >= 0) boxedCands.Add(exitCands[m]); }
-                    var inCands = new List<ExitCandidate>(acc.Entrances.Count);
-                    foreach (BoxFacts.Exit x in acc.Entrances) inCands.Add(x.C);
-                    foreach (int e in AccessRules.EntranceBoxes(inCands, boxedCands))
-                    {
-                        BoxFacts.Exit x = acc.Entrances[e];
-                        var info = new ApiBoxInfo { Ref = new ApiBoxRef(ApiBoxKind.BuildingEntrance, b.Index, b.Version, acc.Exits.Count + e), ExitKey = x.C.Key.ToString() };
-                        FillOutline(tg, info, key, BoxMergeInput.ExitSub(x.C.Key), () => tg.ExitTarget(b, x), x.C.World);
                         if (f.Passes(info.Center.X, info.Center.Z)) boxes.Add(info);
                     }
                 }

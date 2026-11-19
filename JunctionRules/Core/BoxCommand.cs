@@ -15,13 +15,9 @@ namespace JunctionRules.Core
         None = 0,
         AddJunction,
         RemoveJunction,
-        /// <summary>One saved exit key on the building.</summary>
+        /// <summary>One saved access key on the building (exit, two-way access or, JR-T-021, entrance).</summary>
         AddExit,
         RemoveExit,
-        /// <summary>Tool only: a white entrance clicked = the building's lot-front marker key (its entrances come with it).</summary>
-        AddBuildingMarker,
-        /// <summary>Tool only: an orange entrance clicked = ALL the building's boxes.</summary>
-        RemoveBuilding,
         /// <summary>A saved lot-front fallback key (marker / old fallback box) taken off.</summary>
         RemoveFallbackKeys,
     }
@@ -36,7 +32,7 @@ namespace JunctionRules.Core
         public string Error;
         /// <summary>Plain words, the tool's text.</summary>
         public string Reason;
-        public bool Add => Step == BoxStep.AddJunction || Step == BoxStep.AddExit || Step == BoxStep.AddBuildingMarker;
+        public bool Add => Step == BoxStep.AddJunction || Step == BoxStep.AddExit;
     }
 
     /// <summary>API error codes (YBOX_API_CONTRACT v1).</summary>
@@ -49,7 +45,6 @@ namespace JunctionRules.Core
         public const string AlreadyBoxed = "already_boxed";
         public const string NotBoxed = "not_boxed";
         public const string AmbiguousExit = "ambiguous_exit";
-        public const string EntranceDerived = "entrance_derived";
         public const string Internal = "internal";
     }
 
@@ -58,25 +53,18 @@ namespace JunctionRules.Core
         /// <summary>The tool's text for a full building (Boxes/BoxStore.AddExit false): "the building already has {ExitRules.MaxBoxesPerBuilding} (10) exit boxes".</summary>
         public static string FullReason => $"the building already has {ExitRules.MaxBoxesPerBuilding} exit boxes";
 
-        /// <summary>The tool's text when a white entrance's building has no road edge for its marker key.</summary>
-        public const string NoMarkerEdgeReason = "the building has no road edge for its marker key";
-
-        /// <summary>API: entrance boxes are derived from the building's exits at load; never added or removed alone.</summary>
-        public const string EntranceDerivedReason = "entrance boxes come with the building (derived at load from its boxed exits, never saved): add or remove one of the building's exits instead";
-
         /// <summary>The tool's prefix for a shape failure (YellowBoxToolSystem F3: valid target, but no shape).</summary>
         public const string NoShapePrefix = "no box shape can be built here: ";
 
         /// <summary>
         /// What happens. Toggle = the tool's click (BoxSelection.Toggle: a box is always removable, a new one only on a valid
-        /// target; an entrance boxes / unboxes its whole building; a fallback key is removable only). Add / Remove = the API:
-        /// the same rules, but an explicit refusal when the target already has / has no box, and an entrance is refused
-        /// (entrance_derived): the API acts on exits only.
+        /// target; a fallback key is removable only). Add / Remove = the API: the same rules, but an explicit refusal when the
+        /// target already has / has no box. JR-T-021: an entrance is an access like an exit (its own key), for the tool and
+        /// the API alike.
         /// </summary>
-        public static BoxDecision Decide(BoxRequest req, BoxTargetKind kind, bool hasBox, bool valid, string why, bool entrance, bool fallback)
+        public static BoxDecision Decide(BoxRequest req, BoxTargetKind kind, bool hasBox, bool valid, string why, bool fallback)
         {
             if (kind == BoxTargetKind.None) return Refuse(BoxApiErrors.NotFound, string.IsNullOrEmpty(why) ? "nothing to box here" : why);
-            if (req != BoxRequest.Toggle && kind == BoxTargetKind.Exit && entrance) return Refuse(BoxApiErrors.EntranceDerived, EntranceDerivedReason);
             ToggleAction act = BoxSelection.Toggle(hasBox, valid);
             if (req == BoxRequest.Add)
             {
@@ -90,7 +78,6 @@ namespace JunctionRules.Core
             else if (act == ToggleAction.None) return Refuse(BoxApiErrors.NotBoxable, why ?? "not selectable");
             bool add = req == BoxRequest.Add || (req == BoxRequest.Toggle && act == ToggleAction.Add);
             if (kind == BoxTargetKind.Junction) return Do(add ? BoxStep.AddJunction : BoxStep.RemoveJunction);
-            if (entrance) return Do(add ? BoxStep.AddBuildingMarker : BoxStep.RemoveBuilding);   // Toggle only (above)
             if (fallback) return add ? Refuse(BoxApiErrors.NotBoxable, why ?? "not selectable") : Do(BoxStep.RemoveFallbackKeys);
             return Do(add ? BoxStep.AddExit : BoxStep.RemoveExit);
         }

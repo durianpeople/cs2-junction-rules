@@ -52,8 +52,8 @@ A yellow box marks an area drivers must not stop in.
 - Open the tool with **Ctrl+Y** or the toolbar button.
 - Hover a junction or a building to see an outline: white means it will be added, orange means it will be removed.
 - Click to add or remove. Boxes are saved with your city.
-- A box on a building covers each of its real car exits and entrances, and an arrow shows which access a box
-  belongs to.
+- Each real car access of a building (exit, entrance or two-way) is boxed on its own: hover the access you want and
+  click; an arrow shows which access a box belongs to.
 - If a spot can't take a box (elevated or tunnel roads, highways, roundabouts and so on), the tool says why.
 
 **How boxes are drawn.**

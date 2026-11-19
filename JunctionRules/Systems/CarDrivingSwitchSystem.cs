@@ -75,7 +75,11 @@ namespace JunctionRules.Systems
             int unmatched = 0;
             using (var buildings = m_EntranceBuildings.ToEntityArray(Unity.Collections.Allocator.Temp))
             {
-                for (int i = 0; i < buildings.Length; i++) unmatched += JunctionRules.Boxes.BoxFacts.BoxedExitBands(EntityManager, buildings[i], sources);
+                for (int i = 0; i < buildings.Length; i++)
+                {
+                    JunctionRules.Boxes.BoxStore.MigrateEntrances(EntityManager, buildings[i]);   // JR-T-021: once per 1.0.1 record (no-op after)
+                    unmatched += JunctionRules.Boxes.BoxFacts.BoxedExitBands(EntityManager, buildings[i], sources);
+                }
             }
             // 0.4.10 (G18): the painted windows (joint boxes as one), not the exit points. Review F1: the paint's shape code runs
             // here on the main thread; a failure keeps the bands published last (logged once per message) and never escapes.

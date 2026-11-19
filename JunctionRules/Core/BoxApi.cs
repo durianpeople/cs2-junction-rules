@@ -237,7 +237,7 @@ namespace JunctionRules.Core
             {
                 j.Name("building"); WriteId(j, r.Index, r.Version);
                 j.Name("exit"); if (r.Exit >= 0) j.Value(r.Exit); else j.Null();
-                if (r.Kind == ApiBoxKind.BuildingEntrance) j.Prop("derived", true);
+                if (r.Kind == ApiBoxKind.BuildingEntrance) j.Prop("derived", false);   // JR-T-021: kept for API v1, never derived now
             }
             j.EndObject();
         }
@@ -294,7 +294,7 @@ namespace JunctionRules.Core
                 j.Name("mergedGroup").BeginArray();
                 foreach (ApiBoxRef m in b.MergedGroup) WriteRef(j, m);
                 j.EndArray();
-                j.Prop("derived", b.Ref.Kind == ApiBoxKind.BuildingEntrance);
+                j.Prop("derived", false);   // JR-T-021: kept for API v1; every box is saved on its own now
                 if (b.Note != null) j.Prop("note", b.Note);
                 j.EndObject();
             }
@@ -327,8 +327,8 @@ namespace JunctionRules.Core
 
         /// <summary>
         /// Which access of a building a {"building":I,"exit"?:k} target means. Index k counts the building's real accesses
-        /// in the tool's order (exits first, then entrances). Omitted: the only exit; none but entrances = entrance_derived;
-        /// several exits = ambiguous_exit. Returns the index, or -1 with an error code and reason.
+        /// in the tool's order (exits first, then entrances). Omitted: the only exit (as API v1); JR-T-021: with no exit, the
+        /// only entrance; otherwise ambiguous_exit (give "exit": k). Returns the index, or -1 with an error code and reason.
         /// </summary>
         public static int PickExit(int requested, IList<ApiExitChoice> accesses, out string error, out string reason)
         {
@@ -343,9 +343,15 @@ namespace JunctionRules.Core
                 return -1;
             }
             if (exits == 1) return firstExit;
-            if (exits == 0 && accesses.Count > 0) { error = BoxApiErrors.EntranceDerived; reason = BoxCommand.EntranceDerivedReason; return -1; }
+            if (exits == 0 && accesses.Count == 1) return 0;
+            if (accesses.Count == 0)
+            {
+                error = BoxApiErrors.NotFound;
+                reason = "the building has no real car exit or entrance";
+                return -1;
+            }
             error = BoxApiErrors.AmbiguousExit;
-            reason = $"the building has {exits} car exits: give \"exit\": k";
+            reason = exits == 0 ? $"the building has {accesses.Count} car entrances: give \"exit\": k" : $"the building has {exits} car exits: give \"exit\": k";
             return -1;
         }
     }

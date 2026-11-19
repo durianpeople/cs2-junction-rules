@@ -98,14 +98,16 @@ namespace JunctionRules.Boxes
             if (notify) RaiseChanged();
         }
 
-        /// <summary>0.4.3: a box on one exit of the building (keys: Core/BuildingExit.cs). False when the building is full.</summary>
+        /// <summary>
+        /// 0.4.3: a box on one access of the building (keys: Core/BuildingExit.cs; JR-T-021: entrances too, ExitKind.Entrance).
+        /// False when the building is full. A new component is marked EntrancesExplicit (nothing to migrate).
+        /// </summary>
         internal static bool AddExit(EntityManager em, Entity building, ExitKey key, bool notify = true)
         {
             if (building == Entity.Null || !em.Exists(building)) return false;
-            if (key.ExitKind == ExitKind.Entrance) return false;   // JR-T-014c (G9): entrance boxes are derived, never saved
             if (!em.HasComponent<YellowBoxEntrance>(building))
             {
-                var c = new YellowBoxEntrance();
+                var c = new YellowBoxEntrance { m_Flags = (byte)BoxRecordFlags.EntrancesExplicit };
                 c.m_Exits.Add(key);
                 em.AddComponentData(building, c);
             }
@@ -143,6 +145,45 @@ namespace JunctionRules.Boxes
             c.m_Exits.Add(key);
             em.SetComponentData(building, c);
             Version++;
+        }
+
+        /// <summary>
+        /// JR-T-021: the one-time migration of a building saved by 1.0.1 or older (record without EntrancesExplicit): every
+        /// entrance box 1.0.1 derived for it becomes a saved entrance key, and lot-front marker keys that only marked the
+        /// building as boxed are dropped once it has an entrance key (Core AccessRules.MigrateEntrances); then the flag is
+        /// set, so it never runs again for that building (an entrance the owner removes later stays removed). Skipped (left
+        /// for a later call) for a legacy key-less box (the paint's MigrateLegacy goes first) and while the game data shows
+        /// the building no real car access at all (not loaded yet / nothing to derive). Logged; no change notification
+        /// (what is drawn stays the same). Callers: the paint's load resolve, the driving rule's rebuild, the tool / API
+        /// access lists. True when the record changed.
+        /// </summary>
+        internal static bool MigrateEntrances(EntityManager em, Entity building)
+        {
+            if (!Has(em, building, false)) return false;
+            YellowBoxEntrance c = em.GetComponentData<YellowBoxEntrance>(building);
+            if ((c.m_Flags & (byte)BoxRecordFlags.EntrancesExplicit) != 0 || c.Legacy) return false;
+            if (!em.HasComponent<Game.Buildings.Building>(building) || em.HasComponent<Game.Common.Deleted>(building) || em.HasComponent<Game.Tools.Temp>(building)) return false;
+            BoxFacts.Accesses(em, building, null, out var exits, out var entrances, out _, out _);
+            bool real = entrances.Count > 0;
+            foreach (var x in exits) real |= !x.IsFallback;
+            if (!real) return false;
+            var saved = new System.Collections.Generic.List<ExitKey>(c.m_Exits.Length);
+            for (int i = 0; i < c.m_Exits.Length; i++) saved.Add(c.m_Exits[i]);
+            var exitCands = new System.Collections.Generic.List<ExitCandidate>(exits.Count);
+            foreach (var x in exits) exitCands.Add(x.C);
+            var inCands = new System.Collections.Generic.List<ExitCandidate>(entrances.Count);
+            foreach (var x in entrances) inCands.Add(x.C);
+            EntranceMigration m = AccessRules.MigrateEntrances(saved, exitCands, inCands, ExitRules.MaxBoxesPerBuilding);
+            c.m_Exits.Clear();
+            foreach (ExitKey k in m.Keys) c.m_Exits.Add(k);
+            c.m_Flags |= (byte)BoxRecordFlags.EntrancesExplicit;
+            em.SetComponentData(building, c);
+            if (!m.Changed && m.NotFitted == 0) return false;
+            Version++;
+            Mod.log.Info($"yellow boxes: building {building}: 1.0.1 entrance boxes made explicit: {m.Added} entrance key(s) saved, {m.MarkersDropped} lot-front marker key(s) dropped"
+                + (m.NotFitted > 0 ? $", {m.NotFitted} entrance(s) NOT saved (the building already has {ExitRules.MaxBoxesPerBuilding} boxes)" : "")
+                + $"; keys now: {string.Join(", ", m.Keys)}");
+            return m.Changed;
         }
 
         /// <summary>Removes the box (tool click, or the paint system dropping a box whose target is no longer valid); building: all its exit boxes.</summary>

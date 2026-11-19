@@ -371,10 +371,10 @@ namespace JunctionRules.Tests
                 && sw.Contains("m_LastDropped = 0;"),
                 "0.4.3 review F2: the over-limit Warn follows the Dropped count, not the hand-over Version");
             string facts = File.ReadAllText(Path.Combine(src, "Boxes", "BoxFacts.cs"));
-            Check(facts.Contains("ExitBands.Boxed(keys, c.Legacy, old, cands, out int unmatched)") && facts.Contains("AddSource(em, building, exits[i], bpos, false, into)")
+            Check(facts.Contains("ExitBands.Boxed(keys, c.Legacy, old, cands, out int unmatched)") && facts.Contains("AddSource(em, building, exits[i], bpos, into)")
                 && facts.Contains("BoxSelection.ExitOk(ExitFacts(em, building, x, out Access a), out _)"), "BoxedExitBands: saved keys matched to current exits, each a source for its painted window (0.4.10)");
             string store = File.ReadAllText(Path.Combine(src, "Boxes", "BoxStore.cs"));
-            Check(System.Text.RegularExpressions.Regex.Matches(store, @"Version\+\+;").Count == 5, "BoxStore bumps its version in all five writers (Add, AddExit, RemoveExit, SetExits, Remove)");
+            Check(System.Text.RegularExpressions.Regex.Matches(store, @"Version\+\+;").Count == 6, "BoxStore bumps its version in all six writers (Add, AddExit, RemoveExit, SetExits, Remove, JR-T-021 MigrateEntrances)");
             string job = File.ReadAllText(Path.Combine(src, "Stage2", "JRWholeJunction.cs"));
             Check(job.Contains("bool ordered = ScanOrder.InOrder(ref keys, inverse);") && job.Contains("float lastKey = -MaxRearReach / math.max(laneLength, 0.001f);"), "ScanLane: straight read when in order, selection starts at the rear reach");
         }
