@@ -180,6 +180,7 @@ namespace JunctionRules.Tests
             ("BoxScenarioTests", BoxScenarioTests),
             ("BoxLookPastTests", BoxLookPastTests),
             ("FernbrookReplayTests", FernbrookReplayTests),
+            ("LookPastPredictTests", LookPastPredictTests),
             ("ExitZebraTodayTests", ExitZebraTodayTests),
             ("ExitZebraRuleTests", ExitZebraRuleTests),
             ("ExitZebraScenarioTests", ExitZebraScenarioTests),

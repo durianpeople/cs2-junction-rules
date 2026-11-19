@@ -617,6 +617,12 @@ namespace JunctionRules.Core
         public byte Refusal;
         /// <summary>JR-T-025 (why slowed): the least room seen (m; float.MaxValue = none read). Room short by = Needed - this.</summary>
         public readonly float MinRoomNow => m_MinRoom;
+        /// <summary>
+        /// JR-T-027 (why slowed): the least PREDICTED room with the look-past (m; float.MaxValue = none): vehicles that carry on
+        /// do not count, a standing vehicle / a light counts where it is (less the vehicles queued before it), a view-blocking
+        /// vehicle at its position + guaranteed travel less the margin. Predicted room short by = Needed - this.
+        /// </summary>
+        public readonly float MinRoomPredicted => m_MinPred;
 
         /// <summary>JR-T-022d: at most this many credited vehicles are kept as sight targets (the nearest ones and the furthest).</summary>
         public const int MaxSightTargets = 4;
@@ -767,24 +773,36 @@ namespace JunctionRules.Core
             m_GroupRear = rear; m_GroupFront = rear + len; m_GroupOccupied = m_Occupied;
             float c = credit > 0f ? credit : 0f;
             float now = rear - m_Occupied;
+            // JR-T-027 (owner rule 20 Nov 2026, 1.2.0): an ordinary vehicle moving away carries on: it stops only at the back of
+            // a visible standing queue / standing vehicle or a red stop line, which the scan reads itself (Add of a standing
+            // vehicle or a light, in path order: their room counts every vehicle before them, queued at their back). So it is
+            // no stopping point of its own (no prediction short of the next visible standing obstacle). A vehicle that blocks
+            // the view keeps the 1.1.0 judgement: X sees nothing beyond it, so it counts only on the travel the vehicle cannot
+            // avoid (its guaranteed travel less LookPastLargeMargin). Standing / crawling vehicles and lights: where they are.
+            bool carriesOn = !fixedObstacle && !large && speed >= LookPastMinSpeed;
             float tr = travel > 0f ? travel : 0f;
             if (large && !fixedObstacle) tr = tr > LookPastLargeMargin ? tr - LookPastLargeMargin : 0f;   // JR-T-022d: careful with a vehicle that blocks the view
-            float pred = speed >= LookPastMinSpeed ? now + tr : now;
+            float pred = carriesOn ? float.MaxValue : speed >= LookPastMinSpeed && !fixedObstacle ? now + tr : now;
             if (now < m_MinRoom) { m_MinRoom = now; m_MinIndex = index; m_MinVersion = version; }
             if (pred < m_MinPred) { m_MinPred = pred; m_MinPredIndex = index; m_MinPredVersion = version; }
             if (!(now >= Needed))
             {
-                // the room it needs behind this vehicle must end within sight (limited sight addendum)
-                if (pred >= Needed && Needed + m_Occupied <= SightLeft)
+                // the room it needs behind this vehicle must end within sight (limited sight addendum). JR-T-027: behind a
+                // vehicle that carries on, X counts on it moving its whole length clear of X's room: the road up to its
+                // predicted front (Needed + everything before it + its own length + spacing) must be seen.
+                float needEnd = carriesOn ? Needed + m_Occupied + len + Spacing : Needed + m_Occupied;
+                if (pred >= Needed && needEnd <= SightLeft)
                 {
                     LookPastUsed = true;
-                    if (Needed + m_Occupied > m_LookNeedEnd) m_LookNeedEnd = Needed + m_Occupied;
+                    if (needEnd > m_LookNeedEnd) m_LookNeedEnd = needEnd;
                     NoteTarget(rear, index, version);   // JR-T-022d: credited: it must be seen (buildings)
                 }
                 else
                 {
                     Blocked = true; BlockerIndex = index; BlockerVersion = version;
                     if (now + c >= Needed) HeldForMovingQueue = true;
+                    // JR-T-027 (why slowed): the predicted room was enough, only the road to it is not seen
+                    if (pred >= Needed) Refusal = (byte)LookPastRefusal.BeyondSight;
                 }
             }
             m_Occupied += len + Spacing;
@@ -939,7 +957,7 @@ namespace JunctionRules.Core
                         LookPastUsed = true;
                         if (Needed + m_Occupied > m_LookNeedEnd) m_LookNeedEnd = Needed + m_Occupied;
                     }
-                    else { Blocked = true; BlockerIndex = m_MinIndex; BlockerVersion = m_MinVersion; }
+                    else { Blocked = true; Refusal = (byte)LookPastRefusal.BeyondSight; BlockerIndex = m_MinIndex; BlockerVersion = m_MinVersion; }
                 }
                 return;
             }

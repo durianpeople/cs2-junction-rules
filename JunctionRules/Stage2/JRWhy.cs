@@ -102,7 +102,8 @@ namespace JunctionRules.Stage2
         private void WhyNoteScan(in RoomScan scan)
         {
             if (!m_WhyOn) return;
-            float min = scan.MinRoomNow;
+            // JR-T-027: with the look-past the hold is about the PREDICTED room (vehicles carrying on do not count)
+            float min = scan.LookPastOn ? scan.MinRoomPredicted : scan.MinRoomNow;
             m_WhyRoomShort = min < float.MaxValue && scan.Needed > min ? scan.Needed - min : float.NaN;
             m_WhyRefusal = scan.Refusal;
         }
