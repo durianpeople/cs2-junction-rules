@@ -503,7 +503,9 @@ namespace JunctionRules.Tests
                 Console.WriteLine($"  look-past scene '{sc.Name}': pauses at the line {pOff} -> {pOn}, needless (would have cleared) {nOff} -> {nOn}, stood in box (vehicle-steps) {sOff} -> {sOn} (of which entered by the look-past {sLook}), vehicles through {thOff} -> {thOn}");
                 totPausesOff += pOff; totPausesOn += pOn; needOff += nOff; needOn += nOn; stoodOff += sOff; stoodOn += sOn;
                 if (sc.HardStop) stoodLookDead += sLook; else stoodLook += sLook;
-                Check(sOn <= sOff, $"look-past scene '{sc.Name}': stood in box does not rise ({sOff} -> {sOn})");
+                // JR-T-022f: standing by cars the look-past let in is ruling 1's accepted residual (a hidden queue right beyond a
+                // lorry; bounded below, <= 10 in all); every other cause must not rise in any scene
+                Check(sOn - sLook <= sOff, $"look-past scene '{sc.Name}': stood in box (not let in by the look-past) does not rise ({sOff} -> {sOn - sLook}; let in {sLook})");
             }
             Console.WriteLine($"  look-past total: pauses {totPausesOff} -> {totPausesOn}, needless pauses {needOff} -> {needOn}, stood in box {stoodOff} -> {stoodOn}, of which by a vehicle the look-past let in {stoodLook} (physical braking) + {stoodLookDead} (queue stops dead, no braking distance: no game vehicle can do that)");
             Check(needOff > 0, "measure first: 1.0.1 pauses at the line although the car would have cleared (reproduced)");
@@ -664,7 +666,8 @@ namespace JunctionRules.Tests
             Console.WriteLine($"  truck driven, the artic / lorry past the exit brakes as hard as it can at each step 0-7 ({tRuns} runs): stopped at the line {tLine}, went on a look-past decision {tLook}, stood in the box {tStood}");
             Check(tStood == 0 && tLook > 0, "truck driven: the artic / lorry past the exit brakes hard after X decided -> X stops at the line while it can, never stands in the box");
 
-            // ---- a large vehicle queued ahead inside the box hides the road past it: no look-past credit there
+            // ---- JR-T-022f (owner call B): a large vehicle queued ahead inside the box switches the look-past off for this
+            // decision: the 1.0.1 free-now verdict (no credit past it, no hold of its own)
             RoomScan qb = RoomScan.Begin(4.2f, 1f);
             qb.FreeNow = true; qb.LookPast = true; qb.SightLeft = 40f;
             qb.AddQueued(12f, 8f, 5, 1, true);          // a lorry crossing the box ahead (occupied 13)
@@ -675,8 +678,13 @@ namespace JunctionRules.Tests
             qc.AddQueued(6.5f, 8f, 5, 1, false);        // a van ahead instead (occupied 7.5)
             qc.Add(8.5f, 4.2f, 10f, 7, 1, 8f, 6f);      // now 1, pred 7 >= 5.2: credited (seen over the van)
             qc.FinishLookPast();
-            Check(!qb.HasRoom && qb.BlockerIndex == 5 && qb.ExitHidden && qc.HasRoom && qc.AdmittedByLookPast && !qc.ExitHidden,
-                "a lorry queued ahead in the box hides the exit: X waits, naming the lorry (JR-T-022d: the road past it is not read); a van does not hide it");
+            RoomScan qbOff = RoomScan.Begin(4.2f, 1f);
+            qbOff.FreeNow = true;
+            qbOff.AddQueued(12f, 8f, 5, 1, true);
+            qbOff.Add(14f, 4.2f, 10f, 7, 1, 8f, 6f);
+            Check(!qb.HasRoom && qb.BlockerIndex == 7 && qb.QueuedLargeFreeNow && !qb.AdmittedByLookPast && qb.BlockerIndex == qbOff.BlockerIndex && !qbOff.HasRoom
+                && qc.HasRoom && qc.AdmittedByLookPast && !qc.QueuedLargeFreeNow,
+                "JR-T-022f: a lorry queued ahead in the box -> look-past off: the free-now verdict (held at the car past the box, as off); a van does not switch it off");
 
             // ---- hidden beyond a large vehicle: skipped; a light beyond it is never hidden
             RoomScan hl = RoomScan.Begin(4.2f, 1f);
@@ -780,8 +788,8 @@ namespace JunctionRules.Tests
             straddle.AddQueued(12f, 10f, 3, 1, true);           // occupied 13
             straddle.Add(11f, 5.5f, 20f, 3, 1, 10f, 12f, true); // now -2, pred 10 >= 5.2
             straddle.FinishLookPast();
-            Check(!straddle.HasRoom && straddle.ExitHidden && straddle.BlockerIndex == 3,
-                "JR-T-022d: an artic straddling the box: its trailer in the box hides the exit: X waits, naming the artic");
+            Check(!straddle.HasRoom && straddle.QueuedLargeFreeNow && straddle.BlockerIndex == 3,
+                "JR-T-022f: an artic straddling the box: its trailer in the box switches the look-past off: free-now verdict (no room now), naming the artic");
             // setting off: the same calls give 1.0.1 exactly (no join, no hiding)
             RoomScan o1 = RoomScan.Begin(4.2f, 1f), o2 = RoomScan.Begin(4.2f, 1f);
             o1.FreeNow = o2.FreeNow = true;
@@ -826,6 +834,67 @@ namespace JunctionRules.Tests
                 if (on.ElementsJoined > 0) joinedRuns++;
             }
             Check(superViol == 0 && joinedRuns > 500, $"look-past with artics as two elements admits a superset of the setting off (20000 random scans, {joinedRuns} with a joined artic, {superViol} refusals)");
+
+            // JR-T-022f (owner call B): ON never refuses what OFF allows, with vehicles queued ahead before / inside the box (large
+            // ones among them), large vehicles and artics past it, further zebras (ExtendPast) and sight cuts; a queued vehicle
+            // now and then read after the first vehicle past the box (robustness). A queued large vehicle = 1.0.1 verdict exactly.
+            var rq = new Random(2232);
+            int qViol = 0, qLargeRuns = 0, qLargeDiff = 0, qLookRuns = 0;
+            for (int i = 0; i < 40000; i++)
+            {
+                RoomScan off = RoomScan.Begin(4.2f + (float)rq.NextDouble() * 12f, 1f);
+                off.FreeNow = true;
+                RoomScan on = off;
+                on.LookPast = true; on.SightLeft = 20f + (float)rq.NextDouble() * 40f;
+                bool queuedLarge = false, late = false;
+                void Queue(int id)
+                {
+                    float ql = 4f + (float)rq.NextDouble() * 14f, qs = (float)rq.NextDouble() * 12f;
+                    bool ql2 = rq.Next(3) == 0;
+                    queuedLarge |= ql2;
+                    off.AddQueued(ql); on.AddQueued(ql, qs, id, 1, ql2);
+                }
+                int nq = rq.Next(0, 3);
+                for (int k = 0; k < nq; k++) Queue(30 + k);
+                float pos = (float)rq.NextDouble() * 30f - 2f;
+                int ops = rq.Next(1, 6);
+                for (int k = 0; k < ops; k++)
+                {
+                    float sp = (float)rq.NextDouble() * 12f, tr = (float)rq.NextDouble() * 15f, cr = tr + 2f * sp * 0.25f;
+                    bool large = rq.Next(2) == 0;
+                    int id = 10 + k;
+                    int kind = rq.Next(8);
+                    if (kind == 0)
+                    {
+                        float tl = 8f + (float)rq.NextDouble() * 6f, cl = 4f + (float)rq.NextDouble() * 3f, ov = (float)rq.NextDouble() * 1.5f;
+                        off.Add(pos, tl, cr, id, 1); off.Add(pos + tl - ov, cl, cr, id, 1);
+                        on.Add(pos, tl, cr, id, 1, sp, tr, true); on.Add(pos + tl - ov, cl, cr, id, 1, sp, tr, true);
+                        pos += tl - ov + cl + (float)rq.NextDouble() * 8f;
+                    }
+                    else if (kind == 1) { float ze = (float)rq.NextDouble() * 10f; off.ExtendPast(ze); on.ExtendPast(ze); }
+                    else if (kind == 2) { float at = (float)rq.NextDouble() * 50f; off.LimitSight(at); on.LimitSight(at); }
+                    else if (kind == 3 && k == 1) { late = true; Queue(40 + k); }
+                    else
+                    {
+                        float l = 4f + (float)rq.NextDouble() * 12f;
+                        off.Add(pos, l, cr, id, 1); on.Add(pos, l, cr, id, 1, sp, tr, large);
+                        pos += l + (float)rq.NextDouble() * 8f;
+                    }
+                }
+                on.FinishLookPast();
+                if (off.HasRoom && !on.HasRoom) qViol++;
+                if (on.AdmittedByLookPast) qLookRuns++;
+                if (on.QueuedLargeFreeNow)
+                {
+                    qLargeRuns++;
+                    // in path order (queued vehicles first, as the job reads them) the verdict is 1.0.1's exactly; a queued
+                    // vehicle read after one past the box (not a job order) may keep a relaxation read before it (a hidden or
+                    // joined vehicle): never stricter (qViol)
+                    if (!late && (on.HasRoom != off.HasRoom || on.AdmittedByLookPast)) qLargeDiff++;
+                }
+            }
+            Check(qViol == 0 && qLargeDiff == 0 && qLargeRuns > 5000 && qLookRuns > 1000,
+                $"JR-T-022f: look-past with queued vehicles (large ones = the 1.0.1 verdict in path order) admits a superset of the setting off (40000 random scans, {qLargeRuns} with a queued large vehicle, {qLookRuns} admitted by the look-past, {qViol} refusals, {qLargeDiff} queued-large verdicts unlike off)");
 
             // ---- the sim's truck snapshot with the artic read as two elements: as the one-object artic
             bool fastTruck2 = TruckRoom(true, 16.5f, 10f, 2.5f, 6f, out _, true);

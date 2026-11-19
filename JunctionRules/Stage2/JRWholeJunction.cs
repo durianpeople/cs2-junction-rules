@@ -1383,7 +1383,7 @@ namespace JunctionRules.Stage2
                         // JR-T-022: a vehicle the car follows through the box: its forward speed decides whether the queue is clearly moving
                         Entity lw = controllers.TryGetComponent(e, out Controller lc) && lc.m_Controller != Entity.Null ? lc.m_Controller : e;
                         scan.AddQueued(MathUtils.Size(g.m_Bounds.z), ForwardSpeed(e, o.m_CurvePosition.x, inverse, hasCurve, curve, ref moving), lw.Index, lw.Version,
-                            BlocksView(pr.m_Prefab, ref prefabCars));   // JR-T-022b: a large vehicle ahead hides the road past the box
+                            BlocksView(pr.m_Prefab, ref prefabCars));   // JR-T-022f: a large vehicle ahead switches the look-past off (1.0.1 verdict)
                         continue;
                     }
                     scan.AddQueued(MathUtils.Size(g.m_Bounds.z));

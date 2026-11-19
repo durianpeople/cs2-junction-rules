@@ -89,7 +89,8 @@ namespace JunctionRules.Tests
             free.ExtendPast(1f);   // needed 6.2: the lorry's room free now (8) still suffices
             free.FinishLookPast();
             Check(free.HasRoom && !free.AdmittedByLookPast, "ruling 1 caution: the margin never takes away room that is free now");
-            // (f) a large vehicle queued ahead of X before / inside the box: X cannot see its exit -> waits; nothing past the box is read
+            // (f) JR-T-022f (owner call B): a large vehicle queued ahead of X before / inside the box switches the look-past off for
+            // this decision: the 1.0.1 free-now verdict (X goes when the room is free now, as with the setting off)
             RoomScan q = RoomScan.Begin(4.2f, 1f);
             q.FreeNow = true; q.LookPast = true; q.SightLeft = 50f;
             q.AddQueued(12f, 10f, 5, 1, true);
@@ -99,8 +100,30 @@ namespace JunctionRules.Tests
             qOff.FreeNow = true;
             qOff.AddQueued(12f, 10f, 5, 1, true);
             qOff.Add(40f, 4.2f, 10f, 7, 1, 8f, 6f);
-            Check(!q.HasRoom && q.ExitHidden && q.BlockerIndex == 5 && qOff.HasRoom && !qOff.ExitHidden,
-                "ruling 1: a lorry queued ahead in the box hides the exit -> X waits naming it (off: the exit is read, X goes)");
+            Check(q.HasRoom && q.QueuedLargeFreeNow && !q.AdmittedByLookPast && q.HiddenSeen == 0 && qOff.HasRoom && !qOff.QueuedLargeFreeNow,
+                "JR-T-022f: a lorry queued ahead in the box -> look-past off: room free now past the box -> X goes (as off; no hold of its own)");
+            // ... and room only on a car's travel past the box is NOT credited (free-now verdict), naming that car, as off
+            RoomScan q2 = RoomScan.Begin(4.2f, 1f), q2Off = RoomScan.Begin(4.2f, 1f), q2Van = RoomScan.Begin(4.2f, 1f);
+            q2.FreeNow = q2Off.FreeNow = q2Van.FreeNow = true; q2.LookPast = q2Van.LookPast = true; q2.SightLeft = q2Van.SightLeft = 50f;
+            q2.AddQueued(12f, 10f, 5, 1, true); q2.Add(15f, 4.2f, 10f, 7, 1, 8f, 6f); q2.FinishLookPast();
+            q2Off.AddQueued(12f, 10f, 5, 1, true); q2Off.Add(15f, 4.2f, 10f, 7, 1, 8f, 6f);
+            q2Van.AddQueued(12f, 10f, 5, 1, false); q2Van.Add(15f, 4.2f, 10f, 7, 1, 8f, 6f); q2Van.FinishLookPast();
+            Check(!q2.HasRoom && q2.BlockerIndex == 7 && q2.BlockerIndex == q2Off.BlockerIndex && !q2Off.HasRoom && q2Van.HasRoom && q2Van.AdmittedByLookPast,
+                "JR-T-022f: lorry queued ahead + a car past the box with free-now room short: held at that car (as off); behind a van it is credited");
+            // a large vehicle past the box after the switch is not a hider any more: everything is read as off
+            RoomScan q3 = RoomScan.Begin(4.2f, 1f), q3Off = RoomScan.Begin(4.2f, 1f);
+            q3.FreeNow = q3Off.FreeNow = true; q3.LookPast = true; q3.SightLeft = 50f;
+            q3.AddQueued(4.2f, 10f, 4, 1, false); q3.AddQueued(12f, 10f, 5, 1, true); q3.Add(20f, 12f, 20f, 6, 1, 10f, 12f, true); q3.Add(34f, 4.2f, 0f, 7, 1, 0f, 0f); q3.FinishLookPast();
+            q3Off.AddQueued(4.2f); q3Off.AddQueued(12f); q3Off.Add(20f, 12f, 20f, 6, 1); q3Off.Add(34f, 4.2f, 0f, 7, 1);
+            Check(q3.HasRoom == q3Off.HasRoom && q3.BlockerIndex == q3Off.BlockerIndex && q3.Reach == q3Off.Reach && q3.Obstacles == q3Off.Obstacles && q3.HiddenSeen == 0,
+                "JR-T-022f: after the switch the scan is the 1.0.1 scan call for call (a lorry past the box hides nothing, the standing car beyond it is read)");
+            // credit given before the switch (a vehicle read before the queued lorry) is withdrawn: free-now verdict naming it
+            RoomScan q4 = RoomScan.Begin(4.2f, 1f);
+            q4.FreeNow = true; q4.LookPast = true; q4.SightLeft = 50f;
+            q4.Add(2f, 4.2f, 10f, 3, 1, 8f, 6f);   // now 2, pred 8: credited
+            q4.AddQueued(12f, 10f, 5, 1, true);
+            q4.FinishLookPast();
+            Check(!q4.HasRoom && q4.BlockerIndex == 3 && !q4.AdmittedByLookPast, "JR-T-022f: look-past credit given before the switch is withdrawn (free-now verdict, naming that vehicle)");
 
             // ======== ruling 2: buildings block the straight line
             // geometry: segment vs box (axis-aligned box [-1, 1] x [-1, 1] at the origin)

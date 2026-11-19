@@ -178,7 +178,9 @@ PROBE-STAGE3-PAINT.md section 10.
   large vehicle (the game's `CarData.m_SizeClass` Large: lorries, buses, artics) ends the view: it is seen and credited
   itself, with its guaranteed travel less 5 m (`RoomScan.LookPastLargeMargin`: room for a car standing unseen ahead of
   it), the vehicles beyond it are not read at all (owner ruling 19 Nov: neither for nor against), and the room relied on
-  must end by its front; a large vehicle queued ahead in or before the box hides the exit, so the car waits at the line.
+  must end by its front. A large vehicle queued ahead in or before the box (owner call 19 Nov, JR-T-022f) switches the
+  look-past off for that decision: the car judges as with the setting off (room free now past the box), no hold of its
+  own, so the setting never refuses what off allows.
   Buildings block the view (owner ruling 19 Nov): before the look-past gives the room, the straight 2D line from the
   driver to each vehicle it credited and to the end of the room relied on is tested against the footprints of the
   buildings near that line (stock static object search tree, cells and items pruned by the line itself; no stored

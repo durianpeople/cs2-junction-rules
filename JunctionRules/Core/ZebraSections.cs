@@ -512,9 +512,9 @@ namespace JunctionRules.Core
         /// the driver (<see cref="SightLeft"/>); ordinary cars never block the view, a large vehicle does
         /// (<see cref="BlocksView"/>). JR-T-022d (owner rulings 19 Nov 2026, binding): the view ENDS at a large vehicle: it is
         /// judged itself (position + guaranteed travel), the vehicles beyond it are NOT READ AT ALL (neither for nor against),
-        /// and the room the look-past relies on must end within what is seen (at the latest the large vehicle's front); a large
-        /// vehicle queued ahead of the car before / inside the box hides the whole exit: the car waits (it cannot see its exit
-        /// is clear). Buildings block the view: every target the look-past credits (each vehicle credited, the end of the room
+        /// and the room the look-past relies on must end within what is seen (at the latest the large vehicle's front).
+        /// JR-T-022f (owner call B): a large vehicle queued ahead of the car before / inside the box switches the look-past off
+        /// for that decision (today's 1.0.1 free-now verdict, never stricter than off). Buildings block the view: every target the look-past credits (each vehicle credited, the end of the room
         /// relied on) must be in a straight 2D line from the driver that crosses no building footprint
         /// (<see cref="FinishSight{T}"/>, Core <see cref="SightLine.SegmentHitsBox"/>). JR-T-022c: an articulated vehicle
         /// (trailer and tractor read as separate lane objects, named by the same controller) is ONE vehicle: credited by its
@@ -572,8 +572,8 @@ namespace JunctionRules.Core
         private float m_LookNeedEnd;
         /// <summary>
         /// JR-T-022b: the view is blocked from here on: a LARGE vehicle past the box was read (it is seen and judged itself,
-        /// with its own position + guaranteed travel), or one is queued ahead of the car before / inside the box (it hides the
-        /// whole road past the box). JR-T-022d (owner ruling 1, 19 Nov 2026: "I don't want it to see the hidden queue, so just
+        /// with its own position + guaranteed travel). (JR-T-022f: one queued ahead before / inside the box no longer hides:
+        /// it switches the look-past off, <see cref="AddQueued(float, float, int, int, bool)"/>.) JR-T-022d (owner ruling 1, 19 Nov 2026: "I don't want it to see the hidden queue, so just
         /// limit the visibility"): every vehicle after it in path order is NOT READ AT ALL: no credit, no block, no room taken
         /// (<see cref="HiddenSeen"/> counts them); the view ends at the large vehicle (<see cref="m_ViewEnd"/>).
         /// JR-T-022c: never the hiding vehicle's own other elements (an artic's tractor behind its trailer): see
@@ -582,8 +582,7 @@ namespace JunctionRules.Core
         private bool m_Hidden;
         /// <summary>
         /// JR-T-022d: where the view ends (metres past the window start, scan coordinates): the front of the large vehicle
-        /// that hides the rest (the whole artic's front once its other elements joined), 0 for a large vehicle queued ahead
-        /// before / inside the box. The room the look-past relies on must end here at the latest (<see cref="FinishLookPast"/>).
+        /// that hides the rest (the whole artic's front once its other elements joined). The room the look-past relies on must end here at the latest (<see cref="FinishLookPast"/>).
         /// float.MaxValue = nothing hides the view.
         /// </summary>
         private float m_ViewEnd;
@@ -606,10 +605,12 @@ namespace JunctionRules.Core
         /// <summary>JR-T-022b / 022d (tests / probe): vehicles behind a large vehicle, not read (022b: judged free-now).</summary>
         public int HiddenSeen;
         /// <summary>
-        /// JR-T-022d (owner ruling 1): the car waits before the box because a large vehicle queued ahead of it (before / inside
-        /// the box) hides its exit (tests / probe).
+        /// JR-T-022f (owner call B, 19 Nov 2026): a large vehicle queued ahead of the car (before / inside the box) switched the
+        /// look-past OFF for this decision: the rest of the scan and the verdict are the 1.0.1 free-now rule (tests / probe).
         /// </summary>
-        public bool ExitHidden;
+        public bool QueuedLargeFreeNow;
+        /// <summary>JR-T-022f: set by a large vehicle queued ahead: <see cref="LookPastOn"/> is false from then on.</summary>
+        private bool m_LookPastOff;
         /// <summary>JR-T-022d (owner ruling 2, tests / probe): a building blocked the line of sight to a look-past target.</summary>
         public bool BuildingCut;
 
@@ -683,7 +684,7 @@ namespace JunctionRules.Core
         }
 
         /// <summary>JR-T-022: the look-past acts (setting on, a box room test).</summary>
-        public readonly bool LookPastOn => LookPast && FreeNow;
+        public readonly bool LookPastOn => LookPast && FreeNow && !m_LookPastOff;
 
         /// <summary>The next vehicle ahead on the path (in path order).</summary>
         public void Add(float rear, float length, float credit) => Add(rear, length, credit, 0, 0);
@@ -800,27 +801,39 @@ namespace JunctionRules.Core
         public void AddQueued(float length, float speed, int index, int version) => AddQueued(length, speed, index, version, false);
 
         /// <summary>
-        /// JR-T-022b: as above; <paramref name="large"/> = a vehicle that blocks the view queued ahead of the car (before /
-        /// inside the box): the road past the box is hidden behind it, so vehicles there give no look-past credit.
+        /// JR-T-022b / 022f: as above; <paramref name="large"/> = a vehicle that blocks the view queued ahead of the car (before /
+        /// inside the box). JR-T-022f (owner call B, 19 Nov 2026: "humans behind a lorry usually still judge the space"; the
+        /// look-past must never be worse than off): it switches the look-past OFF for this decision: from here on every call
+        /// takes the 1.0.1 path and the verdict is today's free-now verdict (no hold of its own). Large vehicles PAST the box
+        /// keep ruling 1 (<see cref="AddLook"/>).
         /// </summary>
         public void AddQueued(float length, float speed, int index, int version, bool large)
         {
+            if (LookPastOn && large && !Blocked) LookPastOffNow();
             if (LookPastOn && !Blocked && !m_LookSlow && !(speed >= LookPastMinSpeed))
             {
                 m_LookSlow = true; m_SlowIndex = index; m_SlowVersion = version;
             }
-            if (LookPastOn && large && !Blocked)
-            {
-                // JR-T-022d (owner ruling 1): a large vehicle ahead of the car before / inside the box hides the whole exit: the
-                // room past the box cannot be seen, so the car waits (UK: do not enter unless you can see your exit is clear).
-                // The vehicles past the box are not read (neither for nor against).
-                Hide(index, version);
-                m_ViewEnd = 0f;
-                ExitHidden = true;
-                BlockBy(index, version);
-            }
             if (LookPastOn) m_GroupOpen = false;   // JR-T-022c: a queued element has no position: nothing joins it
             AddQueued(length);
+        }
+
+        /// <summary>
+        /// JR-T-022f: the look-past is off for the rest of this decision (1.0.1 free-now rule). Room the look-past already
+        /// relied on (a vehicle read before, credited on its travel) is not room free now: held, naming that vehicle, as the
+        /// free-now rule would have held at it.
+        /// </summary>
+        private void LookPastOffNow()
+        {
+            m_LookPastOff = true;
+            QueuedLargeFreeNow = true;
+            if (LookPastUsed)
+            {
+                Blocked = true;
+                if (m_Targets > 0) { BlockerIndex = m_TI0; BlockerVersion = m_TV0; }
+                else { BlockerIndex = m_MinIndex; BlockerVersion = m_MinVersion; }
+                LookPastUsed = false;
+            }
         }
 
         /// <summary>

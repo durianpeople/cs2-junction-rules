@@ -420,7 +420,10 @@ differential and a step-by-step trace hash over the box scenario set):
   - A large vehicle (`CarData.m_SizeClass` Large) ends the view: it is judged itself with its position plus guaranteed
     travel less `RoomScan.LookPastLargeMargin` (5 m, the one general caution: room for a car standing unseen ahead of
     it), the vehicles beyond it are not read at all (neither for nor against), and the room relied on must end by its
-    front. A large vehicle queued ahead of the car in / before the box hides the exit: the car waits at the line.
+    front. JR-T-022f (owner call 19 Nov): a large vehicle queued ahead of the car in / before the box switches the
+    look-past off for that decision (`RoomScan.AddQueued` large: the rest of the scan takes the 1.0.1 path and the verdict
+    is the free-now verdict; no hold of its own), so the setting never refuses what off allows (random differential with
+    queued large vehicles: 0 refusals).
   - Buildings block the view: when the look-past is about to give the room, the straight 2D line from the driver to each
     vehicle it credited and to the end of the room relied on must cross no building footprint (prefab
     `ObjectGeometryData` bounds placed by the `Transform`: the lot box for ordinary buildings, the mesh bounds for
