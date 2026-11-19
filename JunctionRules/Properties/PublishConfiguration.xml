@@ -31,7 +31,7 @@ The game's car-driving system is switched off and replaced by a Burst-compiled c
 - Open the tool with **Ctrl+Y** or the toolbar button. Hover a junction or a building: a white outline means click to add a box, orange means click to remove it. Boxes are saved with your city.
 - Each real car access of a building (exit, entrance or two-way) is boxed on its own.
 - Boxes have straight sides, kerb to kerb, and never cover zebras, stop or give-way lines or medians. Boxes closer than a car length merge into one. No parking inside a box. Road markings under a box can optionally be hidden.
-- A vehicle enters a box only if there is room past it for its whole length (trailers included): free right now, or, with the setting Look past the car in front at a box (on by default), certain to be free by the time it gets there even if the traffic ahead brakes. Otherwise it stops with its front bumper at the line.
+- A vehicle enters a box only if there is room past it for its whole length (trailers included): free right now, or, with the setting Look past the car in front at a box (on by default), free by the time it gets there, with every vehicle ahead expected to keep going and to stop only behind a queue or vehicle it can see standing, or at a red light (within its 50 m line of sight). Otherwise it stops with its front bumper at the line.
 - UK exception (optional): a vehicle turning across oncoming traffic may wait inside a junction box when its exit is clear and only oncoming traffic stops it.
 - The mod never adds a starvation timeout: a vehicle that can't go legally waits.
 - Some spots can't take a box (elevated or tunnel roads, highways, roundabouts and so on); the tool says why.

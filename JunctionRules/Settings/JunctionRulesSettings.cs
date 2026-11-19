@@ -207,8 +207,8 @@ namespace JunctionRules.Settings
         /// <summary>
         /// JR-T-022 (owner 19 Nov 2026): a car about to enter a box judges the whole stretch ahead (every vehicle before, in
         /// and past the box, their speeds, the room beyond them), not only the car right in front: when the vehicles past the
-        /// box are clearly moving away and the room is certain to be there even if they brake now, it does not pause at the
-        /// line (Core RoomScan.LookPast). JR-T-024: with it, people walking across a box's exit zebra let the car in to wait just
+        /// box are clearly moving away, each is expected to keep going and to stop only behind a queue or vehicle it can see
+        /// standing (or at a red light), and that leaves the room, it does not pause at the line (Core RoomScan.LookPast; 1.2.0). JR-T-024: with it, people walking across a box's exit zebra let the car in to wait just
         /// before the zebra when the road past has room free now; someone standing there on its way holds it at the line (Core
         /// ExitZebraWait; JR-T-024b: cyclists are not people, as in the game's own check). Default on; off = 1.0.1 driving. Greyed out while the box rule is off.
         /// </summary>

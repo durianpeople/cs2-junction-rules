@@ -171,8 +171,10 @@ PROBE-STAGE3-PAINT.md section 10.
   margin past a zebra or yellow box"). Timing log: box entries held, right-turn waits, entrance band holds.
 - **Look past the car in front at a box** (1.1.0, Yellow boxes, default on; off = 1.0.1 bit for bit): acts only in a
   yellow box room test (free-now rule). The car judges every vehicle it can see past the box: one whose free-now room is
-  short still gives room when it moves away at 3 m/s or more and its rear plus the distance it is certain to cover even
-  if it brakes as hard as it can leaves the car's length plus margin; any vehicle the car follows through the box below
+  short still gives room when it moves away at 3 m/s or more (1.2.0, JR-T-027, owner rule 20 Nov: an ordinary moving vehicle
+  is expected to carry on and stops only behind the back of a visible standing vehicle / queue or at a red stop line,
+  which the scan reads where they are; the road up to its predicted front must lie inside the sight; 1.1.0 credited only
+  its guaranteed travel, which is now kept for large vehicles alone); any vehicle the car follows through the box below
   3 m/s refuses. Sight rule: a 50 m straight-line radius around the driver (on a turn it reaches into the road turned
   into); the room relied on must end inside it and within the path read. Ordinary cars and vans never block the view. A
   large vehicle (the game's `CarData.m_SizeClass` Large: lorries, buses, artics) ends the view: it is seen and credited
@@ -189,8 +191,8 @@ PROBE-STAGE3-PAINT.md section 10.
   car park lot stands inside its lot box). A crossed footprint withdraws the look-past credit. This replaced the interim
   "next junction ends the sight" cut (kept only when the driver's position is unknown). An artic is one vehicle
   (trailer and tractor share a controller): credited by its leading element, its elements never hide each other (1.1.0
-  review fix). Lights are always seen. The decision runs again every step while the car can still stop at the line, so the safety stop stays; rare misjudgements that end with a car in the box (a queue past it that
-  stops harder than any game vehicle brakes) are accepted by design. Mode bit 31 (`Stage2Mode.BoxLookPast`, stripped from
+  review fix). Lights are always seen. The decision runs again every step while the car can still stop at the line, so the safety stop stays; rare misjudgements that end with a car in the box (since 1.2.0 also a queue past it that closes after the car could no
+  longer stop; measured offline, rises clearly) are accepted by design. Mode bit 31 (`Stage2Mode.BoxLookPast`, stripped from
   the job's stage 2 mode, toggling it logs a rule switch). Timing log: "let into a box by looking past the car in front"
   (`Stage2Counters.BoxLookPastAdmitted`), printed only when the setting was on in the window.
   JR-T-024 (owner ruling 19 Nov 2026), same setting: a car about to cross a junction box whose exit zebra has people on

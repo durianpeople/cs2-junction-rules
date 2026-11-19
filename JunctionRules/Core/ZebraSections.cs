@@ -500,10 +500,11 @@ namespace JunctionRules.Core
         /// front to clear it first"), setting "Look past the car in front at a box" (default on), acts only with
         /// <see cref="FreeNow"/>. ONE rule: the car judges the whole stretch ahead (every vehicle the scan reads: before the
         /// line, in the box, past it), not only the room free now. A vehicle past the box whose free-now room is short still
-        /// gives room when it is clearly moving away (<see cref="LookPastMinSpeed"/> or faster) and its position plus the
-        /// distance it is GUARANTEED to cover even if it brakes as hard as it can now (<see cref="GuaranteedTravel"/>) leaves the
-        /// room: so when the car arrives there, its whole length (trailers included) plus the margin fits behind it even if the
-        /// queue ahead brakes at once. The look-past is refused (today's free-now verdict) when any vehicle the car follows
+        /// gives room when it is clearly moving away (<see cref="LookPastMinSpeed"/> or faster). JR-T-027 (1.2.0, owner rule 20 Nov
+        /// 2026): an ordinary vehicle moving away is expected to carry on and stops only behind the back of a visible standing
+        /// vehicle / queue or at a red stop line (the scan reads these where they are; the road up to its predicted front must lie
+        /// inside the sight). A LARGE vehicle keeps the 1.1.0 credit: its position plus the distance it is GUARANTEED to cover even
+        /// if it brakes as hard as it can now (<see cref="GuaranteedTravel"/>), less <see cref="LookPastLargeMargin"/>. The look-past is refused (today's free-now verdict) when any vehicle the car follows
         /// through the box (queued ahead of it before / inside the box) is slower than that speed, and every other block
         /// (a standing vehicle, a red / amber light, people on a further zebra, a further box) holds as before. The decision
         /// runs again at every step while the car can still stop at the line, so a queue that brakes holds it there (the
