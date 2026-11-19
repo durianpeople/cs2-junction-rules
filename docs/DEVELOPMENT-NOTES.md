@@ -193,6 +193,9 @@ PROBE-STAGE3-PAINT.md section 10.
   speed^2 >= 0.01); people waiting at the kerb are not on the zebra (G23). Core `ExitZebraWait`, job
   `Stage2/JRExitZebraWait.cs`. Timing log: "waiting in a box just before its exit zebra while people cross"
   (`BoxExitZebraWait`) and "held at a box line for people standing on its exit zebra" (`BoxExitZebraLine`).
+  JR-T-024b: "standing" counts only a person on the car's way over the zebra or beside it (the overlap's range on the
+  pedestrian lane + 1.5 m: Core `ExitZebraWait.OnCarsWay`); walking people anywhere; cyclists are not people (as the
+  game's own pedestrian check); the zebra-wait counter needs the car's own blocker to be a person on that zebra.
 - **Yellow box paint test** (stage 3 probe): off (default) or on; **what to draw** (Box / Plain fill / Outline only);
   **paint onto** (Roads (default) / Roads + Other / Everything but vehicles); buttons Refresh test list, Add junction at
   camera centre, Log paint cost now; Paint test status. See PROBE-STAGE3-PAINT.md.

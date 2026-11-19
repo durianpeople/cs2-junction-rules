@@ -19,13 +19,17 @@ namespace JunctionRules.Stage2
         /// <summary>
         /// The exit zebra of a boxed junction lane (Core ExitZebraWait.IsExitZebra): its pedestrian lane and its start in
         /// driving coordinates. Zebras as the zebra sections read them (crosswalk, not Unsafe; water overlaps never).
+        /// JR-T-024b (O1): <paramref name="carRange"/> = the overlap's range on the pedestrian lane (game offsets, m_OtherStart /
+        /// m_OtherEnd: the car's way over the zebra, as the game's CheckPedestrian and G23 read it).
         /// </summary>
         private static bool ExitZebraOf(Entity lane, bool inverse, ref BufferLookup<LaneOverlap> overlapData,
-            ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes, out Entity zebraLane, out float zebraStart, out float previousEnd)
+            ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes, out Entity zebraLane, out float zebraStart, out float previousEnd,
+            out float2 carRange)
         {
             zebraLane = Entity.Null;
             zebraStart = -1f;
             previousEnd = 0f;
+            carRange = default;
             if (!overlapData.TryGetBuffer(lane, out DynamicBuffer<LaneOverlap> overlaps)) return false;
             for (int i = 0; i < overlaps.Length; i++)
             {
@@ -38,6 +42,7 @@ namespace JunctionRules.Stage2
                 {
                     zebraStart = s;
                     zebraLane = o.m_Other;
+                    carRange = math.float2(o.m_OtherStart, o.m_OtherEnd) * WholePathRule.ByteToOffset;
                 }
             }
             if (zebraLane == Entity.Null || !ExitZebraWait.IsExitZebra(zebraStart, zebraStart)) return false;
@@ -56,10 +61,12 @@ namespace JunctionRules.Stage2
 
         /// <summary>
         /// Everyone on the zebra's pedestrian lane, classified (Core ExitZebraWait.Person: the game's walking test; with
-        /// "Cars never push through people" a person standing in the waiting area at a lane end is not on it).
+        /// "Cars never push through people" a person standing in the waiting area at a lane end is not on it; JR-T-024b: a
+        /// person standing off the car's way (<paramref name="carRange"/>, Core OnCarsWay) is not counted (O1), and only
+        /// creatures are people, as in the game's own check (O2: a cyclist is not)).
         /// <paramref name="stander"/> = the first standing person (the blocker named for a line hold).
         /// </summary>
-        private int ExitZebraPeople(Entity zebraLane, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Moving> moving,
+        private int ExitZebraPeople(Entity zebraLane, float2 carRange, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Moving> moving,
             ref ComponentLookup<Curve> curves, out Entity stander)
         {
             stander = Entity.Null;
@@ -70,8 +77,9 @@ namespace JunctionRules.Stage2
             {
                 Entity obj = objects[i].m_LaneObject;
                 bool hasMoving = moving.TryGetComponent(obj, out Moving m);
-                int p = ExitZebraWait.Person(hasMoving, hasMoving ? math.lengthsq(m.m_Velocity) : 0f, m_NoPushPeople,
-                    CrossingPush.InWaitZone(objects[i].m_CurvePosition.x, zebraLength));
+                float pos = objects[i].m_CurvePosition.x;
+                int p = ExitZebraWait.Person(m_BoxCreatures.HasComponent(obj), hasMoving, hasMoving ? math.lengthsq(m.m_Velocity) : 0f, m_NoPushPeople,
+                    CrossingPush.InWaitZone(pos, zebraLength), ExitZebraWait.OnCarsWay(pos, carRange.x, carRange.y, zebraLength));
                 if (p == ExitZebraWait.Stationary && stander == Entity.Null) stander = obj;
                 people = ExitZebraWait.Worse(people, p);
             }
@@ -92,8 +100,8 @@ namespace JunctionRules.Stage2
             ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
         {
             if (!m_BoxLookPast) return float.MaxValue;
-            if (!ExitZebraOf(lane, inverse, ref overlapData, ref pedestrianLanes, out Entity zebra, out float zebraStart, out float previousEnd)) return float.MaxValue;
-            int people = ExitZebraPeople(zebra, ref laneObjects, ref moving, ref curves, out Entity stander);
+            if (!ExitZebraOf(lane, inverse, ref overlapData, ref pedestrianLanes, out Entity zebra, out float zebraStart, out float previousEnd, out float2 carRange)) return float.MaxValue;
+            int people = ExitZebraPeople(zebra, carRange, ref laneObjects, ref moving, ref curves, out Entity stander);
             if (people == ExitZebraWait.None) return float.MaxValue;
             bool roomFreeNow = false;
             // review fix: a vehicle that does not fit between the entry zebra (or the line) and the stop point before the exit zebra
@@ -126,17 +134,34 @@ namespace JunctionRules.Stage2
         }
 
         /// <summary>
-        /// Counting only (a car standing on a lane of the box): it waits at the exit zebra of this lane while somebody is on
+        /// Counting only (a car standing on a lane of the box): it waits at the exit zebra of this lane because of a person on
         /// it (Core ExitZebraWait.WaitingAtZebra): counted apart from "standing inside a box" and the nose count (owner rule).
+        /// JR-T-024b (O3): only when the car's own blocker (m_CarBlocker, the game's Blocker of its last step) is a creature on
+        /// that zebra: a car standing near the zebra for another reason stays "standing inside a box".
         /// </summary>
         private bool StandingAtExitZebra(Entity lane, float laneLength, bool inverse, float wait0, float margin, float start,
             ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes,
             ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Moving> moving, ref ComponentLookup<Curve> curves)
         {
-            if (!m_BoxLookPast || !ExitZebraOf(lane, inverse, ref overlapData, ref pedestrianLanes, out Entity zebra, out float zebraStart, out _)) return false;
+            if (!m_BoxLookPast || !ExitZebraOf(lane, inverse, ref overlapData, ref pedestrianLanes, out Entity zebra, out float zebraStart, out _, out _)) return false;
             float frontToZebra = BoxDriving.FrontToLine(wait0 + laneLength * (zebraStart - start), margin);
             if (frontToZebra < -BoxDriving.NoseTolerance || frontToZebra > margin + ExitZebraWait.AtZebraMetres) return false;
-            return ExitZebraWait.WaitingAtZebra(frontToZebra, margin, ExitZebraPeople(zebra, ref laneObjects, ref moving, ref curves, out _));
+            return ExitZebraWait.WaitingAtZebra(frontToZebra, margin, HeldByZebraPerson(zebra, ref laneObjects));
+        }
+
+        /// <summary>
+        /// JR-T-024b (O3, counting only): the car's own blocker (the game's Blocker of its last step: CheckPedestrian names the
+        /// person it stops for) is a creature on the zebra's pedestrian lane.
+        /// </summary>
+        private bool HeldByZebraPerson(Entity zebraLane, ref BufferLookup<LaneObject> laneObjects)
+        {
+            if (m_CarBlocker == Entity.Null || !m_BoxCreatures.HasComponent(m_CarBlocker)
+                || !laneObjects.TryGetBuffer(zebraLane, out DynamicBuffer<LaneObject> objects)) return false;
+            for (int i = 0; i < objects.Length; i++)
+            {
+                if (objects[i].m_LaneObject == m_CarBlocker) return true;
+            }
+            return false;
         }
     }
 }

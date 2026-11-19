@@ -28,8 +28,10 @@ namespace JunctionRules.Stage2
         /// one-box-per-building assumption; the 0.4.2 entrance / building / ConnectedBuilding lookups are gone).
         /// </summary>
         public unsafe void SetBoxes(ComponentLookup<JunctionRules.Boxes.YellowBoxJunction> junctions, ComponentLookup<Game.Net.EdgeLane> edgeLanes, ref JRBoxEdges boxEdges,
-            ComponentLookup<LaneSignal> signals)
+            ComponentLookup<LaneSignal> signals, ComponentLookup<Game.Creatures.Creature> creatures, Entity carBlocker)
         {
+            m_BoxCreatures = creatures;   // JR-T-024b (O2): the game's people test for the exit zebra
+            m_CarBlocker = carBlocker;    // JR-T-024b (O3, counting only): what the car waited for last step
             m_BoxJunctionData = junctions;
             m_EdgeLaneData = edgeLanes;
             m_BoxSignalData = signals;   // 0.4.10 (sweep): a red / amber light inside a box's room window = no room

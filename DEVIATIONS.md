@@ -358,7 +358,8 @@ because they rely on game code:
 light request of review R1, table above); three block conditions and one call changed: S2-28 / S2-28b / S2-37 `if (m_JR.m_BoxRule && !JunctionRules.Core
 .ExitGiveWay.IsEmergency(m_Priority))` (on-duty emergency vehicles, stock priority 108, pass yellow boxes as they pass
 exits: stock behaviour for them); S2-26 `SetBoxes(..., ref m_JRBoxEdges, m_LaneSignalData)` (the job's existing
-read-only signal lookup, for "a red / amber light inside the room window past a box = no room"). Everything else is job
+read-only signal lookup, for "a red / amber light inside the room window past a box = no room") (1.1.0 JR-T-024b: `..., m_LaneSignalData,
+m_CreatureData, blocker.m_Blocker)`, see the JR-T-024 section). Everything else is job
 side: the exit / entrance bands are the painted windows projected onto each lane (Core/LaneWindow.cs; 0.4.3's "known
 limit" above is gone: 0.4.3-0.4.9 mapped the edge t through `EdgeLane.m_EdgeDelta`, but lanes are built on the cut
 `EdgeGeometry` (`Game.Net/LaneSystem.cs` 2652, 2661-2662, 4101-4105), so bands sat up to 13 m off the paint); box room
@@ -450,3 +451,18 @@ room-ok return of the junction box hold in `Stage2/JRYellowBox.cs` `BoxHold`, `P
   its exit zebra), the last two indices, on the timing line only while the setting is on.
 - Limits: only the exit zebra on the junction lane itself (a box whose path continues on a further lane of the same node
   is not read past the first lane); exit / entrance bands are not covered (no zebra inside a band).
+- JR-T-024b (review findings O1-O3). One copy change: S2-26's `SetBoxes` call gets two more arguments (same line, block
+  and line counts unchanged): the job's existing read-only `m_CreatureData` lookup and `blocker.m_Blocker`, the car's own
+  `Blocker` of its last step (the game's `CheckBlocker` writes this step's after the iteration). (O1) A person STANDING on
+  the exit zebra counts only on the car's way over it or beside it: inside the overlap's range on the pedestrian lane
+  (`LaneOverlap.m_OtherStart` / `m_OtherEnd`, the range the game's `CheckPedestrian` and G23 `PersonInPath` use) widened by
+  G23's 0.5 m plus 1 m for the game's beside test (`CheckPedestrian` counts a person outside the range within half the car's
+  width + half their size of the car's overlap line, less up to 1 m for facing it; the range is the car lane's footprint,
+  so that reaches at most about 1 m past it). Someone standing on the far half of a wide zebra no longer holds the car at
+  the line. Walking people still count anywhere on the zebra (conservative). (O2) Only creatures are people: the game's own
+  check calls `CheckPedestrian` only for lane objects with a `Creature` component (copy `CheckOverlappingLanes`); a
+  cyclist on the crossing is a vehicle there (`UpdateMaxSpeed`), so a cyclist on the exit zebra is not counted for the
+  zebra wait (the game still brakes for them as a vehicle inside the box). (O3) `BoxExitZebraWait` counts a car standing
+  at the spot before the exit zebra only when its own blocker is a person on that zebra (the game's pedestrian stop names
+  that person); standing there for another reason (a vehicle ahead, the exit blocked, a light) while somebody is on the
+  zebra counts as standing inside the box / a nose, as before JR-T-024. All three behind the setting (off = 1.0.1).

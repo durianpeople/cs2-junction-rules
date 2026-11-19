@@ -66,12 +66,13 @@ namespace JunctionRules.Tests
 
         private static void ExitZebraRuleTests()
         {
-            Check(ExitZebraWait.Person(true, 1.69f, true, false) == ExitZebraWait.Moving, "a person walking (1.3 m/s) is moving");
-            Check(ExitZebraWait.Person(true, 0.0025f, true, false) == ExitZebraWait.Stationary, "a person at 0.05 m/s stands (the game's walking test: speed^2 >= 0.01)");
-            Check(ExitZebraWait.Person(false, 0f, true, false) == ExitZebraWait.Stationary, "no Moving component = standing");
-            Check(ExitZebraWait.Person(true, 0f, true, true) == ExitZebraWait.None, "standing in the waiting area at the kerb (G23, no-push on) is not on the zebra");
-            Check(ExitZebraWait.Person(true, 0f, false, true) == ExitZebraWait.Stationary, "without no-push the game's own check sees them: stationary");
-            Check(ExitZebraWait.Person(true, 1.69f, true, true) == ExitZebraWait.Moving, "walking off the kerb onto the zebra is moving");
+            Check(ExitZebraWait.Person(true, true, 1.69f, true, false, true) == ExitZebraWait.Moving, "a person walking (1.3 m/s) is moving");
+            Check(ExitZebraWait.Person(true, true, 0.0025f, true, false, true) == ExitZebraWait.Stationary, "a person at 0.05 m/s stands (the game's walking test: speed^2 >= 0.01)");
+            Check(ExitZebraWait.Person(true, false, 0f, true, false, true) == ExitZebraWait.Stationary, "no Moving component = standing");
+            Check(ExitZebraWait.Person(true, true, 0f, true, true, true) == ExitZebraWait.None, "standing in the waiting area at the kerb (G23, no-push on) is not on the zebra");
+            Check(ExitZebraWait.Person(true, true, 0f, false, true, true) == ExitZebraWait.Stationary, "without no-push the game's own check sees them: stationary");
+            Check(ExitZebraWait.Person(true, true, 1.69f, true, true, true) == ExitZebraWait.Moving, "walking off the kerb onto the zebra is moving");
+            ExitZebraO1O2Tests();
             Check(ExitZebraWait.Worse(ExitZebraWait.Moving, ExitZebraWait.Stationary) == ExitZebraWait.Stationary && ExitZebraWait.Worse(ExitZebraWait.None, ExitZebraWait.Moving) == ExitZebraWait.Moving,
                 "one standing person makes the zebra stationary");
             Check(ExitZebraWait.IsExitZebra(0.85f, 0.85f) && !ExitZebraWait.IsExitZebra(0.0f, 0.0f) && !ExitZebraWait.IsExitZebra(0.6f, 0.85f),
@@ -86,9 +87,10 @@ namespace JunctionRules.Tests
             Check(offToday, "setting off: always today's driving");
             Check(ExitZebraWait.PedestrianDistance(true, true, 30f, 14f) == 30f && ExitZebraWait.PedestrianDistance(true, false, 30f, 14f) == 14f
                 && ExitZebraWait.PedestrianDistance(false, true, 30f, 14f) == 14f, "pedestrian check: the game's own distance only for the exit zebra of a lane let in");
-            Check(ExitZebraWait.WaitingAtZebra(M, M, ExitZebraWait.Moving) && !ExitZebraWait.WaitingAtZebra(M + 2.5f, M, ExitZebraWait.Moving)
-                && !ExitZebraWait.WaitingAtZebra(-0.5f, M, ExitZebraWait.Moving) && !ExitZebraWait.WaitingAtZebra(M, M, ExitZebraWait.None),
-                "counted as waiting at the zebra: front within the stop margin + 2 m before it, never on it, somebody there");
+            Check(ExitZebraWait.WaitingAtZebra(M, M, true) && !ExitZebraWait.WaitingAtZebra(M + 2.5f, M, true)
+                && !ExitZebraWait.WaitingAtZebra(-0.5f, M, true) && !ExitZebraWait.WaitingAtZebra(M, M, false),
+                "counted as waiting at the zebra: front within the stop margin + 2 m before it, never on it, held by a person on it");
+            ExitZebraO3Tests();
             // review fix: a vehicle that does not fit between the entry zebra and the stop point before the exit zebra waits at the line
             // (24 m lane, Z1 0-0.10, Z2 from 0.85: room 24 * 0.75 - 0.9 = 17.1 m), as the zebra sections merge it today
             Check(ExitZebraWait.FitsBeforeZebra(EzLane, 0.85f, 0.10f, M, ZCar) && ExitZebraWait.FitsBeforeZebra(EzLane, 0.85f, 0.10f, M, 16.5f)
@@ -118,6 +120,67 @@ namespace JunctionRules.Tests
             string code = System.Text.RegularExpressions.Regex.Replace(core, @"//.*", "");
             Check(!System.Text.RegularExpressions.Regex.IsMatch(code, @"\bnew\s+\w") && !code.Contains("string"),
                 "Burst-safe: the rule is static arithmetic, no allocation, no managed types");
+        }
+
+        // ---------------------------------------------------------------------------------------------------------------
+        // JR-T-024b: review findings O1 (standing people off the car's way), O2 (cyclists), O3 (zebra-wait counting)
+        // ---------------------------------------------------------------------------------------------------------------
+
+        /// <summary>A wide exit zebra: 12 m pedestrian lane, the car's way over it 0.40-0.65 (4.8-7.8 m).</summary>
+        private const float EzWide = 12f, EzWayA = 0.40f, EzWayB = 0.65f;
+
+        /// <summary>The class of one person on the wide zebra (creature, no-push on, not at the kerb) at metre <paramref name="m"/>.</summary>
+        private static int EzPersonAt(float m, bool walking, bool creature = true)
+        {
+            float pos = m / EzWide;
+            return ExitZebraWait.Person(creature, true, walking ? 1.69f : 0f, true, CrossingPush.InWaitZone(pos, EzWide),
+                ExitZebraWait.OnCarsWay(pos, EzWayA, EzWayB, EzWide));
+        }
+
+        private static void ExitZebraO1O2Tests()
+        {
+            // O1: the car's way = the overlap's range on the pedestrian lane (G23 PersonInPath), widened by its tolerance + the beside allowance
+            Check(ExitZebraWait.OnCarsWay(6f / EzWide, EzWayA, EzWayB, EzWide) && ExitZebraWait.OnCarsWay(6f / EzWide, EzWayB, EzWayA, EzWide),
+                "O1: a person in the middle of the car's way is on it (range in either order)");
+            float reach = CrossingPush.InPathToleranceMetres + ExitZebraWait.BesideMetres;
+            Check(ExitZebraWait.OnCarsWay((4.8f - reach + 0.05f) / EzWide, EzWayA, EzWayB, EzWide) && ExitZebraWait.OnCarsWay((7.8f + reach - 0.05f) / EzWide, EzWayA, EzWayB, EzWide)
+                && !ExitZebraWait.OnCarsWay((4.8f - reach - 0.05f) / EzWide, EzWayA, EzWayB, EzWide) && !ExitZebraWait.OnCarsWay((7.8f + reach + 0.05f) / EzWide, EzWayA, EzWayB, EzWide),
+                "O1: beside the car's way = within G23's tolerance + 1 m of its range, no further");
+            Check(ExitZebraWait.OnCarsWay(0.5f, 0.45f, 0.55f, 4f) == CrossingPush.PersonInPath(0.5f, 0.45f, 0.55f, 4f)
+                && ExitZebraWait.OnCarsWay((4.8f - CrossingPush.InPathToleranceMetres) / EzWide, EzWayA, EzWayB, EzWide),
+                "O1: everyone G23's PersonInPath counts is on the car's way (OnCarsWay only widens it)");
+            Check(EzPersonAt(6f, false) == ExitZebraWait.Stationary, "O1: a person standing on the car's way: stationary (line hold)");
+            Check(EzPersonAt(4.0f, false) == ExitZebraWait.Stationary, "O1: a person standing just beside the car's way: stationary");
+            Check(EzPersonAt(10.5f, false) == ExitZebraWait.None, "O1: a person standing on the far half of a wide zebra holds nobody");
+            Check(EzPersonAt(1.5f, false) == ExitZebraWait.None, "O1: a person standing on the near half, off the car's way, holds nobody");
+            Check(EzPersonAt(10.5f, true) == ExitZebraWait.Moving && EzPersonAt(1.5f, true) == ExitZebraWait.Moving,
+                "O1: walking people count anywhere on the zebra (conservative: they may walk into the car's way)");
+            int farStander = ExitZebraWait.Worse(EzPersonAt(10.5f, false), EzPersonAt(1.5f, true));
+            Check(farStander == ExitZebraWait.Moving && ExitZebraWait.Decide(true, farStander, true) == ExitZebraWait.Verdict.WaitBeforeZebra,
+                "O1: someone standing far off + someone walking: the car may wait just before the zebra (before: held at the line)");
+            Check(ExitZebraWait.Decide(true, ExitZebraWait.Worse(EzPersonAt(10.5f, false), EzPersonAt(10.8f, false)), true) == ExitZebraWait.Verdict.Today,
+                "O1: only people standing far off the car's way: no change from today's driving");
+            Check(ExitZebraWait.Person(true, true, 0f, false, false, false) == ExitZebraWait.None && ExitZebraWait.Person(true, true, 0f, false, false, true) == ExitZebraWait.Stationary,
+                "O1: the same rule without 'Cars never push through people'");
+            // O2: only creatures are people (the game's own check: CheckPedestrian only for objects with a Creature component)
+            Check(EzPersonAt(6f, false, creature: false) == ExitZebraWait.None && EzPersonAt(6f, true, creature: false) == ExitZebraWait.None,
+                "O2: a cyclist (standing or riding) on the exit zebra is not a person for the zebra wait, as in the game's pedestrian check");
+            Check(ExitZebraWait.Decide(true, ExitZebraWait.Worse(EzPersonAt(6f, false, creature: false), EzPersonAt(3f, true)), true) == ExitZebraWait.Verdict.WaitBeforeZebra,
+                "O2: a cyclist standing on the car's way + a person walking: the walking person decides (wait just before the zebra)");
+            string iter = File.ReadAllText(Path.Combine(RepoRoot(), "JunctionRules", "Vanilla", "JRCarLaneSpeedIterator.cs"));
+            int cr = iter.IndexOf("if (m_CreatureData.HasComponent(laneObject.m_LaneObject))", StringComparison.Ordinal);
+            int cp = iter.IndexOf("CheckPedestrian(overlapLine, laneObject.m_LaneObject, laneObject.m_CurvePosition.y, num5, giveSpace, inverse);", cr, StringComparison.Ordinal);
+            int um = iter.IndexOf("UpdateMaxSpeed(", cr, StringComparison.Ordinal);
+            Check(cr > 0 && cp > cr && um > cp, "O2 basis: the game's pedestrian check runs only for creatures; other lane objects (cyclists) go to UpdateMaxSpeed");
+        }
+
+        private static void ExitZebraO3Tests()
+        {
+            // O3: a car standing at the zebra-wait spot counts as a zebra wait only when the person it stops for is on that zebra
+            Check(ExitZebraWait.WaitingAtZebra(M + 0.3f, M, true), "O3: held by a person on the exit zebra, front at the spot: zebra wait");
+            Check(!ExitZebraWait.WaitingAtZebra(M + 0.3f, M, false),
+                "O3: at the same spot with people on the zebra but stopped for another reason (vehicle ahead, exit blocked, a light): not a zebra wait");
+            Check(!ExitZebraWait.WaitingAtZebra(M + ExitZebraWait.AtZebraMetres + 0.5f, M, true), "O3: held by a person but standing well back (queue): not at the spot");
         }
 
         // ---------------------------------------------------------------------------------------------------------------
@@ -349,6 +412,20 @@ namespace JunctionRules.Tests
                 "review fix: a car held at the line for the exit zebra (people standing too) is not counted as let in by the look-past");
             Check(job.Contains("m_BoxLookPast = false;") && job.Contains("m_BoxLookPast = true;") && job.Contains("freeNow: true,"),
                 "room for the zebra wait is the free-now rule (no look-past credit), the setting restored after");
+            Check(job.Contains("int p = ExitZebraWait.Person(m_BoxCreatures.HasComponent(obj), hasMoving,") && job.Contains("ExitZebraWait.OnCarsWay(pos, carRange.x, carRange.y, zebraLength)")
+                && job.Contains("carRange = math.float2(o.m_OtherStart, o.m_OtherEnd) * WholePathRule.ByteToOffset;"),
+                "JR-T-024b O1/O2: the job classes people with the game's creature test and the overlap's range on the zebra");
+            Check(job.Contains("return ExitZebraWait.WaitingAtZebra(frontToZebra, margin, HeldByZebraPerson(zebra, ref laneObjects));")
+                && job.Contains("if (objects[i].m_LaneObject == m_CarBlocker) return true;"),
+                "JR-T-024b O3: counted as a zebra wait only when the car's own blocker is a person on that zebra");
+            string nav = File.ReadAllText(Path.Combine(root, "JunctionRules", "Vanilla", "JRCarNavigationSystem.cs"));
+            int s26 = nav.IndexOf("BEGIN S2-26", StringComparison.Ordinal);
+            Check(s26 > 0 && nav.IndexOf("m_LaneSignalData, m_CreatureData, blocker.m_Blocker);", s26, StringComparison.Ordinal) > s26
+                && nav.IndexOf("m_LaneSignalData, m_CreatureData, blocker.m_Blocker);", s26, StringComparison.Ordinal) < nav.IndexOf("JR-STAGE2 END", s26, StringComparison.Ordinal),
+                "JR-T-024b: S2-26 hands the creature lookup and the car's last blocker to SetBoxes (inside the marked block)");
+            int fill = nav.IndexOf("private void UpdateNavigationTarget(", StringComparison.Ordinal);
+            int cb = nav.IndexOf("CheckBlocker(ref currentLane, ref blocker, ref laneIterator);", fill, StringComparison.Ordinal);
+            Check(fill > 0 && s26 > fill && cb > s26, "JR-T-024b O3 basis: the blocker handed in is last step's (the game's CheckBlocker writes this step's after the iteration)");
         }
     }
 }

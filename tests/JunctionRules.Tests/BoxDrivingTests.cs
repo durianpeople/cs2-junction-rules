@@ -193,7 +193,7 @@ namespace JunctionRules.Tests
             int s26e = nav.IndexOf("JR-STAGE2 END", s26, StringComparison.Ordinal);
             string b26 = nav.Substring(s26, s26e - s26);
             Check(b26.Contains("if (carLaneSpeedIterator.m_JR.m_BoxRule)") || b26.Contains("m_JR.m_BoxRule"), "S2-26 hands the box lookups only with the setting on");
-            Check(b26.Contains("m_JR.SetBoxes(m_JRBoxJunctionData, m_JREdgeLaneData, ref m_JRBoxEdges, m_LaneSignalData)"), "S2-26 SetBoxes (0.4.3 review F1: the job's one copy by ref, no building lookups)");
+            Check(b26.Contains("m_JR.SetBoxes(m_JRBoxJunctionData, m_JREdgeLaneData, ref m_JRBoxEdges, m_LaneSignalData, m_CreatureData, blocker.m_Blocker)"), "S2-26 SetBoxes (0.4.3 review F1: the job's one copy by ref, no building lookups)");
             Check(!nav.Contains("m_JRBoxEntranceData") && !nav.Contains("m_JRBuildingData") && !nav.Contains("m_JRConnectedBuildings"), "0.4.3 review F1: the unused building lookups are gone from the job");
             Check(nav.Contains("GetComponentLookup<JunctionRules.Boxes.YellowBoxJunction>(isReadOnly: true)") || nav.Contains("YellowBoxJunction>(true)"), "box lookups read-only");
             string job = File.ReadAllText(Path.Combine(src, "Stage2", "JRWholeJunction.cs"));
@@ -361,7 +361,7 @@ namespace JunctionRules.Tests
             string edges = File.ReadAllText(Path.Combine(src, "Stage2", "JRBoxEdges.cs"));
             Check(edges.Contains("FixedList512Bytes<long> m_Keys") && edges.Contains("FixedList512Bytes<float> m_T") && edges.Contains("SortedKeys.First(ref this, KeyOf(edge))"), "exit bands by value (keys + t), first band by binary search");
             string nav = File.ReadAllText(Path.Combine(src, "Vanilla", "JRCarNavigationSystem.cs"));
-            Check(nav.Contains("jobData.m_JRBoxEdges = JunctionRules.Stage2.JRStage2Bridge.BoxEdges;") && nav.Contains("m_JREdgeLaneData, ref m_JRBoxEdges, m_LaneSignalData);"), "S2-23 takes the set by value (one copy per job), S2-26 hands the iterator a pointer to it");
+            Check(nav.Contains("jobData.m_JRBoxEdges = JunctionRules.Stage2.JRStage2Bridge.BoxEdges;") && nav.Contains("m_JREdgeLaneData, ref m_JRBoxEdges, m_LaneSignalData, m_CreatureData, blocker.m_Blocker);"), "S2-23 takes the set by value (one copy per job), S2-26 hands the iterator a pointer to it");
             string sw = File.ReadAllText(Path.Combine(src, "Systems", "CarDrivingSwitchSystem.cs"));
             Check(sw.Contains("UpdateBoxEdges((stage2Mode & Stage2Mode.BoxEntrances) != 0);") && sw.Contains("BoxFacts.BoxedExitBands(EntityManager, buildings[i], sources)") && sw.Contains("DrivingBands.Build(EntityManager, sources, out notPainted, out joint)")
                 && sw.Contains("BoxEdgeHandoff.Publish(bands);") && sw.Contains("version == m_BoxStoreVersion") && !sw.Contains("JunctionRules.Stage2") && !sw.Contains("m_RoadEdge"),

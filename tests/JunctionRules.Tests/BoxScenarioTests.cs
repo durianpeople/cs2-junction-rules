@@ -544,7 +544,7 @@ namespace JunctionRules.Tests
             int emergency = 0, at = 0;
             while ((at = it.IndexOf("if (m_JR.m_BoxRule && !JunctionRules.Core.ExitGiveWay.IsEmergency(m_Priority))", at, StringComparison.Ordinal)) >= 0) { emergency++; at++; }
             Check(emergency == 3, "on-duty emergency vehicles pass boxes (S2-28, S2-28b, S2-37), as at exits");
-            Check(nav.Contains("ref m_JRBoxEdges, m_LaneSignalData);"), "the job gets the lane signals for the light-in-window rule");
+            Check(nav.Contains("ref m_JRBoxEdges, m_LaneSignalData, m_CreatureData, blocker.m_Blocker);"), "the job gets the lane signals for the light-in-window rule");
 
             // ---- owner nose rule (17 Nov): "if the car can't clear the whole thing, the car should not enter the box"
             // the game's distance at a lane point is from the FRONT BUMPER (copy IterateFirstLane: num2 = m_Distance - bounds.max.z)

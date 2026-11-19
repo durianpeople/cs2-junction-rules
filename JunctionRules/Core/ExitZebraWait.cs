@@ -17,6 +17,12 @@ namespace JunctionRules.Core
     /// <see cref="CrossingPush.Pedestrian"/>: a Moving component with speed^2 &gt;= 0.01). One standing person is enough for
     /// "stationary". A person standing in the waiting area at a lane end (G23: waiting at the kerb, not crossing) is not on the
     /// zebra for this rule when "Cars never push through people" is on (that setting already never holds a car for them).
+    /// JR-T-024b (review O1): a STANDING person counts only on the car's way over the zebra or beside it (<see cref="OnCarsWay"/>:
+    /// the overlap's range on the pedestrian lane, the game's CheckPedestrian / G23 PersonInPath rule, widened by the game's
+    /// beside allowance); one standing on the far half of a wide zebra holds nobody. Walking people count anywhere on it
+    /// (conservative: they may walk into the car's way). JR-T-024b (review O2): only creatures are people, as in the game's own
+    /// check (CarLaneSpeedIterator calls CheckPedestrian only for objects with a Creature component; a cyclist on the crossing
+    /// is a vehicle there, braked for by UpdateMaxSpeed): a cyclist on the exit zebra is not a person for this rule.
     ///
     /// The exit zebra of a boxed junction lane is its last zebra in driving order, when it starts in the lane's second half
     /// (the entry zebra lies at the lane start, the exit zebra at its end, whatever the junction's size).
@@ -52,12 +58,42 @@ namespace JunctionRules.Core
         /// </summary>
         public const float AtZebraMetres = 2f;
 
-        /// <summary>One object on the exit zebra's pedestrian lane: <see cref="None"/>, <see cref="Moving"/> or <see cref="Stationary"/>.</summary>
+        /// <summary>
+        /// JR-T-024b (review O1): metres past the car's range on the pedestrian lane (beyond G23's
+        /// <see cref="CrossingPush.InPathToleranceMetres"/>) within which a standing person is still beside the car's way. The
+        /// game's CheckPedestrian counts a person outside the range when their distance to the car's overlap line, less up to
+        /// 1 m for facing it, is under half the car's width + half the person's size; the range is the car LANE's footprint on
+        /// the crossing (at least the car's half width either side of that line), so the beside test reaches at most about 1 m
+        /// past it (a bus: 1.25 + 0.25 + 1 - lane half width 1.5).
+        /// </summary>
+        public const float BesideMetres = 1f;
+
+        /// <summary>
+        /// JR-T-024b (review O1): the person at <paramref name="personPos"/> (game offset on the zebra's pedestrian lane) is on the
+        /// car's way over it or beside it: inside the overlap's range on that lane (rangeA / rangeB, game offsets, either order)
+        /// widened by G23's tolerance plus <see cref="BesideMetres"/> (laneLength in metres).
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int Person(bool hasMoving, float speedSq, bool noPushPeople, bool inWaitZone)
+        public static bool OnCarsWay(float personPos, float rangeA, float rangeB, float laneLength)
         {
+            float lo = (rangeA < rangeB ? rangeA : rangeB) * laneLength - CrossingPush.InPathToleranceMetres - BesideMetres;
+            float hi = (rangeA < rangeB ? rangeB : rangeA) * laneLength + CrossingPush.InPathToleranceMetres + BesideMetres;
+            float p = personPos * laneLength;
+            return p >= lo && p <= hi;
+        }
+
+        /// <summary>
+        /// One object on the exit zebra's pedestrian lane: <see cref="None"/>, <see cref="Moving"/> or <see cref="Stationary"/>.
+        /// isCreature = the game's own people test (JR-T-024b, O2: a cyclist is not one); onCarsWay = <see cref="OnCarsWay"/>
+        /// (JR-T-024b, O1: only read for a standing person; walking people count anywhere on the zebra).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int Person(bool isCreature, bool hasMoving, float speedSq, bool noPushPeople, bool inWaitZone, bool onCarsWay)
+        {
+            if (!isCreature) return None;
             bool standing = CrossingPush.Pedestrian(false, hasMoving, speedSq) == CrossingPush.PushReason.Standing;
             if (noPushPeople && CrossingPush.NotCrossing(standing, inWaitZone, false)) return None;
+            if (standing && !onCarsWay) return None;
             return standing ? Stationary : Moving;
         }
 
@@ -103,10 +139,14 @@ namespace JunctionRules.Core
 
         /// <summary>
         /// Counting only: a standing car in the box waits at the exit zebra (front bumper <paramref name="frontToZebra"/> m before
-        /// its start: not on it, and within the stop margin plus <see cref="AtZebraMetres"/>) while somebody is on it.
+        /// its start: not on it, and within the stop margin plus <see cref="AtZebraMetres"/>) BECAUSE of a person on it.
+        /// JR-T-024b (review O3): heldByZebraPerson = the car's own blocker (the game's Blocker of its last step, which
+        /// CheckPedestrian sets to the person it stops for) is a person on this exit zebra. Somebody merely being on the zebra
+        /// while the car stands there for another reason (a vehicle ahead, the exit blocked, a light) is not a zebra wait: that
+        /// car is counted as standing inside the box, as before JR-T-024.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool WaitingAtZebra(float frontToZebra, float margin, int people) =>
-            people != None && frontToZebra >= -BoxDriving.NoseTolerance && frontToZebra <= margin + AtZebraMetres;
+        public static bool WaitingAtZebra(float frontToZebra, float margin, bool heldByZebraPerson) =>
+            heldByZebraPerson && frontToZebra >= -BoxDriving.NoseTolerance && frontToZebra <= margin + AtZebraMetres;
     }
 }

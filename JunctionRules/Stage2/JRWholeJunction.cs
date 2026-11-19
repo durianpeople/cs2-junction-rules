@@ -348,6 +348,10 @@ namespace JunctionRules.Stage2
         /// <summary>JR-T-024 (Stage2/JRExitZebraWait.cs): the box lane whose exit zebra (start, driving coordinates) the car may wait
         /// before this car-step (people walking, room free now); set by BoxHold, read by PedestrianDistance; Null = none.</summary>
         private Entity m_ZebraGoLane;
+        /// <summary>JR-T-024b (SetBoxes): the creature lookup (the game's people test, O2) and the car's own blocker of its last
+        /// step (the game's Blocker component, O3: counting only).</summary>
+        private ComponentLookup<Game.Creatures.Creature> m_BoxCreatures;
+        private Entity m_CarBlocker;
         private float m_ZebraGoStart;
         /// <summary>JR-T-024 (counters): standing in a box at its exit zebra while people are on it; held at the line for the exit zebra.</summary>
         private bool m_BoxZebraWait, m_HasBoxZebraLine;
