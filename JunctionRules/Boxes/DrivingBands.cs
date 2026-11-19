@@ -23,14 +23,13 @@ namespace JunctionRules.Boxes
     /// </summary>
     internal static class DrivingBands
     {
-        /// <summary>One boxed exit or derived entrance (Boxes/BoxFacts.BoxedExitBands).</summary>
+        /// <summary>One boxed exit or entrance (Boxes/BoxFacts.BoxedExitBands).</summary>
         internal struct Source
         {
             public Entity Building;
             public BoxFacts.Exit Exit;
             public BoxFacts.Access Access;
             public V2 BuildingPos;
-            public bool Derived;
         }
 
         /// <summary>

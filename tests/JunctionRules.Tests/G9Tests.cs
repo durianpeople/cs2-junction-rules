@@ -7,7 +7,7 @@ using JunctionRules.Core;
 namespace JunctionRules.Tests
 {
     /// <summary>
-    /// JR-T-014c (G9 + G10, owner 17 Nov 2026): yellow boxes at building ENTRANCES (derived, never saved), vehicles turning
+    /// JR-T-014c (G9 + G10, owner 17 Nov 2026): yellow boxes at building ENTRANCES (JR-T-021: each saved on its own), vehicles turning
     /// in do not enter the box without room on their way in, no box at a lot-front fallback, hover arrow direction.
     /// Live fixture (read-only, 17 Nov 2026): Alderwood Street building 688898 exit Driveway@(20.6, 22.2) with entry-only
     /// node 1213342; clinic 1178956 / police 999975 on road 312580: two-way "Invisible Road Path - 2xTwoway" sub-nets (real
@@ -95,13 +95,14 @@ namespace JunctionRules.Tests
             // driving: overlapping bands on one lane are one band
             Check(ExitBands.Touch(0.40f, 0.48f, 0.45f, 0.53f, 0.001f), "entrance and exit bands overlap: one band on the lane");
 
-            // save unchanged: the record is the 0.4.3 one (exit keys only), entrance keys never written
+            // save: the 0.4.3 v2 record; JR-T-021: an entrance box is one more 5-byte key of kind Entrance
             var keys = new ExitKeyList();
             keys.Add(exit.Key);
+            keys.Add(entry.Key);
             var sink = new ArrayBytes { Out = new List<byte>() };
-            ExitRecord.Encode(ref sink, BoxRecordFlags.None, ref keys);
+            ExitRecord.Encode(ref sink, BoxRecordFlags.EntrancesExplicit, ref keys);
             byte[] bytes = sink.Out.ToArray();
-            Check(ExitRecord.Version == 2 && bytes.Length == 2 + 2 + 5 && bytes[0] == 2, "save: same v2 record, one exit key, nothing for entrances");
+            Check(ExitRecord.Version == 2 && bytes.Length == 2 + 2 + 5 * 2 && bytes[0] == 2 && bytes[4 + 5] == (byte)ExitKind.Entrance, "save: same v2 record, exit key + entrance key (kind 5)");
             string root = Path.Combine(RepoRoot(), "JunctionRules");
             string comps = StripComments(File.ReadAllText(Path.Combine(root, "Boxes", "BoxComponents.cs")));
             int start = comps.IndexOf("struct YellowBoxEntrance", StringComparison.Ordinal);
@@ -109,12 +110,12 @@ namespace JunctionRules.Tests
             int fields = System.Text.RegularExpressions.Regex.Matches(ybe, @"public\s+(byte|FixedList64Bytes<ExitKey>)\s+m_\w+;").Count;
             Check(fields == 2 && !ybe.Contains("Entrance m_") && !comps.Contains("YellowBoxEntranceG9"), "save: YellowBoxEntrance still holds only m_Flags + m_Exits (no new component or field)");
             string store = File.ReadAllText(Path.Combine(root, "Boxes", "BoxStore.cs"));
-            Check(store.Contains("if (key.ExitKind == ExitKind.Entrance) return false;"), "BoxStore refuses to save an entrance key");
+            Check(!store.Contains("if (key.ExitKind == ExitKind.Entrance) return false;"), "JR-T-021: BoxStore saves an entrance key like an exit key");
             string paint = File.ReadAllText(Path.Combine(root, "Paint", "YellowBoxPaintSystem.cs"));
-            Check(paint.Contains("private void AddEntranceBoxes(") && paint.Contains("Derived = true") && paint.Contains("!b.Derived)   // JR-T-014c"),
-                "paint derives entrance boxes at resolve time and never drops / re-keys them in the save");
+            Check(!paint.Contains("private void AddEntranceBoxes(") && !paint.Contains("Derived = true") && !paint.Contains("b.Derived"),
+                "JR-T-021: the paint derives no entrance boxes (each is a saved key)");
             string facts = File.ReadAllText(Path.Combine(root, "Boxes", "BoxFacts.cs"));
-            Check(facts.Contains("AccessRules.EntranceBoxes(inCands, boxedCands)"), "driving bands include the boxed building's entrances");
+            Check(!facts.Contains("AccessRules.EntranceBoxes(") && facts.Contains("int e = ExitRules.Match(k, inCands);"), "JR-T-021: driving bands = the saved entrance keys only (nothing derived)");
             string yb = File.ReadAllText(Path.Combine(root, "Stage2", "JRYellowBox.cs"));
             Check(yb.Contains("role == BoxDriving.EntranceRole.Entering") && yb.Contains("EnteringHold(") && yb.Contains("m_EdgeLaneData.HasComponent(nextLane)"),
                 "BoxHold judges Entering cars; a lane change (EdgeLane of the same road) is not an entry");
@@ -219,8 +220,6 @@ namespace JunctionRules.Tests
             Check(AccessRules.Fallback(false, 0, 2) == SavedFallbackFate.Marker, "saved fallback on a building with entrances: kept as marker, not drawn");
             Check(AccessRules.Fallback(false, 0, 0) == SavedFallbackFate.NoAccess, "saved fallback on a building with no real access: kept, nothing drawn or obeyed");
             Check(AccessRules.Fallback(true, 1, 0) == SavedFallbackFate.Rekey, "saved fallback within 2 m of a real exit: re-keyed to it (0.4.3 rule)");
-            ExitKey marker = AccessRules.MarkerKey(24);
-            Check(marker.ExitKind == ExitKind.Fallback && marker.X10 == 0 && marker.Z10 == 240, "tool marker key = the 0.4.3 lot-front fallback key (existing record kind)");
 
             // arrows
             var ring = Rect(-4, 0, 4, 8, 1);   // box on the road; kerb at z = 8, building beyond

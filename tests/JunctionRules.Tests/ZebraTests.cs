@@ -404,7 +404,21 @@ namespace JunctionRules.Tests
             Check(ZebraSections.SoftHoldSpot(ref mixed, ref front, out float mzs, out float mroom) && Near(mzs, 0.80f) && Near(mroom, 0.90f), "mixed: room hold before the later soft zebra");
 
             string job = File.ReadAllText(Path.Combine(RepoRoot(), "JunctionRules", "Stage2", "JRWholeJunction.cs"));
-            Check(job.Contains("float softHold = SoftZebraHold(") && job.Contains("out ZebraLayout layout)) return softHold;") && job.Contains("return math.min(hold, softHold);"), "BeginZebras: soft hold on every exit path");
+            Check(job.Contains("float softHold = SoftZebraHold(") && job.Contains("out ZebraLayout layout)) return SoftOnly(softHold, softBlocker);") && job.Contains("return math.min(hold, softHold);"), "BeginZebras: soft hold on every exit path");
+
+            // JR-T-021C (G17): the hook's blocker is the blocker of the hold actually returned (the smaller one).
+            Check(ZebraSections.SoftHoldBinds(5f, 3f) && !ZebraSections.SoftHoldBinds(3f, 5f), "soft hold binds only when it is the smaller one");
+            Check(!ZebraSections.SoftHoldBinds(4f, 4f) && !ZebraSections.SoftHoldBinds(4f, float.MaxValue) && ZebraSections.SoftHoldBinds(float.MaxValue, 4f), "tie / no soft hold: the section hold names the blocker; no section hold: the soft one");
+            int bz = job.IndexOf("public float BeginZebras(", StringComparison.Ordinal);
+            int bzEnd = job.IndexOf("private float SoftOnly(", bz, StringComparison.Ordinal);
+            string beginZebras = bz >= 0 && bzEnd > bz ? job.Substring(bz, bzEnd - bz) : "";
+            int afterSoft = beginZebras.IndexOf("Entity softBlocker =", StringComparison.Ordinal);
+            Check(afterSoft > 0 && !beginZebras.Substring(afterSoft).Contains("return softHold;") && !beginZebras.Substring(afterSoft).Contains("return float.MaxValue;"),
+                "BeginZebras: after the soft hold every return names the returned hold's blocker (SoftOnly / SoftHoldBinds)");
+            Check(beginZebras.Contains("if (ZebraSections.SoftHoldBinds(hold, softHold)) m_LastBlocker = softBlocker;"), "BeginZebras: the smaller hold's blocker on the min return");
+            int sz = job.IndexOf("private float SoftZebraHold(", StringComparison.Ordinal);
+            string softFn = sz >= 0 ? job.Substring(sz, job.IndexOf("return hold;", sz, StringComparison.Ordinal) - sz) : "";
+            Check(softFn.Contains("m_LastBlocker = Entity.Null;   // JR-T-021C: exempt"), "SoftZebraHold: a same-exit exempt (no hold) names nobody");
             Check(job.Contains("!ZebraSections.IsZebra((int)ped.m_Flags)) continue;"), "further zebras on the route (room scan) unchanged: a red-light zebra is still not a place to queue");
         }
 

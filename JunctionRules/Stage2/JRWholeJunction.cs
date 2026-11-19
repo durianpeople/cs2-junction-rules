@@ -736,8 +736,11 @@ namespace JunctionRules.Stage2
             float softHold = SoftZebraHold(lane, ref elements, overlaps, curveX, length, origDistance, margin, inverse, car, currentSpeed, timeStep,
                 safeTimeStep, speedRange, currentMax, self, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs,
                 ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes);
+            // JR-T-021C (G17): the soft hold's blocker. The section scan below may overwrite m_LastBlocker; every return keeps
+            // the blocker of the hold actually returned (the smaller one; a hold-free return names nobody).
+            Entity softBlocker = softHold < float.MaxValue ? m_LastBlocker : Entity.Null;
             if (!ZebraSections.Build(ref elements, RuleOn, atLine, length, margin, m_VehicleLength, m_BoxLane ? m_BoxTurnSpot : 2f, m_BoxLane ? -1f : m_RoomMargin,
-                    out ZebraLayout layout)) return softHold;
+                    out ZebraLayout layout)) return SoftOnly(softHold, softBlocker);
             if (m_BoxLane) m_BoxTurnIndex = layout.ExtraIndex;
             m_ZebraStarts = default;
             for (int i = 0; i < overlaps.Length; i++)
@@ -777,13 +780,13 @@ namespace JunctionRules.Stage2
             if (RuleOn) SetMotion(lane, ref carLanes, ref laneConditions, margin, car, currentSpeed, timeStep, speedLimit);
             if (Counting && layout.Merged > 0 && m_Stretch.Next < m_Stretch.Spots.Count) m_ZebraMergedSeen = true;
             int k = ZebraSections.RoomSection(layout, m_Stretch);
-            if (k < 0) return softHold;
+            if (k < 0) return SoftOnly(softHold, softBlocker);
             float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, m_Stretch.Wait(m_Stretch.Spots[k]), safeTimeStep), speedRange);
-            if (!(hold < currentMax)) return softHold;
+            if (!(hold < currentMax)) return SoftOnly(softHold, softBlocker);
             if (HasRoomPast(lane, layout.SectionEnd(k), inverse, length, -1f, Entity.Null, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
                     ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes))
             {
-                return softHold;
+                return SoftOnly(softHold, softBlocker);
             }
             // 0.4.12 OWNER DECISION REVISED ("it can block ANY pedestrian paths for the yielding exit at the box"): a vehicle admitted
             // under the same-exit-lane exception may stand on a zebra: no "never stop on a zebra" room hold for it. Junction box: G22
@@ -792,10 +795,18 @@ namespace JunctionRules.Stage2
             if (m_BoxRule && SameExitZebraExempt(lane, overlaps, curveX, length, inverse, self, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers,
                     ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes))
             {
-                return softHold;
+                return SoftOnly(softHold, softBlocker);
             }
             if (Counting) Min(ref m_HasZebraRoom, ref m_ZebraRoomSpeed, hold);
+            if (ZebraSections.SoftHoldBinds(hold, softHold)) m_LastBlocker = softBlocker;
             return math.min(hold, softHold);
+        }
+
+        /// <summary>JR-T-021C (G17): a return of the soft hold alone names its blocker (Entity.Null when it does not hold).</summary>
+        private float SoftOnly(float softHold, Entity softBlocker)
+        {
+            m_LastBlocker = softBlocker;
+            return softHold;
         }
 
         /// <summary>1.0.1: StretchState.FrontPast arithmetic for one lane (BeginZebras' values).</summary>
@@ -836,6 +847,7 @@ namespace JunctionRules.Stage2
             if (m_BoxRule && SameExitZebraExempt(lane, overlaps, curveX, length, inverse, self, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers,
                     ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes))
             {
+                m_LastBlocker = Entity.Null;   // JR-T-021C: exempt = no hold, names nobody (HasRoomPast above noted one)
                 return float.MaxValue;
             }
             if (Counting) Min(ref m_HasZebraRoom, ref m_ZebraRoomSpeed, hold);

@@ -94,9 +94,10 @@ namespace JunctionRules.Tests
             Check(ownOnly && !Regex.IsMatch(store, @"DestroyEntity|CreateEntity|Updated"), "BoxStore writes only YellowBoxJunction / YellowBoxEntrance (add, key list, remove), never marks the entity Updated");
             // JR-T-007b-r F6: PublishParams / ListPath share the shape parameters and the list path (no component write)
             var calls = Regex.Matches(sys, @"BoxStore\.(\w+)\(").Cast<Match>().Select(m => m.Groups[1].Value).Where(c => c != "PublishParams" && c != "ListPath" && c != "Has" /* 0.4.8 review: read only */).ToList();
-            bool allowed = calls.All(c => c == "Remove" || c == "RemoveExit" || c == "AddExit" || c == "SetExits" || c == "Add");
-            Check(allowed && calls.Count(c => c == "Add") == 1 && calls.Count(c => c == "AddExit") == 1 && calls.Count(c => c == "SetExits") == 2 /* JR-T-014c: legacy box -> marker key when the building has only entrances */ && !sys.Contains("YellowBoxToolSystem"),
-                "paint code writes only through BoxStore: drop (Remove / RemoveExit), legacy migration (SetExits, Add = junction), re-key (AddExit); never names the tool (" + string.Join(",", calls) + ")");
+            bool allowed = calls.All(c => c == "Remove" || c == "RemoveExit" || c == "AddExit" || c == "SetExits" || c == "Add" || c == "MigrateEntrances");
+            Check(allowed && calls.Count(c => c == "Add") == 1 && calls.Count(c => c == "AddExit") == 1 && calls.Count(c => c == "SetExits") == 2 /* JR-T-014c: legacy box -> marker key when the building has only entrances */
+                  && calls.Count(c => c == "MigrateEntrances") == 1 /* JR-T-021: 1.0.1 derived entrances -> saved keys, once */ && !sys.Contains("YellowBoxToolSystem"),
+                "paint code writes only through BoxStore: drop (Remove / RemoveExit), legacy migration (SetExits, Add = junction), entrance migration (MigrateEntrances), re-key (AddExit); never names the tool (" + string.Join(",", calls) + ")");
             foreach (string f in Directory.GetFiles(Path.Combine(src, "Boxes"), "*.cs").Where(f => !f.EndsWith("BoxStore.cs")))
                 Check(!Regex.IsMatch(StripComments(File.ReadAllText(f)), @"\b(AddComponentData|AddComponent|RemoveComponent)\b"), "Boxes/" + Path.GetFileName(f) + " writes components only through BoxStore");
             // 0.3.4 (JR-T-003d): the edge noise handed to the shader comes from the clamped config (wobble size never 0).

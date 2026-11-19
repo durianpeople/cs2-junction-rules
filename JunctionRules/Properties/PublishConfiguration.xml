@@ -29,7 +29,7 @@ The game's car-driving system is switched off and replaced by a Burst-compiled c
 ## Yellow boxes
 
 - Open the tool with **Ctrl+Y** or the toolbar button. Hover a junction or a building: a white outline means click to add a box, orange means click to remove it. Boxes are saved with your city.
-- A box on a building covers each of its real car exits and entrances.
+- Each real car access of a building (exit, entrance or two-way) is boxed on its own.
 - Boxes have straight sides, kerb to kerb, and never cover zebras, stop or give-way lines or medians. Boxes closer than a car length merge into one. No parking inside a box. Road markings under a box can optionally be hidden.
 - A vehicle enters a box only if there is free space past it, right now, for its whole length (trailers included). Otherwise it stops with its front bumper at the line.
 - UK exception (optional): a vehicle turning across oncoming traffic may wait inside a junction box when its exit is clear and only oncoming traffic stops it.
@@ -68,7 +68,7 @@ Source code, issue tracker and design notes: https://github.com/durianpeople/cs2
 	<!--Required DLC, can be set multiple times. Supported values are "Landmark Buildings", "San Fransisco Set", "Beach Properties", "Urban Promenades", "Modern Architecture"-->
 	<RequiredDLC Value="" />
 	<!--Change log for new version. Single line or multi line. Supports minimal markdown subset-->
-	<ChangeLog Value="Yellow boxes: new setting Look past the car in front at a box (on by default). A car no longer pauses at the box line for the car right in front when the traffic past the box is clearly moving away and leaves room for it even if that traffic brakes. It judges only what a driver could see (50 m around it, up to the next junction, nothing behind a lorry or bus); it still never stops inside a box." />
+	<ChangeLog Value="Yellow boxes: new setting Look past the car in front at a box (on by default). A car no longer pauses at the box line for the car right in front when the traffic past the box is clearly moving away and leaves room for it even if that traffic brakes. It judges only what a driver could see (50 m around it, up to the next junction, nothing behind a lorry or bus); it still never stops inside a box. Also from 1.0.2/1.0.3: every building access is boxed on its own; yellow box tool (Ctrl+Y): a bigger hover target for building accesses. An exit or entrance now lights up with the cursor anywhere on its box area on the road or on the pavement, driveway or verge between the road and the building's access; where two overlap the nearer one wins. Junctions as before." />
 	<!--<ChangeLog>
 	</ChangeLog>-->
 	<!--External link, can be set multiple times. supported types are "discord", "github", "youtube", "twitch", "twitter", "x", "paypal", "patreon", "buymeacoffee", "kofi", "crowdin", "gitlab", "gofundme", "bluesky"-->

@@ -61,50 +61,48 @@ namespace JunctionRules.Tests
         {
             const string highway = "highway";
             // tool click on an invalid target and API add: the SAME reason text (the target's 'why')
-            BoxDecision toolNo = BoxCommand.Decide(BoxRequest.Toggle, BoxTargetKind.Junction, false, false, highway, false, false);
-            BoxDecision apiNo = BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.Junction, false, false, highway, false, false);
+            BoxDecision toolNo = BoxCommand.Decide(BoxRequest.Toggle, BoxTargetKind.Junction, false, false, highway, false);
+            BoxDecision apiNo = BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.Junction, false, false, highway, false);
             Check(toolNo.Step == BoxStep.None && apiNo.Step == BoxStep.None, "invalid junction: tool click and API add both refuse");
             Check(apiNo.Error == BoxApiErrors.NotBoxable && apiNo.Reason == highway && toolNo.Reason == apiNo.Reason, "invalid junction: not_boxable with the tool's text: " + apiNo.Reason);
             string noShape = BoxCommand.NoShapePrefix + "corner arm 3 - arm 1 do not meet";
-            BoxDecision shapeNo = BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.Junction, false, false, noShape, false, false);
+            BoxDecision shapeNo = BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.Junction, false, false, noShape, false);
             Check(shapeNo.Reason == noShape && noShape.StartsWith("no box shape can be built here: "), "shape failure: the tool's F3 text word for word");
             // every BoxSelection 'why' maps through unchanged
             var facts = new JunctionFacts { Exists = true, IsRoadNode = true, RoadArms = 2 };
             BoxSelection.JunctionOk(facts, out string why2);
-            Check(BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.Junction, false, false, why2, false, false).Reason == why2 && why2 == "a mid-road node, not a junction", "selection why passes through: " + why2);
+            Check(BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.Junction, false, false, why2, false).Reason == why2 && why2 == "a mid-road node, not a junction", "selection why passes through: " + why2);
             var ef = new EntranceFacts { Exists = true, IsBuilding = true, HasRoadEdge = true, RoadIsRoad = true, RoadHighway = true, AccessInsideEdge = true };
             BoxSelection.ExitOk(ef, out string why3);
-            Check(BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.Exit, false, false, why3, false, false).Reason == "exit on a highway", "exit why passes through: " + why3);
+            Check(BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.Exit, false, false, why3, false).Reason == "exit on a highway", "exit why passes through: " + why3);
 
             // adds / removes
-            Check(BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.Junction, false, true, null, false, false).Step == BoxStep.AddJunction, "add: valid junction");
-            Check(BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.Exit, false, true, null, false, false).Step == BoxStep.AddExit, "add: valid exit");
-            BoxDecision already = BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.Junction, true, true, null, false, false);
+            Check(BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.Junction, false, true, null, false).Step == BoxStep.AddJunction, "add: valid junction");
+            Check(BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.Exit, false, true, null, false).Step == BoxStep.AddExit, "add: valid exit");
+            BoxDecision already = BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.Junction, true, true, null, false);
             Check(already.Step == BoxStep.None && already.Error == BoxApiErrors.AlreadyBoxed, "add: already_boxed");
-            BoxDecision notBoxed = BoxCommand.Decide(BoxRequest.Remove, BoxTargetKind.Exit, false, true, null, false, false);
+            BoxDecision notBoxed = BoxCommand.Decide(BoxRequest.Remove, BoxTargetKind.Exit, false, true, null, false);
             Check(notBoxed.Step == BoxStep.None && notBoxed.Error == BoxApiErrors.NotBoxed, "remove: not_boxed");
-            Check(BoxCommand.Decide(BoxRequest.Remove, BoxTargetKind.Junction, true, false, highway, false, false).Step == BoxStep.RemoveJunction, "remove: a box on a target no longer valid is removable (tool rule)");
-            Check(BoxCommand.Decide(BoxRequest.Remove, BoxTargetKind.Exit, true, true, null, false, false).Step == BoxStep.RemoveExit, "remove: exit");
-            // entrances: API refuses (derived), tool toggles the building
-            BoxDecision entAdd = BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.Exit, false, true, null, true, false);
-            BoxDecision entRem = BoxCommand.Decide(BoxRequest.Remove, BoxTargetKind.Exit, true, true, null, true, false);
-            Check(entAdd.Error == BoxApiErrors.EntranceDerived && entRem.Error == BoxApiErrors.EntranceDerived && entAdd.Reason == BoxCommand.EntranceDerivedReason, "entrance: add / remove = entrance_derived");
-            Check(BoxCommand.Decide(BoxRequest.Toggle, BoxTargetKind.Exit, false, true, null, true, false).Step == BoxStep.AddBuildingMarker, "tool: white entrance = building marker (unchanged)");
-            Check(BoxCommand.Decide(BoxRequest.Toggle, BoxTargetKind.Exit, true, true, null, true, false).Step == BoxStep.RemoveBuilding, "tool: orange entrance = all the building's boxes (unchanged)");
-            // fallback keys: removable only
-            Check(BoxCommand.Decide(BoxRequest.Toggle, BoxTargetKind.Exit, true, false, "no real car exit", false, true).Step == BoxStep.RemoveFallbackKeys, "tool: fallback key removable");
-            Check(BoxCommand.Decide(BoxRequest.Remove, BoxTargetKind.Exit, true, false, "no real car exit", false, true).Step == BoxStep.RemoveFallbackKeys, "API: fallback key removable");
-            Check(BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.Exit, false, false, "no real car exit", false, true).Error == BoxApiErrors.NotBoxable, "API: fallback never added");
+            Check(BoxCommand.Decide(BoxRequest.Remove, BoxTargetKind.Junction, true, false, highway, false).Step == BoxStep.RemoveJunction, "remove: a box on a target no longer valid is removable (tool rule)");
+            Check(BoxCommand.Decide(BoxRequest.Remove, BoxTargetKind.Exit, true, true, null, false).Step == BoxStep.RemoveExit, "remove: exit");
+            // JR-T-021: an entrance is an access like an exit for the tool and the API (its own key; no entrance_derived)
+            Check(BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.Exit, false, true, null, false).Step == BoxStep.AddExit
+                  && BoxCommand.Decide(BoxRequest.Remove, BoxTargetKind.Exit, true, true, null, false).Step == BoxStep.RemoveExit, "entrance: API add / remove = its own key (no entrance_derived)");
+            Check(BoxCommand.Decide(BoxRequest.Toggle, BoxTargetKind.Exit, false, true, null, false).Step == BoxStep.AddExit
+                  && BoxCommand.Decide(BoxRequest.Toggle, BoxTargetKind.Exit, true, true, null, false).Step == BoxStep.RemoveExit, "entrance: tool toggles only its own key (never the whole building)");
+            Check(BoxCommand.Decide(BoxRequest.Toggle, BoxTargetKind.Exit, true, false, "no real car exit", true).Step == BoxStep.RemoveFallbackKeys, "tool: fallback key removable");
+            Check(BoxCommand.Decide(BoxRequest.Remove, BoxTargetKind.Exit, true, false, "no real car exit", true).Step == BoxStep.RemoveFallbackKeys, "API: fallback key removable");
+            Check(BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.Exit, false, false, "no real car exit", true).Error == BoxApiErrors.NotBoxable, "API: fallback never added");
             // the tool's toggle matrix is BoxSelection.Toggle's
             foreach (bool has in new[] { false, true })
                 foreach (bool valid in new[] { false, true })
                 {
                     ToggleAction a = BoxSelection.Toggle(has, valid);
-                    BoxDecision d = BoxCommand.Decide(BoxRequest.Toggle, BoxTargetKind.Junction, has, valid, "w", false, false);
+                    BoxDecision d = BoxCommand.Decide(BoxRequest.Toggle, BoxTargetKind.Junction, has, valid, "w", false);
                     BoxStep want = a == ToggleAction.Add ? BoxStep.AddJunction : a == ToggleAction.Remove ? BoxStep.RemoveJunction : BoxStep.None;
                     Check(d.Step == want, $"toggle matrix has={has} valid={valid}: {d.Step}");
                 }
-            Check(BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.None, false, false, null, false, false).Error == BoxApiErrors.NotFound, "no target kind = not_found");
+            Check(BoxCommand.Decide(BoxRequest.Add, BoxTargetKind.None, false, false, null, false).Error == BoxApiErrors.NotFound, "no target kind = not_found");
             Check(BoxCommand.FullReason == "the building already has " + ExitRules.MaxBoxesPerBuilding + " exit boxes", "full building text = the tool's");
         }
 
@@ -116,9 +114,13 @@ namespace JunctionRules.Tests
             k = BoxApi.PickExit(-1, new[] { C(0, "exit"), C(1, "two-way access") }, out e, out string r);
             Check(k == -1 && e == BoxApiErrors.AmbiguousExit && r.Contains("2 car exits"), "pick: several exits = ambiguous_exit: " + r);
             k = BoxApi.PickExit(-1, new[] { C(0, "entrance") }, out e, out r);
-            Check(k == -1 && e == BoxApiErrors.EntranceDerived && r == BoxCommand.EntranceDerivedReason, "pick: entrances only = entrance_derived");
+            Check(k == 0 && e == null, "pick (JR-T-021): no exit, one entrance = that entrance");
+            k = BoxApi.PickExit(-1, new[] { C(0, "entrance"), C(1, "entrance") }, out e, out r);
+            Check(k == -1 && e == BoxApiErrors.AmbiguousExit && r.Contains("2 car entrances"), "pick (JR-T-021): two entrances, no exit = ambiguous_exit: " + r);
+            k = BoxApi.PickExit(-1, new ApiExitChoice[0], out e, out r);
+            Check(k == -1 && e == BoxApiErrors.NotFound, "pick: no access at all = not_found");
             k = BoxApi.PickExit(1, new[] { C(0, "exit"), C(1, "entrance") }, out e, out _);
-            Check(k == 1 && e == null, "pick: an explicit index (entrance: refused later by Decide)");
+            Check(k == 1 && e == null, "pick: an explicit index (an entrance is boxable on its own, JR-T-021)");
             k = BoxApi.PickExit(5, new[] { C(0, "exit") }, out e, out r);
             Check(k == -1 && e == BoxApiErrors.NotFound && r.Contains("0..0"), "pick: index out of range = not_found: " + r);
             k = BoxApi.PickExit(-1, new[] { C(0, "junction") }, out e, out _);
@@ -174,7 +176,7 @@ namespace JunctionRules.Tests
             JsonValue b0 = v.Get("boxes").Array[0], b1 = v.Get("boxes").Array[1];
             Check(b0.Get("kind").String == "junction" && b0.Get("node").Get("index").Number == 1 && b0.Get("exit").Kind == JsonKind.Null && !b0.Get("derived").Bool
                   && b0.Get("center").Array[0].Number == 2 && Math.Abs(b0.Get("areaM2").Number - 12) < 1e-9 && b0.Get("mergedGroup").Array[0].Get("exit").Number == 0, "list result: junction entry");
-            Check(b1.Get("kind").String == "building_entrance" && b1.Get("building").Get("index").Number == 7 && b1.Get("exit").Number == 2 && b1.Get("derived").Bool, "list result: derived entrance entry");
+            Check(b1.Get("kind").String == "building_entrance" && b1.Get("building").Get("index").Number == 7 && b1.Get("exit").Number == 2 && b1.Get("derived").Kind == JsonKind.Bool && !b1.Get("derived").Bool, "list result: entrance entry, 'derived' kept (API v1) and always false (JR-T-021)");
 
             s = BoxApi.ExitChoiceError("v", "add", BoxApiErrors.AmbiguousExit, "two exits", new ApiBoxRef(ApiBoxKind.BuildingExit, 7, 1),
                 new[] { new ApiExitChoice { Exit = 0, Role = "exit", Key = "a", At = new V2(1, 2) }, new ApiExitChoice { Exit = 1, Role = "exit", Key = "b", Boxed = true } });

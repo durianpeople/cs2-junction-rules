@@ -43,8 +43,9 @@ namespace JunctionRules.Core
         /// <summary>No exit found in the game data: Building.m_RoadEdge + m_CurvePosition (the 0.4.0 entrance point).</summary>
         Fallback = 4,
         /// <summary>
-        /// JR-T-014c (G9): an entry-only access (a sub-net node whose car lanes only flow into the building). In memory only
-        /// (derived at resolve time for boxed buildings, Core/BuildingAccess.cs): NEVER written to the save (BoxStore refuses it).
+        /// JR-T-014c (G9): an entry-only access (a sub-net node whose car lanes only flow into the building). JR-T-021: boxed on
+        /// its own like an exit and saved as a key of this kind (1.0.1 and older derived it and never saved it; builds before
+        /// JR-T-021 reading such a key find no exit for it and drop that key only, Core/BuildingAccess.cs).
         /// </summary>
         Entrance = 5,
     }
@@ -244,6 +245,8 @@ namespace JunctionRules.Core
     /// Version 1 (0.4.0-0.4.2) = flags only: no keys = a legacy box, migrated on load (ExitRules.Migrate). 0.4.0-0.4.2
     /// builds reading a version 2 record take byte [0] and skip the rest by 'length' (BoxRecord.Decode), so the game's
     /// exact-size check holds either way. Never more than 50 keys (length &lt;= 255).
+    /// JR-T-021: an entrance box is a key of kind ExitKind.Entrance (5) in the same version 2 record (no layout change);
+    /// flags bit BoxRecordFlags.EntrancesExplicit marks a building whose entrance keys are explicit (migration done).
     /// </summary>
     public static class ExitRecord
     {

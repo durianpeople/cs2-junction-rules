@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Colossal.Collections;
 using Colossal.Mathematics;
 using Game.Buildings;
 using Game.Common;
@@ -8,6 +9,7 @@ using Game.Prefabs;
 using JunctionRules.Core;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Jobs;
 using Unity.Mathematics;
 
 namespace JunctionRules.Boxes
@@ -39,7 +41,7 @@ namespace JunctionRules.Boxes
             public BoxFacts.Exit Exit;       // exit: which exit (key = the saved name)
             /// <summary>Junction reached from a building (its own access road meets the public road here).</summary>
             public Entity FromBuilding;
-            /// <summary>JR-T-014c (G9 / G10): the target is an entrance (derived box) / a saved lot-front fallback (remove only).</summary>
+            /// <summary>JR-T-014c (G10): the target is an entrance (JR-T-021: its own saved key) / a saved lot-front fallback (remove only).</summary>
             public bool Entrance, Fallback;
         }
 
@@ -121,37 +123,45 @@ namespace JunctionRules.Boxes
 
         // ------------------------------------------------------------------ what the cursor (or an API point) is on
 
-        /// <summary>The tool's hover pick: the raycast hit entity and position to a target.</summary>
+        /// <summary>
+        /// The tool's hover pick: the raycast hit entity and position to a target. 1.0.3 (JR-T-023): a road hit outside its
+        /// end nodes' areas, a hit on the ground (terrain: pavement / driveway / verge / lot), on a prop or on nothing the
+        /// tool knows (Entity.Null: the API's x,z pick with nothing there) picks the access whose hover area holds the
+        /// point (PickAt, Core/AccessPick). Junction targets and building hits as before.
+        /// </summary>
         internal Target Resolve(Entity hitEntity, float3 hitPos)
         {
             EntityManager em = EntityManager;
+            if (hitEntity == Entity.Null || !em.Exists(hitEntity)) return PickAt(hitPos.xz);
             if (em.HasComponent<Game.Net.Node>(hitEntity)) return JunctionTarget(hitEntity);
             if (em.HasComponent<Edge>(hitEntity))
             {
-                // On the road: the end node when the hit lies inside that node's area, else the car exit on this road
-                // nearest the hit (within half the exit box length + 2 m), of any building whose exit is on this road.
+                // On the road: the end node when the hit lies inside that node's area, else the access whose hover area holds it.
                 Edge edge = em.GetComponentData<Edge>(hitEntity);
-                foreach (Entity n in new[] { edge.m_Start, edge.m_End })
-                {
-                    if (!em.HasComponent<NodeGeometry>(n)) continue;
-                    Bounds3 b = em.GetComponentData<NodeGeometry>(n).m_Bounds;
-                    if (MathUtils.Intersect(b.xz, hitPos.xz)) return JunctionTarget(n);
-                }
-                return NearestExitOnRoad(hitEntity, hitPos);
+                if (InNodeArea(edge.m_Start, hitPos)) return JunctionTarget(edge.m_Start);
+                if (InNodeArea(edge.m_End, hitPos)) return JunctionTarget(edge.m_End);
+                return PickAt(hitPos.xz);
             }
             if (em.HasComponent<Building>(hitEntity) || em.HasComponent<Owner>(hitEntity))
             {
                 Entity b = BoxFacts.MainBuilding(em, hitEntity);
                 if (em.HasComponent<Building>(b)) return NearestExitOfBuilding(b, hitPos);
             }
-            return default;
+            return PickAt(hitPos.xz);
+        }
+
+        private bool InNodeArea(Entity n, float3 hitPos)
+        {
+            EntityManager em = EntityManager;
+            return em.HasComponent<NodeGeometry>(n) && MathUtils.Intersect(em.GetComponentData<NodeGeometry>(n).m_Bounds.xz, hitPos.xz);
         }
 
         /// <summary>
         /// 0.4.13 (API {"x","z"}): stands in for the tool's raycast (which needs the cursor): what a ray straight down at
         /// (x, z) would hit with the tool's masks (road nets, static objects), handed to the same Resolve. Order: a road edge
         /// whose carriageway (centre curve +- half the composition width) holds the point, else a road node whose area
-        /// holds it, else a building whose prefab bounds (rotated) hold it. False when nothing is there.
+        /// holds it, else a building whose prefab bounds (rotated) hold it. False when nothing is there: the API then hands
+        /// Entity.Null to Resolve, the tool's ground hit (1.0.3, JR-T-023: the access hover areas, PickAt).
         /// </summary>
         internal bool PointHit(float2 xz, out Entity hit, out float3 pos)
         {
@@ -235,17 +245,95 @@ namespace JunctionRules.Boxes
         internal AccessList ExitsOf(Entity building)
         {
             if (m_ExitCache.TryGetValue(building, out var list)) return list;
+            BoxStore.MigrateEntrances(EntityManager, building);   // JR-T-021: a 1.0.1 record's derived entrances become saved keys first
             list = new AccessList();
             BoxFacts.Accesses(EntityManager, building, null, out list.Exits, out list.Entrances, out list.FallbackExit, out list.HasFallback);
             m_ExitCache[building] = list;
             return list;
         }
 
-        /// <summary>The buildings that may have an exit on this road: its ConnectedBuilding entries and the owners of its ConnectedNode sub-net nodes.</summary>
-        internal Target NearestExitOnRoad(Entity edge, float3 hitPos)
+        // ------------------------------------------------------------------ 1.0.3 (JR-T-023): the access hover areas
+
+        // reused every frame (no per-frame allocations beyond the tool's own)
+        private readonly HashSet<Entity> m_PickBuildings = new HashSet<Entity>();
+        private readonly List<AccessPickArea> m_PickAreas = new List<AccessPickArea>();
+        private readonly List<(Entity Building, BoxFacts.Exit Exit)> m_PickRefs = new List<(Entity, BoxFacts.Exit)>();
+        private Game.Net.SearchSystem m_NetSearch;
+
+        /// <summary>Collects the road edges whose bounds meet the search square (the game's net search tree).</summary>
+        private struct EdgeCollector : INativeQuadTreeIterator<Entity, QuadTreeBoundsXZ>, IUnsafeQuadTreeIterator<Entity, QuadTreeBoundsXZ>
+        {
+            public Bounds2 Bounds;
+            public NativeList<Entity> Found;
+            public bool Intersect(QuadTreeBoundsXZ bounds) => MathUtils.Intersect(bounds.m_Bounds.xz, Bounds);
+            public void Iterate(QuadTreeBoundsXZ bounds, Entity item)
+            {
+                if (MathUtils.Intersect(bounds.m_Bounds.xz, Bounds)) Found.Add(item);
+            }
+        }
+
+        /// <summary>
+        /// 1.0.3 (JR-T-023, owner 19 Nov 2026): the access whose hover area holds the ground point (x, z): its box area on
+        /// the road or the strip from the road to the building's access point (Core/AccessPick; nearest line wins). The
+        /// candidates are every real access (exit, entrance, two-way; never a junction-kind one: that is its node) of the
+        /// buildings connected to a road edge within AccessPick.SearchRadius of the point (the road's ConnectedBuilding
+        /// entries and the owners of its ConnectedNode sub-net nodes, as 1.0.2's road pick). Same code for the tool's hover
+        /// (every frame) and the API's x,z pick.
+        /// </summary>
+        internal Target PickAt(float2 xz)
         {
             EntityManager em = EntityManager;
-            var buildings = new HashSet<Entity>();
+            m_PickBuildings.Clear();
+            m_PickAreas.Clear();
+            m_PickRefs.Clear();
+            if (m_NetSearch == null) m_NetSearch = m_World.GetOrCreateSystemManaged<Game.Net.SearchSystem>();
+            float r = (float)AccessPick.SearchRadius;
+            var found = new NativeList<Entity>(32, Allocator.Temp);
+            try
+            {
+                var it = new EdgeCollector { Bounds = new Bounds2(xz - r, xz + r), Found = found };
+                NativeQuadTree<Entity, QuadTreeBoundsXZ> tree = m_NetSearch.GetNetSearchTree(true, out JobHandle deps);
+                deps.Complete();
+                tree.Iterate(ref it);
+                for (int i = 0; i < found.Length; i++)
+                {
+                    Entity e = found[i];
+                    if (!em.Exists(e) || !em.HasComponent<Edge>(e) || !em.HasComponent<Game.Net.Road>(e) || em.HasComponent<Deleted>(e) || em.HasComponent<Game.Tools.Temp>(e)) continue;
+                    // review fix: the tree gives edges whose BOUNDS meet the square (a long or diagonal edge has huge bounds); keep the
+                    // edges whose curve really lies within the search radius, as documented (fewer buildings per frame, fewer ExitsOf scans)
+                    if (!em.HasComponent<Curve>(e) || MathUtils.Distance(em.GetComponentData<Curve>(e).m_Bezier.xz, xz, out float curveT) > r) continue;
+                    BuildingsOnRoad(e, m_PickBuildings);
+                }
+            }
+            finally { found.Dispose(); }
+            foreach (Entity b in m_PickBuildings)
+            {
+                foreach (BoxFacts.Exit x in ExitsOf(b).All())
+                {
+                    if (x.IsJunction || x.Road == Entity.Null || !em.Exists(x.Road) || !em.HasComponent<Curve>(x.Road)) continue;
+                    float3 tan = MathUtils.Tangent(em.GetComponentData<Curve>(x.Road).m_Bezier, x.T);
+                    double half = 0;
+                    if (em.HasComponent<Composition>(x.Road))
+                    {
+                        Entity comp = em.GetComponentData<Composition>(x.Road).m_Edge;
+                        if (em.HasComponent<NetCompositionData>(comp)) half = em.GetComponentData<NetCompositionData>(comp).m_Width * 0.5;
+                    }
+                    m_PickAreas.Add(new AccessPickArea
+                    {
+                        Point = x.C.World, Along = new V2(tan.x, tan.z), HalfWidth = half,
+                        Inner = new V2(x.Inner.x, x.Inner.z), HasInner = x.HasInner,
+                    });
+                    m_PickRefs.Add((b, x));
+                }
+            }
+            int k = AccessPick.Pick(m_PickAreas, new V2(xz.x, xz.y), BoxStore.EntranceLength);
+            return k < 0 ? default : ExitTarget(m_PickRefs[k].Building, m_PickRefs[k].Exit);
+        }
+
+        /// <summary>The buildings that may have an access on this road: its ConnectedBuilding entries and the owners of its ConnectedNode sub-net nodes.</summary>
+        private void BuildingsOnRoad(Entity edge, HashSet<Entity> buildings)
+        {
+            EntityManager em = EntityManager;
             if (em.HasBuffer<ConnectedBuilding>(edge))
             {
                 DynamicBuffer<ConnectedBuilding> cb = em.GetBuffer<ConnectedBuilding>(edge, true);
@@ -260,20 +348,6 @@ namespace JunctionRules.Boxes
                     if (ob != Entity.Null) buildings.Add(ob);
                 }
             }
-            float reach = (float)(BoxStore.EntranceLength * 0.5 + 2.0);
-            Entity best = Entity.Null;
-            BoxFacts.Exit bestExit = default;
-            float bestD = float.MaxValue;
-            foreach (Entity b in buildings)
-            {
-                foreach (BoxFacts.Exit x in ExitsOf(b).All())
-                {
-                    if (x.IsJunction || x.Road != edge) continue;
-                    float d = math.distance(new float2((float)x.C.World.X, (float)x.C.World.Z), hitPos.xz);
-                    if (d < bestD) { bestD = d; best = b; bestExit = x; }
-                }
-            }
-            return best != Entity.Null && bestD <= reach ? ExitTarget(best, bestExit) : default;
         }
 
         /// <summary>Pointing at a building: its exit nearest the cursor (several exits = several targets, owner ruling 2).</summary>
@@ -327,8 +401,8 @@ namespace JunctionRules.Boxes
             EntityManager em = EntityManager;
             var t = new Target { Kind = Kind.Exit, Entity = building, Exit = exit, Entrance = exit.IsEntrance, Fallback = exit.IsFallback };
             t.Valid = BoxSelection.ExitOk(BoxFacts.ExitFacts(em, building, exit, out BoxFacts.Access a), out t.Why);
-            // JR-T-014c (G9): an entrance is boxed with its building (any saved key); a fallback has a box when a Fallback key is saved
-            t.HasBox = exit.IsEntrance ? BoxStore.Has(em, building, false) : exit.IsFallback ? HasFallbackKey(building) : BoxStore.HasExit(em, building, exit.C.Key);
+            // JR-T-021: an entrance has a box when its own key is saved (as an exit); a fallback when a Fallback key is saved
+            t.HasBox = exit.IsFallback ? HasFallbackKey(building) : BoxStore.HasExit(em, building, exit.C.Key);
             t.Access = a;
             if (a.Valid) t.Position = a.Point;
             else if (em.HasComponent<Game.Objects.Transform>(building)) t.Position = em.GetComponentData<Game.Objects.Transform>(building).m_Position;
@@ -426,7 +500,7 @@ namespace JunctionRules.Boxes
         internal Outcome Apply(Target t, BoxRequest req, string who, string shapeSummary)
         {
             EntityManager em = EntityManager;
-            var o = new Outcome { Decision = BoxCommand.Decide(req, KindOf(t), t.HasBox, t.Valid, t.Why, t.Entrance, t.Fallback) };
+            var o = new Outcome { Decision = BoxCommand.Decide(req, KindOf(t), t.HasBox, t.Valid, t.Why, t.Fallback) };
             BoxDecision d = o.Decision;
             if (d.Step == BoxStep.None)
             {
@@ -439,20 +513,6 @@ namespace JunctionRules.Boxes
             {
                 case BoxStep.AddJunction: BoxStore.Add(em, t.Entity); break;
                 case BoxStep.RemoveJunction: BoxStore.Remove(em, t.Entity, true); break;
-                case BoxStep.AddBuildingMarker:
-                {
-                    // JR-T-014c (G9 / G10): entrances come with the building (derived); not boxed yet (else HasBox): save the
-                    // lot-front marker key, an existing record kind, never drawn
-                    AccessList acc = ExitsOf(t.Entity);
-                    if (!acc.HasFallback || !BoxStore.AddExit(em, t.Entity, acc.FallbackExit.C.Key))
-                    {
-                        Mod.log.Info($"{who}: {What(t)}: {BoxCommand.NoMarkerEdgeReason}; nothing changed");
-                        o.Decision = new BoxDecision { Step = BoxStep.None, Error = BoxApiErrors.NotBoxable, Reason = BoxCommand.NoMarkerEdgeReason };
-                        return o;
-                    }
-                    break;
-                }
-                case BoxStep.RemoveBuilding: BoxStore.Remove(em, t.Entity, false); break;   // all the building's boxes (its entrances are boxed with it)
                 case BoxStep.RemoveFallbackKeys:
                 {
                     YellowBoxEntrance c = em.GetComponentData<YellowBoxEntrance>(t.Entity);
@@ -473,8 +533,7 @@ namespace JunctionRules.Boxes
             }
             o.Changed = true;
             m_ExitCache.Clear();
-            string where = t.Kind == Kind.Junction ? "junction " + What(t) : $"{What(t)} (source: {t.Exit.C.Source})"
-                + (t.Entrance ? (add ? "; the building's entrances are boxed with it" : "; removed ALL the building's boxes (entrances come with the building)") : "");
+            string where = t.Kind == Kind.Junction ? "junction " + What(t) : $"{What(t)} (source: {t.Exit.C.Source})";
             // 0.4.8 (JR-T-014b): an added junction box names its solved shape
             string shape = add && t.Kind == Kind.Junction ? shapeSummary : null;
             // Review G5 F2: a box that leaves conflict points outside is logged as a warning (the owner sees it in the log).

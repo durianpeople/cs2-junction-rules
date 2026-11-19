@@ -392,6 +392,16 @@ G25 (0.4.11, owner option c): new block S2-54 (6 lines, table above): 42 blocks,
 `Core/MedianNose.cs`, `Boxes/BoxShapes.cs`, `CrosswalkStrip.Median`); the driving rule reads the same shape and mask.
 PROBE section 22.
 
+1.0.1 (owner 19 Nov 2026: signalised zebra with people not on green). No copy change: the S2-25 hook and its line count
+are unchanged; job side only (`Stage2/JRWholeJunction.cs` `BeginZebras` / `SoftZebraHold`, `Core/ZebraSections.cs`
+`ZebraKind` / `SoftHoldSpot`). A zebra whose pedestrian lane has a `LaneSignal` showing Stop or SafeStop (people's light
+red or ending) is a soft zebra: it does not split the path into zebra sections, so a car may stand on it at its normal
+waiting spot while it gives way (e.g. a turner waiting for oncoming traffic). It still does not move onto it while there
+is no room past everything it crosses on the lane (exit blocked): the same room scan and the same same-exit exception as
+the zebra sections. Unsignalised zebras, zebras with people on green and further zebras on the route (room scan) are as
+in 1.0.0; people on the crossing still stop cars (stock check). JR-T-021C: the hook's blocker (G17) is the one of the
+hold actually returned (soft or section hold, the smaller; `ZebraSections.SoftHoldBinds`).
+
 1.1.0 (JR-T-022 / 022b / 022c: look past the car in front at a box; owner 19 Nov 2026). No copy change: the
 `JunctionRules/Vanilla/` files are as 1.0.1 (`vanilla_copy.py check` unchanged). Job side only
 (`Stage2/JRWholeJunction.cs` box room test, `Core/ZebraSections.cs` RoomScan, `Core/SightLine.cs`), all behind the new

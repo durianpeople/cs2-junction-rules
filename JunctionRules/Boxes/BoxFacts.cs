@@ -357,7 +357,9 @@ namespace JunctionRules.Boxes
         /// 0.4.3 driving rule: the building's boxed car exits as bands (road edge key + curve position), read-only. Saved
         /// keys are matched to the building's current exits as the paint matches them; a legacy (0.4.0-0.4.2) box not yet
         /// migrated by the paint takes the exit nearest its old access point (Core/ExitBands.Boxed). Junction exits are
-        /// junction boxes on their node (driven through YellowBoxJunction), never bands. Returns the keys without an exit.
+        /// junction boxes on their node (driven through YellowBoxJunction), never bands. JR-T-021: a saved entrance key is a
+        /// band at its entrance (matched as the paint matches it: entrances first, then exits at the same place); nothing is
+        /// derived. Returns the keys without an access.
         /// </summary>
         internal static int BoxedExitBands(EntityManager em, Entity building, List<DrivingBands.Source> into)
         {
@@ -366,13 +368,24 @@ namespace JunctionRules.Boxes
             List<Exit> exits = Scan(em, building, null, out List<Exit> entrances, out _, out _);
             var cands = new List<ExitCandidate>(exits.Count);
             foreach (Exit x in exits) cands.Add(x.C);
+            var inCands = new List<ExitCandidate>(entrances.Count);
+            foreach (Exit x in entrances) inCands.Add(x.C);
             var keys = new List<ExitKey>(c.m_Exits.Length);
+            var inHit = new bool[entrances.Count];
+            int unmatchedIn = 0;
             for (int i = 0; i < c.m_Exits.Length; i++)
             {
+                ExitKey k = c.m_Exits[i];
                 // JR-T-014c (G10): a Fallback key is a marker unless it re-keys to a real exit (ExitRules.Match); a marker is
                 // not a band and not 'unmatched' (the paint keeps it untouched)
-                if (c.m_Exits[i].ExitKind == ExitKind.Fallback && ExitRules.Match(c.m_Exits[i], cands) < 0) continue;
-                keys.Add(c.m_Exits[i]);
+                if (k.ExitKind == ExitKind.Fallback && ExitRules.Match(k, cands) < 0) continue;
+                if (k.ExitKind == ExitKind.Entrance)
+                {
+                    int e = ExitRules.Match(k, inCands);
+                    if (e >= 0) { inHit[e] = true; continue; }
+                    if (ExitRules.Match(k, cands) < 0) { unmatchedIn++; continue; }   // gone: the paint drops it
+                }
+                keys.Add(k);
             }
             V2 old = default;
             if (c.Legacy)
@@ -384,23 +397,9 @@ namespace JunctionRules.Boxes
             }
             List<int> boxed = ExitBands.Boxed(keys, c.Legacy, old, cands, out int unmatched);
             GetFrame(em, building, out V2 bpos, out _);
-            foreach (int i in boxed) AddSource(em, building, exits[i], bpos, false, into);
-            // JR-T-014c (G9): a boxed building's entrances drive as bands too, derived exactly as the paint derives them
-            // (0.4.10: Paint/YellowBoxPaintSystem.AddEntranceBoxes: EntrancesBoxed, every saved key matched to an exit of any
-            // kind for the "same place as a boxed exit" test)
-            if (entrances.Count > 0 && AccessRules.EntrancesBoxed(c.m_Exits.Length, c.Legacy))
-            {
-                var boxedCands = new List<ExitCandidate>();
-                for (int k = 0; k < c.m_Exits.Length; k++)
-                {
-                    int i = ExitRules.Match(c.m_Exits[k], cands);
-                    if (i >= 0) boxedCands.Add(cands[i]);
-                }
-                var inCands = new List<ExitCandidate>(entrances.Count);
-                foreach (Exit x in entrances) inCands.Add(x.C);
-                foreach (int i in AccessRules.EntranceBoxes(inCands, boxedCands)) AddSource(em, building, entrances[i], bpos, true, into);
-            }
-            return unmatched;
+            foreach (int i in boxed) AddSource(em, building, exits[i], bpos, into);
+            for (int i = 0; i < entrances.Count; i++) if (inHit[i]) AddSource(em, building, entrances[i], bpos, into);
+            return unmatched + unmatchedIn;
         }
 
         /// <summary>
@@ -408,11 +407,11 @@ namespace JunctionRules.Boxes
         /// BoxSelection.ExitOk, the building position for the median side); its window is made by Boxes/DrivingBands.cs with
         /// the paint's own BoxShapes.Entrance. An exit the paint would not draw (invalid now) is not driven either.
         /// </summary>
-        private static void AddSource(EntityManager em, Entity building, Exit x, V2 bpos, bool derived, List<DrivingBands.Source> into)
+        private static void AddSource(EntityManager em, Entity building, Exit x, V2 bpos, List<DrivingBands.Source> into)
         {
             if (!Alive(em, x.Road)) return;
             if (!BoxSelection.ExitOk(ExitFacts(em, building, x, out Access a), out _)) return;
-            into.Add(new DrivingBands.Source { Building = building, Exit = x, Access = a, BuildingPos = bpos, Derived = derived });
+            into.Add(new DrivingBands.Source { Building = building, Exit = x, Access = a, BuildingPos = bpos });
         }
 
         private static Exit OnRoad(EntityManager em, Entity road, float t, ExitKind kind, V2 local, string source)

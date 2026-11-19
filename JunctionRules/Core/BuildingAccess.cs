@@ -7,14 +7,16 @@ namespace JunctionRules.Core
     // go in) and two-way accesses (both). Game-independent rules; Boxes/BoxFacts.cs reads the game data (sub-net node car
     // lane flow, spawn locations) into ExitCandidate rows.
     //
-    // G9: a boxed building (YellowBoxEntrance with at least one key) gets a box at every car ENTRANCE as well as at its
-    // boxed exits. Entrances are DERIVED at resolve time from the game data, never written to the save: the save keeps
-    // exactly the 0.4.3 record (exit keys). ExitKind.Entrance keys exist only in memory (paint box ids, hover cache).
+    // JR-T-021 (owner 19 Nov 2026, replaces G9's derivation): every car access (exit, entrance, two-way) is boxed on its
+    // own: the owner picks the access, and only that access gets a box. An entrance box is an ExitKind.Entrance key in the
+    // building's saved record (same v2 record, a new key kind). Saves from 1.0.1 and older had G9 entrance boxes DERIVED at
+    // every entry-only entrance of a boxed building; the first load with this build turns each of those into a saved
+    // entrance key once (MigrateEntrances, versioned by BoxRecordFlags.EntrancesExplicit), and drops the lot-front marker
+    // keys that only marked the building "boxed".
     // G10: boxes only at a REAL car access. The 0.4.3 Fallback (Building.m_RoadEdge + m_CurvePosition, the lot-front
-    // middle, used when the game data shows no car exit) is never a box target any more and is never drawn or obeyed.
-    // A saved Fallback key stays in the save untouched (no format change) and means "this building is boxed": its
-    // entrances (and any real exit the key re-keys to, ExitRules.Match) are boxed; with no real access at all it draws
-    // nothing and the tool still offers it for removal.
+    // middle, used when the game data shows no car exit) is never a box target and is never drawn or obeyed. A saved
+    // Fallback key that matches no real exit and is not dropped by the migration (no entrance to stand for) stays in the
+    // save untouched, draws nothing and is offered by the tool for removal.
 
     /// <summary>Which way cars use one access of a building.</summary>
     [Flags]
@@ -33,7 +35,7 @@ namespace JunctionRules.Core
     {
         /// <summary>The key re-keys to a real exit within ExitRules.KeyMatch (the paint then saves that exit's key, as 0.4.3).</summary>
         Rekey = 0,
-        /// <summary>Kept untouched as the "building is boxed" marker: its entrance / real exit boxes stand for it; not drawn.</summary>
+        /// <summary>Kept untouched as a 1.0.1 "building is boxed" marker the migration did not drop (no entrance made explicit); not drawn.</summary>
         Marker = 1,
         /// <summary>Kept untouched; the building has no real car access: nothing drawn or obeyed (removable with the tool).</summary>
         NoAccess = 2,
@@ -68,20 +70,13 @@ namespace JunctionRules.Core
             return realExits + entrances > 0 ? SavedFallbackFate.Marker : SavedFallbackFate.NoAccess;
         }
 
-        /// <summary>
-        /// The key the tool saves to box a building's entrances when none of its exits is boxed: the 0.4.3 Fallback key at the
-        /// lot-front middle (building frame (0, depth)), an existing record kind (no save format change). It only marks the
-        /// building as boxed and is never drawn (G10). A 0.4.3-0.4.7 build reading it draws a fallback box there.
-        /// </summary>
-        public static ExitKey MarkerKey(double lotDepthMetres) => new ExitKey(ExitKind.Fallback, 0, lotDepthMetres);
-
-        /// <summary>The building counts as boxed for its entrances when its component holds any key (exit or marker).</summary>
+        /// <summary>1.0.1 G9 rule (used only by the migration): the building's entrances counted as boxed when its component held any key (exit or marker) or was a legacy box.</summary>
         public static bool EntrancesBoxed(int savedKeys, bool legacy) => savedKeys > 0 || legacy;
 
         /// <summary>
-        /// One entrance box per entry-only access; an entrance on the same road within ExitRules.SameExitAlong of a boxed exit
-        /// (or of another entrance) is the same place and adds no box of its own (its box would only duplicate that one).
-        /// Returns indices into 'entrances'.
+        /// 1.0.1 G9 derivation (used only by the migration): one entrance box per entry-only access; an entrance on the same
+        /// road within ExitRules.SameExitAlong of a boxed exit (or of another entrance) is the same place and adds no box of its
+        /// own. Returns indices into 'entrances'.
         /// </summary>
         public static List<int> EntranceBoxes(IList<ExitCandidate> entrances, IList<ExitCandidate> boxedExits)
         {
@@ -101,6 +96,68 @@ namespace JunctionRules.Core
             }
             return r;
         }
+
+        /// <summary>
+        /// JR-T-021: the one-time migration of a building's saved keys from 1.0.1 (G9 derived entrances) to explicit entrance
+        /// keys. 'saved' = the record's keys, 'exits' = the building's exits as BoxFacts reads them (the 1.0.1 paint's list),
+        /// 'entrances' = its entry-only accesses. Every entrance 1.0.1 drew (EntrancesBoxed + EntranceBoxes over the exits the
+        /// saved keys match) becomes an ExitKind.Entrance key unless one is already saved for it; then every Fallback key that
+        /// matches no exit (a lot-front marker that only said "boxed") is dropped, but only when the building keeps at least
+        /// one entrance key (its entrances are explicit). Exit keys are untouched. At most 'maxKeys' keys: entrances that do
+        /// not fit are counted in NotFitted (the caller logs them). Pure; running it on its own result changes nothing.
+        /// </summary>
+        public static EntranceMigration MigrateEntrances(IList<ExitKey> saved, IList<ExitCandidate> exits, IList<ExitCandidate> entrances, int maxKeys)
+        {
+            var r = new EntranceMigration { Keys = new List<ExitKey>() };
+            if (saved != null) r.Keys.AddRange(saved);
+            if (!EntrancesBoxed(r.Keys.Count, false)) return r;
+            var exitList = exits ?? new List<ExitCandidate>();
+            var boxed = new List<ExitCandidate>();
+            foreach (ExitKey k in r.Keys)
+            {
+                int i = ExitRules.Match(k, exitList);
+                if (i >= 0) boxed.Add(exitList[i]);
+            }
+            var toAdd = new List<ExitKey>();
+            if (entrances != null)
+            {
+                foreach (int i in EntranceBoxes(entrances, boxed))
+                {
+                    ExitCandidate e = entrances[i];
+                    bool have = false;
+                    foreach (ExitKey k in r.Keys) have |= k.ExitKind == ExitKind.Entrance && ExitKey.Distance(k, e.Key) <= ExitRules.KeyMatch;
+                    if (!have) toAdd.Add(e.Key);
+                }
+            }
+            bool anyEntranceKey = toAdd.Count > 0;
+            foreach (ExitKey k in r.Keys) anyEntranceKey |= k.ExitKind == ExitKind.Entrance;
+            if (anyEntranceKey)
+            {
+                for (int i = r.Keys.Count - 1; i >= 0; i--)
+                {
+                    ExitKey k = r.Keys[i];
+                    if (k.ExitKind != ExitKind.Fallback || ExitRules.Match(k, exitList) >= 0) continue;
+                    r.Keys.RemoveAt(i);
+                    r.MarkersDropped++;
+                }
+            }
+            foreach (ExitKey k in toAdd)
+            {
+                if (r.Keys.Count >= maxKeys) { r.NotFitted++; continue; }
+                r.Keys.Add(k);
+                r.Added++;
+            }
+            return r;
+        }
+    }
+
+    /// <summary>JR-T-021: what AccessRules.MigrateEntrances did to one building's keys.</summary>
+    public struct EntranceMigration
+    {
+        /// <summary>The keys to save (exit keys first as saved, then the new entrance keys).</summary>
+        public List<ExitKey> Keys;
+        public int Added, MarkersDropped, NotFitted;
+        public bool Changed => Added > 0 || MarkersDropped > 0;
     }
 
     /// <summary>
