@@ -345,6 +345,13 @@ namespace JunctionRules.Stage2
         /// <summary>0.4.12 (G29 nose trace): the box (node, or the road edge of an exit band) and how far the front stood past its line.</summary>
         private Entity m_NoseOwner;
         private float m_NoseFront;
+        /// <summary>JR-T-024 (Stage2/JRExitZebraWait.cs): the box lane whose exit zebra (start, driving coordinates) the car may wait
+        /// before this car-step (people walking, room free now); set by BoxHold, read by PedestrianDistance; Null = none.</summary>
+        private Entity m_ZebraGoLane;
+        private float m_ZebraGoStart;
+        /// <summary>JR-T-024 (counters): standing in a box at its exit zebra while people are on it; held at the line for the exit zebra.</summary>
+        private bool m_BoxZebraWait, m_HasBoxZebraLine;
+        private float m_BoxZebraLineSpeed;
         /// <summary>G15b (final review): this car-step a room scan was blocked by a vehicle standing across the lane from a driveway.</summary>
         private bool m_SideHeld;
         /// <summary>0.4.10 (G19, probe): the last HasRoomPast with freeNow found no room only because a moving queue no longer counts.</summary>
@@ -1474,7 +1481,13 @@ namespace JunctionRules.Stage2
         public float PedestrianDistance(bool inScope, float stockDistance)
         {
             if (!inScope) return stockDistance;
-            return WholePathRule.Distance(StretchState.ForPedestrian(m_OvPhase), stockDistance, m_OvStopWait);
+            float today = WholePathRule.Distance(StretchState.ForPedestrian(m_OvPhase), stockDistance, m_OvStopWait);
+            // JR-T-024 (look-past setting only): people walking on the box's exit zebra, room free now: the game's own stop just
+            // before that zebra instead of the section's spot (the box line)
+            if (m_ZebraGoLane == Entity.Null) return today;
+            float d = m_OvStart - m_ZebraGoStart;
+            return ExitZebraWait.PedestrianDistance(m_ZebraGoLane == m_LaneEntity, d < WholePathRule.SpotEpsilon && d > -WholePathRule.SpotEpsilon,
+                stockDistance, today);
         }
 
         /// <summary>
@@ -1979,6 +1992,8 @@ namespace JunctionRules.Stage2
             if (m_EntryEntrantIgnored) Add(counters, Stage2Counters.EntryEntrantIgnored, 1);
             if (Stage2Counters.IsBinding(m_HasBoxFreeNow, m_BoxFreeNowSpeed, finalMaxSpeed)) Add(counters, Stage2Counters.BoxHeldFreeNow, 1);   // 0.4.10 (G19)
             if (m_LookPastAdmitted) Add(counters, Stage2Counters.BoxLookPastAdmitted, 1);   // JR-T-022 (probe)
+            if (m_BoxZebraWait && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.BoxExitZebraWait, 1);   // JR-T-024
+            if (Stage2Counters.IsStandingOn(m_HasBoxZebraLine, m_BoxZebraLineSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxExitZebraLine, 1);
             // 0.4.10 probes; the UK right-turn spot (waiting for the oncoming gap or, review 3 F2, for exit room) is excluded
             bool turnSpot = Stage2Counters.IsStandingOn(m_HasBoxTurnWait, m_BoxTurnWaitSpeed, finalMaxSpeed, currentSpeed)
                 || Stage2Counters.IsStandingOn(m_HasBoxTurnRoom, m_BoxTurnRoomSpeed, finalMaxSpeed, currentSpeed);

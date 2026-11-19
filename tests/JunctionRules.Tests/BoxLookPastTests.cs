@@ -552,7 +552,7 @@ namespace JunctionRules.Tests
             string flip = gs.Step(JunctionGapRule.Stock, false, out int m2, boxObey: true, boxLookPast: false);
             Check(flip != null && flip.Contains("switched") && (m1 & Stage2Mode.BoxLookPast) != 0 && (m2 & Stage2Mode.BoxLookPast) == 0 && Stage2Mode.RuleName(m1).Contains("looking past the car in front"),
                 "turning the setting on / off is logged as a rule switch");
-            Check(Stage2Counters.BoxLookPastAdmitted == Stage2Counters.Count - 1 && Stage2Counters.Format(2, new long[Stage2Counters.Count], 0, 0, 2, 2, 2).Contains("let into a box by looking past the car in front")
+            Check(Stage2Counters.BoxLookPastAdmitted == Stage2Counters.Count - 3 && Stage2Counters.Format(2, new long[Stage2Counters.Count], 0, 0, 2, 2, 2).Contains("let into a box by looking past the car in front")
                 && Stage2Counters.Format(2, new long[Stage2Counters.Count], 0, 0, 2, 2, 3).Contains("let into a box by looking past the car in front"),
                 "probe counter at the end, on the timing line (setting on / switched in the window)");
             // JR-T-022c (review finding 2): with the setting off the timing line is the 1.0.1 text

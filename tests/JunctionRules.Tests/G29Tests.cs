@@ -39,7 +39,7 @@ namespace JunctionRules.Tests
             string free = ExitTrace.Format(1, 0, ExitTrace.Pack(ExitTrace.Event.BoxNose, ExitPaths.Path.Drive, ExitPaths.LaneKind.DriveLane, ExitGiveWay.Decision.Go, 0, true), ((long)7 << 32) | 1u, ExitTrace.PackPoint(0.4f, 0f));
             Check(free.Contains("waits for nothing named") && !free.Contains("exception"), "G29 nose trace without a named blocker / G22");
             Check(ExitGiveWay.BoxNoseKind < ExitGiveWay.EventKinds && (long)ExitGiveWay.EventKinds * ExitGiveWay.EventKindStride < int.MaxValue, "G29 nose episodes: own event kind, keys fit");
-            Check(Stage2Counters.BoxNoseAtLight == Stage2Counters.Count - 3 && Stage2Counters.StockRoomHoldSkippedBoxed == Stage2Counters.Count - 4, "G29 two new counters before the owner-decision one");
+            Check(Stage2Counters.BoxNoseAtLight == Stage2Counters.Count - 5 && Stage2Counters.StockRoomHoldSkippedBoxed == Stage2Counters.Count - 6, "G29 two new counters before the owner-decision one");
             // review F1: a pedestrian overlap without merge / unsafe / water flags is a crossing for stock CheckSpace too
             Check(StockRoomSkip.IsCrossedLane(0, true) && !StockRoomSkip.IsCrossedLane(0x1, true), "G29 review F1: a plain zebra overlap is a true crossing (merge-flagged ones are not)");
             string root = RepoRoot();

@@ -184,6 +184,14 @@ PROBE-STAGE3-PAINT.md section 10.
   stops harder than any game vehicle brakes) are accepted by design. Mode bit 31 (`Stage2Mode.BoxLookPast`, stripped from
   the job's stage 2 mode, toggling it logs a rule switch). Timing log: "let into a box by looking past the car in front"
   (`Stage2Counters.BoxLookPastAdmitted`), printed only when the setting was on in the window.
+  JR-T-024 (owner ruling 19 Nov 2026), same setting: a car about to cross a junction box whose exit zebra has people on
+  it may drive in and wait just before that zebra (the game's own stop, never on it) when everyone there is walking and
+  the road past the box has room free now for its whole length plus margin; one person standing on the zebra, or no room
+  free now, holds it at the box line (before: people walking or standing held it at the line under the Whole junction
+  rule, or let it in to wait before the zebra under the Stock gap rule). "Walking" = the game's own test (`Moving`,
+  speed^2 >= 0.01); people waiting at the kerb are not on the zebra (G23). Core `ExitZebraWait`, job
+  `Stage2/JRExitZebraWait.cs`. Timing log: "waiting in a box just before its exit zebra while people cross"
+  (`BoxExitZebraWait`) and "held at a box line for people standing on its exit zebra" (`BoxExitZebraLine`).
 - **Yellow box paint test** (stage 3 probe): off (default) or on; **what to draw** (Box / Plain fill / Outline only);
   **paint onto** (Roads (default) / Roads + Other / Everything but vehicles); buttons Refresh test list, Add junction at
   camera centre, Log paint cost now; Paint test status. See PROBE-STAGE3-PAINT.md.

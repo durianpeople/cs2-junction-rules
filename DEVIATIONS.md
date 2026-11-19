@@ -421,3 +421,30 @@ differential and a step-by-step trace hash over the box scenario set):
 - The safety stop is untouched (the decision runs again every step while the car can still stop at the line). Rare
   misjudgements that end with a car standing in the box (offline: a queue past the box that stops dead, harder than any
   game vehicle can brake) are accepted by design.
+
+1.1.0 also (JR-T-024, owner ruling 19 Nov 2026, BINDING: waiting for people at a box's exit zebra). No copy change (no
+block or line count changes; `vanilla_copy.py check` unchanged). Job side only (`Stage2/JRExitZebraWait.cs`, the
+room-ok return of the junction box hold in `Stage2/JRYellowBox.cs` `BoxHold`, `PedestrianDistance` in
+`Stage2/JRWholeJunction.cs`, rule in `Core/ExitZebraWait.cs`), all behind **Look past the car in front at a box** (off =
+1.0.1 bit for bit: every new path tests the setting first; offline trace differential over 400 random scenes).
+- Before: the box room test reads only the road past the box (from its lane end), never the box's own exit zebra.
+  People on that zebra held the car where the zebra sections put the zebra's decision: with the Whole junction rule the
+  exit zebra is almost always one decision with the box line (the car does not fit between the last crossing point and
+  the zebra), so ANY person the game's check counts there, walking or standing, held the car at the line; with the
+  Stock gap rule the exit zebra usually has its own spot inside the box, so the car drove in and waited just before it
+  for anyone, walking or standing (a long vehicle that does not fit: at the entry zebra / line); with "Cars never stop on
+  a zebra" off, the game's own pedestrian stop at the zebra (inside the box).
+- Now, for a car before the line that can stop there and whose box room test passed: the exit zebra of the lane (its last
+  zebra, starting in the lane's second half) is read: everyone on its pedestrian lane, by the game's own walking test
+  (`Moving`, speed^2 >= 0.01; with "Cars never push through people" a person standing in the 1 m waiting area at a lane
+  end is not on it, as G23). One standing person = hold at the box line (blocker = that person). Everyone walking: room
+  past the box is asked again with the free-now rule alone (no look-past credit: the car will stand before the zebra);
+  free = no hold, and the pedestrian check for that zebra on that lane this car-step uses the game's own distance (the car
+  stops a stop margin before the zebra, inside the box) instead of the section's spot; not free = hold at the line (asks a
+  red light inside the window for green, review R1). Nobody there = unchanged. Inside the box nothing changes (the game's
+  own stop before the zebra; people who step on, or stop, after the car entered keep it before the zebra).
+- Counters `Stage2Counters.BoxExitZebraWait` (car-steps standing in a box just before its exit zebra while somebody is on
+  it: not counted as standing inside a box or as a nose) and `BoxExitZebraLine` (car-steps standing at a box line held for
+  its exit zebra), the last two indices, on the timing line only while the setting is on.
+- Limits: only the exit zebra on the junction lane itself (a box whose path continues on a further lane of the same node
+  is not read past the first lane); exit / entrance bands are not covered (no zebra inside a band).
