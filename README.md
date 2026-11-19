@@ -86,6 +86,15 @@ Junction Rules exposes a small public API, `JunctionRules.Api.JunctionRulesApi` 
 JSON in and out), so other mods can list, preview, add and remove yellow boxes through exactly the same rules as the
 Ctrl+Y tool. Find it by reflection (no compile-time reference needed) and check `ApiVersion` before calling.
 
+**Why is this car slowing?** Select a car to see why it slows. While a car is selected (and Junction Rules drives the
+cars), every change of reason goes to `Logs/JunctionRules.Mod.log` as a `why slowed:` line (at most 2 a second): the
+rule that set its speed limit (the game's own, e.g. a light, a STOP sign, the car ahead, giving way, or a Junction
+Rules rule, e.g. the whole-junction gap, a yellow box or a zebra), the limit, the blocker and how far away the car is.
+A limit no rule can be named for is shown as "stock/other", never as a Junction Rules rule. Tools can read the same
+through `JunctionRulesApi.WhySlowed(argsJson)`: the current reason plus the last 20 changes of the tracked car;
+`{"car":"index:version"}` tracks a car while nothing is selected (a selected vehicle always wins), `{"clear":true}` stops
+that, `{"history":"index:version"}` reads a recently tracked car's changes.
+
 ## Settings
 
 Options → Junction Rules. The main groups:
