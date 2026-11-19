@@ -523,8 +523,10 @@ namespace JunctionRules.Core
         /// </summary>
         public bool LookPast;
 
-        /// <summary>JR-T-022: "clearly moving away" (m/s, about 11 km/h): slower vehicles (a creeping stop-and-go queue, G19) give no look-past room.</summary>
-        public const float LookPastMinSpeed = 3f;
+        /// <summary>JR-T-022: "clearly moving away" (m/s, about 18 km/h): slower vehicles (a creeping stop-and-go queue, G19) give no look-past room.
+        /// JR-T-028 (1.2.0): 5 m/s, was 3 m/s in 1.1.0: with no travel limit on a carrying-on vehicle, a crawling, decelerating
+        /// queue tail counts as standing (owner rule "standing queue").</summary>
+        public const float LookPastMinSpeed = 5f;
 
         /// <summary>
         /// JR-T-022b (owner sight rule 19 Nov 2026, replaces the 50 m along the path): the driver's line of sight is a RADIUS

@@ -65,8 +65,18 @@ namespace JunctionRules.Tests
             Check(t.SetNoseOn == 0, "seen stop: no nose in a box on the scenario set");
             Check(t.NeedOn < t.NeedOff && t.PausesOn < t.PausesOff, $"seen stop: fewer needless pauses ({t.NeedOff} -> {t.NeedOn}) and pauses ({t.PausesOff} -> {t.PausesOn})");
             // measured 1.2.0 levels (1.1.0 on the same runs: scenario set 0, scenes let in 8 + 0), guarded against growth
-            Check(t.SetViolOn <= 579 && t.StoodLook <= 282 && t.StoodLookDead <= 335,
-                $"seen stop: standing in a box by cars let in when the stop point closed after they committed stays at the measured level (set {t.SetViolOn} <= 579, scenes {t.StoodLook} <= 282, dead {t.StoodLookDead} <= 335)");
+            // JR-T-028 (LookPastMinSpeed 5 m/s, was 3: 579 / 282 / 335, pauses 12233, needless 1790): measured 57 / 247 / 288,
+            // pauses 12802, needless 1907; small headroom so growth is caught.
+            Check(t.SetViolOn <= 62 && t.StoodLook <= 260 && t.StoodLookDead <= 305,
+                $"seen stop: standing in a box by cars let in when the stop point closed after they committed stays at the measured level (set {t.SetViolOn} <= 62, scenes {t.StoodLook} <= 260, dead {t.StoodLookDead} <= 305)");
+            Check(t.PausesOn <= 13050 && t.NeedOn <= 1960, $"seen stop: pauses and needless pauses stay at the measured level ({t.PausesOn} <= 13050, {t.NeedOn} <= 1960)");
+            Check(RoomScan.LookPastMinSpeed == 5f, "JR-T-028: clearly moving = 5 m/s (a crawling, decelerating queue tail counts as standing)");
+
+            // JR-T-028 (review E): the why-slowed readout uses the predicted room only with the look-past on (off = 1.0.1 MinRoomNow)
+            string why = System.IO.File.ReadAllText(System.IO.Path.Combine(RepoRoot(), "JunctionRules", "Stage2", "JRWhy.cs"));
+            Check(why.Contains("float min = scan.LookPastOn ? scan.MinRoomPredicted : scan.MinRoomNow;")
+                && System.Text.RegularExpressions.Regex.Matches(why, @"MinRoomPredicted").Count == 1,
+                "JRWhy: MinRoomPredicted is read once, only when scan.LookPastOn (else MinRoomNow)");
 
             // ---- the rule on plain values (Core RoomScan)
             RoomScan Scan(float sight = 50f) { RoomScan r = RoomScan.Begin(4.2f, 1f); r.FreeNow = true; r.LookPast = true; r.SightLeft = sight; return r; }

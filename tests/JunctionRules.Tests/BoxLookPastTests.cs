@@ -491,7 +491,8 @@ namespace JunctionRules.Tests
             // (a dead stop, re-drawn every step): with vehicles predicted to carry on, cars let in can stand in a box when it
             // closes after they could no longer stop: the owner-accepted misjudgement, here at its worst (1.1.0: 0). Measured,
             // guarded against growth; with the stop point seen (as the job sees a light) see LookPastPredictTests.
-            Check(lookNose == 0 && lookViol <= 633, $"look-past: no nose in a box; standing in a box with an unseen dead-stop exit stays at the measured 1.2.0 level ({lookViol} <= 633)");
+            // JR-T-028: LookPastMinSpeed 5 m/s (was 3: 633): measured 55, small headroom.
+            Check(lookNose == 0 && lookViol <= 60, $"look-past: no nose in a box; standing in a box with an unseen dead-stop exit stays at the measured 1.2.0 level ({lookViol} <= 60)");
             Check(lookDrained, "look-past: no deadlock on the scenario set (everything drains)");
 
             // ---- the pause metric, before / after, and stood-in-box, over the look-past scenes (20 seeds each)
@@ -520,7 +521,9 @@ namespace JunctionRules.Tests
             // leaves X in the box (1.1.0's worst-case travel prevented that: 8 + 0). The owner accepts rare misjudgements; in the
             // game a queue stops at what the scan reads (a standing vehicle, a red light): LookPastPredictTests runs the same
             // scenes with the stop point seen. Here: measured, guarded against growth.
-            Check(stoodLook <= 1736 && stoodLookDead <= 720, $"look-past, unseen stop point (worst case): standing by vehicles it let in stays at the measured 1.2.0 level ({stoodLook} <= 1736, dead stop {stoodLookDead} <= 720)");
+            // JR-T-028 (LookPastMinSpeed 5 m/s): measured 1086 / 610, pauses 11893, needless 1811; small headroom.
+            Check(stoodLook <= 1140 && stoodLookDead <= 640, $"look-past, unseen stop point (worst case): standing by vehicles it let in stays at the measured 1.2.0 level ({stoodLook} <= 1140, dead stop {stoodLookDead} <= 640)");
+            Check(totPausesOn <= 12150 && needOn <= 1860, $"look-past, unseen stop point: pauses and needless pauses stay at the measured 1.2.0 level ({totPausesOn} <= 12150, {needOn} <= 1860)");
             Check(allDrained, "look-past scenes drain (no deadlock), on and off");
 
             // ---- job wiring (source)

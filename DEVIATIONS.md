@@ -446,10 +446,12 @@ differential and a step-by-step trace hash over the box scenario set):
 binding). No copy change (`vanilla_copy.py check` unchanged). Core only (`Core/ZebraSections.cs` `RoomScan.AddLook`),
 behind the same setting (off = 1.0.1 bit for bit, unchanged path). Replaces the 1.1.0 worst-case `GuaranteedTravel`
 credit for ordinary vehicles in and past the box:
-- An ordinary vehicle (not large) moving at 3 m/s or more is expected to carry on; it stops only behind the first
+- An ordinary vehicle (not large) moving at 5 m/s (about 18 km/h) or more is expected to carry on; it stops only behind the first
   visible standing vehicle / tail of a standing queue, or at a red stop line (the scan reads these where they are). People
   on a zebra and waiting turners do not count (exit-zebra rule and turner exception handle them).
-- A vehicle standing or crawling (below 3 m/s) and a red stop line count where they are now.
+- A vehicle standing or crawling (below 5 m/s) and a red stop line count where they are now. `LookPastMinSpeed` was 3 m/s
+  (about 11 km/h) in 1.1.0; 1.2.0 raises it to 5 m/s (JR-T-028: a crawling, decelerating queue tail counts as standing;
+  the same threshold refuses a vehicle followed through the box, and applies to large vehicles).
 - The car enters when, with every vehicle ahead placed at that point, there is room for its whole length plus margin
   past the exit, and the road up to the predicted front of each vehicle it relies on lies inside the 50 m sight;
   otherwise it waits at the line (refusal `BeyondSight` when only the sight cut refuses).
