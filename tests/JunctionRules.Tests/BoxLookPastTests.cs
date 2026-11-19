@@ -251,7 +251,8 @@ namespace JunctionRules.Tests
         /// step the car just past the exit brakes as hard as it can to a stop. In-box gap <paramref name="inGap"/>, X's start
         /// <paramref name="xStart"/>.
         /// </summary>
-        private static OwnerOutcome OwnerCase(bool lookPast, float vq, float pastRear, float inBoxSpeed, float pastSpeed, float xLength, float boxEnd, int brakeAt, float inGap = 6f, float xStart = 26f)
+        private static OwnerOutcome OwnerCase(bool lookPast, float vq, float pastRear, float inBoxSpeed, float pastSpeed, float xLength, float boxEnd, int brakeAt, float inGap = 6f, float xStart = 26f,
+            float aheadLen = 4.2f, float beyondGap = 5f)
         {
             var lane = new SimLane { Name = "owner", End = 1000f, JunctionEnd = 1000f, Painted = new List<(float a, float b)> { (40f, boxEnd) } };
             var sc = new LpScene { Name = "owner", Lane = lane, Sink = 1e6f };
@@ -261,20 +262,30 @@ namespace JunctionRules.Tests
                 Accel = len < 5f ? 2.5f : len < 13f ? 1.2f : 1f, Decel = len < 5f ? 5f : len < 13f ? 3.5f : 3f,
             };
             float vPast = pastSpeed > 0f ? pastSpeed : vq, vIn = inBoxSpeed > 0f ? inBoxSpeed : vq;
-            float f3 = boxEnd + pastRear + 4.2f;
+            float f3 = boxEnd + pastRear + aheadLen;
             var vs = new List<SimVehicle>
             {
-                Car(4, f3 + 4.2f + 5f, 4.2f, vPast), Car(3, f3, 4.2f, vPast),
+                Car(4, f3 + 4.2f + beyondGap, 4.2f, vPast), Car(3, f3, aheadLen, vPast),
                 Car(2, boxEnd - 1f, 4.2f, vIn), Car(1, boxEnd - 1f - 4.2f - inGap, 4.2f, vIn),
                 Car(9, xStart, xLength, SimVmax),
             };
+            return RunX(lane, sc, vs, 3, brakeAt, boxEnd, lookPast);
+        }
+
+        /// <summary>
+        /// Runs an owner-style case: X (id 9) approaches the box [40, <paramref name="boxEnd"/>]; from step
+        /// <paramref name="brakeAt"/> (&gt;= 0) the vehicle <paramref name="brakeId"/> brakes as hard as it can to a stop (and
+        /// everything behind it queues).
+        /// </summary>
+        private static OwnerOutcome RunX(SimLane lane, LpScene sc, List<SimVehicle> vs, int brakeId, int brakeAt, float boxEnd, bool lookPast)
+        {
             var open = new bool[400];
             for (int i = 0; i < open.Length; i++) open[i] = true;
             var res = new OwnerOutcome { MinSpeed = 1e9f };
             SimVehicle x = vs.Find(v => v.Id == 9);
             for (int step = 0; step < 400; step++)
             {
-                if (brakeAt >= 0 && step == brakeAt) { SimVehicle f = vs.Find(v => v.Id == 3); if (f != null) sc.Sink = f.Front + SimMinStop(f) + 0.01f; for (int i = step; i < open.Length; i++) open[i] = false; }
+                if (brakeAt >= 0 && step == brakeAt) { SimVehicle f = vs.Find(v => v.Id == brakeId); if (f != null) sc.Sink = f.Front + SimMinStop(f) + 0.01f; for (int i = step; i < open.Length; i++) open[i] = false; }
                 LpStep(sc, vs, open, step, lookPast);
                 if (x.Speed < 0.01f && x.Front <= 40.01f) res.StoppedAtLine = true;
                 if (x.Speed < 0.01f && LpInBox(lane, x, out _)) res.StoodInBox = true;
@@ -338,6 +349,8 @@ namespace JunctionRules.Tests
                 Console.WriteLine($"  owner (e) sight {RoomScan.LookPastSightMetres} m: artic 26 m before the exit (sees 24 m past it, needs 27.9) room {eFar}; 20 m before (sees 30 m) room {eNear}; off {eOff}");
                 Check(!eFar && eNear && !eOff, "owner (e): when the room needed ends beyond the sight distance there is no look-past credit (free-now rule); within sight the same scene is let in");
             }
+
+            BoxSightTests();
 
             // ---- Core: the rule on plain values
             RoomScan a = RoomScan.Begin(4.2f, 1f);
@@ -505,8 +518,16 @@ namespace JunctionRules.Tests
             string settings = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Settings", "JunctionRulesSettings.cs"));
             string sw = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Systems", "CarDrivingSwitchSystem.cs"));
             Check(wj.Contains("scan.LookPast = freeNow && m_BoxLookPast;") && wj.Contains("j.m_BoxLookPast = (mode & Stage2Mode.BoxLookPast) != 0;")
-                && wj.Contains("if (scan.LookPast) scan.FinishLookPast();") && wj.Contains("if (scan.LookPast) scan.SightLeft = frontToStart >= 0f ? RoomScan.SightPast(frontToStart) : 0f;"),
+                && wj.Contains("if (hasEye) scan.LimitSight(read);\n                scan.FinishLookPast();")
+                && wj.Contains("scan.SightLeft = hasEye ? float.MaxValue : frontToStart >= 0f ? RoomScan.SightPast(frontToStart) : 0f;")
+                && wj.Contains("hasEye = frontToStart >= 0f && Eye(self, ref laneObjects, ref curves, out eye);"),
                 "job: the look-past runs only in box room tests with the setting on (one flag guards every new call)");
+            // JR-T-022b: the sight radius is cut lane by lane only when the driver's position is known (hasEye, set only with the look-past)
+            Check(wj.Contains("if (hasEye && curves.TryGetComponent(lane, out Curve boxCurve))") && wj.Contains("if (hasEye && !inBox) SightCut(ref scan, navCurve,")
+                && wj.Contains("RoomScan.GuaranteedTravel(credit, fwd, safeTimeStep), BlocksView(pr.m_Prefab, ref prefabCars));")
+                && wj.Contains("lw.Index, lw.Version,\n                            BlocksView(pr.m_Prefab, ref prefabCars));")
+                && wj.Contains("RoomScan.BlocksView((int)d.m_SizeClass)"),
+                "job: sight radius per path lane from the driver's position; large = the prefab's game SizeClass, for vehicles past and queued in the box");
             int guarded = 0, at = 0;
             while ((at = wj.IndexOf("if (scan.LookPast", at, StringComparison.Ordinal)) >= 0) { guarded++; at++; }
             Check(guarded == 6 && wj.Contains("if (scan.LookPast && m_NodeLaneData.HasComponent(nav.m_Lane)) scan.LimitSight(read);"),
@@ -530,6 +551,166 @@ namespace JunctionRules.Tests
                 "turning the setting on / off is logged as a rule switch");
             Check(Stage2Counters.BoxLookPastAdmitted == Stage2Counters.Count - 1 && Stage2Counters.Format(2, new long[Stage2Counters.Count], 0, 0, 2, 2).Contains("let into a box by looking past the car in front"),
                 "probe counter at the end, on the timing line");
+        }
+
+        /// <summary>
+        /// JR-T-022b truck snapshot: exit box 40-56 m, X (4.2 m car) 26 m before the exit; past the exit a vehicle of
+        /// <paramref name="aheadLen"/> m (16.5 m artic = Large, blocks the view; 4.2 m car does not), its rear 2 m past the exit
+        /// at <paramref name="aheadSpeed"/>; <paramref name="gap"/> m beyond its front a car at <paramref name="beyondSpeed"/>.
+        /// Does X have room (look-past on / off), and who blocks?
+        /// </summary>
+        private static bool TruckRoom(bool lookPast, float aheadLen, float aheadSpeed, float beyondSpeed, float gap, out int blocker)
+        {
+            var lane = new SimLane { Name = "truck", End = 1000f, JunctionEnd = 1000f, Painted = new List<(float a, float b)> { (40f, 56f) } };
+            float aheadFront = 56f + 2f + aheadLen;
+            var vs = new List<SimVehicle>
+            {
+                new SimVehicle { Id = 4, Front = aheadFront + gap + 4.2f, Length = 4.2f, Speed = beyondSpeed, VMax = beyondSpeed, Decel = 5f, Accel = 2.5f },
+                new SimVehicle { Id = 3, Front = aheadFront, Length = aheadLen, Speed = aheadSpeed, VMax = aheadSpeed, Decel = aheadLen < 5f ? 5f : 3f, Accel = 1f },
+                new SimVehicle { Id = 9, Front = 30f, Length = 4.2f, Speed = 8f, VMax = 8f, Decel = 5f, Accel = 2.5f },
+            };
+            return SimRoomBlocker(lane, vs, vs[2], 40f, 56f, lookPast, out blocker);
+        }
+
+        /// <summary>SimRoom (free now, JR-T-022 calls) also returning the blocker's id (0 = none).</summary>
+        private static bool SimRoomBlocker(SimLane lane, List<SimVehicle> vs, SimVehicle me, float b0, float b1, bool lookPast, out int blocker)
+        {
+            // the same scan as SimRoom for a lane with no light and no further box: queued ahead first, then past by position
+            RoomScan scan = RoomScan.Begin(me.Length, SimMargin);
+            scan.FreeNow = true;
+            scan.LookPast = lookPast;
+            if (scan.LookPast) scan.SightLeft = RoomScan.SightPast(b1 - me.Front);
+            var past = new List<SimVehicle>();
+            foreach (SimVehicle o in vs)
+            {
+                if (o == me || o.Front <= me.Front) continue;
+                if (o.Front - o.Length < b1) { if (o.Speed < 0.5f) scan.BlockBy(o.Id, 1); else scan.AddQueued(o.Length, o.Speed, o.Id, 1, SimLarge(o)); }
+                else past.Add(o);
+            }
+            past.Sort((x, y) => x.Front.CompareTo(y.Front));
+            foreach (SimVehicle o in past)
+            {
+                float credit = o.Speed > 0.01f ? o.Speed * o.Speed / (2f * 4f) + o.Speed * 0.5f : 0f;
+                scan.Add(o.Front - o.Length - b1, o.Length, credit, o.Id, 1, o.Speed, RoomScan.GuaranteedTravel(SimBraking(o), o.Speed, SimDt), SimLarge(o));
+            }
+            scan.FinishLookPast();
+            blocker = scan.HasRoom ? 0 : scan.BlockerIndex;
+            bool same = scan.HasRoom == SimRoom(lane, vs, me, b0, b1, 0, true, out _, lookPast);
+            Check(same, "truck snapshot: the probe scan agrees with SimRoom");
+            return scan.HasRoom;
+        }
+
+        /// <summary>
+        /// JR-T-022b (owner sight rule): straight-line radius, large vehicles block the view but are judged themselves,
+        /// ordinary cars never block, a queued large vehicle hides the road past the box, the radius on a turn.
+        /// </summary>
+        private static void BoxSightTests()
+        {
+            // ---- the game's "large" (SizeClass Large = 2)
+            Check(RoomScan.BlocksView(2) && !RoomScan.BlocksView(0) && !RoomScan.BlocksView(1) && !RoomScan.BlocksView(3),
+                "large = the game's SizeClass Large (lorries, buses, artics); Small cars, Medium vans and Undefined do not block the view");
+
+            // ---- truck cases, decision snapshot (X 26 m before the exit; past it a vehicle 2 m past the exit, then a car beyond it)
+            bool fastTruck = TruckRoom(true, 16.5f, 10f, 2.5f, 6f, out _);
+            bool fastTruckOff = TruckRoom(false, 16.5f, 10f, 2.5f, 6f, out _);
+            bool slowTruck = TruckRoom(true, 16.5f, 2.5f, 2.5f, 6f, out int bSlow);
+            bool truckHidesFast = TruckRoom(true, 16.5f, 10f, 10f, 2f, out int bHide);
+            bool carSeesFast = TruckRoom(true, 4.2f, 10f, 10f, 2f, out _);
+            bool carSeesSlow = TruckRoom(true, 4.2f, 10f, 2.5f, 2f, out int bCar);
+            Console.WriteLine($"  truck snapshot: fast artic, room behind the car beyond it free now: room {fastTruck} (off {fastTruckOff}); slow artic: {slowTruck} (blocker {bSlow}); "
+                + $"fast artic, a fast car close beyond it (hidden: no credit): {truckHidesFast} (blocker {bHide}); fast car instead, the same car beyond (seen, credited): {carSeesFast}; fast car, a slow car close beyond: {carSeesSlow} (blocker {bCar})");
+            Check(fastTruck && !fastTruckOff, "truck: a fast artic just past the box is seen and credited with its own position + guaranteed travel -> X goes (off: held)");
+            Check(!slowTruck && bSlow == 3, "truck: a slow artic (below the minimum speed) gives no look-past credit -> X waits, naming the artic");
+            Check(!truckHidesFast && bHide == 4 && carSeesFast, "view: an artic hides the car beyond it (no look-past credit for it: free-now rule); an ordinary car does not block the view (the car beyond it is seen and credited)");
+            Check(!carSeesSlow && bCar == 4, "view: over an ordinary car X sees the slow car beyond it -> held by that car");
+
+            // ---- truck cases, driven (the owner layout: X 22 m before the line, 2 cars in the box, then an artic and a car past the exit)
+            OwnerOutcome tOn = OwnerCase(true, 8f, 10f, 0f, 0f, 4.2f, 56f, -1, 7f, 18f, 16.5f, 12f);
+            OwnerOutcome tOff = OwnerCase(false, 8f, 10f, 0f, 0f, 4.2f, 56f, -1, 7f, 18f, 16.5f, 12f);
+            OwnerOutcome tSlow = OwnerCase(true, 8f, 10f, 0f, 2.5f, 4.2f, 56f, -1, 7f, 18f, 16.5f, 12f);
+            OwnerOutcome tSlowOff = OwnerCase(false, 8f, 10f, 0f, 2.5f, 4.2f, 56f, -1, 7f, 18f, 16.5f, 12f);
+            Console.WriteLine($"  truck driven: fast artic past the exit: on min {tOn.MinSpeed:0.0} m/s (look-past {tOn.LookUsed}, stopped at line {tOn.StoppedAtLine}), off min {tOff.MinSpeed:0.0}; "
+                + $"slow artic: on min {tSlow.MinSpeed:0.0} (off {tSlowOff.MinSpeed:0.0}), look-past {tSlow.LookUsed}, in box {tSlow.StoodInBox}");
+            Check(tOn.LookUsed && tOn.Cleared && !tOn.StoodInBox && !tOn.StoppedAtLine && tOn.MinSpeed > tOff.MinSpeed,
+                "truck driven: a fast artic past the box -> X goes on the look-past (less braking than off), never in the box");
+            Check(!tSlow.LookUsed && !tSlow.StoodInBox && tSlow.MinSpeed == tSlowOff.MinSpeed, "truck driven: a slow artic -> X holds by the free-now rule, exactly as off, never in the box");
+            int tRuns = 0, tStood = 0, tLook = 0, tLine = 0;
+            foreach (float len in new[] { 16.5f, 12f })
+                foreach (float pr in new[] { 8f, 10f })
+                    for (int k = 0; k < 8; k++)
+                    {
+                        OwnerOutcome d = OwnerCase(true, 8f, pr, 0f, 0f, 4.2f, 56f, k, 7f, 18f, len, 12f);
+                        tRuns++;
+                        if (d.StoodInBox) tStood++;
+                        if (d.LookUsed) tLook++;
+                        if (d.StoppedAtLine) tLine++;
+                    }
+            Console.WriteLine($"  truck driven, the artic / lorry past the exit brakes as hard as it can at each step 0-7 ({tRuns} runs): stopped at the line {tLine}, went on a look-past decision {tLook}, stood in the box {tStood}");
+            Check(tStood == 0 && tLook > 0, "truck driven: the artic / lorry past the exit brakes hard after X decided -> X stops at the line while it can, never stands in the box");
+
+            // ---- a large vehicle queued ahead inside the box hides the road past it: no look-past credit there
+            RoomScan qb = RoomScan.Begin(4.2f, 1f);
+            qb.FreeNow = true; qb.LookPast = true; qb.SightLeft = 40f;
+            qb.AddQueued(12f, 8f, 5, 1, true);          // a lorry crossing the box ahead (occupied 13)
+            qb.Add(14f, 4.2f, 10f, 7, 1, 8f, 6f);      // now 1; pred 7 >= 5.2 would be credited if it were seen
+            qb.FinishLookPast();
+            RoomScan qc = RoomScan.Begin(4.2f, 1f);
+            qc.FreeNow = true; qc.LookPast = true; qc.SightLeft = 40f;
+            qc.AddQueued(6.5f, 8f, 5, 1, false);        // a van ahead instead (occupied 7.5)
+            qc.Add(8.5f, 4.2f, 10f, 7, 1, 8f, 6f);      // now 1, pred 7 >= 5.2: credited (seen over the van)
+            qc.FinishLookPast();
+            Check(!qb.HasRoom && qb.BlockerIndex == 7 && qc.HasRoom && qc.AdmittedByLookPast,
+                "a lorry queued ahead in the box hides the road past it: no look-past credit there (free-now rule); a van does not hide it");
+
+            // ---- hidden beyond a large vehicle: skipped; a light beyond it is never hidden
+            RoomScan hl = RoomScan.Begin(4.2f, 1f);
+            hl.FreeNow = true; hl.LookPast = true; hl.SightLeft = 40f;
+            hl.Add(2f, 16.5f, 20f, 3, 1, 10f, 12f, true);   // artic: now 2, pred 14 >= 5.2
+            hl.Add(25f, 4.2f, 9f, 4, 1, 8f, 5f);             // a car beyond it moving away: hidden; free now 7.5 >= 5.2
+            Check(hl.HasRoom && hl.HiddenSeen == 1 && hl.AdmittedByLookPast, "a car hidden beyond a fast artic with room free now behind it: X goes on the artic's own credit");
+            RoomScan hh = RoomScan.Begin(4.2f, 1f);
+            hh.FreeNow = true; hh.LookPast = true; hh.SightLeft = 40f;
+            hh.Add(2f, 16.5f, 20f, 3, 1, 10f, 12f, true);
+            hh.Add(21f, 4.2f, 9f, 4, 1, 8f, 5f);             // hidden, free now 3.5 < 5.2 (pred 8.5 would do if seen)
+            Check(!hh.HasRoom && hh.BlockerIndex == 4, "a car hidden close beyond the artic gets no look-past credit (free-now rule): held, naming it");
+            hl.Add(30f, 0f, 0f, 0, 0);                       // a red light 30 m past the box: 30 - 23.7 = 6.3 >= 5.2
+            Check(hl.HasRoom, "a red light beyond, room before it: still room");
+
+            // ---- the radius on a turn: eye at (0, 0); the box's far end 30 m ahead at (0, 30); the path turns 90 degrees into a
+            // road along +x. Straight-line 50 m reaches x = 40 there (path 40 m past the box end); the old 50 m along the path only 20 m.
+            // straight Beziers: control points at thirds
+            bool exitA = SightLine.FirstExit(0f, 0f, 0f, 10f, 0f, 20f, 0f, 30f, 0f, 0f, RoomScan.LookPastSightMetres, 0f, 1f, out float tA);
+            bool exitB = SightLine.FirstExit(0f, 30f, 33.333f, 30f, 66.667f, 30f, 100f, 30f, 0f, 0f, RoomScan.LookPastSightMetres, 0f, 1f, out float tB);
+            float cut = tB * 100f;
+            Check(!exitA && exitB && Math.Abs(cut - 40f) < 0.05f, $"radius on a turn: the road turned into is seen up to 40 m past the corner (straight line 50 m), not 20 m along the path ({cut:0.00})");
+            bool exitC = SightLine.FirstExit(0f, 30f, 33.333f, 30f, 66.667f, 30f, 100f, 30f, 0f, 0f, RoomScan.LookPastSightMetres, 1f, 0f, out float tC);
+            Check(exitC && tC == 1f, "radius: a span starting outside the radius is cut at its start");
+            // a curved lane: quarter circle of radius 30 around (30, 30) from (0, 30) to (30, 60) (k = 0.5523); the cut lies where |p| = 50
+            float kk = 0.5523f * 30f;
+            bool exitD = SightLine.FirstExit(0f, 30f, 0f, 30f + kk, 30f - kk, 60f, 30f, 60f, 0f, 0f, 50f, 0f, 1f, out float tD);
+            Check(exitD && Math.Abs(Math.Sqrt(SightLine.Dist2(0f, 30f, 0f, 30f + kk, 30f - kk, 60f, 30f, 60f, 0f, 0f, tD)) - 50.0) < 0.05,
+                "radius on a curved lane: the cut lies on the 50 m circle");
+            Check(!SightLine.FirstExit(0f, 0f, 1f, 1f, 2f, 2f, 3f, 3f, 0f, 0f, 50f, 0f, 1f, out _), "radius: a lane wholly inside (control points inside) is seen whole");
+            // the scan: an artic X (17.5 m needed) behind one car queued in the box, a car past the box rear 20 m round the corner moving
+            // away (pred 30): the room it needs ends 22.7 m past the box end
+            RoomScan Turn(float sightCut)
+            {
+                RoomScan r = RoomScan.Begin(16.5f, 1f);
+                r.FreeNow = true; r.LookPast = true; r.SightLeft = float.MaxValue;
+                r.LimitSight(sightCut);
+                r.AddQueued(4.2f, 8f, 3, 1);
+                r.Add(20f, 4.2f, 30f, 7, 1, 8f, 10f);
+                r.FinishLookPast();
+                return r;
+            }
+            Check(Turn(cut).HasRoom && Turn(cut).AdmittedByLookPast && !Turn(RoomScan.SightPast(30f)).HasRoom,
+                "radius on a turn: the car round the corner within 50 m straight line is seen (look-past); the old along-path sight (20 m) did not reach it");
+            RoomScan far = RoomScan.Begin(16.5f, 1f);
+            far.FreeNow = true; far.LookPast = true; far.SightLeft = float.MaxValue; far.LimitSight(cut);
+            for (int i = 0; i < 5; i++) far.AddQueued(4.2f, 8f, 10 + i, 1);   // occupied 26
+            far.Add(30f, 4.2f, 30f, 7, 1, 8f, 20f);                          // pred 24 >= 17.5, but the room ends 43.5 m past the box end > 40
+            far.FinishLookPast();
+            Check(!far.HasRoom, "radius on a turn: room that ends beyond 50 m straight line (43.5 m round the corner > 40) is not seen: free-now rule");
         }
     }
 }

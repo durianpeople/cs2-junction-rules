@@ -68,7 +68,7 @@ Source code, issue tracker and design notes: https://github.com/durianpeople/cs2
 	<!--Required DLC, can be set multiple times. Supported values are "Landmark Buildings", "San Fransisco Set", "Beach Properties", "Urban Promenades", "Modern Architecture"-->
 	<RequiredDLC Value="" />
 	<!--Change log for new version. Single line or multi line. Supports minimal markdown subset-->
-	<ChangeLog Value="Yellow boxes: new setting Look past the car in front at a box (on by default). A car no longer pauses at the box line for the car right in front when the traffic past the box is clearly moving away and leaves room for it even if that traffic brakes; it still never stops inside a box." />
+	<ChangeLog Value="Yellow boxes: new setting Look past the car in front at a box (on by default). A car no longer pauses at the box line for the car right in front when the traffic past the box is clearly moving away and leaves room for it even if that traffic brakes. It judges only what a driver could see (50 m around it, up to the next junction, nothing behind a lorry or bus); it still never stops inside a box." />
 	<!--<ChangeLog>
 	</ChangeLog>-->
 	<!--External link, can be set multiple times. supported types are "discord", "github", "youtube", "twitch", "twitter", "x", "paypal", "patreon", "buymeacoffee", "kofi", "crowdin", "gitlab", "gofundme", "bluesky"-->

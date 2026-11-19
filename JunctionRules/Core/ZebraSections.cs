@@ -501,6 +501,10 @@ namespace JunctionRules.Core
         /// (a standing vehicle, a red / amber light, people on a further zebra, a further box) holds as before. The decision
         /// runs again at every step while the car can still stop at the line, so a queue that brakes holds it there (the
         /// existing safety stop). False = 1.0.1 behaviour bit for bit (every new path tests this flag first).
+        /// JR-T-022b (owner sight rule): it judges only what the driver sees: a <see cref="LookPastSightMetres"/> radius around
+        /// the driver (<see cref="SightLeft"/>), cut at the next junction (stand-in for corner buildings); ordinary cars never
+        /// block the view, a large vehicle does (<see cref="BlocksView"/>): it is judged itself, the vehicles beyond it get no
+        /// look-past credit (free-now rule).
         /// </summary>
         public bool LookPast;
 
@@ -508,22 +512,39 @@ namespace JunctionRules.Core
         public const float LookPastMinSpeed = 3f;
 
         /// <summary>
-        /// JR-T-022 (owner addendum 19 Nov 2026: "As a human driver I usually can see ahead, but not infinitely ahead, to decide
-        /// what to do with the box"): how far ahead of its front bumper the entering car sees (m): about a box plus the room an
-        /// artic needs past it plus a little. The look-past accepts room only when the whole room the car needs (past the
-        /// vehicles it follows) ends within this distance; beyond it nothing counts for the look-past (not evidence of room),
-        /// so the car falls back to the free-now rule.
+        /// JR-T-022b (owner sight rule 19 Nov 2026, replaces the 50 m along the path): the driver's line of sight is a RADIUS
+        /// (m, straight line, not path length) around the driver: on a turn with a free corner it reaches the part of the
+        /// road turned into that lies within it. The look-past accepts room only when the whole room the car needs (past the
+        /// vehicles it follows) ends on road seen within this radius (<see cref="SightLeft"/>); beyond it nothing counts for
+        /// the look-past, so the car falls back to the free-now rule. The one sight constant.
         /// </summary>
         public const float LookPastSightMetres = 50f;
 
         /// <summary>
-        /// JR-T-022: <see cref="LookPastSightMetres"/> less the distance from the car's front bumper to the window start (the
-        /// box's far end), i.e. the sight left past the box, in the scan's coordinates. Set by the caller with the look-past.
+        /// JR-T-022b: how far past the window start (the box's far end), along the car's path in the scan's coordinates, the
+        /// road is seen: where the path first leaves the <see cref="LookPastSightMetres"/> radius around the driver
+        /// (<see cref="SightLine.FirstExit"/>), cut further by <see cref="LimitSight"/> (the next junction: the interim stand-in
+        /// for corner buildings). Set by the caller with the look-past; float.MaxValue = no cut found yet.
         /// </summary>
         public float SightLeft;
 
-        /// <summary>JR-T-022: the sight left past the window start for a car whose front bumper is <paramref name="frontToWindowStart"/> metres before it.</summary>
+        /// <summary>
+        /// JR-T-022 (fallback when the driver's position is not known): the sight left past the window start along the path
+        /// for a car whose front bumper is <paramref name="frontToWindowStart"/> path metres before it. Never longer than the
+        /// radius rule allows (a path is never shorter than the straight line).
+        /// </summary>
         public static float SightPast(float frontToWindowStart) => LookPastSightMetres - (frontToWindowStart > 0f ? frontToWindowStart : 0f);
+
+        /// <summary>
+        /// JR-T-022b: the game's SizeClass of a LARGE vehicle (Game.Vehicles.SizeClass: Small 0, Medium 1, Large 2,
+        /// Undefined 3; CarData.m_SizeClass from CarBasePrefab.m_SizeClass): lorries, buses, articulated tractors and their
+        /// trailers (the class the game bars with heavy-traffic bans: VehicleUtils.GetIgnoredPathfindRules). Cars are Small,
+        /// vans Medium. Such a vehicle blocks the driver's view (tall); smaller ones do not.
+        /// </summary>
+        public const int LargeSizeClass = 2;
+
+        /// <summary>JR-T-022b: a vehicle of this game SizeClass blocks the view (<see cref="LargeSizeClass"/>).</summary>
+        public static bool BlocksView(int sizeClass) => sizeClass == LargeSizeClass;
 
         /// <summary>JR-T-022: the free-now rule alone would have held the car; the look-past found the room (probe).</summary>
         public bool LookPastUsed;
@@ -534,6 +555,18 @@ namespace JunctionRules.Core
         private int m_SlowIndex, m_SlowVersion;
         /// <summary>JR-T-022: where the room the look-past relies on ends (metres past the window start; the furthest so far).</summary>
         private float m_LookNeedEnd;
+        /// <summary>
+        /// JR-T-022b: the view is blocked from here on: a LARGE vehicle past the box was read (it is seen and judged itself,
+        /// with its own position + guaranteed travel), or one is queued ahead of the car before / inside the box (it hides the
+        /// whole road past the box; its own position credit is not modelled: the queued part of the scan has no positions).
+        /// Every vehicle after it in path order is hidden: it gives NO look-past credit and is judged by the free-now rule
+        /// (owner: "unseen vehicle = no look-past credit, today's free-now rule for that part"). Not skipped: a hidden queue
+        /// that is already stopping makes the large vehicle stop short of its own braking distance (measured: skipping them
+        /// let cars stand in the box 0 -> 455 vehicle-steps in the offline scenes).
+        /// </summary>
+        private bool m_Hidden;
+        /// <summary>JR-T-022b (tests / probe): vehicles judged free-now because a large vehicle hid them.</summary>
+        public int HiddenSeen;
 
         /// <summary>
         /// JR-T-022: the distance a vehicle moving at <paramref name="speed"/> still covers at the least when it brakes now at its
@@ -573,7 +606,7 @@ namespace JunctionRules.Core
         {
             // JR-T-022: with the look-past on, a vehicle given without its speed (a light's stop line, an unnamed obstacle) is
             // a standing one: judged free now, as before.
-            if (LookPastOn) { Add(rear, length, credit, index, version, 0f, 0f); return; }
+            if (LookPastOn) { AddLook(rear, length, credit, index, version, 0f, 0f, false, true); return; }
             if (Blocked) return;
             float c = credit > 0f ? credit : 0f;
             float room = rear + (FreeNow ? 0f : c) - m_Occupied;
@@ -588,21 +621,35 @@ namespace JunctionRules.Core
         }
 
         /// <summary>
-        /// 0.4.2 (JR-T-010): a vehicle that is ahead of the car INSIDE the box (or entrance band) it wants to clear, on its
-        /// own path: it leaves the box into the same exit, so it takes exit room first (its length + <see cref="Spacing"/>)
-        /// and can never give room itself (no block test, no credit: it has not left the box yet).
-        /// </summary>
-        /// <summary>
         /// JR-T-022: as <see cref="Add(float, float, float, int, int)"/> with the vehicle's forward speed (m/s) and the distance
         /// it is guaranteed to cover (<see cref="GuaranteedTravel"/>). With <see cref="LookPast"/> off exactly that call.
+        /// An ordinary (not large) vehicle: it never blocks the view.
         /// </summary>
         public void Add(float rear, float length, float credit, int index, int version, float speed, float travel)
+            => Add(rear, length, credit, index, version, speed, travel, false);
+
+        /// <summary>
+        /// JR-T-022b: as above; <paramref name="large"/> = the vehicle blocks the view (<see cref="BlocksView"/>): it is seen
+        /// and judged itself (position + guaranteed travel), and every vehicle after it in path order is hidden (free-now only).
+        /// </summary>
+        public void Add(float rear, float length, float credit, int index, int version, float speed, float travel, bool large)
         {
             if (!LookPastOn) { Add(rear, length, credit, index, version); return; }
+            AddLook(rear, length, credit, index, version, speed, travel, large, false);
+        }
+
+        /// <summary>
+        /// JR-T-022 / 022b look-past core. <paramref name="fixedObstacle"/> = a call without a speed (a red / amber light's stop
+        /// line): never hidden, standing.
+        /// </summary>
+        private void AddLook(float rear, float length, float credit, int index, int version, float speed, float travel, bool large, bool fixedObstacle)
+        {
             if (Blocked) return;
             float c = credit > 0f ? credit : 0f;
             float now = rear - m_Occupied;
-            float pred = speed >= LookPastMinSpeed ? now + (travel > 0f ? travel : 0f) : now;
+            // JR-T-022b: hidden behind a large vehicle: no look-past credit (free now)
+            if (m_Hidden && !fixedObstacle) HiddenSeen++;
+            float pred = speed >= LookPastMinSpeed && !m_Hidden ? now + (travel > 0f ? travel : 0f) : now;
             if (now < m_MinRoom) { m_MinRoom = now; m_MinIndex = index; m_MinVersion = version; }
             if (pred < m_MinPred) { m_MinPred = pred; m_MinPredIndex = index; m_MinPredVersion = version; }
             if (!(now >= Needed))
@@ -621,6 +668,7 @@ namespace JunctionRules.Core
             }
             m_Occupied += (length > 0f ? length : 0f) + Spacing;
             Obstacles++;
+            if (large && !fixedObstacle) m_Hidden = true;
         }
 
         /// <summary>
@@ -628,12 +676,19 @@ namespace JunctionRules.Core
         /// vehicle the car follows through the box that is slower than <see cref="LookPastMinSpeed"/> refuses the look-past
         /// (the queue is not clearly moving). With it off exactly AddQueued(length).
         /// </summary>
-        public void AddQueued(float length, float speed, int index, int version)
+        public void AddQueued(float length, float speed, int index, int version) => AddQueued(length, speed, index, version, false);
+
+        /// <summary>
+        /// JR-T-022b: as above; <paramref name="large"/> = a vehicle that blocks the view queued ahead of the car (before /
+        /// inside the box): the road past the box is hidden behind it, so vehicles there give no look-past credit.
+        /// </summary>
+        public void AddQueued(float length, float speed, int index, int version, bool large)
         {
             if (LookPastOn && !Blocked && !m_LookSlow && !(speed >= LookPastMinSpeed))
             {
                 m_LookSlow = true; m_SlowIndex = index; m_SlowVersion = version;
             }
+            if (LookPastOn && large && !Blocked) m_Hidden = true;
             AddQueued(length);
         }
 
@@ -650,9 +705,11 @@ namespace JunctionRules.Core
         }
 
         /// <summary>
-        /// JR-T-022: a junction on the path <paramref name="at"/> metres past the window start (a light in any state, a give-way /
-        /// STOP line, turning traffic): the vehicles ahead may all stop there for something the scan does not see, so the
-        /// look-past does not count on room beyond it (as the end of sight).
+        /// JR-T-022: a cut of the sight <paramref name="at"/> metres past the window start (along the path): where the path
+        /// leaves the sight radius (JR-T-022b), or the next junction on the path (a light in any state, a give-way / STOP line,
+        /// turning traffic: the vehicles ahead may all stop there for something the scan does not see; JR-T-022b: also the
+        /// interim stand-in for corner buildings cutting the view into the road turned into). The look-past does not count on
+        /// room beyond it.
         /// </summary>
         public void LimitSight(float at)
         {
@@ -662,6 +719,11 @@ namespace JunctionRules.Core
         /// <summary>JR-T-022: the car has room only thanks to the look-past (after <see cref="FinishLookPast"/>; probe counter).</summary>
         public readonly bool AdmittedByLookPast => LookPastOn && !Blocked && LookPastUsed;
 
+        /// <summary>
+        /// 0.4.2 (JR-T-010): a vehicle that is ahead of the car INSIDE the box (or entrance band) it wants to clear, on its
+        /// own path: it leaves the box into the same exit, so it takes exit room first (its length + <see cref="Spacing"/>)
+        /// and can never give room itself (no block test, no credit: it has not left the box yet).
+        /// </summary>
         public void AddQueued(float length)
         {
             if (Blocked) return;

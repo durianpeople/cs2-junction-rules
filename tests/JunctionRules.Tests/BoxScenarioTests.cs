@@ -131,6 +131,12 @@ namespace JunctionRules.Tests
         /// JR-T-022: the game's braking distance of a sim vehicle at its speed (VehicleUtils.GetBrakingDistance with its own
         /// deceleration and the sim step), the credit the job reads for the look-past.
         /// </summary>
+        /// <summary>
+        /// JR-T-022b sim: the vehicle blocks the view (the job reads the game's SizeClass Large, RoomScan.BlocksView; the sim has
+        /// only lengths: the 12 m rigid lorry and the 16.5 m artic are Large, cars 4.2 m and vans 6.5 m are not).
+        /// </summary>
+        private static bool SimLarge(SimVehicle o) => o.Length >= 12f;
+
         private static float SimBraking(SimVehicle o) => o.Speed > 0.001f ? 0.5f * o.Speed * o.Speed / o.Decel + o.Speed * SimDt : 0f;
 
         /// <summary>
@@ -159,7 +165,7 @@ namespace JunctionRules.Tests
                     // 0.4.10 (chains): a STANDING vehicle ahead in the box / before its line blocks (free now); a moving one goes first
                     if (robust && o.Speed < 0.5f) scan.BlockBy(o.Id, 1);
                     else if (legacy) scan.AddQueued(o.Length);
-                    else scan.AddQueued(o.Length, o.Speed, o.Id, 1);
+                    else scan.AddQueued(o.Length, o.Speed, o.Id, 1, SimLarge(o));
                 }
                 else if (rear >= b1) past.Add(o);
             }
@@ -194,8 +200,8 @@ namespace JunctionRules.Tests
             {
                 if (scan.Blocked) break;
                 float credit = o.Speed > 0.01f ? o.Speed * o.Speed / (2f * 4f) + o.Speed * 0.5f : 0f;
-                if (legacy) scan.Add(o.Front - o.Length - b1, o.Length, credit, o.Id, 1);
-                else scan.Add(o.Front - o.Length - b1, o.Length, credit, o.Id, 1, o.Speed, RoomScan.GuaranteedTravel(SimBraking(o), o.Speed, SimDt));
+                if (legacy || o.Id == -1) scan.Add(o.Front - o.Length - b1, o.Length, credit, o.Id, 1);   // a light's stop line: the old call
+                else scan.Add(o.Front - o.Length - b1, o.Length, credit, o.Id, 1, o.Speed, RoomScan.GuaranteedTravel(SimBraking(o), o.Speed, SimDt), SimLarge(o));
                 Extensions();
             }
             if (!legacy) scan.FinishLookPast();

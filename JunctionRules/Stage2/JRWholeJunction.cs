@@ -865,8 +865,15 @@ namespace JunctionRules.Stage2
             scan.QueuedMayStand = m_QueuedTurnersMayStand;
             // JR-T-022: box room tests look past the car in front (setting); off = exactly the 1.0.1 scan.
             scan.LookPast = freeNow && m_BoxLookPast;
-            // JR-T-022 (limited sight): what the car sees past the window start; unknown distance = nothing seen (free-now rule)
-            if (scan.LookPast) scan.SightLeft = frontToStart >= 0f ? RoomScan.SightPast(frontToStart) : 0f;
+            // JR-T-022b (sight = a radius around the driver): cut where the path first leaves it, lane by lane below. Driver's
+            // position unknown: the 50 m along the path fallback (never longer than the radius allows); no distance = nothing seen.
+            float2 eye = default;
+            bool hasEye = false;
+            if (scan.LookPast)
+            {
+                hasEye = frontToStart >= 0f && Eye(self, ref laneObjects, ref curves, out eye);
+                scan.SightLeft = hasEye ? float.MaxValue : frontToStart >= 0f ? RoomScan.SightPast(frontToStart) : 0f;
+            }
             m_FreeNowHeld = false;
             m_LastLightLane = Entity.Null;
             bool unsorted = false;
@@ -894,6 +901,8 @@ namespace JunctionRules.Stage2
                     if (BoxDriving.BandInWindow(sameBands[i].x, sameBands[i].y, fromDriving, 1f, length, 0f, scan.Reach, out float pastEnd)) scan.ExtendPast(pastEnd);
                 }
             }
+            if (hasEye && curves.TryGetComponent(lane, out Curve boxCurve))
+                SightCut(ref scan, boxCurve, StretchGeometry.ToDriving(fromDriving, inverse), inverse ? 0f : 1f, length, 0f, eye);   // JR-T-022b
             ScanLane(ref scan, lane, StretchGeometry.ToDriving(fromDriving, inverse), inverse, length, read, 0f, false, self, safeTimeStep, ref laneObjects, ref curves,
                 ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted);
             if (!scan.Done(read) && m_HasPath)
@@ -918,14 +927,20 @@ namespace JunctionRules.Stage2
                     // this box must not be inside another box or before a red light
                     if (freeNow && !inBox) FurtherBoxes(ref scan, nav, navInverse, navCurve, read, ref carLanes, ref curves);
                     if (scan.Blocked) break;
+                    if (hasEye && !inBox) SightCut(ref scan, navCurve, nav.m_CurvePosition.x, nav.m_CurvePosition.y, navCurve.m_Length, read, eye);   // JR-T-022b
                     ScanLane(ref scan, nav.m_Lane, nav.m_CurvePosition.x, navInverse, navCurve.m_Length, span, inBox ? 0f : read, inBox, self, safeTimeStep, ref laneObjects,
                         ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted);
                     if (!inBox) read += span;
                 }
             }
             if (unsorted && Counting) m_ZebraUnsortedSeen = true;
-            // JR-T-022: the look-past verdict once the whole stretch is read (a slow vehicle ahead refuses it).
-            if (scan.LookPast) scan.FinishLookPast();
+            // JR-T-022: the look-past verdict once the whole stretch is read (a slow vehicle ahead refuses it). JR-T-022b: road
+            // past what was read is not seen (the radius cut is found only on the lanes read).
+            if (scan.LookPast)
+            {
+                if (hasEye) scan.LimitSight(read);
+                scan.FinishLookPast();
+            }
             // 0.4.9 (G15b): a vehicle turning into (or out of) a driveway whose body still lies across this lane is not one of
             // this lane's objects (the game lists a car only on its current lane), so the scan above did not see it.
             if (sideObstacles && scan.HasRoom) SideObstacles(ref scan, lane, queueFrom >= 0f && queueFrom < fromDriving ? queueFrom : fromDriving, fromDriving, inverse, length, self,
@@ -1313,7 +1328,8 @@ namespace JunctionRules.Stage2
                     {
                         // JR-T-022: a vehicle the car follows through the box: its forward speed decides whether the queue is clearly moving
                         Entity lw = controllers.TryGetComponent(e, out Controller lc) && lc.m_Controller != Entity.Null ? lc.m_Controller : e;
-                        scan.AddQueued(MathUtils.Size(g.m_Bounds.z), ForwardSpeed(e, o.m_CurvePosition.x, inverse, hasCurve, curve, ref moving), lw.Index, lw.Version);
+                        scan.AddQueued(MathUtils.Size(g.m_Bounds.z), ForwardSpeed(e, o.m_CurvePosition.x, inverse, hasCurve, curve, ref moving), lw.Index, lw.Version,
+                            BlocksView(pr.m_Prefab, ref prefabCars));   // JR-T-022b: a large vehicle ahead hides the road past the box
                         continue;
                     }
                     scan.AddQueued(MathUtils.Size(g.m_Bounds.z));
@@ -1333,11 +1349,44 @@ namespace JunctionRules.Stage2
                     // JR-T-022: its forward speed and the distance it covers at the least if it brakes now (from the same braking distance)
                     float fwd = noCredit ? 0f : ForwardSpeed(e, o.m_CurvePosition.x, inverse, hasCurve, curve, ref moving);
                     scan.Add(baseDistance + d + g.m_Bounds.min.z, MathUtils.Size(g.m_Bounds.z), credit, who.Index, who.Version, fwd,
-                        RoomScan.GuaranteedTravel(credit, fwd, safeTimeStep));
+                        RoomScan.GuaranteedTravel(credit, fwd, safeTimeStep), BlocksView(pr.m_Prefab, ref prefabCars));   // JR-T-022b: large = hides what lies beyond it
                     continue;
                 }
                 scan.Add(baseDistance + d + g.m_Bounds.min.z, MathUtils.Size(g.m_Bounds.z), credit, who.Index, who.Version);
             }
+        }
+
+        /// <summary>
+        /// JR-T-022b: the vehicle (or trailer) blocks the driver's view: its prefab's game SizeClass is Large (lorries, buses,
+        /// articulated tractors and trailers; RoomScan.BlocksView). Cars (Small) and vans (Medium) do not.
+        /// </summary>
+        private static bool BlocksView(Entity prefab, ref ComponentLookup<CarData> prefabCars)
+            => prefabCars.TryGetComponent(prefab, out CarData d) && RoomScan.BlocksView((int)d.m_SizeClass);
+
+        /// <summary>
+        /// JR-T-022b: the driver's position (x / z) for the sight radius: the car's own point on its current lane (its LaneObject
+        /// curve position, the vehicle's reference point; a little behind the driver: conservative). False = not known.
+        /// </summary>
+        private bool Eye(Entity self, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves, out float2 eye)
+        {
+            eye = default;
+            if (m_CurrentLane == Entity.Null || !curves.TryGetComponent(m_CurrentLane, out Curve c)
+                || !OwnPosition(m_CurrentLane, self, ref laneObjects, out float t, out _)) return false;
+            eye = MathUtils.Position(c.m_Bezier, t).xz;
+            return true;
+        }
+
+        /// <summary>
+        /// JR-T-022b: where the path span of <paramref name="c"/> from <paramref name="tFrom"/> to <paramref name="tTo"/> (game
+        /// curve offsets; it starts <paramref name="baseDistance"/> metres past the window start) first leaves the sight radius
+        /// around <paramref name="eye"/> (Core SightLine), cut the scan's sight there. Nothing to do past an earlier cut.
+        /// </summary>
+        private static void SightCut(ref RoomScan scan, Curve c, float tFrom, float tTo, float length, float baseDistance, float2 eye)
+        {
+            if (!(scan.SightLeft > baseDistance)) return;
+            Bezier4x3 b = c.m_Bezier;
+            if (SightLine.FirstExit(b.a.x, b.a.z, b.b.x, b.b.z, b.c.x, b.c.z, b.d.x, b.d.z, eye.x, eye.y, RoomScan.LookPastSightMetres, tFrom, tTo, out float t))
+                scan.LimitSight(baseDistance + math.abs(t - tFrom) * length);
         }
 
         /// <summary>
