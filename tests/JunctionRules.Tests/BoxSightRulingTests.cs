@@ -180,6 +180,7 @@ namespace JunctionRules.Tests
             Check(wj.Contains("BuildingSightCheck(ref scan, hasEye, eye, ref sightSpans, ref prefabRefs, ref geometries);") && wj.Contains("m_SightEye = hasEye && m_SightLookups;")
                 && wj.Contains("NoteSpan(ref sightSpans, boxCurve,") && wj.Contains("NoteSpan(ref sightSpans, navCurve,"),
                 "job: the building test runs after FinishLookPast on the lane spans read");
+            Check(js.Contains("if (d < 0f) d = 0f;"), "job: a credited vehicle straddling the window start (rear before it) is placed at the start of the first span, not 'not seen'");
             Check(nav.Contains("carLaneSpeedIterator.m_JR.SetSight(ref m_StaticObjectSearchTree, ref m_TransformData, ref m_JRExitBuildings);")
                 && nav.Contains("jobData.m_StaticObjectSearchTree = m_ObjectSearchSystem.GetStaticSearchTree(readOnly: true, out var dependencies3);")
                 && nav.Contains("m_ObjectSearchSystem.AddStaticSearchTreeReader(jobHandle);"),

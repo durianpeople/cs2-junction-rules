@@ -91,6 +91,9 @@ namespace JunctionRules.Stage2
             private bool Place(float d, out float2 p)
             {
                 p = default;
+                // review (JR-T-022d): a vehicle straddling the window start has its rear before it (negative): the sight line goes to
+                // the start of the first span (it is right in front of the driver), not "off the path read"
+                if (d < 0f) d = 0f;
                 for (int i = 0; i < Spans.Length; i++)
                 {
                     SightSpan s = Spans[i];
