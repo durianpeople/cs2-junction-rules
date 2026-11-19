@@ -299,6 +299,9 @@ namespace JunctionRules.Boxes
                 {
                     Entity e = found[i];
                     if (!em.Exists(e) || !em.HasComponent<Edge>(e) || !em.HasComponent<Game.Net.Road>(e) || em.HasComponent<Deleted>(e) || em.HasComponent<Game.Tools.Temp>(e)) continue;
+                    // review fix: the tree gives edges whose BOUNDS meet the square (a long or diagonal edge has huge bounds); keep the
+                    // edges whose curve really lies within the search radius, as documented (fewer buildings per frame, fewer ExitsOf scans)
+                    if (!em.HasComponent<Curve>(e) || MathUtils.Distance(em.GetComponentData<Curve>(e).m_Bezier.xz, xz, out float curveT) > r) continue;
                     BuildingsOnRoad(e, m_PickBuildings);
                 }
             }
