@@ -613,6 +613,10 @@ namespace JunctionRules.Core
         private bool m_LookPastOff;
         /// <summary>JR-T-022d (owner ruling 2, tests / probe): a building blocked the line of sight to a look-past target.</summary>
         public bool BuildingCut;
+        /// <summary>JR-T-025 (why slowed): why a look-past gave no room (Core LookPastRefusal code; 0 = not refused by the look-past).</summary>
+        public byte Refusal;
+        /// <summary>JR-T-025 (why slowed): the least room seen (m; float.MaxValue = none read). Room short by = Needed - this.</summary>
+        public readonly float MinRoomNow => m_MinRoom;
 
         /// <summary>JR-T-022d: at most this many credited vehicles are kept as sight targets (the nearest ones and the furthest).</summary>
         public const int MaxSightTargets = 4;
@@ -830,6 +834,7 @@ namespace JunctionRules.Core
             if (LookPastUsed)
             {
                 Blocked = true;
+                Refusal = (byte)LookPastRefusal.LargeQueuedAhead;
                 if (m_Targets > 0) { BlockerIndex = m_TI0; BlockerVersion = m_TV0; }
                 else { BlockerIndex = m_MinIndex; BlockerVersion = m_MinVersion; }
                 LookPastUsed = false;
@@ -843,11 +848,11 @@ namespace JunctionRules.Core
         public void FinishLookPast()
         {
             if (!LookPastOn || Blocked || !LookPastUsed) return;
-            if (m_LookSlow) { Blocked = true; BlockerIndex = m_SlowIndex; BlockerVersion = m_SlowVersion; }
+            if (m_LookSlow) { Blocked = true; Refusal = (byte)LookPastRefusal.SlowAhead; BlockerIndex = m_SlowIndex; BlockerVersion = m_SlowVersion; }
             // JR-T-022d: the room relied on ends beyond the large vehicle that ends the view: not seen, not clear
-            else if (m_LookNeedEnd > m_ViewEnd) { Blocked = true; BlockerIndex = m_HiderIndex; BlockerVersion = m_HiderVersion; }
+            else if (m_LookNeedEnd > m_ViewEnd) { Blocked = true; Refusal = (byte)LookPastRefusal.ViewEndsAtLarge; BlockerIndex = m_HiderIndex; BlockerVersion = m_HiderVersion; }
             // the room relied on ends beyond what was seen (the radius, the path read; LimitSight): not clear
-            else if (m_LookNeedEnd > SightLeft) { Blocked = true; BlockerIndex = m_MinIndex; BlockerVersion = m_MinVersion; }
+            else if (m_LookNeedEnd > SightLeft) { Blocked = true; Refusal = (byte)LookPastRefusal.BeyondSight; BlockerIndex = m_MinIndex; BlockerVersion = m_MinVersion; }
         }
 
         /// <summary>
@@ -871,9 +876,9 @@ namespace JunctionRules.Core
                     case 2: d = m_T2; i = m_TI2; v = m_TV2; break;
                     default: d = m_T3; i = m_TI3; v = m_TV3; break;
                 }
-                if (!sight.Seen(d)) { BuildingCut = true; Blocked = true; BlockerIndex = i; BlockerVersion = v; return; }
+                if (!sight.Seen(d)) { BuildingCut = true; Refusal = (byte)LookPastRefusal.Building; Blocked = true; BlockerIndex = i; BlockerVersion = v; return; }
             }
-            if (!sight.Seen(m_LookNeedEnd)) { BuildingCut = true; Blocked = true; BlockerIndex = m_MinIndex; BlockerVersion = m_MinVersion; }
+            if (!sight.Seen(m_LookNeedEnd)) { BuildingCut = true; Refusal = (byte)LookPastRefusal.Building; Blocked = true; BlockerIndex = m_MinIndex; BlockerVersion = m_MinVersion; }
         }
 
         /// <summary>JR-T-022d (tests): the credited vehicles kept as sight targets.</summary>
