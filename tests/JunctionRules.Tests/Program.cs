@@ -94,6 +94,7 @@ namespace JunctionRules.Tests
             ("ZebraFurtherTests", ZebraFurtherTests),
             ("ZebraSettingTests", ZebraSettingTests),
             ("ZebraRepoTests", ZebraRepoTests),
+            ("ZebraSignalTests", ZebraSignalTests),
             ("BoxJunctionTests", BoxJunctionTests),
             ("BoxTurnTests", BoxTurnTests),
             ("BoxEntranceTests", BoxEntranceTests),

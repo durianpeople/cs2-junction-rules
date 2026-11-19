@@ -60,7 +60,7 @@ Source code, issue tracker and design notes: https://github.com/durianpeople/cs2
 	<!--Link to the forum post where the mod can be discussed (Paradox forum URLs only; the GitHub link is the ExternalLink below)-->
 	<ForumLink Value="" />
 	<!--Version of the mod-->
-	<ModVersion Value="1.0.0" />
+	<ModVersion Value="1.0.1" />
 	<!--Recommended version of the base game to use the mod. "major.minor.*" as the game's own asset uploader writes it; the mod itself runs its driving copy only on 1.6.4 (version gate) and falls back to the game's driving otherwise.-->
 	<GameVersion Value="1.6.*" />
 	<!--Dependency for the mod, can be set multiple times-->
@@ -68,7 +68,7 @@ Source code, issue tracker and design notes: https://github.com/durianpeople/cs2
 	<!--Required DLC, can be set multiple times. Supported values are "Landmark Buildings", "San Fransisco Set", "Beach Properties", "Urban Promenades", "Modern Architecture"-->
 	<RequiredDLC Value="" />
 	<!--Change log for new version. Single line or multi line. Supports minimal markdown subset-->
-	<ChangeLog Value="First public release" />
+	<ChangeLog Value="Signalised crossings: while the pedestrian light is red, cars treat the zebra as road (they may wait on it); people still on it still stop cars." />
 	<!--<ChangeLog>
 	</ChangeLog>-->
 	<!--External link, can be set multiple times. supported types are "discord", "github", "youtube", "twitch", "twitter", "x", "paypal", "patreon", "buymeacoffee", "kofi", "crowdin", "gitlab", "gofundme", "bluesky"-->

@@ -365,6 +365,49 @@ namespace JunctionRules.Tests
             Check(!Stage2Counters.Format(2, dl, 2).Contains("zebra"), "timing log without the zebra mask: the 0.4.0 text");
         }
 
+        private struct ZFront : IFrontPast
+        {
+            public float Front;
+            public bool Past(float u) => u <= Front;
+        }
+
+        /// <summary>
+        /// 1.0.1 (owner 19 Nov 2026): a signalised zebra whose people do not have green is road for the sections (a car may
+        /// wait on it while giving way) but the car does not move onto it while its exit is blocked (room past everything).
+        /// </summary>
+        private static void ZebraSignalTests()
+        {
+            int z = ZebraSections.PedestrianCrosswalk;
+            Check(ZebraSections.ZebraKind(z, false, 0) == ZebraSections.Zebra, "unsignalised zebra: a zebra");
+            Check(ZebraSections.ZebraKind(z, true, 4) == ZebraSections.Zebra && ZebraSections.ZebraKind(z, true, 0) == ZebraSections.Zebra, "people on green (Go) / no signal value: a zebra");
+            Check(ZebraSections.ZebraKind(z, true, WholePathRule.SignalStop) == ZebraSections.SoftZebra, "people on red: soft zebra");
+            Check(ZebraSections.ZebraKind(z, true, WholePathRule.SignalSafeStop) == ZebraSections.SoftZebra, "people's light ending: soft zebra");
+            Check(ZebraSections.ZebraKind(z | ZebraSections.PedestrianUnsafe, true, WholePathRule.SignalStop) == 0 && ZebraSections.ZebraKind(0, false, 0) == 0, "removed zebra / plain path: nothing");
+            Check((ZebraSections.SoftZebra & (ZebraSections.Zebra | ZebraSections.SpotPoint | ZebraSections.Clearance)) == 0, "soft zebra bit is its own");
+
+            // Turner at a signal, people on red: Z (soft) then the oncoming lanes C C. No sections (no layout): the car may go to
+            // its normal waiting spot before the first C even when that is on the zebra.
+            int c = ZebraSections.SpotPoint | ZebraSections.Clearance;
+            var soft = new ZElems { Items = new[] { (ZebraSections.SoftZebra, 0.10f, 0.20f), (c, 0.18f, 0.30f), (c, 0.40f, 0.55f) } };
+            Check(!ZebraSections.Build(ref soft, true, false, ZLane, 0.9f, ZCar, out _), "soft zebra only: no zebra sections (whole-junction / stock decision as without a zebra)");
+            var front = new ZFront { Front = 0f };
+            Check(ZebraSections.SoftHoldSpot(ref soft, ref front, out float zs, out float roomFrom) && Near(zs, 0.10f) && Near(roomFrom, 0.55f), "room-past check before the soft zebra, from the end of everything on the lane (exit blocked = hold before it)");
+            front.Front = 0.12f;
+            Check(!ZebraSections.SoftHoldSpot(ref soft, ref front, out _, out _), "front already on the soft zebra: no hold before it (waiting on it is allowed)");
+            // Same lane with the people on green: the 0.4.1 sections as before.
+            var hard = new ZElems { Items = new[] { (ZebraSections.Zebra, 0.10f, 0.20f), (c, 0.25f, 0.30f), (c, 0.40f, 0.55f) } };
+            Check(ZebraSections.Build(ref hard, true, false, ZLane, 0.9f, ZCar, out ZebraLayout hl) && hl.HasZebra(0) && Near(hl.Spots[0], 0.10f), "people on green: zebra section, decided before the zebra (unchanged)");
+            // Mixed: green zebra first, soft one later: sections from the green one only; soft one gets the room hold.
+            var mixed = new ZElems { Items = new[] { (ZebraSections.Zebra, 0.05f, 0.12f), (c, 0.30f, 0.40f), (ZebraSections.SoftZebra, 0.80f, 0.90f) } };
+            Check(ZebraSections.Build(ref mixed, true, false, ZLane, 0.9f, ZCar, out ZebraLayout ml) && Near(ml.LastEnd, 0.40f), "mixed: the soft zebra is not in the sections");
+            front.Front = 0.5f;
+            Check(ZebraSections.SoftHoldSpot(ref mixed, ref front, out float mzs, out float mroom) && Near(mzs, 0.80f) && Near(mroom, 0.90f), "mixed: room hold before the later soft zebra");
+
+            string job = File.ReadAllText(Path.Combine(RepoRoot(), "JunctionRules", "Stage2", "JRWholeJunction.cs"));
+            Check(job.Contains("float softHold = SoftZebraHold(") && job.Contains("out ZebraLayout layout)) return softHold;") && job.Contains("return math.min(hold, softHold);"), "BeginZebras: soft hold on every exit path");
+            Check(job.Contains("!ZebraSections.IsZebra((int)ped.m_Flags)) continue;"), "further zebras on the route (room scan) unchanged: a red-light zebra is still not a place to queue");
+        }
+
         private static void ZebraRepoTests()
         {
             string root = RepoRoot();

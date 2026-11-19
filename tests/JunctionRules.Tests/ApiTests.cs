@@ -243,7 +243,7 @@ namespace JunctionRules.Tests
                 Check(api.Contains("public static string " + m), "API: public static string " + m);
             Check(api.Contains("catch (Exception e)") && api.Contains("BoxApiErrors.Internal") && api.Contains("BoxApiErrors.NotReady"), "API: catches everything (internal) and answers not_ready");
             // version
-            Check(csproj.Contains("<Version>1.0.0</Version>") && csproj.Contains("<InformationalVersion>1.0.0</InformationalVersion>"), "csproj version 1.0.0 (release; API v1 shipped since 0.4.13-probe)");
+            Check(csproj.Contains("<Version>1.0.1</Version>") && csproj.Contains("<InformationalVersion>1.0.1</InformationalVersion>"), "csproj version 1.0.1 (release; API v1 shipped since 0.4.13-probe)");
             string mod = File.ReadAllText(Path.Combine(root, "JunctionRules", "Mod.cs"));
             Check(mod.Contains("JunctionRulesApi.MarkMainThread()"), "Mod.OnLoad marks the main thread for the API");
         }

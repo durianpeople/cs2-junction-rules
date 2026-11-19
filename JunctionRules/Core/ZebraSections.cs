@@ -7,6 +7,12 @@ namespace JunctionRules.Core
     /// (0 = where the car enters the lane). The job side wraps the game's LaneOverlap buffer (Stage2/JRWholeJunction.cs),
     /// the tests an array. Burst: generic constraint only.
     /// </summary>
+    /// <summary>1.0.1: has the car's front passed a point (driving coordinates)? Job: StretchState.FrontPast arithmetic.</summary>
+    public interface IFrontPast
+    {
+        bool Past(float u);
+    }
+
     public interface IPathElements
     {
         int Count { get; }
@@ -41,6 +47,14 @@ namespace JunctionRules.Core
         /// <summary>A zebra: a crosswalk (PedestrianLaneFlags.Crosswalk) that is not Unsafe (a removed zebra leaves an Unsafe lane).</summary>
         public const int Zebra = 4;
 
+        /// <summary>
+        /// 1.0.1 (owner 19 Nov 2026): a signalised zebra whose people do not have green (light red or ending). It is road for
+        /// the sections: no waiting spot before it, a car may stand on it while it gives way (e.g. a turner waiting for
+        /// oncoming traffic). The room past still counts: the car does not move onto it while its exit is blocked
+        /// (<see cref="SoftHoldSpot"/>). Build ignores this bit.
+        /// </summary>
+        public const int SoftZebra = 8;
+
         /// <summary>Most zebras one lane is read for (more are ignored: stock behaviour for them).</summary>
         public const int MaxZebras = 8;
 
@@ -52,6 +66,33 @@ namespace JunctionRules.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsZebra(int pedestrianLaneFlags) =>
             (pedestrianLaneFlags & PedestrianCrosswalk) != 0 && (pedestrianLaneFlags & PedestrianUnsafe) == 0;
+
+        /// <summary>1.0.1: the zebra kind of a pedestrian lane: <see cref="Zebra"/>, <see cref="SoftZebra"/> (signalised, people
+        /// not on green: LaneSignalType Stop / SafeStop) or 0. Unsignalised zebras are always <see cref="Zebra"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int ZebraKind(int pedestrianLaneFlags, bool hasSignal, int signal) =>
+            !IsZebra(pedestrianLaneFlags) ? 0 : hasSignal && (signal == WholePathRule.SignalStop || signal == WholePathRule.SignalSafeStop) ? SoftZebra : Zebra;
+
+        /// <summary>
+        /// 1.0.1: the room-past hold for soft zebras. The first soft zebra the car's front has not reached
+        /// (<paramref name="frontPast"/>(start) false), returned as its start; <paramref name="roomFrom"/> = the end of
+        /// everything on the lane (every zebra and vehicle point): the car must fit past all of it before it moves onto the
+        /// zebra. False when there is no such zebra.
+        /// </summary>
+        public static bool SoftHoldSpot<T, F>(ref T list, ref F frontPast, out float zebraStart, out float roomFrom)
+            where T : struct, IPathElements where F : struct, IFrontPast
+        {
+            zebraStart = 2f;
+            roomFrom = 0f;
+            for (int i = 0; i < list.Count; i++)
+            {
+                list.Get(i, out int kind, out float s, out float e);
+                if (kind == 0) continue;
+                if (e > roomFrom) roomFrom = e;
+                if ((kind & SoftZebra) != 0 && s < zebraStart && !frontPast.Past(s)) zebraStart = s;
+            }
+            return zebraStart < 2f;
+        }
 
         /// <summary>
         /// The sections of one lane. sections = the Whole junction rule is on (vehicle points split and fill sections);

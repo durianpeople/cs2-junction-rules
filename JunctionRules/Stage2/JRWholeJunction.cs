@@ -676,7 +676,12 @@ namespace JunctionRules.Stage2
                 if (m_Pedestrian.TryGetComponent(o.m_Other, out Game.Net.PedestrianLane ped))
                 {
                     StretchGeometry.ToConflict(flags, o.m_ThisStart, o.m_ThisEnd, m_Inverse, false, out start, out end);
-                    if ((flags & WholePathRule.Water) == 0 && (m_SidewalkZebra || ZebraSections.IsZebra((int)ped.m_Flags))) kind = ZebraSections.Zebra;
+                    // 1.0.1: a signalised zebra whose people do not have green is a SoftZebra (no section; room past only).
+                    if ((flags & WholePathRule.Water) == 0)
+                    {
+                        bool pedSignal = m_Signals.TryGetComponent(o.m_Other, out LaneSignal pedLight);
+                        kind = m_SidewalkZebra ? ZebraSections.Zebra : ZebraSections.ZebraKind((int)ped.m_Flags, pedSignal, (int)pedLight.m_Signal);
+                    }
                     return;
                 }
                 if (StretchGeometry.ToConflict(flags, o.m_ThisStart, o.m_ThisEnd, m_Inverse, HeldByRed(o, ref m_Signals), out start, out end)) kind |= ZebraSections.SpotPoint;
@@ -721,8 +726,13 @@ namespace JunctionRules.Stage2
             bool atLine = RuleOn && ((m_Mode & Stage2Mode.AtLine) != 0 || m_BoxLane);
             // 0.4.2: a boxed junction lane: stop-line decision and the turner's spot in the box, where the zebra rule allows it.
             // Z O gaps (a waiting spot right after a zebra, owner refinement) everywhere but inside a box (the box decides at the line).
+            // 1.0.1 (owner 19 Nov 2026): soft zebras (signalised, people not on green) may be stood on while giving way, but
+            // the car does not move onto one while there is no room past everything it crosses on this lane (exit blocked).
+            float softHold = SoftZebraHold(lane, ref elements, overlaps, curveX, length, origDistance, margin, inverse, car, currentSpeed, timeStep,
+                safeTimeStep, speedRange, currentMax, self, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs,
+                ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes);
             if (!ZebraSections.Build(ref elements, RuleOn, atLine, length, margin, m_VehicleLength, m_BoxLane ? m_BoxTurnSpot : 2f, m_BoxLane ? -1f : m_RoomMargin,
-                    out ZebraLayout layout)) return float.MaxValue;
+                    out ZebraLayout layout)) return softHold;
             if (m_BoxLane) m_BoxTurnIndex = layout.ExtraIndex;
             m_ZebraStarts = default;
             for (int i = 0; i < overlaps.Length; i++)
@@ -762,18 +772,62 @@ namespace JunctionRules.Stage2
             if (RuleOn) SetMotion(lane, ref carLanes, ref laneConditions, margin, car, currentSpeed, timeStep, speedLimit);
             if (Counting && layout.Merged > 0 && m_Stretch.Next < m_Stretch.Spots.Count) m_ZebraMergedSeen = true;
             int k = ZebraSections.RoomSection(layout, m_Stretch);
-            if (k < 0) return float.MaxValue;
+            if (k < 0) return softHold;
             float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, m_Stretch.Wait(m_Stretch.Spots[k]), safeTimeStep), speedRange);
-            if (!(hold < currentMax)) return float.MaxValue;
+            if (!(hold < currentMax)) return softHold;
             if (HasRoomPast(lane, layout.SectionEnd(k), inverse, length, -1f, Entity.Null, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
                     ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes))
             {
-                return float.MaxValue;
+                return softHold;
             }
             // 0.4.12 OWNER DECISION REVISED ("it can block ANY pedestrian paths for the yielding exit at the box"): a vehicle admitted
             // under the same-exit-lane exception may stand on a zebra: no "never stop on a zebra" room hold for it. Junction box: G22
             // on this junction lane (car before it: start 0). Drive exit: G28 on this leaving lane. People ON the crossing still stop
             // it (stock pedestrian check / "Cars never push through people"); people pass a blocking car after 2 s (setting).
+            if (m_BoxRule && SameExitZebraExempt(lane, overlaps, curveX, length, inverse, self, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers,
+                    ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes))
+            {
+                return softHold;
+            }
+            if (Counting) Min(ref m_HasZebraRoom, ref m_ZebraRoomSpeed, hold);
+            return math.min(hold, softHold);
+        }
+
+        /// <summary>1.0.1: StretchState.FrontPast arithmetic for one lane (BeginZebras' values).</summary>
+        private struct FrontPastAt : IFrontPast
+        {
+            public StretchState m_S;
+            public bool Past(float u) => m_S.FrontPast(u);
+        }
+
+        /// <summary>
+        /// 1.0.1 (owner 19 Nov 2026): the room-past hold before a soft zebra (signalised, people not on green; Core
+        /// ZebraSections.SoftHoldSpot). The car's front has not reached it and it can still stop before it: no room past the
+        /// end of everything on the lane = hold before the zebra (same scan and same same-exit exception as the zebra
+        /// sections). float.MaxValue = no hold.
+        /// </summary>
+        private float SoftZebraHold(Entity lane, ref ZebraElements elements, DynamicBuffer<LaneOverlap> overlaps, float curveX, float length,
+            float origDistance, float margin, bool inverse, CarData car, float currentSpeed, float timeStep, float safeTimeStep, Bounds1 speedRange,
+            float currentMax, Entity self, ref ComponentLookup<Game.Net.CarLane> carLanes, ref BufferLookup<LaneObject> laneObjects,
+            ref ComponentLookup<Curve> curves, ref ComponentLookup<Moving> moving, ref ComponentLookup<Controller> controllers,
+            ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars,
+            ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
+        {
+            FrontPastAt front = default;
+            front.m_S.OrigDistance = origDistance;
+            front.m_S.Length = length;
+            front.m_S.CurveX = StretchGeometry.ToDriving(curveX, inverse);
+            front.m_S.Margin = margin;
+            front.m_S.Braking = VehicleUtils.GetBrakingDistance(car, currentSpeed, timeStep);
+            if (!ZebraSections.SoftHoldSpot(ref elements, ref front, out float zebraStart, out float roomFrom)) return float.MaxValue;
+            if (!front.m_S.CanStopBefore(zebraStart)) return float.MaxValue;
+            float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, front.m_S.Wait(zebraStart), safeTimeStep), speedRange);
+            if (!(hold < currentMax)) return float.MaxValue;
+            if (HasRoomPast(lane, roomFrom, inverse, length, -1f, Entity.Null, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
+                    ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes))
+            {
+                return float.MaxValue;
+            }
             if (m_BoxRule && SameExitZebraExempt(lane, overlaps, curveX, length, inverse, self, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers,
                     ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes))
             {

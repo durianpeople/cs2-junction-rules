@@ -224,7 +224,7 @@ namespace JunctionRules.Tests
                 "review F4/F1: slack at the spot, fallback judgement at the first road lane, no full judgement without the joined lane");
             Check(nav.Contains("m_ZebraRule || carLaneSpeedIterator.m_JR.m_BoxRule || carLaneSpeedIterator.m_JR.m_ExitRule)"), "review F1: the path and vehicle length are handed in with only the exit rule on");
             Check(glue.Contains("deltaClear > delta ? deltaClear : delta"), "review F5: lot / spawn / parking / building-road exits use the clear time on crossed lanes");
-            Check(wj.Contains("elements.m_SidewalkZebra = m_ExitRule") && wj.Contains("(m_SidewalkZebra || ZebraSections.IsZebra("), "zebra sections: a driveway's sidewalk is a Z (people, ZC merge, room past)");
+            Check(wj.Contains("elements.m_SidewalkZebra = m_ExitRule") && wj.Contains("kind = m_SidewalkZebra ? ZebraSections.Zebra : ZebraSections.ZebraKind("), "zebra sections: a driveway's sidewalk is a Z (people, ZC merge, room past)");
             Check(it.Contains("ref m_LaneOverlapData, ref m_PedestrianLaneData);\n\t\t\tif (jrExitHold < m_MaxSpeed)"), "S2-29 hands the overlap and pedestrian lookups");
             Check(nav.Contains("ExitHandOver(m_JRCounters, m_JRSafetyEvents, entity") && nav.Contains("m_JR.NoteExit(m_JRCounters, m_JRSafetyEvents, entity, m_SimulationFrame, currentLane.m_Lane, num2, currentLane.m_Duration"),
                 "S2-34 checks the drive entry against the recorded Go; S2-22 records it");
