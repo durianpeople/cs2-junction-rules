@@ -60,7 +60,7 @@ Source code, issue tracker and design notes: https://github.com/durianpeople/cs2
 	<!--Link to the forum post where the mod can be discussed (Paradox forum URLs only; the GitHub link is the ExternalLink below)-->
 	<ForumLink Value="" />
 	<!--Version of the mod-->
-	<ModVersion Value="1.1.1" />
+	<ModVersion Value="1.2.0" />
 	<!--Recommended version of the base game to use the mod. "major.minor.*" as the game's own asset uploader writes it; the mod itself runs its driving copy only on 1.6.4 (version gate) and falls back to the game's driving otherwise.-->
 	<GameVersion Value="1.6.*" />
 	<!--Dependency for the mod, can be set multiple times-->
@@ -68,7 +68,7 @@ Source code, issue tracker and design notes: https://github.com/durianpeople/cs2
 	<!--Required DLC, can be set multiple times. Supported values are "Landmark Buildings", "San Fransisco Set", "Beach Properties", "Urban Promenades", "Modern Architecture"-->
 	<RequiredDLC Value="" />
 	<!--Change log for new version. Single line or multi line. Supports minimal markdown subset-->
-	<ChangeLog Value="Select a car to see why it slows: while a car is selected and Junction Rules drives the cars, each change of reason (a game rule or a Junction Rules rule, what it waits for and how far) goes to the Junction Rules log, and other mods and tools can read it through the API. Diagnostics only: driving is unchanged from 1.1.0." />
+	<ChangeLog Value="Yellow boxes, looking past the car in front: a car now expects the vehicles ahead of it to keep going and to stop only behind a queue or vehicle it can see standing, or at a red light. It no longer brakes at the box line for a moving queue that will clearly make room. Turn &quot;Look past the car in front at a box&quot; off for the 1.0.1 behaviour." />
 	<!--<ChangeLog>
 	</ChangeLog>-->
 	<!--External link, can be set multiple times. supported types are "discord", "github", "youtube", "twitch", "twitter", "x", "paypal", "patreon", "buymeacoffee", "kofi", "crowdin", "gitlab", "gofundme", "bluesky"-->

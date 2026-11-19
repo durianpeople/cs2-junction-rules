@@ -67,7 +67,7 @@ A yellow box marks an area drivers must not stop in.
 - No parking inside a box.
 
 **How drivers obey them.**
-- A vehicle enters a box only if there is room past it for its whole length (trailers included): free right now, or, with the setting Look past the car in front at a box (on by default), certain to be free by the time it gets there even if the traffic ahead brakes.
+- A vehicle enters a box only if there is room past it for its whole length (trailers included): free right now, or, with the setting Look past the car in front at a box (on by default), free by the time it gets there, with every vehicle ahead expected to keep going and to stop only behind a queue or vehicle it can see standing, or at a red light (within its 50 m line of sight).
   A creeping queue doesn't count.
 - If it can't clear the box, it stops with its front bumper at the line, not in the box.
 - Several boxes close together are judged per vehicle: a gap between boxes only counts if that vehicle fits in it.

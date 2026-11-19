@@ -442,6 +442,21 @@ differential and a step-by-step trace hash over the box scenario set):
   misjudgements that end with a car standing in the box (offline: a queue past the box that stops dead, harder than any
   game vehicle can brake) are accepted by design.
 
+1.2.0 (JR-T-027: predict each vehicle ahead from what is visibly ahead; owner rule and simplification 20 Nov 2026,
+binding). No copy change (`vanilla_copy.py check` unchanged). Core only (`Core/ZebraSections.cs` `RoomScan.AddLook`),
+behind the same setting (off = 1.0.1 bit for bit, unchanged path). Replaces the 1.1.0 worst-case `GuaranteedTravel`
+credit for ordinary vehicles in and past the box:
+- An ordinary vehicle (not large) moving at 3 m/s or more is expected to carry on; it stops only behind the first
+  visible standing vehicle / tail of a standing queue, or at a red stop line (the scan reads these where they are). People
+  on a zebra and waiting turners do not count (exit-zebra rule and turner exception handle them).
+- A vehicle standing or crawling (below 3 m/s) and a red stop line count where they are now.
+- The car enters when, with every vehicle ahead placed at that point, there is room for its whole length plus margin
+  past the exit, and the road up to the predicted front of each vehicle it relies on lies inside the 50 m sight;
+  otherwise it waits at the line (refusal `BeyondSight` when only the sight cut refuses).
+- Large vehicles are as 1.1.0 (guaranteed travel less 5 m; they end the view); a large vehicle queued ahead = free-now.
+- Safety stop unchanged; a queue that closes after the car committed can leave it standing in the box (accepted).
+  The why-slowed readout reports the predicted-room shortfall when the look-past is on.
+
 1.1.0 also (JR-T-024, owner ruling 19 Nov 2026, BINDING: waiting for people at a box's exit zebra). No copy change (no
 block or line count changes; `vanilla_copy.py check` unchanged). Job side only (`Stage2/JRExitZebraWait.cs`, the
 room-ok return of the junction box hold in `Stage2/JRYellowBox.cs` `BoxHold`, `PedestrianDistance` in
