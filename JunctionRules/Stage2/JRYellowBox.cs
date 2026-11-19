@@ -164,7 +164,7 @@ namespace JunctionRules.Stage2
                     frontToStart: wait0 + margin + laneLength * (1f - start));   // JR-T-022 sight: front bumper to the box's far end
                 m_QueuedTurnersMayStand = false;
                 // JR-T-024 (look-past setting only): the box lets the car in; people on its exit zebra may still hold it at the line
-                if (!BoxDriving.Holds(a, room)) return m_BoxLookPast ? ExitZebraHold(lane, laneLength, inverse, hold, owner.m_Owner, wait0 + margin + laneLength * (1f - start),
+                if (!BoxDriving.Holds(a, room)) return m_BoxLookPast ? ExitZebraHold(lane, laneLength, inverse, hold, margin, owner.m_Owner, wait0 + margin + laneLength * (1f - start),
                     self, safeTimeStep, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars,
                     ref overlapData, ref pedestrianLanes) : float.MaxValue;
                 // 0.4.11 (G22, owner): a car from the lowest-priority approach may enter although its exit lane is full when the

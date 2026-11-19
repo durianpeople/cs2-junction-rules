@@ -439,8 +439,10 @@ room-ok return of the junction box hold in `Stage2/JRYellowBox.cs` `BoxHold`, `P
   (`Moving`, speed^2 >= 0.01; with "Cars never push through people" a person standing in the 1 m waiting area at a lane
   end is not on it, as G23). One standing person = hold at the box line (blocker = that person). Everyone walking: room
   past the box is asked again with the free-now rule alone (no look-past credit: the car will stand before the zebra);
-  free = no hold, and the pedestrian check for that zebra on that lane this car-step uses the game's own distance (the car
-  stops a stop margin before the zebra, inside the box) instead of the section's spot; not free = hold at the line (asks a
+  free and the whole vehicle fits between the entry zebra (or the line) and the stop point before the exit zebra (the
+  zebra sections' own fit: a bus in a small box would otherwise stand with its tail on the entry zebra) = no hold, and
+  the pedestrian check for that zebra on that lane this car-step uses the game's own distance (the car stops a stop margin
+  before the zebra, inside the box) instead of the section's spot; not free or not fitting = hold at the line (asks a
   red light inside the window for green, review R1). Nobody there = unchanged. Inside the box nothing changes (the game's
   own stop before the zebra; people who step on, or stop, after the car entered keep it before the zebra).
 - Counters `Stage2Counters.BoxExitZebraWait` (car-steps standing in a box just before its exit zebra while somebody is on

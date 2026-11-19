@@ -7,7 +7,8 @@ namespace JunctionRules.Core
     /// A car about to cross a boxed junction whose exit has a zebra:
     /// - people MOVING across that zebra = a short wait: the car may enter the box and wait just before the zebra (the game's
     ///   own pedestrian stop: front a stop margin before it, never on it), if the road beyond has room for its whole length
-    ///   (trailers included) plus the room margin, free now;
+    ///   (trailers included) plus the room margin, free now, and the vehicle fits between the entry zebra (or the line) and that
+    ///   stop point (<see cref="FitsBeforeZebra"/>: never a tail on another zebra);
     /// - people STATIONARY on the zebra (standing, queueing, not clearing) = blocked: the car waits at the box line;
     /// - no room free now beyond (vehicles blocking the exit): it waits at the box line.
     /// One general rule, behind the setting "Look past the car in front at a box" (off = 1.0.1 driving bit for bit).
@@ -80,6 +81,16 @@ namespace JunctionRules.Core
             if (!lookPast || people == None) return Verdict.Today;
             return people == Stationary || !roomFreeNow ? Verdict.Line : Verdict.WaitBeforeZebra;
         }
+
+        /// <summary>
+        /// Review fix (JR-T-024): the whole vehicle fits between the end of the zebra before the exit zebra (the entry zebra; 0 =
+        /// the box line when there is none) and the stop point a stop margin before the exit zebra: waiting there never leaves a
+        /// tail on another zebra or past the line ("Cars never stop on a zebra"; the zebra sections merge a vehicle that does not
+        /// fit into the entry decision for the same reason). Same arithmetic as <see cref="CrossingPoint.Fits"/>.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool FitsBeforeZebra(float laneLength, float zebraStart, float previousEnd, float margin, float vehicleLength) =>
+            CrossingPoint.Fits(laneLength, zebraStart, previousEnd, margin, vehicleLength);
 
         /// <summary>
         /// The distance the game's pedestrian check uses for a person on a zebra of the path: with

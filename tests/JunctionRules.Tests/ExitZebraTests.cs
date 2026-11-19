@@ -89,6 +89,21 @@ namespace JunctionRules.Tests
             Check(ExitZebraWait.WaitingAtZebra(M, M, ExitZebraWait.Moving) && !ExitZebraWait.WaitingAtZebra(M + 2.5f, M, ExitZebraWait.Moving)
                 && !ExitZebraWait.WaitingAtZebra(-0.5f, M, ExitZebraWait.Moving) && !ExitZebraWait.WaitingAtZebra(M, M, ExitZebraWait.None),
                 "counted as waiting at the zebra: front within the stop margin + 2 m before it, never on it, somebody there");
+            // review fix: a vehicle that does not fit between the entry zebra and the stop point before the exit zebra waits at the line
+            // (24 m lane, Z1 0-0.10, Z2 from 0.85: room 24 * 0.75 - 0.9 = 17.1 m), as the zebra sections merge it today
+            Check(ExitZebraWait.FitsBeforeZebra(EzLane, 0.85f, 0.10f, M, ZCar) && ExitZebraWait.FitsBeforeZebra(EzLane, 0.85f, 0.10f, M, 16.5f)
+                && !ExitZebraWait.FitsBeforeZebra(EzLane, 0.85f, 0.10f, M, ZBus + 8f) && !ExitZebraWait.FitsBeforeZebra(EzLane, 0.30f, 0.10f, M, ZBus),
+                "zebra wait needs the whole vehicle between the entry zebra (or the line) and the stop point before the exit zebra");
+            {
+                var fitLane = new[] { Zb(0.00f, 0.10f), Cv(0.20f, 0.28f), Zb(0.85f, 0.95f) };
+                var fitElems = new ZElems { Items = fitLane };
+                ZebraSections.Build(ref fitElems, false, false, EzLane, M, ZBus + 8f, out ZebraLayout busStock);
+                fitElems = new ZElems { Items = fitLane };
+                ZebraSections.Build(ref fitElems, false, false, EzLane, M, 16.5f, out ZebraLayout articStock);
+                Check((busStock.Merged == 1) == !ExitZebraWait.FitsBeforeZebra(EzLane, 0.85f, 0.10f, M, ZBus + 8f)
+                    && (articStock.Merged == 1) == !ExitZebraWait.FitsBeforeZebra(EzLane, 0.85f, 0.10f, M, 16.5f),
+                    "the fit test agrees with the zebra sections' own fit (stock gap rule): merged = does not fit");
+            }
             // with the decision: the overlap the job marks gets the stock distance (front a margin before the zebra), not the line
             var lane = new[] { Zb(0.00f, 0.10f), Cv(0.20f, 0.28f), Cv(0.45f, 0.55f), Cv(0.70f, 0.80f), Zb(0.85f, 0.95f) };
             var elems = new ZElems { Items = lane };
@@ -328,6 +343,10 @@ namespace JunctionRules.Tests
             Check(System.Text.RegularExpressions.Regex.Matches(job + yb + wj, @"m_ZebraGoLane = (?!Entity\.Null)").Count == 1 && job.Contains("m_ZebraGoLane = lane;"),
                 "the pedestrian-distance mark is set only inside ExitZebraHold (after the setting test)");
             Check(wj.Contains("if (m_ZebraGoLane == Entity.Null) return today;"), "PedestrianDistance: no mark = today's distance");
+            Check(job.Contains("ExitZebraWait.FitsBeforeZebra(laneLength, zebraStart, previousEnd, margin, m_VehicleLength)") && yb.Contains("ExitZebraHold(lane, laneLength, inverse, hold, margin,"),
+                "review fix: the zebra wait is only for a vehicle that fits before the exit zebra (entry zebra / line behind it)");
+            Check(job.Contains("m_LookPastAdmitted = false;   // probe: the look-past room did not let it in after all (held at the line)"),
+                "review fix: a car held at the line for the exit zebra (people standing too) is not counted as let in by the look-past");
             Check(job.Contains("m_BoxLookPast = false;") && job.Contains("m_BoxLookPast = true;") && job.Contains("freeNow: true,"),
                 "room for the zebra wait is the free-now rule (no look-past credit), the setting restored after");
         }

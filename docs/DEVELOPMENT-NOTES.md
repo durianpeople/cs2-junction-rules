@@ -186,7 +186,8 @@ PROBE-STAGE3-PAINT.md section 10.
   (`Stage2Counters.BoxLookPastAdmitted`), printed only when the setting was on in the window.
   JR-T-024 (owner ruling 19 Nov 2026), same setting: a car about to cross a junction box whose exit zebra has people on
   it may drive in and wait just before that zebra (the game's own stop, never on it) when everyone there is walking and
-  the road past the box has room free now for its whole length plus margin; one person standing on the zebra, or no room
+  the road past the box has room free now for its whole length plus margin and it fits between the entry zebra (or the
+  line) and the stop point before the exit zebra; one person standing on the zebra, or no room
   free now, holds it at the box line (before: people walking or standing held it at the line under the Whole junction
   rule, or let it in to wait before the zebra under the Stock gap rule). "Walking" = the game's own test (`Moving`,
   speed^2 >= 0.01); people waiting at the kerb are not on the zebra (G23). Core `ExitZebraWait`, job
