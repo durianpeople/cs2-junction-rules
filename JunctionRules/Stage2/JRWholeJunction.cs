@@ -945,6 +945,8 @@ namespace JunctionRules.Stage2
                 {
                     if (!(sameBands[i].x > fromDriving + WholePathRule.SpotEpsilon)) continue;   // the box itself / boxes behind
                     if (BoxDriving.BandInWindow(sameBands[i].x, sameBands[i].y, fromDriving, 1f, length, 0f, scan.Reach, out float pastEnd)) scan.ExtendPast(pastEnd);
+                    // JR-T-029 (owner rule 4): the queue ahead cannot be packed into a further band either (look-past only)
+                    if (scan.LookPastOn) scan.NoStopOnLane(sameBands[i].x, sameBands[i].y, fromDriving, 1f, length, 0f, RoomScan.ZoneBox);
                 }
             }
             if (hasEye && curves.TryGetComponent(lane, out Curve boxCurve))
@@ -962,7 +964,9 @@ namespace JunctionRules.Stage2
                     if (m_Path[i].m_Lane == lane) { start = i + 1; break; }
                 }
                 if (start < 0 && (lane == m_CurrentLane || lane == m_CurrentLane2)) start = 0;
-                for (int i = start < 0 ? m_Path.Length : start, cap = 0; i < m_Path.Length && cap < MaxRoomLanes && !scan.Done(read); i++, cap++)
+                // JR-T-029: with the look-past the path is read up to the 100 m sight (MaxLookLanes; Done stops at the sight edge)
+                int maxLanes = scan.LookPastOn ? MaxLookLanes : MaxRoomLanes;
+                for (int i = start < 0 ? m_Path.Length : start, cap = 0; i < m_Path.Length && cap < maxLanes && !scan.Done(read); i++, cap++)
                 {
                     CarNavigationLane nav = m_Path[i];
                     if (!carLanes.HasComponent(nav.m_Lane) || !curves.TryGetComponent(nav.m_Lane, out Curve navCurve)) break;
@@ -981,6 +985,8 @@ namespace JunctionRules.Stage2
                         SightCut(ref scan, navCurve, nav.m_CurvePosition.x, nav.m_CurvePosition.y, navCurve.m_Length, read, eye);   // JR-T-022b
                         NoteSpan(ref sightSpans, navCurve, nav.m_CurvePosition.x, nav.m_CurvePosition.y, navCurve.m_Length, read);   // JR-T-022d
                     }
+                    // JR-T-029 (owner rule 4): where on this lane the queue ahead cannot stand (look-past only)
+                    if (!inBox && scan.LookPastOn) NoStopZones(ref scan, nav, navInverse, navCurve, read, span, ref carLanes, ref curves, ref overlapData, ref pedestrianLanes);
                     ScanLane(ref scan, nav.m_Lane, nav.m_CurvePosition.x, navInverse, navCurve.m_Length, span, inBox ? 0f : read, inBox, self, safeTimeStep, ref laneObjects,
                         ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref unsorted);
                     if (!inBox) read += span;
@@ -1253,6 +1259,50 @@ namespace JunctionRules.Stage2
 
         /// <summary>Most path lanes past the junction lane read for the room-past scan (the unknown rest counts as free).</summary>
         public const int MaxRoomLanes = 3;
+
+        /// <summary>
+        /// JR-T-029 (owner rule 1: the driver sees 100 m): most path lanes past the box lane a LOOK-PAST room scan reads (the
+        /// sight spans, box lane included, still fit JRSight's FixedList512Bytes&lt;SightSpan&gt;: 7 of 68 bytes). The scan stops
+        /// earlier at the sight edge or once no vehicle further on can take the room (RoomScan.Done). The game's navigation
+        /// buffer holds up to about 12 lanes ahead (CarNavigationSystem FillNavigationPaths).
+        /// </summary>
+        public const int MaxLookLanes = 6;
+
+        /// <summary>
+        /// JR-T-029 (owner rule 4, 20 Nov 2026): the places on a path lane past the box where the queue ahead cannot stand,
+        /// for the look-past's packing (RoomScan.NoStopZone, metres past the window start): a node lane of another junction
+        /// (3 or more connected edges) or of a boxed junction = its whole span (a junction interior / a box); a node lane of a
+        /// 2-edge node (a mid-block crossing) = its zebras, except the soft zebra (a signalised zebra whose people do not have
+        /// green: waiting is allowed there, 1.0.1); a road lane = its exit / entrance boxes (LaneBands). Nothing beyond the sight.
+        /// </summary>
+        private unsafe void NoStopZones(ref RoomScan scan, CarNavigationLane nav, bool navInverse, Curve navCurve, float read, float span,
+            ref ComponentLookup<Game.Net.CarLane> carLanes, ref ComponentLookup<Curve> curves, ref BufferLookup<LaneOverlap> overlapData,
+            ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes)
+        {
+            if (scan.Blocked || !(read < scan.SightLeft) || !m_OwnerData.TryGetComponent(nav.m_Lane, out Owner owner)) return;
+            float len = navCurve.m_Length;
+            float startD = StretchGeometry.ToDriving(nav.m_CurvePosition.x, navInverse), endD = StretchGeometry.ToDriving(nav.m_CurvePosition.y, navInverse);
+            if (m_NodeLaneData.HasComponent(nav.m_Lane))
+            {
+                if (m_BoxJunctions && m_BoxJunctionData.HasComponent(owner.m_Owner)) { scan.NoStopZone(read, read + span, RoomScan.ZoneBox); return; }
+                if (m_ConnectedEdges.TryGetBuffer(owner.m_Owner, out DynamicBuffer<ConnectedEdge> edges) && edges.Length >= 3) { scan.NoStopZone(read, read + span, RoomScan.ZoneJunction); return; }
+                if (!overlapData.TryGetBuffer(nav.m_Lane, out DynamicBuffer<LaneOverlap> overlaps)) return;
+                for (int i = 0; i < overlaps.Length; i++)
+                {
+                    LaneOverlap o = overlaps[i];
+                    int flags = (int)o.m_Flags;
+                    if ((flags & WholePathRule.Water) != 0 || !pedestrianLanes.TryGetComponent(o.m_Other, out Game.Net.PedestrianLane ped)) continue;
+                    bool pedSignal = m_BoxSignalData.TryGetComponent(o.m_Other, out LaneSignal pedLight);
+                    if (ZebraSections.ZebraKind((int)ped.m_Flags, pedSignal, (int)pedLight.m_Signal) != ZebraSections.Zebra) continue;   // not a zebra, or the soft zebra
+                    StretchGeometry.ToConflict(flags, o.m_ThisStart, o.m_ThisEnd, navInverse, false, out float zs, out float ze);
+                    scan.NoStopOnLane(zs, ze, startD, endD, len, read, RoomScan.ZoneZebra);
+                }
+                return;
+            }
+            if (!m_BoxEntrances || m_BoxEdges == null || !m_EdgeLaneData.HasComponent(nav.m_Lane) || !carLanes.TryGetComponent(nav.m_Lane, out Game.Net.CarLane cl)) return;
+            if (!LaneBands(nav.m_Lane, owner.m_Owner, len, navInverse, cl.m_CarriagewayGroup, ref curves, out FixedList128Bytes<float2> bands)) return;
+            for (int i = 0; i < bands.Length; i++) scan.NoStopOnLane(bands[i].x, bands[i].y, startD, endD, len, read, RoomScan.ZoneBox);
+        }
 
         /// <summary>
         /// 0.4.1 (JR-T-009-r, review finding 2): zebras of a later node lane of the path (another node, e.g. a mid-block

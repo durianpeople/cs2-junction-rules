@@ -218,6 +218,13 @@ namespace JunctionRules.Tests
             var further = new List<(float b0, float b1)>();
             foreach (var b in SimBands(lane, me.Length)) if (b.b0 > b1 + 1e-3f) further.Add(b);
             var applied = new bool[further.Count];
+            // JR-T-029 (owner rule 4, the job's NoStopZones): the queue ahead is packed past the further boxes (painted bands and
+            // the boxed junction) and an unboxed junction's interior, never into them (look-past runs only)
+            if (robust && !legacy && scan.LookPastOn)
+            {
+                foreach (var b in further) scan.NoStopZone(b.b0 - b1, b.b1 - b1, RoomScan.ZoneBox);
+                if (!lane.JunctionBoxed && lane.JunctionEnd > lane.End && lane.End >= b1) scan.NoStopZone(lane.End - b1, lane.JunctionEnd - b1, RoomScan.ZoneJunction);
+            }
             void Extensions()
             {
                 if (!robust) return;

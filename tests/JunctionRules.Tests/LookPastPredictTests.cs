@@ -62,13 +62,17 @@ namespace JunctionRules.Tests
         {
             VisibleStopTotals t = VisibleStopRuns(true);
             Check(t.Drained, "seen stop: everything drains on and off (no deadlock)");
-            Check(t.SetNoseOn == 0, "seen stop: no nose in a box on the scenario set");
+            // JR-T-029 (1.3.0, owner rule: nothing slow within 100 m -> go; vehicles beyond sight not read): nose 0 -> 3 on the
+            // scenario set (its exits close dead past the sight edge). Worse than 1.2.0; reported in the digest; guarded at the measure.
+            Check(t.SetNoseOn <= 3, $"seen stop: nose in a box on the scenario set stays at the measured 1.3.0 level ({t.SetNoseOn} <= 3; 1.2.0: 0)");
             Check(t.NeedOn < t.NeedOff && t.PausesOn < t.PausesOff, $"seen stop: fewer needless pauses ({t.NeedOff} -> {t.NeedOn}) and pauses ({t.PausesOff} -> {t.PausesOn})");
             // measured 1.2.0 levels (1.1.0 on the same runs: scenario set 0, scenes let in 8 + 0), guarded against growth
             // JR-T-028 (LookPastMinSpeed 5 m/s, was 3: 579 / 282 / 335, pauses 12233, needless 1790): measured 57 / 247 / 288,
             // pauses 12802, needless 1907; small headroom so growth is caught.
-            Check(t.SetViolOn <= 62 && t.StoodLook <= 260 && t.StoodLookDead <= 305,
-                $"seen stop: standing in a box by cars let in when the stop point closed after they committed stays at the measured level (set {t.SetViolOn} <= 62, scenes {t.StoodLook} <= 260, dead {t.StoodLookDead} <= 305)");
+            // JR-T-029 (1.3.0): measured 211 / 261 / 309 (1.2.0: 57 / 247 / 288), pauses 12770, needless 1903. The set grows
+            // because the 1.2.0 sight-end hold is gone (keeping it: 45); the no-stop-zone packing holds it down (without: 866).
+            Check(t.SetViolOn <= 215 && t.StoodLook <= 265 && t.StoodLookDead <= 315,
+                $"seen stop: standing in a box by cars let in when the stop point closed after they committed stays at the measured 1.3.0 level (set {t.SetViolOn} <= 215, scenes {t.StoodLook} <= 265, dead {t.StoodLookDead} <= 315; 1.2.0: 57 / 247 / 288)");
             Check(t.PausesOn <= 13050 && t.NeedOn <= 1960, $"seen stop: pauses and needless pauses stay at the measured level ({t.PausesOn} <= 13050, {t.NeedOn} <= 1960)");
             Check(RoomScan.LookPastMinSpeed == 5f, "JR-T-028: clearly moving = 5 m/s (a crawling, decelerating queue tail counts as standing)");
 
@@ -112,11 +116,12 @@ namespace JunctionRules.Tests
             crawl.Add(2f, 4.5f, 1f, 7, 1, RoomScan.LookPastMinSpeed - 0.5f, 0f);
             crawl.FinishLookPast();
             Check(!crawl.HasRoom && crawl.BlockerIndex == 7, "a crawling car counts where it is (a standing queue)");
-            // the road to the carrying-on car's predicted front must be seen
+            // JR-T-029 (1.3.0): the room running past the sight edge no longer holds: nothing slow within sight -> go
             RoomScan sight = Scan(10f);
-            sight.Add(2f, 4.5f, 10f, 7, 1, 8f, 4f);   // needs 5.2 + 5.5 = 10.7 > 10
+            sight.Add(2f, 4.5f, 10f, 7, 1, 8f, 4f);   // the room it relies on ends at 5.2 + 5.5 = 10.7 > 10 (1.2.0: held, room_beyond_sight)
             sight.FinishLookPast();
-            Check(!sight.HasRoom && sight.Refusal == (byte)LookPastRefusal.BeyondSight, "sight: the road up to the carrying-on car's predicted front lies beyond sight: today's rule (held, room_beyond_sight)");
+            Check(sight.HasRoom && sight.AdmittedByLookPast && sight.Refusal == (byte)LookPastRefusal.None,
+                "sight (JR-T-029): the room up to the carrying-on car's predicted front runs past the sight edge, nothing slow seen -> go");
             // a large vehicle past the box hides what lies beyond it: it counts only on its own guaranteed travel less the margin (1.1.0)
             RoomScan big = Scan();
             big.Add(2f, 16.5f, 20f, 3, 1, 10f, 7f, true);   // pred 2 + (7 - 5) = 4 < 5.2

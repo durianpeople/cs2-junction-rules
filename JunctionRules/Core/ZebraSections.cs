@@ -503,7 +503,11 @@ namespace JunctionRules.Core
         /// gives room when it is clearly moving away (<see cref="LookPastMinSpeed"/> or faster). JR-T-027 (1.2.0, owner rule 20 Nov
         /// 2026): an ordinary vehicle moving away is expected to carry on and stops only behind the back of a visible standing
         /// vehicle / queue or at a red stop line (the scan reads these where they are; the road up to its predicted front must lie
-        /// inside the sight). A LARGE vehicle keeps the 1.1.0 credit: its position plus the distance it is GUARANTEED to cover even
+        /// inside the sight). JR-T-029 (1.3.0, owner rule 20 Nov 2026): the sight is <see cref="LookPastSightMetres"/> (100 m); a vehicle
+        /// beyond it is not read; when nothing within sight is standing or slow the car goes (no hold because the room it needs
+        /// runs past the sight edge); when it sees a standing / slow vehicle or a red stop line, every vehicle between the box
+        /// and that blocker is packed nose to tail behind it, skipping the places nobody may stand in (<see cref="NoStopZone"/>:
+        /// other yellow boxes, zebras except the soft zebra, other junction interiors): is the car's own room left? A LARGE vehicle keeps the 1.1.0 credit: its position plus the distance it is GUARANTEED to cover even
         /// if it brakes as hard as it can now (<see cref="GuaranteedTravel"/>), less <see cref="LookPastLargeMargin"/>. The look-past is refused (today's free-now verdict) when any vehicle the car follows
         /// through the box (queued ahead of it before / inside the box) is slower than that speed, and every other block
         /// (a standing vehicle, a red / amber light, people on a further zebra, a further box) holds as before. The decision
@@ -533,9 +537,11 @@ namespace JunctionRules.Core
         /// (m, straight line, not path length) around the driver: on a turn with a free corner it reaches the part of the
         /// road turned into that lies within it. The look-past accepts room only when the whole room the car needs (past the
         /// vehicles it follows) ends on road seen within this radius (<see cref="SightLeft"/>); beyond it nothing counts for
-        /// the look-past, so the car falls back to the free-now rule. The one sight constant.
+        /// the look-past, so the car falls back to the free-now rule. The one sight constant. JR-T-029 (1.3.0, owner rule 20 Nov 2026: driving manuals scan one to two city
+        /// blocks; a car's motion at town speed is not perceptible beyond about 100 m): 100 m (was 50 m). A vehicle (or a red
+        /// stop line) beyond it is not read at all; the room needed may run past it (nothing slow seen = the car goes).
         /// </summary>
-        public const float LookPastSightMetres = 50f;
+        public const float LookPastSightMetres = 100f;
 
         /// <summary>
         /// JR-T-022b: how far past the window start (the box's far end), along the car's path in the scan's coordinates, the
@@ -644,6 +650,138 @@ namespace JunctionRules.Core
         private int m_Targets;
         /// <summary>JR-T-022c (tests / probe): further elements of a vehicle just read, taken as part of it (artic tractors).</summary>
         public int ElementsJoined;
+
+        /// <summary>JR-T-029 (tests / probe): vehicles / stop lines beyond the sight (<see cref="SightLeft"/>), not read.</summary>
+        public int BeyondSightSkipped;
+
+        /// <summary>
+        /// JR-T-029 (owner rule 4, 20 Nov 2026): the kinds of place nobody may stand in that the look-past's queue packing skips
+        /// (<see cref="NoStopZone"/>). Refusal codes: <see cref="LookPastRefusal.QueuePushedByZebra"/> + kind - 1.
+        /// </summary>
+        public const byte ZoneZebra = 1, ZoneBox = 2, ZoneJunction = 3;
+
+        /// <summary>JR-T-029: most no-stop zones kept per scan (path order: the nearest; further ones are ignored).</summary>
+        public const int MaxZones = WaitingSpots.Capacity;
+
+        /// <summary>JR-T-029: most packed vehicles kept one by one (more: the furthest absorbs the rest as one block).</summary>
+        public const int MaxPacked = 2 * WaitingSpots.Capacity;
+
+        /// <summary>JR-T-029: the no-stop zones (metres past the window start, sorted by start) and their kinds.</summary>
+        private WaitingSpots m_ZoneS, m_ZoneE, m_ZoneK;
+        /// <summary>JR-T-029: the vehicles read so far that occupy room (path order): length + <see cref="Spacing"/> each.</summary>
+        private WaitingSpots m_PackA, m_PackB;
+        private int m_PackN;
+
+        /// <summary>JR-T-029 (tests / probe): no-stop zones recorded.</summary>
+        public readonly int Zones => m_ZoneS.Count;
+
+        private readonly float PackBlock(int i) => i < WaitingSpots.Capacity ? m_PackA[i] : m_PackB[i - WaitingSpots.Capacity];
+
+        private void SetPackBlock(int i, float size)
+        {
+            if (i < WaitingSpots.Capacity) { WaitingSpots a = m_PackA; a[i] = size; if (a.Count <= i) a.Count = i + 1; m_PackA = a; }
+            else { WaitingSpots b = m_PackB; b[i - WaitingSpots.Capacity] = size; if (b.Count <= i - WaitingSpots.Capacity) b.Count = i - WaitingSpots.Capacity + 1; m_PackB = b; }
+        }
+
+        /// <summary>JR-T-029: one more vehicle occupies room (its length + spacing), in path order; full = joins the last block.</summary>
+        private void PushPack(float size)
+        {
+            if (m_PackN < MaxPacked) SetPackBlock(m_PackN++, size);
+            else SetPackBlock(MaxPacked - 1, PackBlock(MaxPacked - 1) + size);
+        }
+
+        /// <summary>
+        /// JR-T-029 (owner rule 4): a stretch of the car's path past the box (metres past the window start, path order) where
+        /// nobody may stand: another yellow box (junction, exit / entrance band), a zebra (not the soft zebra of a signal whose
+        /// people have red: waiting is allowed there) or another junction's interior. With the look-past only (else ignored:
+        /// 1.0.1 unchanged); it never changes the car's own room need (<see cref="ExtendPast"/> does that, unchanged), only where
+        /// the vehicles ahead can be packed (<see cref="PackedRoom"/>). Kept sorted by start; at most <see cref="MaxZones"/>.
+        /// </summary>
+        public void NoStopZone(float start, float end, byte kind)
+        {
+            if (!LookPastOn || !(end > start) || !(end > 0f) || m_ZoneS.Count >= MaxZones) return;
+            WaitingSpots s = m_ZoneS, e = m_ZoneE, k = m_ZoneK;
+            int i = s.Count;
+            s.Add(start); e.Add(end); k.Add(kind);
+            while (i > 0 && s[i - 1] > start)
+            {
+                s[i] = s[i - 1]; e[i] = e[i - 1]; k[i] = k[i - 1];
+                i--;
+            }
+            s[i] = start; e[i] = end; k[i] = kind;
+            m_ZoneS = s; m_ZoneE = e; m_ZoneK = k;
+        }
+
+        /// <summary>
+        /// JR-T-029: as <see cref="NoStopZone"/> for the range [<paramref name="s"/>, <paramref name="e"/>] of a lane in driving
+        /// coordinates (0..1), the path covering [<paramref name="startD"/>, <paramref name="endD"/>] of it and starting
+        /// <paramref name="read"/> metres past the window start (clipped to that span).
+        /// </summary>
+        public void NoStopOnLane(float s, float e, float startD, float endD, float laneLength, float read, byte kind)
+        {
+            if (!(e > startD) || !(s < endD)) return;
+            float a = read + ((s > startD ? s : startD) - startD) * laneLength;
+            float b = read + ((e < endD ? e : endD) - startD) * laneLength;
+            NoStopZone(a, b, kind);
+        }
+
+        /// <summary>
+        /// JR-T-029 (owner rule 3 + 4): the room left for the car when every vehicle read so far is packed nose to tail behind a
+        /// blocker whose rear is at <paramref name="rear"/> (the nearest-to-the-blocker first, each its length + spacing), a
+        /// vehicle whose body would overlap a no-stop zone moving back to stand before it. Without zones exactly
+        /// rear - (sum of length + spacing). <paramref name="pushKind"/> = the kind of the last zone that pushed a vehicle back (0 = none).
+        /// </summary>
+        public readonly float PackedRoom(float rear, out byte pushKind)
+        {
+            pushKind = 0;
+            float x = rear;
+            int nz = m_ZoneS.Count;
+            for (int i = m_PackN - 1; i >= 0; i--)
+            {
+                float size = PackBlock(i);
+                float body = size - Spacing;
+                float front = x - Spacing;
+                if (body > 0f)
+                {
+                    for (int j = nz - 1; j >= 0; j--)
+                    {
+                        if (!(m_ZoneS[j] < front)) continue;            // the zone lies ahead of this body
+                        if (!(m_ZoneE[j] > front - body)) continue;     // the zone lies behind it
+                        front = m_ZoneS[j];                             // stands before the zone
+                        pushKind = (byte)m_ZoneK[j];
+                    }
+                }
+                x = front - (body > 0f ? body : 0f);
+            }
+            return x;
+        }
+
+        /// <summary>
+        /// JR-T-029: the least rear a blocker past the box must have for the packed queue to leave the car its room
+        /// (<see cref="Needed"/>): the vehicles read so far packed forward from the car's room, skipping the no-stop zones.
+        /// A vehicle further on (its rear at least here) cannot take the room. Without zones exactly Needed + occupied.
+        /// </summary>
+        public readonly float PackedReach()
+        {
+            float r = Needed;
+            int nz = m_ZoneS.Count;
+            for (int i = 0; i < m_PackN; i++)
+            {
+                float size = PackBlock(i);
+                float body = size - Spacing;
+                if (body > 0f)
+                {
+                    for (int j = 0; j < nz; j++)
+                    {
+                        if (!(m_ZoneE[j] > r)) continue;               // behind
+                        if (!(m_ZoneS[j] < r + body)) break;           // ahead (sorted by start)
+                        r = m_ZoneE[j];                                // stands past the zone
+                    }
+                }
+                r += size;
+            }
+            return r;
+        }
 
         /// <summary>JR-T-022c: two names (index / version as passed to Add) are the same vehicle; the unnamed 0 / 0 never is.</summary>
         private static bool SameVehicle(int index, int version, int otherIndex, int otherVersion)
@@ -761,6 +899,7 @@ namespace JunctionRules.Core
                 {
                     m_GroupFront = rear + len;
                     m_Occupied = m_GroupOccupied + (m_GroupFront - m_GroupRear) + Spacing;
+                    if (m_PackN > 0) SetPackBlock(m_PackN - 1, (m_GroupFront - m_GroupRear) + Spacing);   // JR-T-029: one packed body
                 }
                 ElementsJoined++;
                 if (large) Hide(index, version);
@@ -771,11 +910,14 @@ namespace JunctionRules.Core
             // JR-T-022d (owner ruling 1): behind a large vehicle the driver sees nothing: not read at all (neither for nor
             // against); JR-T-022c: never hidden by itself. A light's stop line (fixed) is always seen.
             if (!fixedObstacle && HiddenFor(index, version)) { HiddenSeen++; return; }
+            // JR-T-029 (owner rule 1): the driver sees at most LookPastSightMetres: a vehicle or stop line beyond it is not read
+            if (rear > SightLeft) { BeyondSightSkipped++; m_GroupOpen = false; return; }
             m_GroupOpen = !fixedObstacle;
             m_GroupIndex = index; m_GroupVersion = version;
             m_GroupRear = rear; m_GroupFront = rear + len; m_GroupOccupied = m_Occupied;
             float c = credit > 0f ? credit : 0f;
             float now = rear - m_Occupied;
+            float nowFree = now;
             // JR-T-027 (owner rule 20 Nov 2026, 1.2.0): an ordinary vehicle moving away carries on: it stops only at the back of
             // a visible standing queue / standing vehicle or a red stop line, which the scan reads itself (Add of a standing
             // vehicle or a light, in path order: their room counts every vehicle before them, queued at their back). So it is
@@ -783,18 +925,28 @@ namespace JunctionRules.Core
             // the view keeps the 1.1.0 judgement: X sees nothing beyond it, so it counts only on the travel the vehicle cannot
             // avoid (its guaranteed travel less LookPastLargeMargin). Standing / crawling vehicles and lights: where they are.
             bool carriesOn = !fixedObstacle && !large && speed >= LookPastMinSpeed;
+            // JR-T-029 (owner rule 3 + 4): a vehicle that stops the queue (standing / slow, a red stop line, a large vehicle):
+            // the vehicles before it pack nose to tail at its back, never in a no-stop zone (zebra, other box, junction)
+            byte push = 0;
+            if (!carriesOn && m_ZoneS.Count > 0)
+            {
+                float packed = PackedRoom(rear, out push);
+                if (packed < now) now = packed; else push = 0;
+            }
             float tr = travel > 0f ? travel : 0f;
             if (large && !fixedObstacle) tr = tr > LookPastLargeMargin ? tr - LookPastLargeMargin : 0f;   // JR-T-022d: careful with a vehicle that blocks the view
-            float pred = carriesOn ? float.MaxValue : speed >= LookPastMinSpeed && !fixedObstacle ? now + tr : now;
+            bool credited = speed >= LookPastMinSpeed && !fixedObstacle;
+            float pred = carriesOn ? float.MaxValue : credited ? now + tr : now;
             if (now < m_MinRoom) { m_MinRoom = now; m_MinIndex = index; m_MinVersion = version; }
             if (pred < m_MinPred) { m_MinPred = pred; m_MinPredIndex = index; m_MinPredVersion = version; }
             if (!(now >= Needed))
             {
-                // the room it needs behind this vehicle must end within sight (limited sight addendum). JR-T-027: behind a
-                // vehicle that carries on, X counts on it moving its whole length clear of X's room: the road up to its
-                // predicted front (Needed + everything before it + its own length + spacing) must be seen.
+                // JR-T-027: behind a vehicle that carries on, X counts on it moving its whole length clear of X's room (the
+                // road up to its predicted front: Needed + everything before it + its own length + spacing). JR-T-029 (owner
+                // rule 2): that road need not be seen: nothing standing or slow within sight = the way is unblocked (the
+                // 1.2.0 room_beyond_sight hold is gone). The end is kept only for the view a large vehicle ends (FinishLookPast).
                 float needEnd = carriesOn ? Needed + m_Occupied + len + Spacing : Needed + m_Occupied;
-                if (pred >= Needed && needEnd <= SightLeft)
+                if (pred >= Needed)
                 {
                     LookPastUsed = true;
                     if (needEnd > m_LookNeedEnd) m_LookNeedEnd = needEnd;
@@ -804,11 +956,12 @@ namespace JunctionRules.Core
                 {
                     Blocked = true; BlockerIndex = index; BlockerVersion = version;
                     if (now + c >= Needed) HeldForMovingQueue = true;
-                    // JR-T-027 (why slowed): the predicted room was enough, only the road to it is not seen
-                    if (pred >= Needed) Refusal = (byte)LookPastRefusal.BeyondSight;
+                    // JR-T-029 (why slowed): held only because the packed queue skipped a no-stop zone: say which kind
+                    if (push != 0 && (credited ? nowFree + tr : nowFree) >= Needed) Refusal = (byte)((byte)LookPastRefusal.QueuePushedByZebra + push - 1);
                 }
             }
             m_Occupied += len + Spacing;
+            PushPack(len + Spacing);   // JR-T-029: packed behind a blocker further on
             Obstacles++;
             if (large && !fixedObstacle && !m_Hidden)
             {
@@ -872,8 +1025,7 @@ namespace JunctionRules.Core
             if (m_LookSlow) { Blocked = true; Refusal = (byte)LookPastRefusal.SlowAhead; BlockerIndex = m_SlowIndex; BlockerVersion = m_SlowVersion; }
             // JR-T-022d: the room relied on ends beyond the large vehicle that ends the view: not seen, not clear
             else if (m_LookNeedEnd > m_ViewEnd) { Blocked = true; Refusal = (byte)LookPastRefusal.ViewEndsAtLarge; BlockerIndex = m_HiderIndex; BlockerVersion = m_HiderVersion; }
-            // the room relied on ends beyond what was seen (the radius, the path read; LimitSight): not clear
-            else if (m_LookNeedEnd > SightLeft) { Blocked = true; Refusal = (byte)LookPastRefusal.BeyondSight; BlockerIndex = m_MinIndex; BlockerVersion = m_MinVersion; }
+            // JR-T-029 (owner rule 2): the room relied on may end beyond the radius / the path read (1.2.0 held: room_beyond_sight)
         }
 
         /// <summary>
@@ -899,7 +1051,7 @@ namespace JunctionRules.Core
                 }
                 if (!sight.Seen(d)) { BuildingCut = true; Refusal = (byte)LookPastRefusal.Building; Blocked = true; BlockerIndex = i; BlockerVersion = v; return; }
             }
-            if (!sight.Seen(m_LookNeedEnd)) { BuildingCut = true; Refusal = (byte)LookPastRefusal.Building; Blocked = true; BlockerIndex = m_MinIndex; BlockerVersion = m_MinVersion; }
+            // JR-T-029 (owner rule 2): the end of the room relied on need not be seen (1.2.0 tested it here too)
         }
 
         /// <summary>JR-T-022d (tests): the credited vehicles kept as sight targets.</summary>
@@ -932,6 +1084,7 @@ namespace JunctionRules.Core
             if (Blocked) return;
             m_Occupied += (length > 0f ? length : 0f) + Spacing;
             m_Queued += (length > 0f ? length : 0f) + Spacing;
+            if (LookPastOn) PushPack((length > 0f ? length : 0f) + Spacing);   // JR-T-029: it packs behind a blocker too
             Obstacles++;
         }
 
@@ -954,13 +1107,9 @@ namespace JunctionRules.Core
                 if (m_MinPred < Needed) { Blocked = true; BlockerIndex = m_MinPredIndex; BlockerVersion = m_MinPredVersion; }
                 else if (m_MinRoom < Needed)
                 {
-                    // within sight (conservative: behind every vehicle read so far)
-                    if (Needed + m_Occupied <= SightLeft)
-                    {
-                        LookPastUsed = true;
-                        if (Needed + m_Occupied > m_LookNeedEnd) m_LookNeedEnd = Needed + m_Occupied;
-                    }
-                    else { Blocked = true; Refusal = (byte)LookPastRefusal.BeyondSight; BlockerIndex = m_MinIndex; BlockerVersion = m_MinVersion; }
+                    // JR-T-029 (owner rule 2): no sight test on the room's end (nothing slow within sight = unblocked)
+                    LookPastUsed = true;
+                    if (Needed + m_Occupied > m_LookNeedEnd) m_LookNeedEnd = Needed + m_Occupied;
                 }
                 return;
             }
@@ -1008,7 +1157,13 @@ namespace JunctionRules.Core
         /// past the box are judged by their position (Add) and never widen the reach.</summary>
         private float m_Queued;
 
-        public readonly bool Done(float pathRead) => Blocked || pathRead >= Needed + m_Occupied;
+        public readonly bool Done(float pathRead)
+        {
+            if (Blocked) return true;
+            if (!LookPastOn) return pathRead >= Needed + m_Occupied;
+            // JR-T-029: nothing beyond the sight is read; a blocker past the packed reach (no-stop zones skipped) leaves the room
+            return pathRead >= SightLeft || pathRead >= PackedReach();
+        }
 
         /// <summary>
         /// The verdict. When the car's known path ends before the scan is done (no more navigation lanes, a non-road

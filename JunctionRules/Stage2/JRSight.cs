@@ -31,8 +31,8 @@ namespace JunctionRules.Stage2
     /// </summary>
     public partial struct JRWholeJunction
     {
-        /// <summary>JR-T-022d: the most lane spans a look-past room scan reads (the box lane + MaxRoomLanes path lanes).</summary>
-        public const int MaxSightSpans = 1 + MaxRoomLanes;
+        /// <summary>JR-T-022d: the most lane spans a look-past room scan reads (the box lane + MaxLookLanes path lanes; JR-T-029, was MaxRoomLanes).</summary>
+        public const int MaxSightSpans = 1 + MaxLookLanes;
 
         /// <summary>
         /// JR-T-022d (block S2-26, only with the box rule): the navigation job's static object search tree, Transform and

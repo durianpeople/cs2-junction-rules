@@ -228,27 +228,25 @@ namespace JunctionRules.Tests
             // held 22, needless 19, misjudged 0; 878675 / 878858 / 878447 held, 878522 / 878444 not (878489: no poll in its
             // last-chance window in this log). Off (1.0.1): held 26, needless 23, misjudged 0.
             Check(off.Held == 26 && off.Needless == 23 && off.Misjudged == 0, "Fernbrook replay, off: the 1.0.1 numbers (26 held, 23 needless)");
-            Check(on.Needless <= 7 && on.Held <= 9 && on.Misjudged == 0,
-                $"JR-T-027 Fernbrook replay: needless holds 19 (1.1.0) -> {on.Needless}, held 22 -> {on.Held}, no car let go that would stand in the box ({on.Misjudged})");
+            // JR-T-027 (1.2.0, 50 m sight with the sight-end hold): held 9, needless 7, misjudged 0 (the needless ones were the
+            // sight limit: from the last-chance point it saw only ~9-10 m past the exit).
+            // JR-T-029 (1.3.0, 100 m, nothing slow within sight -> go, packing skips no-stop zones): measured 1 / 1 / 0.
+            Console.WriteLine($"  Fernbrook table (held / needless / stood in box): off {off.Held} / {off.Needless} / {off.Misjudged}; 1.2.0 9 / 7 / 0; 1.3.0 {on.Held} / {on.Needless} / {on.Misjudged}");
+            Check(on.Needless <= 1 && on.Held <= 1 && on.Misjudged == 0,
+                $"JR-T-029 Fernbrook replay: needless holds 7 (1.2.0) -> {on.Needless}, held 9 -> {on.Held}, no car let go that would stand in the box ({on.Misjudged})");
             Check(!on.HeldIds.Contains(878675) && !on.HeldIds.Contains(878522) && !on.HeldIds.Contains(878444),
                 "JR-T-027 Fernbrook: 878675 (held live under 1.1.0) now goes; 878522 / 878444 still go");
-            // the holds left are the sight rule (50 m from the driver: from its last-chance point ~31 m before the line at
-            // 19-20 m/s it sees only ~9-10 m past the exit, less than the room it would count on behind a car carrying on)
-            int sightHolds = 0, otherHolds = 0;
-            foreach (int id in on.NeedlessIds)
-            {
-                bool sightOnly = true;
+            // why the holds left are held: the refusal / blocker of each last-chance poll
+            foreach (int id in on.HeldIds)
                 for (int i = 0; i < frames.Count; i++)
                     foreach (FbVehicle x in frames[i].Vs)
                     {
                         if (x.Id != id) continue;
                         float d = FbStopLine - (x.S + 0.5f * x.Length), bd = FbBrakingDistance(x.Speed);
                         if (!(d > 0f) || bd > d || bd + x.Speed * FbPollSeconds < d) continue;
-                        if (!FbRoom(frames[i], x, true, out RoomScan sc) && sc.Refusal != (byte)LookPastRefusal.BeyondSight) sightOnly = false;
+                        bool room = FbRoom(frames[i], x, true, out RoomScan sc);
+                        Console.WriteLine($"    1.3.0 held {id} (needless {on.NeedlessIds.Contains(id)}): poll {i} room {room}, blocker {sc.BlockerIndex}, refusal {WhyRules.RefusalId((LookPastRefusal)sc.Refusal)}, skipped beyond sight {sc.BeyondSightSkipped}");
                     }
-                if (sightOnly) sightHolds++; else otherHolds++;
-            }
-            Console.WriteLine($"    look-past needless holds by the sight limit only: {sightHolds}, other: {otherHolds}");
         }
     }
 }

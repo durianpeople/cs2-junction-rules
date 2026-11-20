@@ -352,7 +352,10 @@ namespace JunctionRules.Tests
                 // JR-T-027: behind the car that carries on, the road up to its predicted front must be seen: 27.9 + 5.2 = 33.1 m
                 bool eFar = ERoom(36f, 16.5f, true), eNear = ERoom(40f, 16.5f, true), eOff = ERoom(40f, 16.5f, false);
                 Console.WriteLine($"  owner (e) sight {RoomScan.LookPastSightMetres} m: artic 20 m before the exit (sees 30 m past it, needs 33.1) room {eFar}; 16 m before (sees 34 m) room {eNear}; off {eOff}");
-                Check(!eFar && eNear && !eOff, "owner (e): when the room needed ends beyond the sight distance there is no look-past credit (free-now rule); within sight the same scene is let in");
+                // JR-T-029 (1.3.0, owner rule 2): nothing standing or slow within the 100 m sight = the way is unblocked: the room
+                // needed may run past the sight edge (1.2.0: 50 m, the far case held)
+                bool eFar50 = ERoom(-10f, 16.5f, true);   // 66 m before the exit: sees 34 m past it
+                Check(eFar && eNear && eFar50 && !eOff, "owner (e), 1.3.0: nothing slow within sight -> let in, also when the room it needs ends beyond the sight edge (1.2.0 held the far case); off holds");
             }
 
             BoxSightTests();
@@ -366,7 +369,7 @@ namespace JunctionRules.Tests
             b.FreeNow = true; b.LookPast = true;
             b.Add(2f, 4.5f, 6f, 7, 1, 8f, RoomScan.GuaranteedTravel(6f, 8f, 0.25f));   // guaranteed 2 m (1.1.0: 4 < 5.2, held)
             b.FinishLookPast();
-            Check(b.HasRoom && b.AdmittedByLookPast && b.LookNeedEnd == 5.2f + 5.5f, "JR-T-027: a car moving away with nothing seen to stop it carries on (no worst-case travel): room; the road to its predicted front must be seen");
+            Check(b.HasRoom && b.AdmittedByLookPast && b.LookNeedEnd == 5.2f + 5.5f, "JR-T-027: a car moving away with nothing seen to stop it carries on (no worst-case travel): room (JR-T-029: the road to its predicted front need not be seen)");
             RoomScan c = RoomScan.Begin(4.2f, 1f);
             c.FreeNow = true; c.LookPast = true;
             c.Add(2f, 4.5f, 10f, 7, 1, 8f, RoomScan.GuaranteedTravel(10f, 8f, 0.25f));   // 6 m: 8 >= 5.2
@@ -413,7 +416,7 @@ namespace JunctionRules.Tests
             Check(zebra.HasRoom && !zebra.LookPastOn, "look-past acts only in box room tests (free now); the zebra rule keeps its credit");
 
             // ---- limited sight (owner addendum): only what is within LookPastSightMetres of the front bumper counts
-            Check(RoomScan.LookPastSightMetres == 50f && RoomScan.SightPast(20f) == 30f && RoomScan.SightPast(-3f) == 50f, "sight 50 m from the front bumper; sight past the box = 50 - front to the box's far end");
+            Check(RoomScan.LookPastSightMetres == 100f && RoomScan.SightPast(20f) == 80f && RoomScan.SightPast(-3f) == 100f, "JR-T-029: sight 100 m from the front bumper; sight past the box = 100 - front to the box's far end");
             RoomScan near = RoomScan.Begin(16.5f, 1f);
             near.FreeNow = true; near.LookPast = true; near.SightLeft = RoomScan.SightPast(20f);   // 30 m seen past the box
             near.AddQueued(4.2f, 8f, 3, 1);                                                     // occupied 5.2
@@ -421,11 +424,11 @@ namespace JunctionRules.Tests
             near.FinishLookPast();
             Check(near.HasRoom && near.AdmittedByLookPast, "sight: the room the artic needs ends within sight (22.7 of 30 m): look-past");
             RoomScan far = RoomScan.Begin(16.5f, 1f);
-            far.FreeNow = true; far.LookPast = true; far.SightLeft = RoomScan.SightPast(40f);    // only 10 m seen past the box
+            far.FreeNow = true; far.LookPast = true; far.SightLeft = RoomScan.SightPast(90f);    // only 10 m seen past the box
             far.AddQueued(4.2f, 8f, 3, 1);
             far.Add(10f, 4.2f, 30f, 7, 1, 8f, 20f);
             far.FinishLookPast();
-            Check(!far.HasRoom && far.BlockerIndex == 7, "sight: the same scene seen from 40 m before the box's end: the room is not confirmed within sight: today's rule (held)");
+            Check(far.HasRoom && far.AdmittedByLookPast, "JR-T-029 sight: the same scene seen from 90 m before the box's end (10 m past it seen): nothing slow within sight -> let in (1.2.0 held)");
             RoomScan beyond = RoomScan.Begin(4.2f, 1f);
             beyond.FreeNow = true; beyond.LookPast = true; beyond.SightLeft = 10f;
             beyond.Add(40f, 4.2f, 0f, 7, 1, 0f, 0f);   // a standing car far beyond sight: room free now anyway
@@ -436,7 +439,7 @@ namespace JunctionRules.Tests
             extSight.Add(3f, 4.5f, 10f, 7, 1, 8f, 4f);   // used (5.2 <= 8)
             extSight.ExtendPast(1f);                       // needed 6.2 <= pred 7, but... 6.2 + 5.5 > 8: beyond sight
             extSight.FinishLookPast();
-            Check(!extSight.HasRoom, "sight: a further box that pushes the room needed beyond sight falls back to today's rule");
+            Check(extSight.HasRoom && extSight.AdmittedByLookPast, "JR-T-029 sight: a further box that pushes the room needed beyond sight: nothing slow seen -> still let in (1.2.0 held)");
 
             // ---- OFF = 1.0.1 bit for bit: random differential test of the RoomScan calls
             var rr = new Random(2211);
@@ -492,7 +495,11 @@ namespace JunctionRules.Tests
             // closes after they could no longer stop: the owner-accepted misjudgement, here at its worst (1.1.0: 0). Measured,
             // guarded against growth; with the stop point seen (as the job sees a light) see LookPastPredictTests.
             // JR-T-028: LookPastMinSpeed 5 m/s (was 3: 633): measured 55, small headroom.
-            Check(lookNose == 0 && lookViol <= 60, $"look-past: no nose in a box; standing in a box with an unseen dead-stop exit stays at the measured 1.2.0 level ({lookViol} <= 60)");
+            // JR-T-029 (1.3.0, owner rule 20 Nov 2026): nothing slow within 100 m -> go, vehicles beyond sight are not read (the
+            // 1.2.0 sight-end hold is gone). Here the exit closes dead and unseen: WORSE than 1.2.0, measured 200 standing and
+            // 3 nose (1.2.0: 55 / 0). Attribution: keeping the 1.2.0 sight-end hold gives 52 / 0; without the no-stop-zone
+            // packing (rule 4) 723 / 8. Owner-accepted misjudgement class; reported in the JR-T-029 digest; guarded at the measure.
+            Check(lookNose <= 3 && lookViol <= 205, $"look-past: nose in a box and standing in a box with an unseen dead-stop exit stay at the measured 1.3.0 level (nose {lookNose} <= 3, {lookViol} <= 205; 1.2.0: 0 / 55)");
             Check(lookDrained, "look-past: no deadlock on the scenario set (everything drains)");
 
             // ---- the pause metric, before / after, and stood-in-box, over the look-past scenes (20 seeds each)
@@ -522,7 +529,8 @@ namespace JunctionRules.Tests
             // game a queue stops at what the scan reads (a standing vehicle, a red light): LookPastPredictTests runs the same
             // scenes with the stop point seen. Here: measured, guarded against growth.
             // JR-T-028 (LookPastMinSpeed 5 m/s): measured 1086 / 610, pauses 11893, needless 1811; small headroom.
-            Check(stoodLook <= 1140 && stoodLookDead <= 640, $"look-past, unseen stop point (worst case): standing by vehicles it let in stays at the measured 1.2.0 level ({stoodLook} <= 1140, dead stop {stoodLookDead} <= 640)");
+            // JR-T-029 (1.3.0): measured 986 / 706 (1.2.0: 1086 / 610): the dead-stop share grows (sight-end hold removed), physical braking falls
+            Check(stoodLook <= 1140 && stoodLookDead <= 740, $"look-past, unseen stop point (worst case): standing by vehicles it let in stays at the measured 1.3.0 level ({stoodLook} <= 1140, dead stop {stoodLookDead} <= 740; 1.2.0: 1086 / 610)");
             Check(totPausesOn <= 12150 && needOn <= 1860, $"look-past, unseen stop point: pauses and needless pauses stay at the measured 1.2.0 level ({totPausesOn} <= 12150, {needOn} <= 1860)");
             Check(allDrained, "look-past scenes drain (no deadlock), on and off");
 
@@ -546,8 +554,10 @@ namespace JunctionRules.Tests
                 "job: sight radius per path lane from the driver's position; large = the prefab's game SizeClass, for vehicles past and queued in the box");
             int guarded = 0, at = 0;
             while ((at = wj.IndexOf("if (scan.LookPast", at, StringComparison.Ordinal)) >= 0) { guarded++; at++; }
-            Check(guarded == 6 && wj.Contains("if (scan.LookPast && !m_SightEye && m_NodeLaneData.HasComponent(nav.m_Lane)) scan.LimitSight(read);"),
-                $"job: six guarded look-past branches (sight, finish, queued speed, past speed, probe, the next junction ends the look-past only without the driver's position) ({guarded})");
+            Check(guarded == 7 && wj.Contains("if (scan.LookPastOn) scan.NoStopOnLane(sameBands[i].x, sameBands[i].y, fromDriving, 1f, length, 0f, RoomScan.ZoneBox);")
+                && wj.Contains("int maxLanes = scan.LookPastOn ? MaxLookLanes : MaxRoomLanes;")
+                && wj.Contains("if (!inBox && scan.LookPastOn) NoStopZones(") && wj.Contains("if (scan.LookPast && !m_SightEye && m_NodeLaneData.HasComponent(nav.m_Lane)) scan.LimitSight(read);"),
+                $"job: seven guarded look-past branches (sight, finish, queued speed, past speed, probe, the next junction ends the look-past only without the driver's position, JR-T-029 boxes on the same lane) + no-stop zones and the longer path read only with the look-past ({guarded})");
             int sightCallers = 0; at = 0;
             string callers = yb + eg;
             while ((at = callers.IndexOf("freeNow: true", at, StringComparison.Ordinal)) >= 0) { sightCallers++; at++; }
@@ -711,12 +721,12 @@ namespace JunctionRules.Tests
             Check(hl.HasRoom, "a red light beyond, room before it: still room");
 
             // ---- the radius on a turn: eye at (0, 0); the box's far end 30 m ahead at (0, 30); the path turns 90 degrees into a
-            // road along +x. Straight-line 50 m reaches x = 40 there (path 40 m past the box end); the old 50 m along the path only 20 m.
+            // road along +x. JR-T-029: straight-line 100 m reaches x = 95.4 there (path 95.4 m past the box end); 100 m along the path only 70 m.
             // straight Beziers: control points at thirds
             bool exitA = SightLine.FirstExit(0f, 0f, 0f, 10f, 0f, 20f, 0f, 30f, 0f, 0f, RoomScan.LookPastSightMetres, 0f, 1f, out float tA);
             bool exitB = SightLine.FirstExit(0f, 30f, 33.333f, 30f, 66.667f, 30f, 100f, 30f, 0f, 0f, RoomScan.LookPastSightMetres, 0f, 1f, out float tB);
             float cut = tB * 100f;
-            Check(!exitA && exitB && Math.Abs(cut - 40f) < 0.05f, $"radius on a turn: the road turned into is seen up to 40 m past the corner (straight line 50 m), not 20 m along the path ({cut:0.00})");
+            Check(!exitA && exitB && Math.Abs(cut - 95.394f) < 0.05f, $"radius on a turn: the road turned into is seen up to 95.4 m past the corner (straight line 100 m), not 70 m along the path ({cut:0.00})");
             bool exitC = SightLine.FirstExit(0f, 30f, 33.333f, 30f, 66.667f, 30f, 100f, 30f, 0f, 0f, RoomScan.LookPastSightMetres, 1f, 0f, out float tC);
             Check(exitC && tC == 1f, "radius: a span starting outside the radius is cut at its start");
             // a curved lane: quarter circle of radius 30 around (30, 30) from (0, 30) to (30, 60) (k = 0.5523); the cut lies where |p| = 50
@@ -725,26 +735,25 @@ namespace JunctionRules.Tests
             Check(exitD && Math.Abs(Math.Sqrt(SightLine.Dist2(0f, 30f, 0f, 30f + kk, 30f - kk, 60f, 30f, 60f, 0f, 0f, tD)) - 50.0) < 0.05,
                 "radius on a curved lane: the cut lies on the 50 m circle");
             Check(!SightLine.FirstExit(0f, 0f, 1f, 1f, 2f, 2f, 3f, 3f, 0f, 0f, 50f, 0f, 1f, out _), "radius: a lane wholly inside (control points inside) is seen whole");
-            // the scan: an artic X (17.5 m needed) behind one car queued in the box, a car past the box rear 20 m round the corner moving
-            // away (pred 30): the room it needs ends 22.7 m past the box end
-            RoomScan Turn(float sightCut)
+            // the scan (JR-T-029): an artic X (17.5 m needed) behind one car queued in the box; past the box 14 cars moving away
+            // (occupied 77 m) and a STANDING car whose rear is 80 m round the corner: packed at its back, X's room is 80 - 82.8 < 17.5
+            RoomScan Turn(float sightCut, float standingRear)
             {
                 RoomScan r = RoomScan.Begin(16.5f, 1f);
                 r.FreeNow = true; r.LookPast = true; r.SightLeft = float.MaxValue;
                 r.LimitSight(sightCut);
                 r.AddQueued(4.2f, 8f, 3, 1);
-                r.Add(20f, 4.2f, 30f, 7, 1, 8f, 10f);
+                for (int i = 0; i < 14; i++) r.Add(8f + 5.3f * i, 4.2f, 30f, 20 + i, 1, 8f, 10f);
+                r.Add(standingRear, 4.2f, 0f, 7, 1, 0f, 0f);
                 r.FinishLookPast();
                 return r;
             }
-            Check(Turn(cut).HasRoom && Turn(cut).AdmittedByLookPast && !Turn(RoomScan.SightPast(30f)).HasRoom,
-                "radius on a turn: the car round the corner within 50 m straight line is seen (look-past); the old along-path sight (20 m) did not reach it");
-            RoomScan far = RoomScan.Begin(16.5f, 1f);
-            far.FreeNow = true; far.LookPast = true; far.SightLeft = float.MaxValue; far.LimitSight(cut);
-            for (int i = 0; i < 5; i++) far.AddQueued(4.2f, 8f, 10 + i, 1);   // occupied 26
-            far.Add(30f, 4.2f, 30f, 7, 1, 8f, 20f);                          // pred 24 >= 17.5, but the room ends 43.5 m past the box end > 40
-            far.FinishLookPast();
-            Check(!far.HasRoom, "radius on a turn: room that ends beyond 50 m straight line (43.5 m round the corner > 40) is not seen: free-now rule");
+            RoomScan seen = Turn(cut, 80f), alongPath = Turn(RoomScan.SightPast(30f), 80f);
+            Check(!seen.HasRoom && seen.BlockerIndex == 7 && alongPath.HasRoom && alongPath.BeyondSightSkipped == 3,
+                "radius on a turn: the standing car 80 m round the corner is within 100 m straight line: seen, the packed queue holds X; 100 m along the path (70 m past the box) would not see it");
+            RoomScan far = Turn(cut, 96f);
+            Check(far.HasRoom && far.AdmittedByLookPast && far.BeyondSightSkipped == 1,
+                "radius on a turn: a standing car beyond 100 m straight line (96 m round the corner > 95.4) is not seen: nothing slow within sight -> X goes");
 
             BoxArticTests();
         }

@@ -101,12 +101,18 @@ namespace JunctionRules.Core
         SlowAhead = 1,
         /// <summary>The room it needs ends beyond a large vehicle that ends the view.</summary>
         ViewEndsAtLarge = 2,
-        /// <summary>The room it needs ends beyond what the driver sees (radius / path read).</summary>
+        /// <summary>The room it needs ends beyond what the driver sees (radius / path read). 1.2.0 only: JR-T-029 (1.3.0) no longer sets it.</summary>
         BeyondSight = 3,
         /// <summary>A building blocks the straight line of sight to a credited vehicle / the end of the room.</summary>
         Building = 4,
         /// <summary>A large vehicle queued ahead switched the look-past off for this decision (free-now verdict).</summary>
         LargeQueuedAhead = 5,
+        /// <summary>JR-T-029: the vehicles ahead packed behind the standing one / red line had to skip a zebra: the car's room is gone.</summary>
+        QueuePushedByZebra = 6,
+        /// <summary>JR-T-029: as above, a further yellow box (junction, exit / entrance band) pushed the packed queue back.</summary>
+        QueuePushedByBox = 7,
+        /// <summary>JR-T-029: as above, another junction's interior pushed the packed queue back.</summary>
+        QueuePushedByJunction = 8,
     }
 
     public static class WhyRules
@@ -223,6 +229,9 @@ namespace JunctionRules.Core
                 case LookPastRefusal.BeyondSight: return "room_beyond_sight";
                 case LookPastRefusal.Building: return "building_blocks_sight";
                 case LookPastRefusal.LargeQueuedAhead: return "large_vehicle_queued_ahead";
+                case LookPastRefusal.QueuePushedByZebra: return "queue_pushed_back_by_zebra";
+                case LookPastRefusal.QueuePushedByBox: return "queue_pushed_back_by_box";
+                case LookPastRefusal.QueuePushedByJunction: return "queue_pushed_back_by_junction";
                 default: return "none";
             }
         }

@@ -200,10 +200,10 @@ namespace JunctionRules.Tests
             RoomScan outside = TurnScan();
             PolySight outsideSight = Path(new[] { -14f, 51f, 0f, 1f, -6f, 6f, -9f, 9f, 70f, 46f, 0f, 1f, -10f, 10f, -4f, 4f });
             outside.FinishSight(ref outsideSight);
-            Check(open.HasRoom && open.AdmittedByLookPast && !open.BuildingCut && openSight.Queries == 2,
-                "ruling 2: an open corner: the credited car and the end of the room are seen in a straight line -> X goes (2 sight queries)");
-            Check(!corner.HasRoom && corner.BuildingCut && corner.BlockerIndex == 7,
-                "ruling 2: a corner building on the turn hides the end of the room round the corner -> no look-past credit, X held as by the free-now rule");
+            Check(open.HasRoom && open.AdmittedByLookPast && !open.BuildingCut && openSight.Queries == 1,
+                "ruling 2: an open corner: the credited car is seen in a straight line -> X goes (1 sight query; JR-T-029: the end of the room is no longer a target)");
+            Check(corner.HasRoom && corner.AdmittedByLookPast && !corner.BuildingCut,
+                "ruling 2 (JR-T-029): a corner building hiding only the empty road round the corner no longer holds X: nothing slow is seen, standing cars behind buildings are still read");
             Check(outside.HasRoom && !outside.BuildingCut, "ruling 2: buildings off the line (outside the corner, further down the road) do not block");
             // a building hiding the credited car itself (it stands between the eye and the car, beside the path)
             RoomScan hidCar = TurnScan();
@@ -224,7 +224,7 @@ namespace JunctionRules.Tests
             Check(freeNow.HasRoom && fq.Queries == 0 && oq.Queries == 0, "ruling 2: no building query unless the look-past is about to give the room (free-now room, setting off: none)");
             // the path read ends before a target: not seen
             RoomScan shortPath = TurnScan();
-            PolySight sp = new PolySight { Ex = 0f, Ez = 0f, Px = new[] { 0f, 0f, 10f }, Pz = new[] { 30f, 40f, 40f } };   // 20 m read
+            PolySight sp = new PolySight { Ex = 0f, Ez = 0f, Px = new[] { 0f, 0f }, Pz = new[] { 30f, 35f } };   // 5 m read, the car is 12 m in
             shortPath.FinishSight(ref sp);
             Check(!shortPath.HasRoom, "ruling 2: a target past the road read is not seen");
             // F2: the driver stands in a lot box (leaving its building: a lot x -10..10, z -12..2 around the eye): the look-past
@@ -233,16 +233,16 @@ namespace JunctionRules.Tests
             PolySight inLotSight = Path(new[] { 0f, -5f, 0f, 1f, -10f, 10f, -7f, 7f });
             inLot.FinishSight(ref inLotSight);
             RoomScan inLotCorner = TurnScan();
-            PolySight inLotCornerSight = Path(new[] { 0f, -5f, 0f, 1f, -10f, 10f, -7f, 7f, 9f, 30f, 0f, 1f, -5f, 5f, -5f, 5f });
+            PolySight inLotCornerSight = Path(new[] { 0f, -5f, 0f, 1f, -10f, 10f, -7f, 7f, 1.9f, 38f, 0f, 1f, -0.3f, 0.3f, -0.5f, 0.5f });
             inLotCorner.FinishSight(ref inLotCornerSight);
             RoomScan nextToLot = TurnScan();
             PolySight nextToLotSight = Path(new[] { 0f, -5f, 0f, 1f, -10f, 10f, -7f, 7f, 0f, 20f, 0f, 1f, -2f, 2f, -1f, 1f });
             nextToLot.FinishSight(ref nextToLotSight);
             // without the rule the same lot would withdraw every credit (the eye is inside it)
             bool lotWouldBlock = SightLine.SegmentHitsBox(0f, 0f, 2f, 40f, 0f, -5f, 0f, 1f, -10f, 10f, -7f, 7f);
-            Check(lotWouldBlock && inLot.HasRoom && inLot.AdmittedByLookPast && !inLot.BuildingCut && inLotSight.Queries == 2
+            Check(lotWouldBlock && inLot.HasRoom && inLot.AdmittedByLookPast && !inLot.BuildingCut && inLotSight.Queries == 1
                 && !inLotCorner.HasRoom && inLotCorner.BuildingCut && !nextToLot.HasRoom && nextToLot.BuildingCut,
-                "F2: a car standing in a lot box (building exit, car park) still looks past: its own lot does not block, a corner building or another building on the line still does");
+                "F2: a car standing in a lot box (building exit, car park) still looks past: its own lot does not block, a kiosk or another building on the line to the credited car still does");
 
             // ======== the job wiring (source)
             string root = RepoRoot();
