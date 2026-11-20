@@ -556,7 +556,7 @@ namespace JunctionRules.Tests
             string wj = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Stage2", "JRWholeJunction.cs"));
             string it = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Vanilla", "JRCarLaneSpeedIterator.cs"));
             string nav = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Vanilla", "JRCarNavigationSystem.cs"));
-            Check(wj.Contains("if (freeNow && !inBox) FurtherBoxes(ref scan, nav, navInverse, navCurve, read, ref carLanes, ref curves);")
+            Check(wj.Contains("if (freeNow && !inBox && m_BoxLookups) FurtherBoxes(ref scan, nav, navInverse, navCurve, read, ref carLanes, ref curves);")
                 && wj.Contains("BoxDriving.LightStopsInWindow((int)sig.m_Signal)") && wj.Contains("scan.ExtendPast(read + span);") && wj.Contains("scan.ExtendPast(pastEnd);"),
                 "job: box room windows extend past a further box / boxed junction and stop at a red / amber light (later path lanes)");
             Check(wj.Contains("if (freeNow && m_BoxEntrances && m_BoxEdges != null && m_EdgeLaneData.HasComponent(lane)") && wj.Contains("BoxDriving.BandInWindow(sameBands[i].x, sameBands[i].y, fromDriving, 1f, length, 0f, scan.Reach, out float pastEnd)"),

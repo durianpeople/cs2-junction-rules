@@ -171,6 +171,27 @@ namespace JunctionRules.Stage2
         /// <summary>0.4.1 (JR-T-009-r, probe): this car-step the room scan read a LaneObject buffer not in curve order.</summary>
         private bool m_ZebraUnsortedSeen;
 
+        // ---- JR-T-033 (1.4.0): wait for a zebra right before the zebra (Core/ZebraDriveUp.cs; methods in Stage2/JRZebraDriveUp.cs) ----
+        /// <summary>A drive-up is on for this lane: people on zebra m_DriveUpStart of section m_DriveUpSection hold the car right before it.</summary>
+        private bool m_DriveUp;
+        private int m_DriveUpSection;
+        private float m_DriveUpStart;
+        /// <summary>The car's arrival time at the target zebra (s).</summary>
+        private float m_DriveUpDeltaZebra;
+        /// <summary>The people's estimated wait plus the clear time (s) added to the gap window of the section's points.</summary>
+        private float m_DriveUpWait, m_DriveUpClear;
+        /// <summary>Why people on a merged zebra hold the car at its spot (ZebraDriveUp.Reason; None = no such hold).</summary>
+        private byte m_DriveUpReason;
+        /// <summary>The section being crossed (front past its spot): its first zebra still ahead that the car can stop before (2 = none).</summary>
+        private int m_CrossSection;
+        private float m_CrossZebra;
+        /// <summary>Bit i: m_ZebraStarts[i] lies after m_CrossZebra in the crossing section and the car would not fit clear of the zebras before it.</summary>
+        private int m_CrossNoFit;
+        /// <summary>The overlap being checked is a vehicle point of the drive-up section: its gap is judged over the drive-up window.</summary>
+        public bool m_OvDriveUp;
+        /// <summary>The overlap being checked is a zebra whose people hold the car right before the target zebra (drive-up).</summary>
+        private bool m_OvDriveUpZebra;
+
         // ---- 0.4.2 (JR-T-010): cars obey yellow boxes (Core/BoxDriving.cs; methods in Stage2/JRYellowBox.cs) ----
         /// <summary>Setting "Cars obey yellow boxes" (Stage2Mode.BoxObey, stripped from m_Mode in Create).</summary>
         public bool m_BoxRule;
@@ -629,6 +650,8 @@ namespace JunctionRules.Stage2
             m_OvDelta = 0f;
             m_OvDiscountReservation = false;
             m_OvZebra = false;
+            m_OvDriveUp = false;   // JR-T-033
+            m_OvDriveUpZebra = false;
             if ((m_Mode == 0 && !m_ZebraActive) || !m_LaneActive || !yieldChecked || !WholePathRule.AtOrAfterSpot(start, m_Spot, m_Inverse))
             {
                 m_OvPhase = PointPhase.Stock;
@@ -666,6 +689,12 @@ namespace JunctionRules.Stage2
             {
                 m_OvDelta = Delta(u);
                 if (m_AtSpot && m_OvPhase == PointPhase.Deciding) Sample(u, m_OvDelta);
+                // JR-T-033 (safeguard): a drive-up pending: the section's vehicle points are judged over the time the car stands there
+                if (m_DriveUp && !isCrossing && m_OvPhase == PointPhase.Deciding && m_Stretch.Spots.StretchOf(u) == m_DriveUpSection)
+                {
+                    m_OvDelta = ZebraDriveUp.Window(m_OvDelta, m_DriveUpDeltaZebra, m_DriveUpWait, m_DriveUpClear);
+                    m_OvDriveUp = true;
+                }
             }
             return true;
         }
@@ -735,10 +764,11 @@ namespace JunctionRules.Stage2
             float speedLimit, float safeTimeStep, Bounds1 speedRange, float currentMax, Entity self, ref BufferLookup<LaneObject> laneObjects,
             ref ComponentLookup<Curve> curves, ref ComponentLookup<Moving> moving, ref ComponentLookup<Controller> controllers,
             ref ComponentLookup<PrefabRef> prefabRefs, ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars,
-            ref BufferLookup<LaneOverlap> overlapData)
+            ref BufferLookup<LaneOverlap> overlapData, ref ComponentLookup<Game.Creatures.Creature> creatures)
         {
             BeginHoldBlocker();   // 0.4.9 (G17)
             m_ZebraActive = false;
+            DriveUpReset();   // JR-T-033
             if (m_Mode == 0)
             {
                 m_LaneActive = false;
@@ -806,6 +836,16 @@ namespace JunctionRules.Stage2
             m_OwnTurnRead = false;
             if (RuleOn) SetMotion(lane, ref carLanes, ref laneConditions, margin, car, currentSpeed, timeStep, speedLimit);
             if (Counting && layout.Merged > 0 && m_Stretch.Next < m_Stretch.Spots.Count) m_ZebraMergedSeen = true;
+            // JR-T-033 (1.4.0): people on a merged zebra: drive up and wait right before it (or say why not); after a drive-up the
+            // room past is asked again before the car moves onto the zebra. Its hold joins the soft hold (the smaller one binds).
+            float upHold = DriveUpZebras(lane, overlaps, ref elements, layout, length, margin, inverse, car, currentSpeed, safeTimeStep, speedRange,
+                currentMax, self, ref creatures, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries,
+                ref prefabCars, ref overlapData, ref pedestrianLanes);
+            if (upHold < softHold)
+            {
+                softHold = upHold;
+                softBlocker = m_LastBlocker;
+            }
             int k = ZebraSections.RoomSection(layout, m_Stretch);
             if (k < 0) return SoftOnly(softHold, softBlocker);
             float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, m_Stretch.Wait(m_Stretch.Spots[k]), safeTimeStep), speedRange);
@@ -982,7 +1022,7 @@ namespace JunctionRules.Stage2
                         && Counting) m_ZebraFurtherSeen = true;
                     // 0.4.10 (sweep, UK yellow box: no part of a waiting vehicle in any box): where the car would wait after
                     // this box must not be inside another box or before a red light
-                    if (freeNow && !inBox) FurtherBoxes(ref scan, nav, navInverse, navCurve, read, ref carLanes, ref curves);
+                    if (freeNow && !inBox && m_BoxLookups) FurtherBoxes(ref scan, nav, navInverse, navCurve, read, ref carLanes, ref curves);
                     if (scan.Blocked) break;
                     if (hasEye && !inBox)
                     {
@@ -1542,7 +1582,7 @@ namespace JunctionRules.Stage2
         /// </summary>
         public void AfterPedestrian(float before, float after)
         {
-            if (!Counting || !m_OvZebra || m_OvPhase != PointPhase.Deciding || !(after < before)) return;
+            if (!Counting || !m_OvZebra || m_OvDriveUpZebra || m_OvPhase != PointPhase.Deciding || !(after < before)) return;
             Min(ref m_HasZebraPeople, ref m_ZebraPeopleSpeed, after);
         }
 
@@ -1597,6 +1637,9 @@ namespace JunctionRules.Stage2
         {
             if (!inScope) return stockDistance;
             float today = WholePathRule.Distance(StretchState.ForPedestrian(m_OvPhase), stockDistance, m_OvStopWait);
+            // JR-T-033 (1.4.0): people on a merged zebra hold the car right before it (drive-up), or, crossing its section, before
+            // the first zebra still ahead when it would not fit clear of it (Stage2/JRZebraDriveUp.cs)
+            if (m_OvZebra && (m_DriveUp || m_CrossNoFit != 0)) today = DriveUpPedestrianDistance(today);
             // JR-T-024 (look-past setting only): people walking on the box's exit zebra, room free now: the game's own stop just
             // before that zebra instead of the section's spot (the box line)
             if (m_ZebraGoLane == Entity.Null) return today;

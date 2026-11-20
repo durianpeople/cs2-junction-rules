@@ -1268,7 +1268,7 @@ public struct JRCarLaneSpeedIterator
 		// JR-STAGE2 BEGIN S2-25: 0.4.1 cars never stop on a zebra: the lane's spots become the zebra sections; hold before the next zebra section while there is no room past it
 		if (m_JR.m_ZebraRule)
 		{
-			float jrZebraHold = m_JR.BeginZebras(lane, bufferData, ref m_PedestrianLaneData, ref m_LaneSignalData, ref m_CarLaneData, ref m_LaneConditionData, curveOffset.x, length, origDistance, num, inverse, m_PrefabCar, m_CurrentSpeed, m_TimeStep, speedLimit, m_SafeTimeStep, m_SpeedRange, m_MaxSpeed, m_Entity, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabObjectGeometryData, ref m_PrefabCarData, ref m_LaneOverlapData);
+			float jrZebraHold = m_JR.BeginZebras(lane, bufferData, ref m_PedestrianLaneData, ref m_LaneSignalData, ref m_CarLaneData, ref m_LaneConditionData, curveOffset.x, length, origDistance, num, inverse, m_PrefabCar, m_CurrentSpeed, m_TimeStep, speedLimit, m_SafeTimeStep, m_SpeedRange, m_MaxSpeed, m_Entity, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabObjectGeometryData, ref m_PrefabCarData, ref m_LaneOverlapData, ref m_CreatureData);
 			if (jrZebraHold < m_MaxSpeed)
 			{
 				m_MaxSpeed = jrZebraHold;
@@ -1412,7 +1412,7 @@ public struct JRCarLaneSpeedIterator
 							m_MaxSpeed = jrFeedSpeed;
 							m_Blocker = Entity.Null;
 							m_BlockerType = blockerType;
-							if (m_WhyOn) m_Why.Bind(m_JR.WhySafetyPhase ? JunctionRules.Core.WhyRule.JrSafetyRecheck : JunctionRules.Core.WhyRule.JrWholeJunctionGap, m_MaxSpeed, 0, JunctionRules.Stage2.JRWhy.Key(m_Lane), num5, num6);   // JR-T-025: arrival-time projection (extra = own priority)
+							if (m_WhyOn) { JunctionRules.Core.WhyRule jrWhyGap = m_JR.WhySafetyPhase ? JunctionRules.Core.WhyRule.JrSafetyRecheck : JunctionRules.Core.WhyRule.JrWholeJunctionGap; m_Why.Bind(m_JR.WhyGap(jrWhyGap), m_MaxSpeed, 0, JunctionRules.Stage2.JRWhy.Key(m_Lane), num5, m_JR.WhyGapExtra(jrWhyGap, num6)); }   // JR-T-025: arrival-time projection (extra = own priority); JR-T-033 drive-up window
 						}
 					}
 					// JR-STAGE2 END
@@ -1427,7 +1427,7 @@ public struct JRCarLaneSpeedIterator
 							// JR-STAGE2 BEGIN S2-06: blocking reservation: stop at the spot / safety stop / no give-way while crossing
 							float jrWhyStock = maxBrakingSpeed;
 							maxBrakingSpeed = m_JR.Yield(jrInScope, maxBrakingSpeed, jrStart, m_PrefabCar, m_SafeTimeStep, m_SpeedRange);
-							if (m_WhyOn && MathUtils.Clamp(maxBrakingSpeed, m_SpeedRange) < m_MaxSpeed) m_Why.Bind(JunctionRules.Core.WhyRules.GiveWay(maxBrakingSpeed != jrWhyStock, m_JR.WhySafetyPhase, JunctionRules.Core.WhyRule.StockGiveWay), MathUtils.Clamp(maxBrakingSpeed, m_SpeedRange), 0, JunctionRules.Stage2.JRWhy.Key(m_Lane), maxBrakingSpeed != jrWhyStock ? m_JR.m_OvStopWait : num5, priority2 - num6);   // JR-T-025 (the stock lines below set this value)
+							if (m_WhyOn && MathUtils.Clamp(maxBrakingSpeed, m_SpeedRange) < m_MaxSpeed) { JunctionRules.Core.WhyRule jrWhyGw = JunctionRules.Core.WhyRules.GiveWay(maxBrakingSpeed != jrWhyStock, m_JR.WhySafetyPhase, JunctionRules.Core.WhyRule.StockGiveWay); m_Why.Bind(m_JR.WhyGap(jrWhyGw), MathUtils.Clamp(maxBrakingSpeed, m_SpeedRange), 0, JunctionRules.Stage2.JRWhy.Key(m_Lane), maxBrakingSpeed != jrWhyStock ? m_JR.m_OvStopWait : num5, m_JR.WhyGapExtra(jrWhyGw, priority2 - num6)); }   // JR-T-025 (the stock lines below set this value); JR-T-033 drive-up window
 							// JR-STAGE2 END
 							maxBrakingSpeed = MathUtils.Clamp(maxBrakingSpeed, m_SpeedRange);
 							if (maxBrakingSpeed < m_MaxSpeed)
@@ -1520,7 +1520,7 @@ public struct JRCarLaneSpeedIterator
 					// JR-STAGE2 BEGIN S2-08b: 0.3.2: full stop instead of the game's creep (5 s push timer, standing person); restore the game's distance
 					float jrWhyPed = m_JR.m_NoPushPeople ? math.min(m_MaxSpeed, jrPedMax) : m_MaxSpeed;   // JR-T-025: the game's own result
 					if (m_JR.m_NoPushPeople) m_JR.NoPushPedestrian(ref m_MaxSpeed, ref m_Blocker, ref m_BlockerType, jrPedMax, jrPedBlocker, jrPedType, laneObject.m_LaneObject, num5, m_PushBlockers, ref m_MovingData, m_PrefabCar, m_SafeTimeStep, m_SpeedRange, laneObject.m_CurvePosition.x, m_CurveOffset, m_Curve.m_Length);
-					if (m_WhyOn && m_MaxSpeed < jrPedMax) m_Why.Bind(m_MaxSpeed < jrWhyPed ? JunctionRules.Core.WhyRule.JrNeverPushPeople : num5 != jrPedNum5 ? JunctionRules.Core.WhyRule.JrPeopleWaitSpot : JunctionRules.Core.WhyRule.StockPedestrian, m_MaxSpeed, JunctionRules.Stage2.JRWhy.Key(laneObject.m_LaneObject), JunctionRules.Stage2.JRWhy.Key(m_Lane), num5, float.NaN);   // JR-T-025
+					if (m_WhyOn && m_MaxSpeed < jrPedMax) m_Why.Bind(m_MaxSpeed < jrWhyPed ? JunctionRules.Core.WhyRule.JrNeverPushPeople : m_JR.WhyPeople(num5 != jrPedNum5), m_MaxSpeed, JunctionRules.Stage2.JRWhy.Key(laneObject.m_LaneObject), JunctionRules.Stage2.JRWhy.Key(m_Lane), num5, m_MaxSpeed < jrWhyPed ? float.NaN : m_JR.WhyPeopleExtra(num5 != jrPedNum5));   // JR-T-025; JR-T-033 jr_people_wait_zebra / reason
 					num5 = jrPedNum5;
 					// JR-STAGE2 END
 					// JR-STAGE2 BEGIN S2-27: 0.4.1 counters only: a zebra entry held for people
@@ -1584,7 +1584,7 @@ public struct JRCarLaneSpeedIterator
 				// JR-STAGE2 END
 				UpdateMaxSpeed(laneObject.m_LaneObject, blockerType, objectSpeed, curvePosition.x, distanceFactor, num5, num4, laneOffset, laneObject.m_LaneObject == m_Ignore, inverse, flag2, inverseLaneOffset, currentPos);
 				// JR-STAGE2 BEGIN S2-11b: restore the game's distance and (0.3.2) the ignored blocker; counters
-				if (m_WhyOn && m_MaxSpeed < jrMaxBefore) m_Why.Bind(m_Ignore != jrIgnore && laneObject.m_LaneObject == jrIgnore ? JunctionRules.Core.WhyRule.JrNoPushCyclist : num5 != jrNum5 ? (m_JR.WhySafetyPhase ? JunctionRules.Core.WhyRule.JrSafetyRecheck : JunctionRules.Core.WhyRule.JrWholeJunctionGap) : JunctionRules.Core.WhyRule.StockConflictVehicle, m_MaxSpeed, JunctionRules.Stage2.JRWhy.Key(laneObject.m_LaneObject), JunctionRules.Stage2.JRWhy.Key(m_Lane), num5, blockerType == BlockerType.Continuing ? 1f : float.NaN);   // JR-T-025
+				if (m_WhyOn && m_MaxSpeed < jrMaxBefore) { JunctionRules.Core.WhyRule jrWhyV = m_Ignore != jrIgnore && laneObject.m_LaneObject == jrIgnore ? JunctionRules.Core.WhyRule.JrNoPushCyclist : num5 != jrNum5 ? (m_JR.WhySafetyPhase ? JunctionRules.Core.WhyRule.JrSafetyRecheck : JunctionRules.Core.WhyRule.JrWholeJunctionGap) : JunctionRules.Core.WhyRule.StockConflictVehicle; m_Why.Bind(m_JR.WhyGap(jrWhyV), m_MaxSpeed, JunctionRules.Stage2.JRWhy.Key(laneObject.m_LaneObject), JunctionRules.Stage2.JRWhy.Key(m_Lane), num5, m_JR.WhyGapExtra(jrWhyV, blockerType == BlockerType.Continuing ? 1f : float.NaN)); }   // JR-T-025; JR-T-033 drive-up window
 				num5 = jrNum5;
 				m_Ignore = jrIgnore;
 				m_JR.AfterVehicle(jrInScope, jrMaxBefore, m_MaxSpeed, jrProjected, blockerType == BlockerType.Continuing, jrStart);

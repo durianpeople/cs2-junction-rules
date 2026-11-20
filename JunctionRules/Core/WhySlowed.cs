@@ -88,6 +88,8 @@ namespace JunctionRules.Core
         JrOther = 54,
         /// <summary>Junction Rules 1.0.1 soft zebra: held before a signalised zebra (people not on green): no room past what it crosses.</summary>
         JrSoftZebra = 55,
+        /// <summary>Junction Rules 1.4.0 (JR-T-033): people on a zebra of the path; the car waits right before that zebra (drives up).</summary>
+        JrPeopleWaitZebra = 56,
     }
 
     /// <summary>JR-T-025: what the blocker is (main thread, from the entity's components).</summary>
@@ -157,6 +159,7 @@ namespace JunctionRules.Core
                 case WhyRule.JrEntryGiveWay: return "jr_entry_give_way";
                 case WhyRule.JrOther: return "jr_other";
                 case WhyRule.JrSoftZebra: return "jr_soft_zebra";
+                case WhyRule.JrPeopleWaitZebra: return "jr_people_wait_zebra";
                 default: return "rule_" + ((int)r).ToString(CultureInfo.InvariantCulture);
             }
         }
@@ -201,6 +204,7 @@ namespace JunctionRules.Core
                 case WhyRule.JrEntryGiveWay: return "Junction Rules: turning into a building, gives way";
                 case WhyRule.JrOther: return "Junction Rules: hold (rule not named more closely)";
                 case WhyRule.JrSoftZebra: return "Junction Rules: soft zebra (signalised), no room past it";
+                case WhyRule.JrPeopleWaitZebra: return "Junction Rules: people on a zebra, waits right before it";
                 default: return Id(r);
             }
         }
@@ -630,6 +634,7 @@ namespace JunctionRules.Core
             switch (r)
             {
                 case WhyRule.JrBoxLookPastRefused: return "look-past refused: " + WhyRules.RefusalId((LookPastRefusal)(int)extra);
+                case WhyRule.JrPeopleWaitSpot: return "reason " + ZebraDriveUp.ReasonId((ZebraDriveUp.Reason)(int)extra);   // JR-T-033
                 case WhyRule.JrBoxRoom:
                 case WhyRule.JrBoxTurnSpot:
                 case WhyRule.JrZebraSection:
