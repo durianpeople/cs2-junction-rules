@@ -168,7 +168,7 @@ namespace JunctionRules.Tests
             int skip = jr.IndexOf("FeedingScan.SkipsConflictingLane", StringComparison.Ordinal);
             int scan = jr.IndexOf("FeedingScan.ShouldScan", StringComparison.Ordinal);
             Check(feed > 0 && skip > feed && skip < scan, "S2-12: the unsafe-lane skip comes before any feeding scan work");
-            Check(it.Contains("m_JR.InScope(jrStart, (laneOverlap.m_Flags & overlapFlags) == 0, m_PedestrianLaneData.HasComponent(m_Lane))"),
+            Check(it.Contains("m_JR.InScope(jrStart, (laneOverlap.m_Flags & overlapFlags) == 0, m_PedestrianLaneData.TryGetComponent(m_Lane, out Game.Net.PedestrianLane jrPedLane), (int)jrPedLane.m_Flags)"),
                 "S2-05 tells InScope whether the other lane is a pedestrian lane (a crossing)");
             int inScope = jr.IndexOf("public bool InScope", StringComparison.Ordinal);
             int classify = jr.IndexOf("m_Stretch.Classify(RuleOn, u, out m_OvStopWait)", StringComparison.Ordinal);

@@ -30,17 +30,29 @@ namespace JunctionRules.Tests
 
             Check(AccessCrossing.FullStopApplies(true, true, false) == false && AccessCrossing.FullStopApplies(true, false, true) && AccessCrossing.FullStopApplies(false, true, false),
                 "full stop: on an access only in the way; elsewhere G23 unchanged");
-            Check(AccessCrossing.SectionKind(true, ZebraSections.Zebra) == 0 && AccessCrossing.SectionKind(true, ZebraSections.SoftZebra) == 0
-                && AccessCrossing.SectionKind(false, ZebraSections.Zebra) == ZebraSections.Zebra && AccessCrossing.SectionKind(false, ZebraSections.SoftZebra) == ZebraSections.SoftZebra
-                && AccessCrossing.SectionKind(false, 0) == 0, "section kind: an access's pavement is never a zebra; real zebras unchanged");
-            Check(!AccessCrossing.CrossingInRule(true) && AccessCrossing.CrossingInRule(false), "an access's pavement is no crossing of the whole-junction rule");
+            const int pave = 0, marked = ZebraSections.PedestrianCrosswalk, removed = ZebraSections.PedestrianCrosswalk | ZebraSections.PedestrianUnsafe;
+            Check(AccessCrossing.SectionKind(true, pave, ZebraSections.Zebra) == 0 && AccessCrossing.SectionKind(true, pave, ZebraSections.SoftZebra) == 0
+                && AccessCrossing.SectionKind(false, marked, ZebraSections.Zebra) == ZebraSections.Zebra && AccessCrossing.SectionKind(false, marked, ZebraSections.SoftZebra) == ZebraSections.SoftZebra
+                && AccessCrossing.SectionKind(false, pave, 0) == 0, "section kind: an access's pavement is never a zebra; real zebras unchanged");
+            Check(!AccessCrossing.CrossingInRule(true, pave) && AccessCrossing.CrossingInRule(false, pave) && AccessCrossing.CrossingInRule(false, marked),
+                "an access's pavement is no crossing of the whole-junction rule");
+            // JR-T-035 (review F3): a marked zebra an access lane crosses stays a zebra (only the unmarked pavement is exempt)
+            Check(AccessCrossing.SectionKind(true, marked, ZebraSections.ZebraKind(marked, false, 0)) == ZebraSections.Zebra
+                && AccessCrossing.SectionKind(true, marked, ZebraSections.ZebraKind(marked, true, WholePathRule.SignalStop)) == ZebraSections.SoftZebra,
+                "access lane + marked zebra: stays a zebra (soft zebra when signalised and red for people)");
+            Check(AccessCrossing.CrossingInRule(true, marked) && !AccessCrossing.AccessPavement(true, marked) && AccessCrossing.AccessPavement(true, pave) && !AccessCrossing.AccessPavement(false, pave),
+                "access lane + marked zebra: a crossing of the rule, not the exempt pavement");
+            Check(AccessCrossing.AccessPavement(true, removed) == false && AccessCrossing.SectionKind(true, removed, ZebraSections.ZebraKind(removed, false, 0)) == 0,
+                "a removed zebra (Crosswalk | Unsafe) over an access: not the B1 pavement (has the Crosswalk flag), no zebra either (ZebraKind)");
+            var mz = new ZElems { Items = new[] { (AccessCrossing.SectionKind(true, marked, ZebraSections.ZebraKind(marked, false, 0)), 0.05f, 0.30f), Cv(0.45f, 0.65f), Cv(0.70f, 0.90f) } };
+            Check(ZebraSections.Build(ref mz, true, false, 14f, M, ZCar, out ZebraLayout lm) && lm.Spots.Count >= 1, "access lane + marked zebra: the zebra section is built as for any zebra");
 
             // zebra sections: a leaving drive (pavement, then two road lanes). 1.3.0 (G7): pavement = Z, one section; 1.4.0: none.
             var g7 = new ZElems { Items = new[] { Zb(0.05f, 0.30f), Cv(0.45f, 0.65f), Cv(0.70f, 0.90f) } };
             Check(ZebraSections.Build(ref g7, true, false, 14f, M, ZCar, out ZebraLayout l130) && l130.Spots.Count >= 1, "1.3.0: the driveway pavement makes a zebra section");
-            var b1 = new ZElems { Items = new[] { (AccessCrossing.SectionKind(true, ZebraSections.Zebra), 0.05f, 0.30f), Cv(0.45f, 0.65f), Cv(0.70f, 0.90f) } };
+            var b1 = new ZElems { Items = new[] { (AccessCrossing.SectionKind(true, 0, ZebraSections.Zebra), 0.05f, 0.30f), Cv(0.45f, 0.65f), Cv(0.70f, 0.90f) } };
             Check(!ZebraSections.Build(ref b1, true, false, 14f, M, ZCar, out _), "1.4.0: no zebra section on an access (people there never hold the car at a spot)");
-            var real = new ZElems { Items = new[] { (AccessCrossing.SectionKind(false, ZebraSections.Zebra), 0.05f, 0.30f), Cv(0.45f, 0.65f), Cv(0.70f, 0.90f) } };
+            var real = new ZElems { Items = new[] { (AccessCrossing.SectionKind(false, ZebraSections.PedestrianCrosswalk, ZebraSections.Zebra), 0.05f, 0.30f), Cv(0.45f, 0.65f), Cv(0.70f, 0.90f) } };
             Check(ZebraSections.Build(ref real, true, false, 14f, M, ZCar, out ZebraLayout lr) && lr.Spots.Count == l130.Spots.Count, "a real zebra on a road lane: sections unchanged");
 
             Check(WhyRules.Id(WhyRule.JrAccessPersonInWay) == "jr_access_person_in_way" && (int)WhyRule.JrAccessPersonInWay == 57 && WhyRules.IsJr(WhyRule.JrAccessPersonInWay),
@@ -203,12 +215,15 @@ namespace JunctionRules.Tests
             string wj = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRWholeJunction.cs"));
             string it = File.ReadAllText(Path.Combine(root, "JunctionRules", "Vanilla", "JRCarLaneSpeedIterator.cs"));
             string dev = File.ReadAllText(Path.Combine(root, "DEVIATIONS.md"));
-            Check(wj.Contains("if (isCrossing && !m_OvZebra && !AccessCrossing.CrossingInRule(m_LaneAccess))"), "InScope: an access's pavement is the game's own check");
+            Check(wj.Contains("if (isCrossing && !m_OvZebra && !AccessCrossing.CrossingInRule(m_LaneAccess, pedestrianFlags))"), "InScope: an access's pavement is the game's own check");
             Check(wj.Contains("m_LaneAccess = IsAccess(lane, ref carLanes);   // JR-T-033 (B1)\n            if (!m_NodeLaneData.HasComponent(lane)) return;"), "BeginLane sets the access flag before any early return");
             Check(wj.Contains("if (accessLane) inPath = AccessCrossing.FullStopApplies(true, inPath, AccessCrossing.PersonInWay("), "NoPushPedestrian: full stop at an access only for a person in the way");
-            Check(it.Contains("m_Curve.m_Length, JunctionRules.Stage2.JRWholeJunction.IsAccess(lane, ref m_CarLaneData));") && it.Contains("m_Why.Bind(m_MaxSpeed < jrWhyPed ? m_JR.WhyNoPush() :"),
+            Check(it.Contains("m_Curve.m_Length, JunctionRules.Stage2.JRWholeJunction.IsAccessPavement(lane, m_Lane, ref m_CarLaneData, ref m_PedestrianLaneData));") && it.Contains("m_Why.Bind(m_MaxSpeed < jrWhyPed ? m_JR.WhyNoPush() :"),
                 "S2-08b passes the access flag (only evaluated with the no-push rule on) and names the access full stop");
             Check(!wj.Contains("m_SidewalkZebra"), "the G7 sidewalk zebra is gone");
+            Check(wj.Contains("|| AccessCrossing.AccessPavement(true, (int)ped.m_Flags));") && it.Contains("(int)jrPedLane.m_Flags);   // JR-T-035 (F3)"),
+                "F3: S2-08b and InScope exempt only the unmarked pavement of an access");
+            Check(dev.Contains("A marked zebra an access lane crosses stays a zebra"), "DEVIATIONS: F3");
             Check(dev.Contains("JR-T-033 B1"), "DEVIATIONS documents B1");
         }
     }

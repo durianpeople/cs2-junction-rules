@@ -1354,7 +1354,7 @@ public struct JRCarLaneSpeedIterator
 			BlockerType blockerType = (((laneOverlap.m_Flags & overlapFlags2) != 0) ? BlockerType.Continuing : BlockerType.Crossing);
 			// JR-STAGE2 BEGIN S2-05: is this overlap part of the whole-path decision (0.3.3: a crossing the car fits before is judged at the crossing)
 			float jrStart = math.select(@float.x, @float.y, inverse);
-			bool jrInScope = (m_JR.m_Mode != 0 || m_JR.m_ZebraActive) && m_JR.InScope(jrStart, (laneOverlap.m_Flags & overlapFlags) == 0, m_PedestrianLaneData.HasComponent(m_Lane));
+			bool jrInScope = (m_JR.m_Mode != 0 || m_JR.m_ZebraActive) && m_JR.InScope(jrStart, (laneOverlap.m_Flags & overlapFlags) == 0, m_PedestrianLaneData.TryGetComponent(m_Lane, out Game.Net.PedestrianLane jrPedLane), (int)jrPedLane.m_Flags);   // JR-T-035 (F3) marked or not
 			// JR-STAGE2 END
 			if ((laneOverlap.m_Flags & overlapFlags) == 0)
 			{
@@ -1519,7 +1519,7 @@ public struct JRCarLaneSpeedIterator
 					CheckPedestrian(overlapLine, laneObject.m_LaneObject, laneObject.m_CurvePosition.y, num5, giveSpace, inverse);
 					// JR-STAGE2 BEGIN S2-08b: 0.3.2: full stop instead of the game's creep (5 s push timer, standing person); restore the game's distance
 					float jrWhyPed = m_JR.m_NoPushPeople ? math.min(m_MaxSpeed, jrPedMax) : m_MaxSpeed;   // JR-T-025: the game's own result
-					if (m_JR.m_NoPushPeople) m_JR.NoPushPedestrian(ref m_MaxSpeed, ref m_Blocker, ref m_BlockerType, jrPedMax, jrPedBlocker, jrPedType, laneObject.m_LaneObject, num5, m_PushBlockers, ref m_MovingData, m_PrefabCar, m_SafeTimeStep, m_SpeedRange, laneObject.m_CurvePosition.x, m_CurveOffset, m_Curve.m_Length, JunctionRules.Stage2.JRWholeJunction.IsAccess(lane, ref m_CarLaneData));   // JR-T-033 (B1) access
+					if (m_JR.m_NoPushPeople) m_JR.NoPushPedestrian(ref m_MaxSpeed, ref m_Blocker, ref m_BlockerType, jrPedMax, jrPedBlocker, jrPedType, laneObject.m_LaneObject, num5, m_PushBlockers, ref m_MovingData, m_PrefabCar, m_SafeTimeStep, m_SpeedRange, laneObject.m_CurvePosition.x, m_CurveOffset, m_Curve.m_Length, JunctionRules.Stage2.JRWholeJunction.IsAccessPavement(lane, m_Lane, ref m_CarLaneData, ref m_PedestrianLaneData));   // JR-T-033 (B1) access; JR-T-035 (F3) unmarked pavement only
 					if (m_WhyOn && m_MaxSpeed < jrPedMax) m_Why.Bind(m_MaxSpeed < jrWhyPed ? m_JR.WhyNoPush() : m_JR.WhyPeople(num5 != jrPedNum5), m_MaxSpeed, JunctionRules.Stage2.JRWhy.Key(laneObject.m_LaneObject), JunctionRules.Stage2.JRWhy.Key(m_Lane), num5, m_MaxSpeed < jrWhyPed ? float.NaN : m_JR.WhyPeopleExtra(num5 != jrPedNum5));   // JR-T-025; JR-T-033 jr_people_wait_zebra / reason
 					num5 = jrPedNum5;
 					// JR-STAGE2 END

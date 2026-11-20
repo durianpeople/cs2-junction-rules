@@ -650,7 +650,7 @@ namespace JunctionRules.Stage2
         /// the other lane is a pedestrian lane (a crossing); with the rule on and the whole vehicle fitting before it
         /// (Core/CrossingPoint.cs) it is out of the rule: the game's own pedestrian / cyclist check at the crossing.
         /// </summary>
-        public bool InScope(float start, bool yieldChecked, bool isCrossing = false)
+        public bool InScope(float start, bool yieldChecked, bool isCrossing = false, int pedestrianFlags = 0)
         {
             m_OvDelta = 0f;
             m_OvDiscountReservation = false;
@@ -666,8 +666,9 @@ namespace JunctionRules.Stage2
             // 0.4.1: a zebra of the zebra sections is decided at its section's spot (never judged at the crossing).
             m_OvZebra = isCrossing && m_ZebraActive && IsZebraStart(u);
             // JR-T-033 (B1, owner 20 Nov): the pavement over a building access is no crossing of the rule (no wait at the spot for
-            // people there): the game's own check at the crossing, as for a crossing judged there.
-            if (isCrossing && !m_OvZebra && !AccessCrossing.CrossingInRule(m_LaneAccess))
+            // people there): the game's own check at the crossing, as for a crossing judged there. JR-T-035 (F3): unmarked
+            // pavement only (pedestrianFlags: the crossing's PedestrianLaneFlags); a marked zebra over an access stays a crossing.
+            if (isCrossing && !m_OvZebra && !AccessCrossing.CrossingInRule(m_LaneAccess, pedestrianFlags))
             {
                 m_OvPhase = PointPhase.Stock;
                 return false;
@@ -754,7 +755,7 @@ namespace JunctionRules.Stage2
                     if ((flags & WholePathRule.Water) == 0)
                     {
                         bool pedSignal = m_Signals.TryGetComponent(o.m_Other, out LaneSignal pedLight);
-                        kind = AccessCrossing.SectionKind(m_AccessLane, ZebraSections.ZebraKind((int)ped.m_Flags, pedSignal, (int)pedLight.m_Signal));
+                        kind = AccessCrossing.SectionKind(m_AccessLane, (int)ped.m_Flags, ZebraSections.ZebraKind((int)ped.m_Flags, pedSignal, (int)pedLight.m_Signal));
                     }
                     return;
                 }
@@ -1665,6 +1666,16 @@ namespace JunctionRules.Stage2
         /// <summary>JR-T-033 (B1): the car lane is a building access (CarLaneFlags.SideConnection, Core/AccessCrossing.cs).</summary>
         public static bool IsAccess(Entity lane, ref ComponentLookup<Game.Net.CarLane> carLanes) =>
             carLanes.TryGetComponent(lane, out Game.Net.CarLane carLane) && AccessCrossing.IsAccessLane((uint)carLane.m_Flags);
+
+        /// <summary>
+        /// JR-T-035 (review F3): the car lane is a building access and the pedestrian lane it crosses is its unmarked pavement
+        /// (no Crosswalk flag; a lane that is not a pedestrian lane counts as pavement, as before). A marked zebra over an
+        /// access is not: the 0.3.2 / G23 full stop applies there as at any zebra.
+        /// </summary>
+        public static bool IsAccessPavement(Entity lane, Entity pedestrianLane, ref ComponentLookup<Game.Net.CarLane> carLanes,
+            ref ComponentLookup<Game.Net.PedestrianLane> pedestrianLanes) =>
+            IsAccess(lane, ref carLanes) && (!pedestrianLanes.TryGetComponent(pedestrianLane, out Game.Net.PedestrianLane ped)
+                || AccessCrossing.AccessPavement(true, (int)ped.m_Flags));
 
         /// <summary>JR-T-033 (B1): the why id of a 0.3.2 full stop (S2-08b): at a building access only a person in the car's way.</summary>
         public readonly WhyRule WhyNoPush() => m_LastNoPushAccess ? WhyRule.JrAccessPersonInWay : WhyRule.JrNeverPushPeople;

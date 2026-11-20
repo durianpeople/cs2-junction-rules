@@ -5,7 +5,8 @@ namespace JunctionRules.Core
     /// <summary>
     /// JR-T-033 item B1 (1.4.0, owner 20 Nov 2026: "The pavement, I don't think it should count like a zebra anymore in a sense
     /// that cars yield to pedestrians. Cars should have the right of way."): where a car's lane is a building access (a driveway
-    /// or way in: <c>CarLaneFlags.SideConnection</c>, either direction), the pavement it crosses is NOT a zebra:
+    /// or way in: <c>CarLaneFlags.SideConnection</c>, either direction), the pavement it crosses (unmarked: no Crosswalk flag;
+    /// a marked zebra over an access stays a zebra, JR-T-035) is NOT a zebra:
     /// <list type="bullet">
     /// <item>no zebra section (0.4.8 G7 made a leaving driveway's pavement a hard zebra Z: people on it held the car before
     ///   it, and its room-past hold; the exit give-way's own hold before the pavement for ROAD traffic and its room on the
@@ -68,14 +69,24 @@ namespace JunctionRules.Core
         public static bool FullStopApplies(bool accessLane, bool inPathG23, bool inWay) => accessLane ? inWay : inPathG23;
 
         /// <summary>
-        /// The zebra-section kind of a pedestrian overlap of the car's lane: on an access lane never a zebra (B1; G7 made a
-        /// leaving driveway's pavement a hard zebra), elsewhere the given kind.
+        /// JR-T-035 (review F3): the pedestrian overlap of an access lane is the unmarked pavement B1 exempts: no
+        /// <c>PedestrianLaneFlags.Crosswalk</c> flag. A marked crosswalk an access lane crosses (side-connection lanes are also
+        /// made at nodes, beside a junction mouth) stays a zebra: cars yield there as at any zebra.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int SectionKind(bool accessLane, int kind) => accessLane ? 0 : kind;
+        public static bool AccessPavement(bool accessLane, int pedestrianLaneFlags) =>
+            accessLane && (pedestrianLaneFlags & ZebraSections.PedestrianCrosswalk) == 0;
 
-        /// <summary>A crossing of the car's path is part of the whole-junction decision (its spot): never the pavement over an access.</summary>
+        /// <summary>
+        /// The zebra-section kind of a pedestrian overlap of the car's lane: the unmarked pavement of an access is never a zebra
+        /// (B1; G7 made a leaving driveway's pavement a hard zebra), anything else (a marked zebra over an access included) the
+        /// given kind.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool CrossingInRule(bool accessLane) => !accessLane;
+        public static int SectionKind(bool accessLane, int pedestrianLaneFlags, int kind) => AccessPavement(accessLane, pedestrianLaneFlags) ? 0 : kind;
+
+        /// <summary>A crossing of the car's path is part of the whole-junction decision (its spot): never the unmarked pavement over an access.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool CrossingInRule(bool accessLane, int pedestrianLaneFlags) => !AccessPavement(accessLane, pedestrianLaneFlags);
     }
 }
