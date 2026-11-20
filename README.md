@@ -3,7 +3,7 @@
 A Cities: Skylines II mod that makes traffic behave more like real (UK-style) traffic at junctions, crossings and
 building driveways, and adds painted **yellow box junctions** that drivers actually obey.
 
-Status: 1.3.0, on [Paradox Mods](https://mods.paradoxplaza.com/mods/168032/Windows), tested on a left-hand-traffic city. Expect rough edges.
+Status: 1.4.0, on [Paradox Mods](https://mods.paradoxplaza.com/mods/168032/Windows), tested on a left-hand-traffic city. Expect rough edges.
 
 **Getting started:** Options → Junction Rules → set **Car driving** to **Junction Rules** (it starts on the game's own
 driving, so nothing changes until you switch); for the whole-junction gap rule also set **Junction gap rule** to
@@ -32,12 +32,17 @@ approaching.
 - If a car does end up blocking a crossing, people walk past it after a short wait (2 s by default), so nobody is
   trapped.
 - Cars don't stop on a zebra unless there's room past it for the whole vehicle.
+- When the only reason to wait is people on a zebra further along the junction, the car drives up and waits right
+  before that zebra instead of back at the junction entry, unless its exit is blocked, traffic before the zebra is
+  not clear, or it is a yellow box.
 - At unmarked crossings, people give way to cars instead of cars giving way to people.
 - Cars only wait for people actually crossing, not for someone standing at the kerb.
 
 **Leaving and entering buildings.**
-- A vehicle leaving any building treats the pavement like a zebra: it stops before the pavement and pulls out only
-  when people, the lanes it crosses and the lane it joins are all clear, with room for its whole length.
+- A vehicle leaving any building stops before the pavement and pulls out only when the lanes it crosses and the
+  lane it joins are clear, with room for its whole length.
+- At a building access the pavement is not a zebra: cars going in or out have the right of way. They still stop for
+  anyone actually in their way, but not for people standing beside it.
 - A vehicle turning into a building across oncoming traffic gives way to that traffic.
 
 **Unboxed junctions** behave like normal junctions: a turning vehicle may enter and wait inside for space in its

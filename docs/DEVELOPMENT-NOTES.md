@@ -164,6 +164,19 @@ PROBE-STAGE3-PAINT.md section 10.
   (extra free space past a zebra on top of the vehicle's length). Acts while Car driving is the copy, with either gap
   rule (Stock: zebras and room only); applies at the next simulation step. Timing log: zebra entries held (people,
   Cs after, no room past) and merged sections.
+  1.4.0 (JR-T-033, owner rule 20 Nov 2026): people on a zebra merged into an earlier spot's section hold the car right
+  before that zebra (drive-up) when it is eligible (not a box lane, whole length clear of the zebras behind, can still
+  stop before it, room free now past the section); the section's vehicle points are then judged over the drive-up
+  window (arrival + people wait estimate, at most 10 s, + clear time). Else the spot as before; why
+  `jr_people_wait_zebra`, or `jr_people_wait_spot` with a reason (traffic / exit blocked / yellow box / tail on zebra /
+  cannot stop / not a zebra section). Core `ZebraDriveUp`, job `Stage2/JRZebraDriveUp.cs`.
+  1.4.0 (JR-T-033 B1, owner 20 Nov 2026): at a building access (`CarLaneFlags.SideConnection`, way in or out) the
+  pavement is no zebra (the 0.4.8 G7 hard zebra is gone; S2-29 still stops a leaving car before the pavement for the
+  road gap and room) and no crossing of the whole-junction rule; the never-push full stop applies there only to a person
+  in the car's way (Core `AccessCrossing.PersonInWay`), not one beside it or held at its edge (that made a mutual wait
+  broken only by the 2 s people pass). Why `jr_access_person_in_way`. Timing log: "people standing on a building
+  access", "cars held by a person at a building access" (debug counting) and, always, "people passed a car at a
+  building access".
 - **Yellow box: gap to road markings (m)** (0.4.2): 0-2 m, default 0.5 m, from the painted edge of zebras and stop /
   give-way lines (entrance boxes: also from junction mouths); redraws all boxes at once.
 - **Cars obey yellow boxes** (0.4.2): on (default) or off (= 0.4.1); **Yellow boxes: turning across oncoming traffic may wait in the box**
