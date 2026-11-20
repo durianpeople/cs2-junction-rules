@@ -457,10 +457,10 @@ every new call tests `scan.LookPastOn`; the off differential and trace hash are 
   queue can no longer reach the car's room (`RoomScan.PackedReach`) or the sight edge. No-stop zones
   (`RoomScan.NoStopZone`, at most 8, nearest kept): other yellow boxes (a boxed junction's lanes; exit / entrance bands on
   the path lanes, also later on the box's own lane), zebras (`ZebraSections.ZebraKind == Zebra`: the soft zebra of a
-  signal whose people have red is not a zone) and other junction interiors (node lanes of a node with 3+ edges). The
-  job reads up to 6 path lanes past the box with the look-past on (`JRWholeJunction.MaxLookLanes`; 3 off, unchanged).
+  signal whose people have red is not a zone) and other junction interiors (node lanes of a node with 3+ road arms: `RoomScan.IsRoadArm`, a
+  footpath or track joined to a road does not count, JR-T-030). The job reads up to 6 path lanes past the box with the look-past on (`JRWholeJunction.MaxLookLanes`; 3 off, unchanged).
 - New refusals when a zone push alone turns go into a hold: `queue_pushed_back_by_zebra`, `queue_pushed_back_by_box`,
-  `queue_pushed_back_by_junction` (`LookPastRefusal` 6-8). `BeyondSight` (5) is no longer set.
+  `queue_pushed_back_by_junction` (`LookPastRefusal` 6-8). `BeyondSight` (3) is no longer set.
 - Unchanged: people on zebras, waiting turners, the exit-zebra rule, the soft-zebra rule, the safety stop.
 - Offline: Fernbrook replay held / needless / stood-in-box 9 / 7 / 0 (1.2.0) -> 1 / 1 / 0. The box scenario set with
   its exits closing dead past the sight edge grows (unseen 55 -> 200 standing, nose 0 -> 3; seen 57 -> 211, nose 0 -> 3):

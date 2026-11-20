@@ -103,7 +103,7 @@ namespace JunctionRules.Core
         ViewEndsAtLarge = 2,
         /// <summary>The room it needs ends beyond what the driver sees (radius / path read). 1.2.0 only: JR-T-029 (1.3.0) no longer sets it.</summary>
         BeyondSight = 3,
-        /// <summary>A building blocks the straight line of sight to a credited vehicle / the end of the room.</summary>
+        /// <summary>A building blocks the straight line of sight to a credited vehicle (1.2.0 also tested the end of the room; 1.3.0 does not).</summary>
         Building = 4,
         /// <summary>A large vehicle queued ahead switched the look-past off for this decision (free-now verdict).</summary>
         LargeQueuedAhead = 5,
