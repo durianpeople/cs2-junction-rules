@@ -110,7 +110,7 @@ namespace JunctionRules.Tests
             ("ZebraRepoTests", ZebraRepoTests),
             ("ZebraSignalTests", ZebraSignalTests),
             ("BoxJunctionTests", BoxJunctionTests),
-            ("BoxTurnTests", BoxTurnTests),
+            ("BoxSpotTests", BoxSpotTests),
             ("BoxEntranceTests", BoxEntranceTests),
             ("BoxSettingTests", BoxSettingTests),
             ("BoxRepoTests", BoxRepoTests),

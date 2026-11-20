@@ -448,8 +448,8 @@ namespace JunctionRules.Tests
             {
                 RoomScan o = RoomScan.Begin((float)rr.NextDouble() * 18f, (float)rr.NextDouble() * 3f);
                 RoomScan n = o;
-                bool fn = rr.Next(2) == 0, ms = rr.Next(2) == 0;
-                o.FreeNow = n.FreeNow = fn; o.QueuedMayStand = n.QueuedMayStand = ms;
+                bool fn = rr.Next(2) == 0; rr.Next(2);   // (the second draw was QueuedMayStand, retired in 1.5.0; kept so the sequence is unchanged)
+                o.FreeNow = n.FreeNow = fn;
                 n.LookPast = false; n.SightLeft = (float)rr.NextDouble() * 60f;
                 int ops = rr.Next(1, 9);
                 for (int k = 0; k < ops; k++)
@@ -567,8 +567,8 @@ namespace JunctionRules.Tests
             Check(settings.Contains("BoxLookPast = true;") && settings.Contains("\"Look past the car in front at a box\"") && settings.Contains("GetOptionDescLocaleID(nameof(JunctionRulesSettings.BoxLookPast))"),
                 "setting default on, label and description");
             Check(sw.Contains("Mod.Settings.BoxLookPast"), "the switch system hands the setting over every step");
-            Check((Stage2Mode.BoxBits(true, true, false, true, true, 8f, true) & Stage2Mode.BoxLookPast) != 0 && (Stage2Mode.BoxBits(true, true, false, true, true, 8f) & Stage2Mode.BoxLookPast) == 0
-                && Stage2Mode.BoxBits(false, true, false, true, true, 8f, true) == 0 && (Stage2Mode.Stripped & Stage2Mode.BoxLookPast) != 0,
+            Check((Stage2Mode.BoxBits(true, true, true, 8f, true) & Stage2Mode.BoxLookPast) != 0 && (Stage2Mode.BoxBits(true, true, true, 8f) & Stage2Mode.BoxLookPast) == 0
+                && Stage2Mode.BoxBits(false, true, true, 8f, true) == 0 && (Stage2Mode.Stripped & Stage2Mode.BoxLookPast) != 0,
                 "mode bit: set only with the box rule and the setting; stripped from the job's stage 2 mode");
             var gs = new GapRuleSwitch();
             gs.Step(JunctionGapRule.Stock, false, out int m1, boxObey: true, boxLookPast: true);

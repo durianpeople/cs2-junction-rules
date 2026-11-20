@@ -263,7 +263,7 @@
         "files": {
           "JunctionRules/Vanilla/JRCarLaneSpeedIterator.cs": 1
         },
-        "reason": "JR-T-013b (G3): CheckOverlappingLanes, after S2-25 and before S2-29, only with the setting 'Cars obey yellow boxes': BoxTurnRoomHold re-runs the box exit-room test (HasRoomPast, own path only) for a turner whose next spot is its UK right-turn spot inside the box; no room = stop at the turn spot (GetMaxBrakingSpeed, blocker Entity.Null, type Continuing), clear of the oncoming lane."
+        "reason": "JR-T-013b (G3); 1.5.0 (JR-T-038) every boxed lane: CheckOverlappingLanes, after S2-25 and before S2-29, only with the setting 'Cars obey yellow boxes': BoxSpotRoomHold re-runs the box exit-room test (HasRoomPast, own path only) for a car whose next whole-junction spot lies inside the box (past the line, still ahead, can stop before it); no room = stop at that spot (GetMaxBrakingSpeed, blocker = the room scan's, type Continuing), clear of the conflicting lane."
       },
       "S2-50": {
         "files": {

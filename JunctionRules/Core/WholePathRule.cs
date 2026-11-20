@@ -59,10 +59,7 @@ namespace JunctionRules.Core
         /// rule and carried when either setting is on.
         /// </summary>
         public const int BoxObey = 1 << 16;
-        /// <summary>0.4.2, with <see cref="BoxObey"/> only: a car turning across oncoming traffic may enter and wait in the box (UK right-turn exception).</summary>
-        public const int BoxTurnWait = 1 << 17;
-        /// <summary>0.4.2, with <see cref="BoxObey"/> only: the city drives on the left (which turn crosses oncoming traffic).</summary>
-        public const int BoxLeftHand = 1 << 18;
+        // Bits 17 / 18 retired in 1.5.0 (JR-T-038): BoxTurnWait / BoxLeftHand, the UK right-turn spot in a box (removed).
         /// <summary>0.4.2, with <see cref="BoxObey"/> only: at least one junction box exists (else the job skips the junction test).</summary>
         public const int BoxJunctions = 1 << 19;
         /// <summary>0.4.2, with <see cref="BoxObey"/> only: at least one entrance box exists (else the job skips the entrance test).</summary>
@@ -89,7 +86,7 @@ namespace JunctionRules.Core
         /// </summary>
         public const int BoxLookPast = 1 << 31;
         /// <summary>Every bit the job side strips from the stage 2 mode (settings that are not part of the 0.2.x rule).</summary>
-        public const int Stripped = NoPushPeople | ZebraClear | ZebraMarginMask | BoxObey | BoxTurnWait | BoxLeftHand | BoxJunctions | BoxEntrances | BoxEntranceMask
+        public const int Stripped = NoPushPeople | ZebraClear | ZebraMarginMask | BoxObey | BoxJunctions | BoxEntrances | BoxEntranceMask
             | ExitGiveWay | UnmarkedGiveWay | BoxLookPast;
 
         /// <summary>0.4.2: the room margin bits alone (shared by the zebra and the yellow box rules).</summary>
@@ -104,12 +101,12 @@ namespace JunctionRules.Core
         /// 0.4.2: the yellow box bits for the settings (0 when "Cars obey yellow boxes" is off). anyJunction / anyEntrance =
         /// boxes of that kind exist in the city; entranceLength = the band length in metres.
         /// </summary>
-        public static int BoxBits(bool obey, bool turnWait, bool leftHandTraffic, bool anyJunction, bool anyEntrance, float entranceLength, bool lookPast = false)
+        public static int BoxBits(bool obey, bool anyJunction, bool anyEntrance, float entranceLength, bool lookPast = false)
         {
             if (!obey) return 0;
             int dm = (int)System.Math.Round((entranceLength > 0f ? entranceLength : 0f) * 10f);
             if (dm > 0x1FF) dm = 0x1FF;
-            return BoxObey | (turnWait ? BoxTurnWait : 0) | (leftHandTraffic ? BoxLeftHand : 0) | (anyJunction ? BoxJunctions : 0)
+            return BoxObey | (anyJunction ? BoxJunctions : 0)
                 | (anyEntrance ? BoxEntrances : 0) | (dm << BoxEntranceShift)
                 // JR-T-022: look past the car in front at a box
                 | (lookPast ? BoxLookPast : 0);
@@ -149,7 +146,7 @@ namespace JunctionRules.Core
             + ((mode & ZebraClear) != 0 ? "; cars never stop on a zebra (room margin " + ZebraMargin(mode).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " m)" : "")
             + ((mode & BoxObey) != 0 ? "; cars obey yellow boxes (room margin " + ZebraMargin(mode).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)
                 + " m, exit boxes driven over their painted windows (box length setting " + BoxEntranceLength(mode).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " m); "
-                + ((mode & BoxTurnWait) != 0 ? "turning across oncoming may wait in the box, " + ((mode & BoxLeftHand) != 0 ? "left" : "right") + "-hand traffic" : "no waiting in the box")
+                + "past the line as any junction"
                 + ((mode & BoxLookPast) != 0 ? ", looking past the car in front" : "")
                 + ")" : "")
             + ((mode & ExitGiveWay) != 0 ? "; vehicles leaving buildings give way" : "")

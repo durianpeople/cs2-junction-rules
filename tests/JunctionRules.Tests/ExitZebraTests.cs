@@ -35,7 +35,7 @@ namespace JunctionRules.Tests
             // Z2 is one decision with the line.
             var lane = new[] { Zb(0.00f, 0.10f), Cv(0.20f, 0.28f), Cv(0.45f, 0.55f), Cv(0.70f, 0.80f), Zb(0.85f, 0.95f) };
             var elems = new ZElems { Items = lane };
-            Check(ZebraSections.Build(ref elems, true, true, EzLane, M, ZCar, 2f, -1f, out ZebraLayout whole), "today (Whole junction, box): layout built");
+            Check(ZebraSections.Build(ref elems, true, true, EzLane, M, ZCar, -1f, out ZebraLayout whole), "today (Whole junction, box): layout built");
             Check(whole.Spots.Count == 1 && whole.Spots[0] == 0f && whole.Merged == 1, "today (Whole junction, box): the exit zebra is merged into the line's section (car does not fit after the last crossing point)");
             StretchState car = EzApproach(whole, 15f, 6f, lane);
             PointPhase ph = car.Classify(true, 0.85f, out float wait);
@@ -109,7 +109,7 @@ namespace JunctionRules.Tests
             // with the decision: the overlap the job marks gets the stock distance (front a margin before the zebra), not the line
             var lane = new[] { Zb(0.00f, 0.10f), Cv(0.20f, 0.28f), Cv(0.45f, 0.55f), Cv(0.70f, 0.80f), Zb(0.85f, 0.95f) };
             var elems = new ZElems { Items = lane };
-            ZebraSections.Build(ref elems, true, true, EzLane, M, ZCar, 2f, -1f, out ZebraLayout whole);
+            ZebraSections.Build(ref elems, true, true, EzLane, M, ZCar, -1f, out ZebraLayout whole);
             StretchState car = EzApproach(whole, 15f, 6f, lane);
             PointPhase ph = car.Classify(true, 0.85f, out float wait);
             float stock = 15f - M + EzLane * 0.85f;

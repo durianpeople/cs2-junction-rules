@@ -208,7 +208,6 @@ namespace JunctionRules.Systems
                 Mod.Settings != null ? Mod.Settings.ZebraRoomMargin : RoomScan.DefaultMargin,
                 // 0.4.2 (JR-T-010): cars obey yellow boxes; which box kinds exist (the job skips a kind with none).
                 Mod.Settings == null || Mod.Settings.BoxObey,
-                Mod.Settings == null || Mod.Settings.BoxTurnWait,
                 !m_JunctionBoxes.IsEmptyIgnoreFilter,
                 !m_EntranceBoxes.IsEmptyIgnoreFilter,
                 (float)JunctionRules.Boxes.BoxStore.EntranceLength,

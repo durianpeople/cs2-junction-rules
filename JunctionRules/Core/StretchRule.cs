@@ -88,7 +88,7 @@ namespace JunctionRules.Core
     /// </summary>
     public enum PointPhase
     {
-        /// <summary>The game's own handling (rule off, out of scope, or the 0.2.1 decision fix: the car cannot stop at its spot).</summary>
+        /// <summary>The game's own handling (rule off, out of scope, or the 0.2.1 decision fix: the car cannot stop at its spot but can still stop before the point).</summary>
         Stock = 0,
         /// <summary>The car is before the waiting spot of this point's stretch and can stop there: the decision for the stretch, taken at the spot.</summary>
         Deciding = 1,
@@ -129,6 +129,8 @@ namespace JunctionRules.Core
         public int Next;
         /// <summary>First conflict point of the stretch being crossed that the front has not reached (2 = none).</summary>
         public float FirstUncrossed;
+        /// <summary>1.5.0 (JR-T-038 item B): first conflict point of the next stretch (spot still ahead) that the front has not reached (2 = none).</summary>
+        public float FirstAhead;
 
         /// <summary>Distance from the car to its stop point before <paramref name="u"/> (the game's num5 formula, margin included).</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -162,6 +164,7 @@ namespace JunctionRules.Core
             Braking = braking;
             Next = 0;
             FirstUncrossed = 2f;
+            FirstAhead = 2f;
             FindSpots(ref list, ref Spots);
             if (Spots.Count == 0) return false;
             if (atLine) Spots[0] = 0f;
@@ -184,6 +187,7 @@ namespace JunctionRules.Core
             Braking = braking;
             Next = 0;
             FirstUncrossed = 2f;
+            FirstAhead = 2f;
             Locate(ref list);
         }
 
@@ -199,6 +203,15 @@ namespace JunctionRules.Core
                 {
                     if (!list.Conflict(i, out float s, out _)) continue;
                     if (s >= lo && s < hi && s < FirstUncrossed && !FrontPast(s)) FirstUncrossed = s;
+                }
+            }
+            if (Next < Spots.Count)
+            {
+                float lo = Spots[Next] - WholePathRule.SpotEpsilon, hi = Spots.StretchEnd(Next) - WholePathRule.SpotEpsilon;
+                for (int i = 0; i < list.Count; i++)
+                {
+                    if (!list.Conflict(i, out float s, out _)) continue;
+                    if (s >= lo && s < hi && s < FirstAhead && !FrontPast(s)) FirstAhead = s;
                 }
             }
         }
@@ -233,9 +246,23 @@ namespace JunctionRules.Core
                 // The spot of this point's stretch is still ahead: the decision for the stretch is taken there.
                 float spot = Spots[k];
                 stopWait = Wait(spot);
+                if (CanStopBefore(spot)) return PointPhase.Deciding;
                 // 0.2.1 decision fix: a car that cannot stop at the spot any more keeps the game's own give-way for
                 // this point (as 0.2.0 it would brake at full rate for the spot, overrun it and then drop the give-way).
-                return CanStopBefore(spot) ? PointPhase.Deciding : PointPhase.Stock;
+                // 1.5.0 (JR-T-038 item B, never wait inside the lane you give way to): the game's give-way brakes as hard
+                // as it can even when the overlap start is already inside the braking distance (GetMaxBrakingSpeed of a
+                // distance <= 0), so the car stood with its front inside the lane. Now: if it can still stop before an
+                // earlier point of the stretch, it stops there (Safety, as while crossing); if it can stop before this
+                // point, the game's give-way (its stop is before the overlap start); if it cannot, it commits and clears
+                // (Crossing: no give-way, the 2 s look-ahead undone, collision braking for cars physically there stays).
+                float earliest = k == Next && FirstAhead < u ? FirstAhead : u;
+                if (earliest < u && CanStopBefore(earliest))
+                {
+                    stopWait = Wait(earliest);
+                    return PointPhase.Safety;
+                }
+                stopWait = 0f;
+                return CanStopBefore(u) ? PointPhase.Stock : PointPhase.Crossing;
             }
             // Crossing this stretch (front past its spot). A point the front has reached is being crossed.
             if (FrontPast(u)) return PointPhase.Crossing;

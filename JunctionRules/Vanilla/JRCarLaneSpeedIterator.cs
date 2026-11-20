@@ -1278,16 +1278,16 @@ public struct JRCarLaneSpeedIterator
 			}
 		}
 		// JR-STAGE2 END
-		// JR-STAGE2 BEGIN S2-37: JR-T-013b (G3) yellow box, UK right-turn exception: a turner at its turn spot inside the box stays there (clear of the oncoming lane) while its exit has no room
+		// JR-STAGE2 BEGIN S2-37: JR-T-013b (G3) yellow box; 1.5.0 (JR-T-038) every boxed lane: a car at its whole-junction spot inside the box stays there (clear of the conflicting lane) while its exit has no room
 		if (m_JR.m_BoxRule && !JunctionRules.Core.ExitGiveWay.IsEmergency(m_Priority))   // 0.4.10: on-duty emergency vehicles pass boxes (as at exits)
 		{
-			float jrTurnRoomHold = m_JR.BoxTurnRoomHold(lane, length, inverse, m_PrefabCar, m_SafeTimeStep, m_SpeedRange, m_MaxSpeed, m_Entity, ref m_CarLaneData, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabObjectGeometryData, ref m_PrefabCarData, ref m_LaneOverlapData, ref m_PedestrianLaneData);
-			if (jrTurnRoomHold < m_MaxSpeed)
+			float jrSpotRoomHold = m_JR.BoxSpotRoomHold(lane, length, inverse, m_PrefabCar, m_SafeTimeStep, m_SpeedRange, m_MaxSpeed, m_Entity, ref m_CarLaneData, ref m_LaneObjectData, ref m_CurveData, ref m_MovingData, ref m_ControllerData, ref m_PrefabRefData, ref m_PrefabObjectGeometryData, ref m_PrefabCarData, ref m_LaneOverlapData, ref m_PedestrianLaneData);
+			if (jrSpotRoomHold < m_MaxSpeed)
 			{
-				m_MaxSpeed = jrTurnRoomHold;
+				m_MaxSpeed = jrSpotRoomHold;
 				m_Blocker = m_JR.HoldBlocker;   // 0.4.9 (G17): the vehicle the hold waits for (stock names the car it stops behind)
 				m_BlockerType = BlockerType.Continuing;
-				if (m_WhyOn) m_Why.Bind(m_JR.WhyRuleOr(JunctionRules.Core.WhyRule.JrBoxTurnSpot), m_MaxSpeed, JunctionRules.Stage2.JRWhy.Key(m_Blocker), JunctionRules.Stage2.JRWhy.Key(lane), m_JR.WhyDistance, m_JR.WhyExtra);   // JR-T-025
+				if (m_WhyOn) m_Why.Bind(m_JR.WhyRuleOr(JunctionRules.Core.WhyRule.JrBoxSpotRoom), m_MaxSpeed, JunctionRules.Stage2.JRWhy.Key(m_Blocker), JunctionRules.Stage2.JRWhy.Key(lane), m_JR.WhyDistance, m_JR.WhyExtra);   // JR-T-025
 			}
 		}
 		// JR-STAGE2 END

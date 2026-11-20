@@ -28,8 +28,8 @@ namespace JunctionRules.Core
         public enum Rule
         {
             Game = 0,
-            BoxTurnRoom = 1,
-            BoxTurnOncoming = 2,
+            BoxSpotRoom = 1,
+            BoxSpotWait = 2,
             BoxLine = 3,
             EntranceMain = 4,
             EntranceLeaving = 5,
@@ -48,8 +48,8 @@ namespace JunctionRules.Core
             switch ((Rule)rule)
             {
                 case Rule.Game: return "game's own (give-way / car ahead / signal, see blocker)";
-                case Rule.BoxTurnRoom: return "yellow box: turner waits at its turn spot, no room on its exit";
-                case Rule.BoxTurnOncoming: return "yellow box: turner waits at its turn spot for oncoming traffic";
+                case Rule.BoxSpotRoom: return "yellow box: waits at its spot in the box, no room on its exit";
+                case Rule.BoxSpotWait: return "yellow box: waits at its spot in the box for a live conflict";
                 case Rule.BoxLine: return "yellow box: held at the line, no room past the box";
                 case Rule.EntranceMain: return "entrance band: no room past the band (main road)";
                 case Rule.EntranceLeaving: return "entrance band: no room past the band (leaving driveway)";

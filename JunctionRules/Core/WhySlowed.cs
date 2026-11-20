@@ -72,8 +72,7 @@ namespace JunctionRules.Core
         JrBoxRoom = 46,
         /// <summary>Junction Rules yellow box, look-past refused (extra = <see cref="LookPastRefusal"/> code).</summary>
         JrBoxLookPastRefused = 47,
-        /// <summary>Junction Rules yellow box, UK right-turn: waits at its turn spot, no room on its exit.</summary>
-        JrBoxTurnSpot = 48,
+        // 48 retired in 1.5.0 (JR-T-038): jr_box_turn_spot, the UK right-turn spot in a box (removed; see JrBoxSpotRoom = 58).
         /// <summary>Junction Rules yellow box: turning into a building, its way in is full.</summary>
         JrBoxEntering = 49,
         /// <summary>Junction Rules yellow box: people on the box's exit zebra, waits at the line.</summary>
@@ -92,6 +91,8 @@ namespace JunctionRules.Core
         JrPeopleWaitZebra = 56,
         /// <summary>Junction Rules 1.4.0 (JR-T-033 B1): full stop at a building access for a person in the car's way (a person beside it gets the game's creep).</summary>
         JrAccessPersonInWay = 57,
+        /// <summary>Junction Rules 1.5.0 (JR-T-038) yellow box: in the box at its whole-junction spot (before its first live conflict); its exit has filled, it stays there until there is room.</summary>
+        JrBoxSpotRoom = 58,
     }
 
     /// <summary>JR-T-025: what the blocker is (main thread, from the entity's components).</summary>
@@ -153,7 +154,6 @@ namespace JunctionRules.Core
                 case WhyRule.JrZebraSection: return "jr_zebra_section";
                 case WhyRule.JrBoxRoom: return "jr_box_room";
                 case WhyRule.JrBoxLookPastRefused: return "jr_box_look_past_refused";
-                case WhyRule.JrBoxTurnSpot: return "jr_box_turn_spot";
                 case WhyRule.JrBoxEntering: return "jr_box_entering";
                 case WhyRule.JrExitZebraWait: return "jr_exit_zebra_wait";
                 case WhyRule.JrExitGiveWay: return "jr_exit_give_way";
@@ -163,6 +163,7 @@ namespace JunctionRules.Core
                 case WhyRule.JrSoftZebra: return "jr_soft_zebra";
                 case WhyRule.JrPeopleWaitZebra: return "jr_people_wait_zebra";
                 case WhyRule.JrAccessPersonInWay: return "jr_access_person_in_way";
+                case WhyRule.JrBoxSpotRoom: return "jr_box_spot_room";
                 default: return "rule_" + ((int)r).ToString(CultureInfo.InvariantCulture);
             }
         }
@@ -199,7 +200,6 @@ namespace JunctionRules.Core
                 case WhyRule.JrZebraSection: return "Junction Rules: never stop on a zebra (no room past it)";
                 case WhyRule.JrBoxRoom: return "Junction Rules: yellow box, no room past the box";
                 case WhyRule.JrBoxLookPastRefused: return "Junction Rules: yellow box, look-past refused";
-                case WhyRule.JrBoxTurnSpot: return "Junction Rules: yellow box, right-turner waits at its turn spot";
                 case WhyRule.JrBoxEntering: return "Junction Rules: yellow box, way into the building full";
                 case WhyRule.JrExitZebraWait: return "Junction Rules: yellow box, people on its exit zebra";
                 case WhyRule.JrExitGiveWay: return "Junction Rules: leaving a building, gives way";
@@ -209,6 +209,7 @@ namespace JunctionRules.Core
                 case WhyRule.JrSoftZebra: return "Junction Rules: soft zebra (signalised), no room past it";
                 case WhyRule.JrPeopleWaitZebra: return "Junction Rules: people on a zebra, waits right before it";
                 case WhyRule.JrAccessPersonInWay: return "Junction Rules: person in the way at a building access (full stop)";
+                case WhyRule.JrBoxSpotRoom: return "Junction Rules: yellow box, waits at its spot in the box, no room on its exit";
                 default: return Id(r);
             }
         }
@@ -640,7 +641,7 @@ namespace JunctionRules.Core
                 case WhyRule.JrBoxLookPastRefused: return "look-past refused: " + WhyRules.RefusalId((LookPastRefusal)(int)extra);
                 case WhyRule.JrPeopleWaitSpot: return "reason " + ZebraDriveUp.ReasonId((ZebraDriveUp.Reason)(int)extra);   // JR-T-033
                 case WhyRule.JrBoxRoom:
-                case WhyRule.JrBoxTurnSpot:
+                case WhyRule.JrBoxSpotRoom:
                 case WhyRule.JrZebraSection:
                 case WhyRule.JrSoftZebra:
                 case WhyRule.JrExitBoxRoom: return "room short by " + extra.ToString("0.0", CultureInfo.InvariantCulture) + " m";

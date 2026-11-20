@@ -26,7 +26,7 @@ namespace JunctionRules.Tests
         {
             // The right turn's path through the T: one crossing (the northbound lane), a merge at its end; no zebra on any arm.
             var path = new G25Elements { K = new[] { ZebraSections.SpotPoint, ZebraSections.SpotPoint }, S = new[] { 0.3f, 0.9f }, E = new[] { 0.5f, 1f } };
-            Check(!ZebraSections.Build(ref path, true, false, 18f, 0.9f, 18.5f, 2f, 1f, out _), "no zebra on the turner's path: the zebra room rule does not apply (no layout, no hold)");
+            Check(!ZebraSections.Build(ref path, true, false, 18f, 0.9f, 18.5f, 1f, out _), "no zebra on the turner's path: the zebra room rule does not apply (no layout, no hold)");
             string root = RepoRoot();
             string box = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRYellowBox.cs"));
             Check(box.Contains("if (!m_BoxJunctions || !m_OwnerData.TryGetComponent(lane, out Owner owner) || !m_BoxJunctionData.HasComponent(owner.m_Owner)) return float.MaxValue;"),

@@ -110,11 +110,9 @@ namespace JunctionRules.Stage2
             {
                 // the box room test above may have counted on the look-past: ask again with the free-now rule alone (JR-T-022e:
                 // lookPast false, so no sight test, building query or hidden-vehicle hold; the setting flag is not toggled)
-                m_QueuedTurnersMayStand = m_BoxTurnWait && BoxDriving.TurnerMayWait(true, (uint)carLanes[lane].m_Flags, m_BoxLeftHand);
                 roomFreeNow = HasRoomPast(lane, 1f, inverse, laneLength, 0f, boxNode, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
                     ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, freeNow: true,
                     frontToStart: frontToEnd, lookPast: false);
-                m_QueuedTurnersMayStand = false;
             }
             ExitZebraWait.Verdict v = ExitZebraWait.Decide(true, people, roomFreeNow);
             if (v == ExitZebraWait.Verdict.WaitBeforeZebra)

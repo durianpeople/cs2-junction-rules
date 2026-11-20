@@ -6,82 +6,82 @@ using JunctionRules.Core;
 namespace JunctionRules.Tests
 {
     /// <summary>
-    /// JR-T-013b. G3: a turner across oncoming traffic (UK right-turn exception) re-runs the box exit-room test at its
-    /// turn spot (Core BoxDriving.TurnSpotRoomCheck, Stage2/JRYellowBox.cs BoxTurnRoomHold, block S2-37). G4: the
-    /// default-off watch-one-junction log (Core/JunctionWatch.cs, Stage2/JRJunctionWatch.cs, S2-20..S2-23).
+    /// JR-T-013b. G3: a car in a box re-runs the box exit-room test at its whole-junction spot before moving on (1.5.0,
+    /// JR-T-038: every lane of a boxed junction; was the UK right-turn spot only). Core BoxDriving.SpotRoomCheck,
+    /// Stage2/JRYellowBox.cs BoxSpotRoomHold, block S2-37. G4: the default-off watch-one-junction log
+    /// (Core/JunctionWatch.cs, Stage2/JRJunctionWatch.cs, S2-20..S2-23).
     /// </summary>
     internal static partial class Program
     {
         private const float G3Lane = 20f;   // node lane of the boxed 4-way, metres
-        private const float G3Spot = 0.55f; // the turn spot (driving coordinates): start of the first oncoming overlap
+        private const float G3Spot = 0.55f; // the first live conflict (driving coordinates): start of the first oncoming overlap
 
-        /// <summary>A turner on its boxed node lane: front at <paramref name="front"/> (driving), braking distance.</summary>
+        /// <summary>A car on its boxed node lane: front at <paramref name="front"/> (driving), braking distance. Its whole-junction spot is G3Spot.</summary>
         private static StretchState G3Car(float front, float braking, bool onLane = true)
         {
-            BoxDriving.JunctionSpots(true, G3Spot, out WaitingSpots spots);
-            var pts = new ZConflicts { Items = new[] { Cv(0.3f, 0.35f), Cv(G3Spot, 0.62f) } };
+            var pts = new ZConflicts { Items = new[] { Cv(G3Spot, 0.62f), Cv(0.7f, 0.75f) } };
             var s = default(StretchState);
             // On the lane: the game's distance to the car's own offset is 0, minus the margin. Approaching: 10 m to the line.
-            s.BeginWithSpots(ref pts, spots, onLane ? -M : 10f - M, G3Lane, onLane ? front : 0f, M, braking);
+            s.Begin(ref pts, onLane ? -M : 10f - M, G3Lane, onLane ? front : 0f, M, braking, false);
             return s;
         }
 
-        private static bool G3Check(StretchState s, int turnIndex = 1) =>
-            BoxDriving.TurnSpotRoomCheck(turnIndex, s.Next, s.Spots.Count, turnIndex >= 0 && turnIndex < s.Spots.Count && s.CanStopBefore(s.Spots[turnIndex]));
+        /// <summary>BoxSpotRoomHold's gate, as the job computes it.</summary>
+        private static bool G3Check(StretchState s, bool boxLane = true)
+        {
+            bool ahead = s.Next < s.Spots.Count;
+            float spot = ahead ? s.Spots[s.Next] : 2f;
+            bool lineChecked = !s.FrontPast(0f) && s.CanStopBefore(0f);
+            return BoxDriving.SpotRoomCheck(boxLane, spot, ahead, lineChecked, ahead && s.CanStopBefore(spot));
+        }
 
         private static void G3TurnSpotRoomTests()
         {
-            // When the room test runs again (the turn spot is the next spot and the car can stop before it).
+            // When the room test runs again (the spot is the next spot, inside the box, and the car can stop before it).
             StretchState waiting = G3Car(0.30f, 0f);
-            Check(waiting.Next == 1 && G3Check(waiting), "turner standing in the box before its turn spot: exit room tested again at the turn spot");
+            Check(waiting.Next == 0 && Near(waiting.Spots[0], G3Spot) && G3Check(waiting), "car standing in the box before its spot: exit room tested again at the spot");
             StretchState rolling = G3Car(0.20f, BrakingDistance(4f));
-            Check(rolling.Next == 1 && G3Check(rolling), "turner rolling slowly to its turn spot (can stop): tested");
+            Check(G3Check(rolling), "car rolling slowly to its spot (can stop): tested");
             StretchState approach = G3Car(0f, BrakingDistance(5f), onLane: false);
-            Check(approach.Next == 0 && !G3Check(approach), "before the stop line: the line's own room test (BoxHold), not this one");
+            Check(!G3Check(approach), "before the stop line and able to stop there: the line's own room test (BoxHold), not this one");
+            StretchState late = G3Car(0f, BrakingDistance(13f), onLane: false);
+            Check(!late.CanStopBefore(0f) && late.CanStopBefore(G3Spot) && G3Check(late), "cannot stop at the line any more but before its spot: tested at the spot");
             StretchState crossing = G3Car(0.60f, BrakingDistance(4f));
-            Check(crossing.Next == 2 && !G3Check(crossing), "front past the turn spot (crossing the oncoming lane): never held there (no stop across the lane)");
+            Check(crossing.Next == 1 && !G3Check(crossing), "front past its spot (crossing the conflicting lane): never held there (no stop across the lane)");
             StretchState fast = G3Car(0.30f, BrakingDistance(15f));
-            Check(fast.Next == 1 && !G3Check(fast), "cannot stop before the turn spot any more (game's can-stop test): carries on");
-            Check(!G3Check(waiting, -1), "no turn spot (exception off, straight, T junction, zebra refused it): nothing new");
-            Check(!G3Check(waiting, 0), "index 0 is the stop line: never the turn spot");
-            Check(!BoxDriving.TurnSpotRoomCheck(2, 2, 2, true), "turn index past the spots: nothing");
+            Check(!G3Check(fast), "cannot stop before the spot any more (game's can-stop test): carries on");
+            Check(!G3Check(waiting, false), "not a boxed lane: nothing");
 
-            // LHT both directions on the main road: the turn spot comes from the overlap in driving coordinates, so a
-            // lane drawn the other way (inverse) gives the same spot and the same test.
+            // Lanes drawn the other way (inverse) give the same spot and the same test.
             int f = ZebraSections.SpotPoint;
             StretchGeometry.ToConflict(f, 140, 158, false, false, out float east, out _);
             StretchGeometry.ToConflict(f, 255 - 158, 255 - 140, true, false, out float west, out _);
-            Check(Near(east, west), "LHT: eastbound and westbound right-turners get the same turn spot (inverse lane mirrored)");
-            Check(BoxDriving.TurnerMayWait(true, TurnAcross.TurnRight, true) && !BoxDriving.TurnerMayWait(true, TurnAcross.TurnRight, false) && BoxDriving.TurnerMayWait(true, TurnAcross.TurnLeft, false),
-                "the re-test applies to the turn across oncoming traffic only (LHT right, RHT left)");
+            Check(Near(east, west), "eastbound and westbound cars get the same spot (inverse lane mirrored)");
 
             // The exit room (RoomScan, the line's own measure): own path only.
-            Check(!BoxRoom(BCar, 1f, 0, (2f, BCar, 0f)), "G3: exit queue standing 2 m past the box: the turner stays at its turn spot (not across the oncoming lane)");
-            Check(BoxRoom(BCar, 1f, 0), "gap and empty exit: the turner goes");
+            Check(!BoxRoom(BCar, 1f, 0, (2f, BCar, 0f)), "G3: exit queue standing 2 m past the box: the car stays at its spot (not across the conflicting lane)");
+            Check(BoxRoom(BCar, 1f, 0), "gap and empty exit: the car goes");
             Check(BoxRoom(BCar, 1f, 0, (2f, BCar, BrakingDistance(8f))), "exit queue moving: goes (no crawl)");
             Check(BoxRoom(BCar, 1f, 0, (10f, BCar, 0f)) && !BoxRoom(BCar, 1f, 1, (10f, BCar, 0f)),
                 "a car ahead of it in the box on the same exit takes 5.5 m of exit room first");
             Check(!BoxRoom(BArtic, 1f, 0, (13f, BCar, 0f)), "an 18 m truck needs its whole length on the exit before it crosses");
 
-            // No new deadlock: the hold reads only the turner's own path (rest of its node lane, then its exit lanes). The
-            // oncoming straight lane is never an input, so the hold cannot wait on the oncoming queue; it ends when its
-            // exit moves. And the turner stands BEFORE the first oncoming overlap (stop point at the turn spot minus the
-            // margin), where the stock lane-object test of an oncoming straight car skips it.
+            // No new deadlock: the hold reads only the car's own path. It stands BEFORE the first conflicting overlap (stop
+            // point at the spot minus the margin), where the stock lane-object test of a conflicting car skips it.
             StretchState held = G3Car(G3Spot - M / G3Lane, 0f);
-            Check(held.Next == 1 && held.Wait(G3Spot) <= 0.01f && held.Wait(G3Spot) >= -0.01f, "held turner: front at the turn spot minus the margin");
-            Check(G3Spot - M / G3Lane < G3Spot, "its front is before the oncoming overlap start: oncoming straight traffic is not blocked");
+            Check(held.Next == 0 && held.Wait(G3Spot) <= 0.01f && held.Wait(G3Spot) >= -0.01f, "held car: front at the spot minus the margin");
         }
 
         private static void G3CounterTests()
         {
-            Check(Stage2Counters.BoxTurnRoomWaits == Stage2Counters.ExitCapVehicles + 1 && Stage2Counters.BoxTurnRoomWaits == Stage2Counters.Count - 39, "G3 counter appended after the G1 counters (the review F1 counter after it)");
+            Check(Stage2Counters.BoxSpotRoomWaits == Stage2Counters.ExitCapVehicles + 1 && Stage2Counters.BoxSpotRoomWaits == Stage2Counters.Count - 39, "G3 counter appended after the G1 counters (the review F1 counter after it)");
             var dl = new long[Stage2Counters.Count];
-            dl[Stage2Counters.BoxTurnRoomWaits] = 5;
-            dl[Stage2Counters.BoxTurnWaits] = 9;
+            dl[Stage2Counters.BoxSpotRoomWaits] = 5;
+            dl[Stage2Counters.BoxSpotWaits] = 9;
             string on = Stage2Counters.Format(2, dl, 2, 2, 2, 2);
-            int exitPart = on.IndexOf("; building exits:", StringComparison.Ordinal), g3 = on.IndexOf("; right-turn waits for exit room 5", StringComparison.Ordinal);
+            int exitPart = on.IndexOf("; building exits:", StringComparison.Ordinal), g3 = on.IndexOf("; waits at a spot in the box for exit room 5", StringComparison.Ordinal);
             Check(g3 > exitPart && exitPart > 0 && on.IndexOf("; points at W", StringComparison.Ordinal) > g3, "timing log: the G3 count at the end of the text (before the points): " + on);
-            Check(on.Contains("right-turn waits 9;"), "the 0.4.2 right-turn wait count is unchanged");
+            Check(on.Contains("waits at a spot in the box 9;"), "the in-box spot wait count (slot of the 0.4.2 right-turn count)");
             Check(!Stage2Counters.Format(2, dl, 2, 2, 1, 2).Contains("exit room"), "box setting off: no G3 count");
         }
 
@@ -96,17 +96,20 @@ namespace JunctionRules.Tests
             Check(s25 > 0 && s35 > s25 && s29 > s35, "S2-37 after S2-25 (zebra spots known) and before S2-29");
             Check(it.IndexOf("// JR-STAGE2 BEGIN S2-37:", s35 + 1, StringComparison.Ordinal) < 0, "S2-37 once");
             string block = it.Substring(s35, it.IndexOf("JR-STAGE2 END", s35, StringComparison.Ordinal) - s35);
-            Check(block.Contains("if (m_JR.m_BoxRule && !JunctionRules.Core.ExitGiveWay.IsEmergency(m_Priority))") && block.Contains("m_JR.BoxTurnRoomHold(") && block.Contains("m_Blocker = m_JR.HoldBlocker;") && block.Contains("m_BlockerType = BlockerType.Continuing;"),
+            Check(block.Contains("if (m_JR.m_BoxRule && !JunctionRules.Core.ExitGiveWay.IsEmergency(m_Priority))") && block.Contains("m_JR.BoxSpotRoomHold(") && block.Contains("m_Blocker = m_JR.HoldBlocker;") && block.Contains("m_BlockerType = BlockerType.Continuing;"),
                 "S2-37 gated by the box setting; 0.4.9 (G17): names the vehicle that took its exit room as blocker");
             Check(it.Substring(0, 2000).Contains("S2-29, S2-37") /* JR-T-014d: S2-50 ids follow */, "iterator header lists S2-37");
             string rules = File.ReadAllText(Path.Combine(root, "tools", "vanilla_rules.json"));
             string dev = File.ReadAllText(Path.Combine(root, "DEVIATIONS.md"));
             Check(rules.Contains("\"S2-37\"") && dev.Contains("| S2-37 |"), "S2-37 declared in vanilla_rules.json and DEVIATIONS.md");
             string yb = File.ReadAllText(Path.Combine(src, "Stage2", "JRYellowBox.cs"));
-            int m = yb.IndexOf("public float BoxTurnRoomHold(", StringComparison.Ordinal);
+            int m = yb.IndexOf("public float BoxSpotRoomHold(", StringComparison.Ordinal);
             string body = yb.Substring(m, yb.IndexOf("\n        }\n", m, StringComparison.Ordinal) - m);
-            Check(body.Contains("BoxDriving.TurnSpotRoomCheck(") && body.Contains("HasRoomPast(lane, 1f,") && body.Contains("m_BoxTurnIndex"), "BoxTurnRoomHold: Core check, room on its own path, the turn spot index");
-            Check(!body.Contains("m_LaneOverlaps") && !body.Contains("overlaps["), "BoxTurnRoomHold reads no overlap lane (no wait on oncoming traffic)");
+            Check(body.Contains("BoxDriving.SpotRoomCheck(") && body.Contains("HasRoomPast(lane, 1f,") && body.Contains("m_Stretch.Spots[next]") && body.Contains("SameExitAdmits("),
+                "BoxSpotRoomHold: Core check, room on its own path, the car's next whole-junction spot, G22 kept");
+            Check(!body.Contains("m_LaneOverlaps") && !body.Contains("overlaps["), "BoxSpotRoomHold reads no overlap lane (no wait on other traffic)");
+            Check(!yb.Contains("TurnSpot(") && !yb.Contains("m_QueuedTurnersMayStand") && !File.ReadAllText(Path.Combine(src, "Stage2", "JRWholeJunction.cs")).Contains("m_BoxTurnSpot"),
+                "1.5.0: the turn spot and the Highway Code 174 queue exception are gone");
         }
 
         private static void WatchTests()
@@ -114,7 +117,7 @@ namespace JunctionRules.Tests
             long car = JunctionWatch.Key(373495, 1);
             Check(JunctionWatch.KeyIndex(car) == 373495 && JunctionWatch.KeyVersion(car) == 1 && JunctionWatch.EntityText(car) == "Entity(373495:1)", "entity key round trip");
             Check(JunctionWatch.Key(0, 0) == 0 && JunctionWatch.EntityText(0) == "none", "Entity.Null = 0 = none");
-            long packed = JunctionWatch.Pack((int)JunctionWatch.Rule.BoxTurnRoom, 1, 0.12f, 0f);
+            long packed = JunctionWatch.Pack((int)JunctionWatch.Rule.BoxSpotRoom, 1, 0.12f, 0f);
             JunctionWatch.Unpack(packed, out int rule, out int type, out float speed, out float max);
             Check(rule == 1 && type == 1 && Near(speed, 0.12f) && max == 0f, "pack / unpack");
             JunctionWatch.Unpack(JunctionWatch.Pack(13, 8, 900f, -1f), out _, out int t8, out float big, out float neg);

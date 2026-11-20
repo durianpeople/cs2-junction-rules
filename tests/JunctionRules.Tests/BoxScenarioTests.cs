@@ -591,9 +591,10 @@ namespace JunctionRules.Tests
             string yb2 = System.IO.File.ReadAllText(System.IO.Path.Combine(root, "JunctionRules", "Stage2", "JRYellowBox.cs"));
             Check(yb2.Contains("if (BoxDriving.NoseIn(fl, m_VehicleLength) && !m_BoxSameExitStanding") && yb2.Contains("m_BoxStoodInside = true;") && yb2.Contains("                            m_BoxNose = true;") && yb2.Contains("if (BoxDriving.NoseIn(f0, m_VehicleLength))   // review 3 F1")
                 && wj.Contains("if (m_BoxNose && !turnSpot && currentSpeed < Stage2Counters.StandingSpeed)") && wj.Contains("Add(counters, Stage2Counters.BoxNosePast, 1);   // owner nose rule: must be 0")
-                && wj.Contains("|| Stage2Counters.IsStandingOn(m_HasBoxTurnRoom, m_BoxTurnRoomSpeed, finalMaxSpeed, currentSpeed);")
+                && wj.Contains("|| Stage2Counters.IsStandingOn(m_HasBoxSpotRoom, m_BoxSpotRoomSpeed, finalMaxSpeed, currentSpeed)")
+                && wj.Contains("|| (m_BoxLane && Stage2Counters.IsStandingOn(m_HasZebraPeople, m_ZebraPeopleSpeed, finalMaxSpeed, currentSpeed));")
                 && wj.Contains("if (m_BoxStoodInside && !turnSpot && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.BoxStoodInside, 1);"),
-                "counters 'standing with the nose in a box' (must be 0) and 'standing inside a box' measure standing cars at junction and exit / entrance boxes; the right-turn spot (oncoming gap or exit room) is excluded");
+                "counters 'standing with the nose in a box' (must be 0) and 'standing inside a box' measure standing cars at junction and exit / entrance boxes; 1.5.0: a car standing at its whole-junction spot in the box (live conflict, exit room there, people on a zebra) is excluded");
             // review R1: the light request
             Check(nav.Contains("// JR-STAGE2 BEGIN S2-52:") && nav.Contains("laneIterator.m_JR.LightPetition(laneIterator.m_MaxSpeed, out Entity jrPetitionLane)")
                 && nav.Contains("m_LaneSignals.Enqueue(new CarNavigationHelpers.LaneSignal(entity, jrPetitionLane, priority));") && wj.Contains("m_LastLightLane = nav.m_Lane;"),

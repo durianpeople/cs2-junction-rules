@@ -195,8 +195,6 @@ namespace JunctionRules.Stage2
         // ---- 0.4.2 (JR-T-010): cars obey yellow boxes (Core/BoxDriving.cs; methods in Stage2/JRYellowBox.cs) ----
         /// <summary>Setting "Cars obey yellow boxes" (Stage2Mode.BoxObey, stripped from m_Mode in Create).</summary>
         public bool m_BoxRule;
-        private bool m_BoxTurnWait;
-        private bool m_BoxLeftHand;
         private bool m_BoxJunctions;
         private bool m_BoxEntrances;
         /// <summary>JR-T-022: setting "Look past the car in front at a box" (Stage2Mode.BoxLookPast; RoomScan.LookPast in box room tests).</summary>
@@ -232,30 +230,22 @@ namespace JunctionRules.Stage2
         private ComponentLookup<Game.Net.Edge> m_ArmEdgeData;
         /// <summary>0.4.10 (sweep): the lane signals, for "a light inside the room window past a box" (SetBoxes).</summary>
         private ComponentLookup<LaneSignal> m_BoxSignalData;
-        /// <summary>
-        /// 0.4.10 (chains; Highway Code 174: a right-turner may wait in the box "only stopped by oncoming traffic, or by other
-        /// vehicles waiting to turn right"): set by the junction box hold for a turner with the UK exception, so a vehicle
-        /// standing ahead of it on its own turning path inside the box (another turner waiting) does not keep it out.
-        /// ScanLane is static, so the flag travels in the scan (RoomScan.QueuedMayStand, set in HasRoomPast).
-        /// </summary>
-        private bool m_QueuedTurnersMayStand;
         /// <summary>0.4.10 (review R1): the signal lane whose red / amber blocked the last box room scan (Entity.Null = none).</summary>
         private Entity m_LastLightLane;
         /// <summary>0.4.10 (review R1): the light the car's binding box hold waits for, and that hold's speed (block S2-52 petitions it).</summary>
         private Entity m_LightPetitionLane;
         private float m_LightPetitionSpeed;
-        /// <summary>The lane being checked (BeginLane, Whole junction) is a lane of a boxed junction: its decision is at the stop line.</summary>
+        /// <summary>The lane being checked (BeginLane, Whole junction) is a lane of a boxed junction. 1.5.0 (JR-T-038): its decision is
+        /// no longer moved to the stop line; it marks the lane for the spot room re-check (S2-37) and the box counters.</summary>
         private bool m_BoxLane;
-        /// <summary>Its turn spot (UK right-turn exception, driving coordinates; 2 = none) and that spot's index in the stretch spots (-1 = none).</summary>
-        private float m_BoxTurnSpot;
-        private int m_BoxTurnIndex;
         private bool m_HasBoxRoom;
         private float m_BoxRoomSpeed;
-        private bool m_HasBoxTurnWait;
-        private float m_BoxTurnWaitSpeed;
-        /// <summary>JR-T-013b (G3): this car-step a turner was held at its turn spot because its exit had no room (S2-37).</summary>
-        private bool m_HasBoxTurnRoom;
-        private float m_BoxTurnRoomSpeed;
+        /// <summary>1.5.0 (JR-T-038): this car-step a car was held at its whole-junction spot inside a box (before its first live conflict).</summary>
+        private bool m_HasBoxSpotWait;
+        private float m_BoxSpotWaitSpeed;
+        /// <summary>JR-T-013b (G3; 1.5.0 every boxed lane): this car-step a car was held at its spot in the box because its exit had no room (S2-37).</summary>
+        private bool m_HasBoxSpotRoom;
+        private float m_BoxSpotRoomSpeed;
         private bool m_HasEntranceMain;
         private float m_EntranceMainSpeed;
         private bool m_HasEntranceLeaving;
@@ -461,14 +451,10 @@ namespace JunctionRules.Stage2
             j.m_RoomMargin = Stage2Mode.ZebraMargin(mode);
             // 0.4.2: and the yellow box rule (the margin bits are shared).
             j.m_BoxRule = (mode & Stage2Mode.BoxObey) != 0;
-            j.m_BoxTurnWait = (mode & Stage2Mode.BoxTurnWait) != 0;
-            j.m_BoxLeftHand = (mode & Stage2Mode.BoxLeftHand) != 0;
             j.m_BoxJunctions = (mode & Stage2Mode.BoxJunctions) != 0;
             j.m_BoxEntrances = (mode & Stage2Mode.BoxEntrances) != 0;
             j.m_BoxLookPast = (mode & Stage2Mode.BoxLookPast) != 0;   // JR-T-022
-            j.m_BoxTurnSpot = 2f;
             j.m_LightPetitionSpeed = float.MaxValue;   // 0.4.10 (review R1): no light to ask for
-            j.m_BoxTurnIndex = -1;
             // 0.4.4: and the exit give-way rule.
             j.m_ExitRule = (mode & Stage2Mode.ExitGiveWay) != 0;
             // JR-T-014d (G11): and people give way at unmarked crossings.
@@ -561,8 +547,6 @@ namespace JunctionRules.Stage2
             m_Committed = false;
             m_Inside = false;
             m_BoxLane = false;
-            m_BoxTurnSpot = 2f;
-            m_BoxTurnIndex = -1;
             m_LaneAccess = IsAccess(lane, ref carLanes);   // JR-T-033 (B1)
             if (!m_NodeLaneData.HasComponent(lane)) return;
             // 0.4.11 (G21, owner 17 Nov: a vehicle turning into a building never waits in the box; the UK in-box turn spot does
@@ -588,24 +572,15 @@ namespace JunctionRules.Stage2
                 if (HeldByRed(overlaps[i], ref signals)) list.m_Held |= 1UL << i;
             }
             float braking = VehicleUtils.GetBrakingDistance(car, currentSpeed, timeStep);
-            // 0.4.2: a lane of a boxed junction takes its decision at the stop line (Core/BoxDriving.cs).
-            bool box = RuleOn && IsBoxedJunctionLane(lane);
+            // 1.5.0 (JR-T-038, owner 21 Nov 2026): a lane of a boxed junction is decided as at any junction (its entry spot is
+            // its first live conflict; the box itself decides entry only, BoxHold at the line). 0.4.2-1.4.1 moved the decision
+            // to the stop line and gave turners across oncoming traffic a second spot (removed).
             if (!m_Stretch.Begin(ref list, origDistance, length, StretchGeometry.ToDriving(curveX, inverse), margin, braking,
-                    (m_Mode & Stage2Mode.AtLine) != 0 || box))
+                    (m_Mode & Stage2Mode.AtLine) != 0))
             {
                 return;
             }
-            if (box)
-            {
-                // UK right-turn exception: a second spot inside the box before the first oncoming conflict.
-                m_BoxLane = true;
-                m_BoxTurnSpot = TurnSpot(lane, overlaps, inverse, ref carLanes);
-                if (m_BoxTurnSpot < 1f && BoxDriving.JunctionSpots(true, m_BoxTurnSpot, out WaitingSpots boxSpots) && boxSpots.Count > 1)
-                {
-                    m_Stretch.BeginWithSpots(ref list, boxSpots, origDistance, length, StretchGeometry.ToDriving(curveX, inverse), margin, braking);
-                    m_BoxTurnIndex = 1;
-                }
-            }
+            m_BoxLane = RuleOn && IsBoxedJunctionLane(lane);
             m_Inverse = inverse;
             m_Spot = StretchGeometry.ToDriving(m_Stretch.Spots[0], inverse);
             m_Committed = m_Stretch.PastEntry;
@@ -800,9 +775,9 @@ namespace JunctionRules.Stage2
             elements.m_Pedestrian = pedestrianLanes;
             m_LaneAccess = IsAccess(lane, ref carLanes);   // JR-T-033 (B1)
             elements.m_AccessLane = m_LaneAccess;
-            bool atLine = RuleOn && ((m_Mode & Stage2Mode.AtLine) != 0 || m_BoxLane);
-            // 0.4.2: a boxed junction lane: stop-line decision and the turner's spot in the box, where the zebra rule allows it.
-            // Z O gaps (a waiting spot right after a zebra, owner refinement) everywhere but inside a box (the box decides at the line).
+            bool atLine = RuleOn && (m_Mode & Stage2Mode.AtLine) != 0;
+            // 1.5.0 (JR-T-038): a boxed junction lane gets the same sections as any lane (no stop-line decision, no turn spot;
+            // Z O gaps, a waiting spot right after a zebra, everywhere).
             // 1.0.1 (owner 19 Nov 2026): soft zebras (signalised, people not on green) may be stood on while giving way, but
             // the car does not move onto one while there is no room past everything it crosses on this lane (exit blocked).
             float softHold = SoftZebraHold(lane, ref elements, overlaps, curveX, length, origDistance, margin, inverse, car, currentSpeed, timeStep,
@@ -811,9 +786,8 @@ namespace JunctionRules.Stage2
             // JR-T-021C (G17): the soft hold's blocker. The section scan below may overwrite m_LastBlocker; every return keeps
             // the blocker of the hold actually returned (the smaller one; a hold-free return names nobody).
             Entity softBlocker = softHold < float.MaxValue ? m_LastBlocker : Entity.Null;
-            if (!ZebraSections.Build(ref elements, RuleOn, atLine, length, margin, m_VehicleLength, m_BoxLane ? m_BoxTurnSpot : 2f, m_BoxLane ? -1f : m_RoomMargin,
+            if (!ZebraSections.Build(ref elements, RuleOn, atLine, length, margin, m_VehicleLength, m_RoomMargin,
                     out ZebraLayout layout)) return SoftOnly(softHold, softBlocker);
-            if (m_BoxLane) m_BoxTurnIndex = layout.ExtraIndex;
             m_ZebraStarts = default;
             for (int i = 0; i < overlaps.Length; i++)
             {
@@ -959,7 +933,6 @@ namespace JunctionRules.Stage2
             RoomScan scan = RoomScan.Begin(m_VehicleLength, m_RoomMargin);
             // 0.4.10 (G19): yellow boxes count only room that is free now (no credit for a moving queue); zebras keep the credit.
             scan.FreeNow = freeNow;
-            scan.QueuedMayStand = m_QueuedTurnersMayStand;
             // JR-T-022: box room tests look past the car in front (setting); off = exactly the 1.0.1 scan. JR-T-022e: lookPast
             // false = a pure free-now verdict with the setting on (the exit zebra wait's re-ask): no credit, no sight test, no
             // building query, no hidden-vehicle hold.
@@ -1507,7 +1480,7 @@ namespace JunctionRules.Stage2
                     // 0.4.10 (owner, chains of boxes): in a box room test (free now) a vehicle STANDING ahead inside the box /
                     // chain or before its line is not going to make room: no room now (named). A moving one goes first and
                     // takes its length past the box (RoomScan.AddQueued).
-                    if (scan.FreeNow && !scan.QueuedMayStand && !(moving.TryGetComponent(e, out Moving qm) && math.lengthsq(qm.m_Velocity) >= Stage2Counters.StandingSpeed * Stage2Counters.StandingSpeed))
+                    if (scan.FreeNow && !(moving.TryGetComponent(e, out Moving qm) && math.lengthsq(qm.m_Velocity) >= Stage2Counters.StandingSpeed * Stage2Counters.StandingSpeed))
                     {
                         Entity qw = controllers.TryGetComponent(e, out Controller qc) && qc.m_Controller != Entity.Null ? qc.m_Controller : e;
                         scan.BlockBy(qw.Index, qw.Version);
@@ -2049,11 +2022,11 @@ namespace JunctionRules.Stage2
                 {
                     Min(ref m_HasZebraCs, ref m_ZebraCsSpeed, speed);
                 }
-                // 0.4.2: a turner standing at its turn spot inside the box (UK right-turn exception).
-                if (m_BoxTurnIndex >= 0 && m_OvPhase == PointPhase.Deciding && m_Stretch.Next == m_BoxTurnIndex
-                    && m_Stretch.Spots.StretchOf(m_OvStart) == m_BoxTurnIndex)
+                // 1.5.0 (JR-T-038): a car standing at its whole-junction spot inside a box (the spot past the line).
+                if (m_BoxLane && (m_OvPhase == PointPhase.Safety || (m_OvPhase == PointPhase.Deciding
+                    && m_Stretch.Spots[m_Stretch.Spots.StretchOf(m_OvStart)] > WholePathRule.SpotEpsilon)))
                 {
-                    Min(ref m_HasBoxTurnWait, ref m_BoxTurnWaitSpeed, speed);
+                    Min(ref m_HasBoxSpotWait, ref m_BoxSpotWaitSpeed, speed);
                 }
                 if (m_OvPhase == PointPhase.Safety) Min(ref m_HasSafety, ref m_SafetySpeed, speed);
                 else if (m_Stretch.Spots.Count > 0 && m_OvStart > m_Stretch.Spots[0] + WholePathRule.SpotEpsilon) Min(ref m_HasLater, ref m_LaterSpeed, speed);
@@ -2135,8 +2108,8 @@ namespace JunctionRules.Stage2
             if (m_ZebraFurtherSeen) Add(counters, Stage2Counters.ZebraFurther, 1);
             if (m_ZebraUnsortedSeen) Add(counters, Stage2Counters.ZebraScanUnsorted, 1);
             if (Stage2Counters.IsStandingOn(m_HasBoxRoom, m_BoxRoomSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxHeldRoom, 1);
-            if (Stage2Counters.IsStandingOn(m_HasBoxTurnWait, m_BoxTurnWaitSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxTurnWaits, 1);
-            if (Stage2Counters.IsStandingOn(m_HasBoxTurnRoom, m_BoxTurnRoomSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxTurnRoomWaits, 1);
+            if (Stage2Counters.IsStandingOn(m_HasBoxSpotWait, m_BoxSpotWaitSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxSpotWaits, 1);
+            if (Stage2Counters.IsStandingOn(m_HasBoxSpotRoom, m_BoxSpotRoomSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxSpotRoomWaits, 1);
             if (Stage2Counters.IsStandingOn(m_HasEntranceMain, m_EntranceMainSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.EntranceHeldMain, 1);
             if (Stage2Counters.IsStandingOn(m_HasEntranceLeaving, m_EntranceLeavingSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.EntranceHeldLeaving, 1);
             if (Stage2Counters.IsStandingOn(m_HasEntranceEntering, m_EntranceEnteringSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.EntranceHeldEntering, 1);   // JR-T-014c (G9)
@@ -2194,9 +2167,12 @@ namespace JunctionRules.Stage2
             if (m_LookPastAdmitted) Add(counters, Stage2Counters.BoxLookPastAdmitted, 1);   // JR-T-022 (probe)
             if (m_BoxZebraWait && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.BoxExitZebraWait, 1);   // JR-T-024
             if (Stage2Counters.IsStandingOn(m_HasBoxZebraLine, m_BoxZebraLineSpeed, finalMaxSpeed, currentSpeed)) Add(counters, Stage2Counters.BoxExitZebraLine, 1);
-            // 0.4.10 probes; the UK right-turn spot (waiting for the oncoming gap or, review 3 F2, for exit room) is excluded
-            bool turnSpot = Stage2Counters.IsStandingOn(m_HasBoxTurnWait, m_BoxTurnWaitSpeed, finalMaxSpeed, currentSpeed)
-                || Stage2Counters.IsStandingOn(m_HasBoxTurnRoom, m_BoxTurnRoomSpeed, finalMaxSpeed, currentSpeed);
+            // 0.4.10 probes; 1.5.0 (JR-T-038): a car standing at its whole-junction spot in the box (waiting for a live conflict,
+            // for exit room at that spot, or for people on a zebra of its path) is the owner rule, not a violation: excluded
+            // (was: the UK right-turn spot only)
+            bool turnSpot = Stage2Counters.IsStandingOn(m_HasBoxSpotWait, m_BoxSpotWaitSpeed, finalMaxSpeed, currentSpeed)
+                || Stage2Counters.IsStandingOn(m_HasBoxSpotRoom, m_BoxSpotRoomSpeed, finalMaxSpeed, currentSpeed)
+                || (m_BoxLane && Stage2Counters.IsStandingOn(m_HasZebraPeople, m_ZebraPeopleSpeed, finalMaxSpeed, currentSpeed));
             if (m_BoxNose && !turnSpot && currentSpeed < Stage2Counters.StandingSpeed)
             {
                 Add(counters, Stage2Counters.BoxNosePast, 1);   // owner nose rule: must be 0

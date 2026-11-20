@@ -14,13 +14,12 @@ namespace JunctionRules.Core
     /// to the boxed node, or its front is past the line) carries on; a car that cannot stop at the line any more (the
     /// game's own can-stop test) carries on too.
     ///
-    /// With the Whole junction gap rule the box also moves the whole-path decision to the stop line (no car waits in
-    /// the box), except the UK right-turn exception (setting, default on): a car turning across oncoming traffic gets a
-    /// second waiting spot inside the box, just before its first conflict with an oncoming straight lane (the same pair
-    /// Core/TurnAcross.cs classifies: a Forward lane whose end edge is the turner's start edge). Points before that
-    /// spot are decided at the line, the oncoming ones (and anything after them) at the turn spot. So the turner enters
-    /// when its exit has room and the way to the turn spot is clear, and only oncoming traffic stops it in the box. With
-    /// the stock gap rule there are no waiting spots to move: the box is the room test at the line only.
+    /// 1.5.0 (JR-T-038, owner rule 21 Nov 2026): the box decides ENTRY only. With room on the exit the car then drives
+    /// exactly as at any other junction (Whole junction rule: up to just before its first live conflict, red-held lanes
+    /// not counted, amber live, soft zebras and the zebra rules as everywhere) and waits there; before it moves on from
+    /// that spot the room test runs again (<see cref="SpotRoomCheck"/>). Exit blocked: it waits at the stop line. Retired:
+    /// the stop-line decision for boxed lanes and the UK right-turn turn spot (0.4.2-1.4.1). With the stock gap rule
+    /// there are no waiting spots: the box is the room test at the line only.
     ///
     /// Entrance box (a band across the carriageway in front of a building's access, the painted length centred on the
     /// access point): a main-road car does not enter the band unless there is room for it past the band; a car leaving
@@ -93,41 +92,19 @@ namespace JunctionRules.Core
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool Holds(Approach a, bool hasRoom) => a == Approach.Check && !hasRoom;
 
-        /// <summary>The UK right-turn exception applies to this lane (setting on, the lane turns across oncoming traffic).</summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TurnerMayWait(bool exceptionOn, uint ownCarLaneFlags, bool leftHandTraffic) =>
-            exceptionOn && TurnAcross.IsTurnAcross(ownCarLaneFlags, leftHandTraffic);
-
-        /// <summary>The other lane is the turner's oncoming straight (Core/TurnAcross.cs pair test).</summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsOncomingStraight(uint otherCarLaneFlags, bool ownStartIsOtherEnd) =>
-            (otherCarLaneFlags & TurnAcross.Forward) != 0 && ownStartIsOtherEnd;
-
         /// <summary>
-        /// JR-T-013b (G3): the turner's room test runs again at its turn spot. A turner that entered the box with room on its
-        /// exit can find the exit full by the time the oncoming gap comes (the exit queue grew while it waited, an oncoming
-        /// left-turner took the room); it must then stay at the turn spot, clear of the oncoming lane, instead of crossing
-        /// and stopping across it. Applies while the turn spot is the car's next spot (front past the line and every earlier
-        /// spot, not yet past the turn spot; <paramref name="turnIndex"/> = its index, -1 = none) and the car can still stop
-        /// before it (the game's can-stop test). The exit room itself is the line's test (RoomScan via HasRoomPast).
+        /// 1.5.0 (JR-T-038, owner 21 Nov 2026: "the problem is carving out things, making exceptions for the right turning"):
+        /// a car that entered a box with room drives as at any other junction, up to just before its first live conflict
+        /// (its whole-junction spot, <paramref name="spot"/>, driving coordinates). Its exit can fill while it waits there
+        /// (the queue grew, another car took the room), so before it moves on from that spot the box room test runs again
+        /// and it stays at the spot, clear of the conflicting lane, until its exit has room (the 0.4.x G3 re-check, now for
+        /// every lane of a boxed junction, not only turners). Applies while the spot is inside the box (past the line) and
+        /// still ahead, the car can stop before it (the game's can-stop test), and the line test did not already run this
+        /// step (<paramref name="lineChecked"/>: the car is before the line and able to stop there, BoxHold decides).
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TurnSpotRoomCheck(int turnIndex, int next, int spotCount, bool canStopBefore) =>
-            turnIndex > 0 && turnIndex < spotCount && next == turnIndex && canStopBefore;
-
-        /// <summary>
-        /// The waiting spots of a boxed junction lane under the Whole junction rule: the stop line (0) and, for a turner
-        /// with the exception, its turn spot (driving coordinates, 2 = none). False when the lane has no conflict point
-        /// (the rule does not cover it: stock).
-        /// </summary>
-        public static bool JunctionSpots(bool hasConflict, float turnSpot, out WaitingSpots spots)
-        {
-            spots = default;
-            if (!hasConflict) return false;
-            spots.Add(0f);
-            if (turnSpot > WholePathRule.SpotEpsilon && turnSpot < 1f) spots.Add(turnSpot);
-            return true;
-        }
+        public static bool SpotRoomCheck(bool boxLane, float spot, bool spotAhead, bool lineChecked, bool canStopBefore) =>
+            boxLane && spotAhead && spot > WholePathRule.SpotEpsilon && spot < 1f && !lineChecked && canStopBefore;
 
         /// <summary>
         /// The entrance band on a lane, driving coordinates (0 = where the car enters the lane): the access point at lane

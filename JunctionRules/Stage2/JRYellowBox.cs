@@ -78,27 +78,6 @@ namespace JunctionRules.Stage2
             lane != Entity.Null && m_NodeLaneData.HasComponent(lane) && m_OwnerData.TryGetComponent(lane, out Owner o) && o.m_Owner == node;
 
         /// <summary>
-        /// The turn spot of a boxed junction lane (driving coordinates; 2 = none): with the right-turn exception on and the
-        /// lane turning across oncoming traffic, the start of its first yield-checked overlap with an oncoming straight lane
-        /// (a Forward lane whose end edge is this lane's start edge: the Core/TurnAcross.cs pair).
-        /// </summary>
-        private float TurnSpot(Entity lane, DynamicBuffer<LaneOverlap> overlaps, bool inverse, ref ComponentLookup<Game.Net.CarLane> carLanes)
-        {
-            if (!m_BoxTurnWait || !carLanes.TryGetComponent(lane, out Game.Net.CarLane own) || !m_LaneData.TryGetComponent(lane, out Lane ownLane)) return 2f;
-            if (!BoxDriving.TurnerMayWait(true, (uint)own.m_Flags, m_BoxLeftHand)) return 2f;
-            float spot = 2f;
-            for (int i = 0; i < overlaps.Length; i++)
-            {
-                LaneOverlap o = overlaps[i];
-                if (!carLanes.TryGetComponent(o.m_Other, out Game.Net.CarLane other) || !m_LaneData.TryGetComponent(o.m_Other, out Lane otherLane)) continue;
-                if (!BoxDriving.IsOncomingStraight((uint)other.m_Flags, ownLane.m_StartNode.OwnerEquals(otherLane.m_EndNode))) continue;
-                if (!StretchGeometry.ToConflict((int)o.m_Flags, o.m_ThisStart, o.m_ThisEnd, inverse, false, out float s, out _)) continue;
-                if (s < spot) spot = s;
-            }
-            return spot;
-        }
-
-        /// <summary>
         /// 0.4.2 (blocks S2-28 / S2-28b, top of both CheckCurrentLane overloads, only with m_BoxRule): the hold for the lane
         /// being iterated (m_Lane, its curve length, m_CurveOffset in game offsets, the game's distance from the car's front
         /// to the point at m_CurveOffset.x before its stop margin). Returns the speed limit (clamped) or float.MaxValue.
@@ -169,13 +148,11 @@ namespace JunctionRules.Stage2
                 if (a != BoxDriving.Approach.Check) return float.MaxValue;
                 float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, wait, safeTimeStep), speedRange);
                 if (!(hold < currentMax)) return float.MaxValue;
-                // 0.4.10 (G19): room free NOW past the box (no credit for a moving queue). Chains: a turner with the UK exception may
-                // queue in the box behind other turners (Highway Code 174), so standing vehicles on its own path in the box do not block it.
-                m_QueuedTurnersMayStand = m_BoxTurnWait && BoxDriving.TurnerMayWait(true, (uint)carLanes[lane].m_Flags, m_BoxLeftHand);
+                // 0.4.10 (G19): room free NOW past the box (no credit for a moving queue). 1.5.0 (JR-T-038): no turner exception for
+                // vehicles standing ahead on its path in the box (the 0.4.10 Highway Code 174 chain went with the turn spot).
                 bool room = HasRoomPast(lane, 1f, inverse, laneLength, 0f, owner.m_Owner, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
                     ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, freeNow: true,
                     frontToStart: wait0 + margin + laneLength * (1f - start));   // JR-T-022 sight: front bumper to the box's far end
-                m_QueuedTurnersMayStand = false;
                 // JR-T-024 (look-past setting only): the box lets the car in; people on its exit zebra may still hold it at the line
                 if (!BoxDriving.Holds(a, room)) return m_BoxLookPast ? ExitZebraHold(lane, laneLength, inverse, hold, margin, owner.m_Owner, wait0 + margin + laneLength * (1f - start),
                     self, safeTimeStep, ref carLanes, ref laneObjects, ref curves, ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars,
@@ -414,16 +391,17 @@ namespace JunctionRules.Stage2
         }
 
         /// <summary>
-        /// JR-T-013b (G3, block S2-37 in CheckOverlappingLanes after BeginLane / BeginZebras, only with m_BoxRule): the UK
-        /// right-turn exception re-runs the box room test at the turn spot. BoxHold tests the exit room only at the stop line
-        /// (a car in the box is Inside there), so a turner that entered with room crossed the oncoming lane on the first
-        /// gap even when its exit had filled meanwhile, and stood across the oncoming lane (straight traffic then waited
-        /// for it: the owner's G3). Now, while the turn spot is its next spot and it can stop before it, it stays at the
-        /// spot (before the first oncoming conflict) until its exit has room. The room scan reads only its own path (rest of
-        /// this lane from its front, then its exit lanes), never the oncoming lanes, so the hold waits only on the exit
-        /// queue: no new wait on oncoming traffic. Returns the speed limit (clamped) or float.MaxValue.
+        /// JR-T-013b (G3, block S2-37 in CheckOverlappingLanes after BeginLane / BeginZebras, only with m_BoxRule); 1.5.0
+        /// (JR-T-038) for every lane of a boxed junction. BoxHold tests the exit room at the stop line; past the line the car
+        /// drives as at any junction up to just before its first live conflict (its whole-junction spot) and waits there.
+        /// Its exit can fill meanwhile, so while that spot is its next spot (inside the box, still ahead) and it can stop
+        /// before it, the box room test runs again: no room = it stays at the spot, clear of the conflicting lane, instead of
+        /// crossing and stopping across it (the owner's G3, before only at the UK right-turn spot). The G22 same-exit
+        /// exception admits it as at the line. The room scan reads only its own path (rest of this lane from its front,
+        /// then its exit lanes), never the conflicting lanes: no new wait on other traffic. Returns the speed limit
+        /// (clamped) or float.MaxValue.
         /// </summary>
-        public float BoxTurnRoomHold(Entity lane, float length, bool inverse, CarData car, float safeTimeStep, Bounds1 speedRange, float currentMax, Entity self,
+        public float BoxSpotRoomHold(Entity lane, float length, bool inverse, CarData car, float safeTimeStep, Bounds1 speedRange, float currentMax, Entity self,
             ref ComponentLookup<Game.Net.CarLane> carLanes, ref BufferLookup<LaneObject> laneObjects, ref ComponentLookup<Curve> curves,
             ref ComponentLookup<Moving> moving, ref ComponentLookup<Controller> controllers, ref ComponentLookup<PrefabRef> prefabRefs,
             ref ComponentLookup<ObjectGeometryData> geometries, ref ComponentLookup<CarData> prefabCars,
@@ -431,34 +409,33 @@ namespace JunctionRules.Stage2
         {
             BeginHoldBlocker();   // 0.4.9 (G17)
             if (!RuleOn || !m_BoxLane || !m_LaneActive || m_LaneEntity != lane || !m_BoxLookups) return float.MaxValue;
-            int turn = m_BoxTurnIndex;
-            if (turn < 0 || turn >= m_Stretch.Spots.Count) return float.MaxValue;
-            float spot = m_Stretch.Spots[turn];
-            if (!BoxDriving.TurnSpotRoomCheck(turn, m_Stretch.Next, m_Stretch.Spots.Count, m_Stretch.CanStopBefore(spot))) return float.MaxValue;
+            int next = m_Stretch.Next;
+            bool ahead = next < m_Stretch.Spots.Count;
+            float spot = ahead ? m_Stretch.Spots[next] : 2f;
+            // the line test ran this step (BoxHold): the car is before the line and can stop there
+            bool lineChecked = !m_Stretch.FrontPast(0f) && m_Stretch.CanStopBefore(0f);
+            if (!BoxDriving.SpotRoomCheck(true, spot, ahead, lineChecked, ahead && m_Stretch.CanStopBefore(spot))) return float.MaxValue;
             float hold = MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, m_Stretch.Wait(spot), safeTimeStep), speedRange);
             if (!(hold < currentMax)) return float.MaxValue;
             if (!m_OwnerData.TryGetComponent(lane, out Owner owner)) return float.MaxValue;
-            // 0.4.10 (G19): the right-turner may wait at its in-box spot only while its exit has room free NOW (other turners
-            // standing ahead of it on its path in the box do not block it: Highway Code 174).
-            m_QueuedTurnersMayStand = true;
+            // 0.4.10 (G19): room free NOW past the box, as at the line.
             bool room = HasRoomPast(lane, 1f, inverse, length, math.max(0f, m_Stretch.CurveX), owner.m_Owner, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
                 ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes, freeNow: true,
                 frontToStart: m_Stretch.Wait(1f) + m_Stretch.Margin);   // JR-T-022 sight: front bumper to the box lane's end
-            m_QueuedTurnersMayStand = false;
             if (room) return float.MaxValue;
-            // 0.4.11 (G22): the same-exit-lane exception also at the UK turn spot (a turner that entered under it is not stopped
-            // there, on a footprint the exception did not check; it still gives way to oncoming traffic by the gap rule).
+            // 0.4.11 (G22): the same-exit-lane exception also at the spot in the box (a car that entered under it is not stopped
+            // there, on a footprint the exception did not check; it still gives way by the gap rule).
             if (SameExitAdmits(lane, owner.m_Owner, length, inverse, math.max(0f, m_Stretch.CurveX), self, ref carLanes, ref laneObjects, ref curves, ref controllers, ref prefabRefs, ref geometries, ref overlapData, ref pedestrianLanes, ref moving))
             {
                 m_BoxSameExitEntry = true;
-                    if (m_LastAdmitZebra) m_SameExitZebraTail = true;   // 0.4.12 owner decision revised (counter)
+                if (m_LastAdmitZebra) m_SameExitZebraTail = true;   // 0.4.12 owner decision revised (counter)
                 return float.MaxValue;
             }
             NoteLightPetition(hold);   // review R1
-            WhyNoteRoom(WhyRule.JrBoxTurnSpot, m_Stretch.Wait(spot));   // JR-T-025
+            WhyNoteRoom(WhyRule.JrBoxSpotRoom, m_Stretch.Wait(spot));   // JR-T-025; 1.5.0 JR-T-038
             if (Counting)
             {
-                Min(ref m_HasBoxTurnRoom, ref m_BoxTurnRoomSpeed, hold);
+                Min(ref m_HasBoxSpotRoom, ref m_BoxSpotRoomSpeed, hold);
                 if (m_FreeNowHeld) Min(ref m_HasBoxFreeNow, ref m_BoxFreeNowSpeed, hold);
             }
             return hold;

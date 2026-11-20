@@ -108,17 +108,7 @@ namespace JunctionRules.Core
         /// lane has no zebra (nothing changes then).
         /// </summary>
         public static bool Build<T>(ref T list, bool sections, bool atLine, float laneLength, float margin, float vehicleLength, out ZebraLayout layout)
-            where T : struct, IPathElements => Build(ref list, sections, atLine, laneLength, margin, vehicleLength, 2f, out layout);
-
-        /// <summary>
-        /// 0.4.2 (JR-T-010): as above with one extra waiting spot <paramref name="extraSpot"/> (driving coordinates; 2 = none):
-        /// the yellow box turn spot of a car turning across oncoming traffic (Core/BoxDriving.cs). It becomes a section start
-        /// without a zebra, but only where the zebra rule allows a car to stand: not on a zebra and with the whole vehicle
-        /// clear of every zebra behind it (the zebra rule wins). Otherwise it is left out and the car decides at the spot
-        /// before it. <see cref="ZebraLayout.ExtraIndex"/> tells where it went (-1 = left out).
-        /// </summary>
-        public static bool Build<T>(ref T list, bool sections, bool atLine, float laneLength, float margin, float vehicleLength, float extraSpot, out ZebraLayout layout)
-            where T : struct, IPathElements => Build(ref list, sections, atLine, laneLength, margin, vehicleLength, extraSpot, -1f, out layout);
+            where T : struct, IPathElements => Build(ref list, sections, atLine, laneLength, margin, vehicleLength, -1f, out layout);
 
         /// <summary>
         /// 0.4.2 (owner refinement of the 0.4.1 sections, 16 Nov 2026): as above; with <paramref name="sections"/> and
@@ -130,7 +120,7 @@ namespace JunctionRules.Core
         /// behind it), which is not always the next zebra. No such gap (Z C C): the 0.4.1 layout. Only right after a zebra:
         /// 0.2.3 has no other mid-junction waiting spots. <paramref name="gapMargin"/> &lt; 0 = off (the 0.4.1 layout).
         /// </summary>
-        public static bool Build<T>(ref T list, bool sections, bool atLine, float laneLength, float margin, float vehicleLength, float extraSpot, float gapMargin, out ZebraLayout layout)
+        public static bool Build<T>(ref T list, bool sections, bool atLine, float laneLength, float margin, float vehicleLength, float gapMargin, out ZebraLayout layout)
             where T : struct, IPathElements
         {
             layout = default;
@@ -180,14 +170,8 @@ namespace JunctionRules.Core
                     }
                 }
             }
-            // The stop-line variant first (0.4.2: before the extra spot goes in; section membership is the same either way).
+            // The stop-line variant (the general "wait at the stop line" setting; 1.5.0: no longer forced for boxed lanes).
             if (atLine) spots[0] = 0f;
-            layout.ExtraIndex = -1;
-            if (extraSpot > WholePathRule.SpotEpsilon && extraSpot < 1f && !OnZebra(ref list, extraSpot)
-                && CrossingPoint.Fits(laneLength, extraSpot, PreviousEnd(ref list, false, extraSpot), margin, vehicleLength))
-            {
-                layout.ExtraIndex = layout.InsertPlainSpot(ref spots, extraSpot);
-            }
             // Section ends: the end of the last element (zebra, or with sections a vehicle point) of each section.
             for (int k = 0; k < spots.Count; k++) layout.SetEnd(k, spots[k]);
             for (int i = 0; i < list.Count; i++)
@@ -229,17 +213,6 @@ namespace JunctionRules.Core
                 if (counts && s < zebraStart - WholePathRule.SpotEpsilon && e > prev) prev = e;
             }
             return prev;
-        }
-
-        /// <summary>0.4.2: <paramref name="u"/> lies on a zebra (inside its range, edges included).</summary>
-        public static bool OnZebra<T>(ref T list, float u) where T : struct, IPathElements
-        {
-            for (int i = 0; i < list.Count; i++)
-            {
-                list.Get(i, out int kind, out float s, out float e);
-                if ((kind & Zebra) != 0 && u >= s - WholePathRule.SpotEpsilon && u <= e + WholePathRule.SpotEpsilon) return true;
-            }
-            return false;
         }
 
         /// <summary>
@@ -333,8 +306,6 @@ namespace JunctionRules.Core
         public float LastEnd;
         /// <summary>Zebras merged into the section before them (vehicle does not fit before them).</summary>
         public int Merged;
-        /// <summary>0.4.2: index of the extra (yellow box turn) spot in <see cref="Spots"/>, -1 = none.</summary>
-        public int ExtraIndex;
         /// <summary>0.4.2: Z O waiting gaps (sections without a zebra right after one).</summary>
         public int Gaps;
         /// <summary>0.4.1 (JR-T-009-r): zebra sections merged this car-step because the car cannot stop before them (<see cref="ZebraSections.MergeUnstoppable"/>).</summary>
@@ -371,36 +342,6 @@ namespace JunctionRules.Core
         }
 
         /// <summary>
-        /// 0.4.2: inserts a section start without a zebra into <paramref name="spots"/> (sorted), shifting the zebra marks of
-        /// the later sections. Before the section ends are set. Returns its index, or -1 when full or already a spot.
-        /// </summary>
-        public int InsertPlainSpot(ref WaitingSpots spots, float u)
-        {
-            if (spots.Count >= WaitingSpots.Capacity) return -1;
-            int at = spots.Count;
-            for (int i = 0; i < spots.Count; i++)
-            {
-                float d = spots[i] - u;
-                if (d < WholePathRule.SpotEpsilon && d > -WholePathRule.SpotEpsilon) return -1;
-                if (spots[i] > u) { at = i; break; }
-            }
-            spots.Add(0f);
-            WaitingSpots first = m_FirstZebra;
-            for (int i = spots.Count - 1; i > at; i--)
-            {
-                spots[i] = spots[i - 1];
-                first[i] = first[i - 1];
-            }
-            spots[at] = u;
-            first[at] = 2f;
-            m_FirstZebra = first;
-            int low = m_ZebraBits & ((1 << at) - 1);
-            int high = (m_ZebraBits >> at) << (at + 1);
-            m_ZebraBits = low | high;
-            return at;
-        }
-
-        /// <summary>
         /// 0.4.1 (JR-T-009-r): section <paramref name="i"/> joins section i - 1 (its zebra, its end); later sections move
         /// down one place. Spots[i] is no longer a waiting spot.
         /// </summary>
@@ -426,9 +367,6 @@ namespace JunctionRules.Core
             m_End = ends;
             m_FirstZebra = first;
             LastEnd = SectionEnd(Spots.Count - 1);
-            // 0.4.2: the yellow box turn spot moves with its section (gone when it was the merged one).
-            if (ExtraIndex == i) ExtraIndex = -1;
-            else if (ExtraIndex > i) ExtraIndex--;
         }
 
         /// <summary>A vehicle point at u (driving coordinates) lies after the first zebra of its section k: a "C after" the zebra.</summary>
@@ -487,12 +425,6 @@ namespace JunctionRules.Core
         /// 0.4.9 rule would have let the car in (counted, to show what the free-now rule costs through traffic).
         /// </summary>
         public bool HeldForMovingQueue;
-
-        /// <summary>
-        /// 0.4.10 (chains, Highway Code 174): with <see cref="FreeNow"/> a vehicle STANDING ahead inside the box blocks, except
-        /// for a right-turner with the UK exception (true here): it may wait behind other vehicles waiting to turn right.
-        /// </summary>
-        public bool QueuedMayStand;
 
         /// <summary>
         /// JR-T-022 (owner 19 Nov 2026: "when humans drive over a box, they look over the cars in front of it, and if logically

@@ -48,8 +48,8 @@ namespace JunctionRules.Stage2
 
         private JunctionWatch.Rule WatchRule(float f)
         {
-            if (Stage2Counters.IsBinding(m_HasBoxTurnRoom, m_BoxTurnRoomSpeed, f)) return JunctionWatch.Rule.BoxTurnRoom;
-            if (Stage2Counters.IsBinding(m_HasBoxTurnWait, m_BoxTurnWaitSpeed, f)) return JunctionWatch.Rule.BoxTurnOncoming;
+            if (Stage2Counters.IsBinding(m_HasBoxSpotRoom, m_BoxSpotRoomSpeed, f)) return JunctionWatch.Rule.BoxSpotRoom;
+            if (Stage2Counters.IsBinding(m_HasBoxSpotWait, m_BoxSpotWaitSpeed, f)) return JunctionWatch.Rule.BoxSpotWait;
             if (Stage2Counters.IsBinding(m_HasBoxRoom, m_BoxRoomSpeed, f)) return JunctionWatch.Rule.BoxLine;
             if (Stage2Counters.IsBinding(m_HasEntranceMain, m_EntranceMainSpeed, f)) return JunctionWatch.Rule.EntranceMain;
             if (Stage2Counters.IsBinding(m_HasEntranceLeaving, m_EntranceLeavingSpeed, f)) return JunctionWatch.Rule.EntranceLeaving;

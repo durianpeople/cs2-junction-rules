@@ -193,7 +193,7 @@ namespace JunctionRules.Tests
             Check((Stage2Mode.Stripped & Stage2Mode.ExitGiveWay) != 0, "exit bit stripped from the 0.2.x mode (every m_Mode == 0 exit unchanged)");
             Check((on & ~Stage2Mode.Stripped) == 0, "setting on alone leaves the stripped stage 2 mode at 0");
             Check((Stage2Mode.ExitGiveWay & (Stage2Mode.BoxEntranceMask | Stage2Mode.BoxObey | Stage2Mode.ZebraMarginMask | 0xFF)) == 0, "exit bit does not overlap any older bit");
-            int all = Stage2Mode.For(JunctionGapRule.WholeJunction, true, JunctionWaitingSpot.StopLine, true, true, true, true, 25.5f, Stage2Mode.BoxBits(true, true, true, true, true, 51.1f), true);
+            int all = Stage2Mode.For(JunctionGapRule.WholeJunction, true, JunctionWaitingSpot.StopLine, true, true, true, true, 25.5f, Stage2Mode.BoxBits(true, true, true, 51.1f), true);
             Check((all & Stage2Mode.ExitGiveWay) != 0 && Stage2Mode.BoxEntranceLength(all) > 51f, "every other bit set: exit bit and the entrance length both intact");
             Check(Stage2Mode.RuleName(on).Contains("vehicles leaving buildings give way") && !Stage2Mode.RuleName(off).Contains("leaving buildings"), "rule name says the exit setting");
             var sw = new GapRuleSwitch();
@@ -213,11 +213,11 @@ namespace JunctionRules.Tests
             Check(!Stage2Counters.Format(1, d).Contains("leaving buildings"), "0.4.3 callers (no exit mask): unchanged text");
             Check(Stage2Counters.ExitCapHits == Stage2Counters.Count - 51 && Stage2Counters.ExitJoinArea == Stage2Counters.ExitCapHits + 1 && Stage2Counters.ExitJoinOther == Stage2Counters.Count - 48 && Stage2Counters.ExitHeld == Stage2Counters.EntranceHeldLeaving + 1, "exit counters appended after the 0.4.3 ones");
             Check(Stage2Counters.ExitJoinSpawnPoint == Stage2Counters.ExitJoinOther + 1 && Stage2Counters.ExitCapVehicles == Stage2Counters.Count - 40, "0.4.7 G1 counters appended after 0.4.6 (the G3 counter after them)"); 
-            Check(Stage2Counters.ExitRoadStart == Stage2Counters.BoxTurnRoomWaits + 1 && Stage2Counters.ExitRoadStart == Stage2Counters.Count - 38 && Stage2Counters.ExitHeldBeforeSidewalk == Stage2Counters.ExitRoadStart + 1 && Stage2Counters.ExitStuckOnRoad == Stage2Counters.Count - 33 && Stage2Counters.EntranceHeldEntering == Stage2Counters.Count - 32 && Stage2Counters.ExitDriveLate == Stage2Counters.Count - 31, "review F1 counter after G3; 0.4.8 sidewalk counters, then the two 0.4.9 counters, then the 0.4.10 G19 / nose / standing-inside counters, then the 0.4.11 G21 entry counters at the end");
+            Check(Stage2Counters.ExitRoadStart == Stage2Counters.BoxSpotRoomWaits + 1 && Stage2Counters.ExitRoadStart == Stage2Counters.Count - 38 && Stage2Counters.ExitHeldBeforeSidewalk == Stage2Counters.ExitRoadStart + 1 && Stage2Counters.ExitStuckOnRoad == Stage2Counters.Count - 33 && Stage2Counters.EntranceHeldEntering == Stage2Counters.Count - 32 && Stage2Counters.ExitDriveLate == Stage2Counters.Count - 31, "review F1 counter after G3; 0.4.8 sidewalk counters, then the two 0.4.9 counters, then the 0.4.10 G19 / nose / standing-inside counters, then the 0.4.11 G21 entry counters at the end");
             long[] rs = new long[Stage2Counters.Count];
             rs[Stage2Counters.ExitRoadStart] = 3;
             string rsOn = Stage2Counters.Format(2, rs, 2, 2, 2, 2);
-            Check(rsOn.Contains("; placed straight onto a road lane (not judged) 3") && rsOn.IndexOf("right-turn waits for exit room", StringComparison.Ordinal) < rsOn.IndexOf("placed straight", StringComparison.Ordinal)
+            Check(rsOn.Contains("; placed straight onto a road lane (not judged) 3") && rsOn.IndexOf("waits at a spot in the box for exit room", StringComparison.Ordinal) < rsOn.IndexOf("placed straight", StringComparison.Ordinal)
                 && rsOn.IndexOf("; points at W", StringComparison.Ordinal) > rsOn.IndexOf("placed straight", StringComparison.Ordinal), "timing line: road-start count at the end, before the points: " + rsOn);
             Check(!Stage2Counters.Format(2, rs, 2, 2, 2, 1).Contains("placed straight"), "exit setting off: no road-start count");
             Check(ExitGiveWay.RoadStartKind < ExitGiveWay.EventKinds && ExitGiveWay.RoadStartKind != ExitGiveWay.TraceWaitKind && (long)ExitGiveWay.EventKinds * ExitGiveWay.EventKindStride < int.MaxValue, "road-start episodes: own event kind, keys fit"); 

@@ -196,13 +196,9 @@ namespace JunctionRules.Settings
         [SettingsUISection(kSection, kBoxesGroup)]
         public bool BoxObey { get; set; }
 
-        /// <summary>The right-turn exception is greyed out while the box rule is off.</summary>
-        public bool BoxTurnWaitDisabled() => !BoxObey;
-
-        /// <summary>0.4.2: UK exception: a car turning across oncoming traffic may enter and wait in the box (default on).</summary>
-        [SettingsUIDisableByCondition(typeof(JunctionRulesSettings), nameof(BoxTurnWaitDisabled))]
-        [SettingsUISection(kSection, kBoxesGroup)]
-        public bool BoxTurnWait { get; set; }
+        /// <summary>The box sub-settings are greyed out while the box rule is off. (1.5.0, JR-T-038: the UK right-turn setting
+        /// "turning across oncoming traffic may wait in the box" is retired; past the line every car drives as at any junction.)</summary>
+        public bool BoxSubSettingsDisabled() => !BoxObey;
 
         /// <summary>
         /// JR-T-022 (owner 19 Nov 2026): a car about to enter a box judges the whole stretch ahead (every vehicle before, in
@@ -212,7 +208,7 @@ namespace JunctionRules.Settings
         /// before the zebra when the road past has room free now; someone standing there on its way holds it at the line (Core
         /// ExitZebraWait; JR-T-024b: cyclists are not people, as in the game's own check). Default on; off = 1.0.1 driving. Greyed out while the box rule is off.
         /// </summary>
-        [SettingsUIDisableByCondition(typeof(JunctionRulesSettings), nameof(BoxTurnWaitDisabled))]
+        [SettingsUIDisableByCondition(typeof(JunctionRulesSettings), nameof(BoxSubSettingsDisabled))]
         [SettingsUISection(kSection, kBoxesGroup)]
         public bool BoxLookPast { get; set; }
 
@@ -374,7 +370,6 @@ namespace JunctionRules.Settings
             PeopleGiveWayUnmarked = true; // JR-T-014d (G11)
             BoxObey = true;
             HideMarkingsUnderBoxes = false;
-            BoxTurnWait = true;
             BoxLookPast = true;   // JR-T-022
             YellowBoxPaintTest = false;
             PaintMode = BoxPaintMode.Hatch;
@@ -491,10 +486,7 @@ namespace JunctionRules.Settings
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.HideMarkingsUnderBoxes)), "On: the road's own markings inside a yellow box (lane lines, centre lines, arrows, painted speed numbers) are not drawn, so only the box hatch shows. Markings outside the box stay; on a divided road the box stops at the median, so the far side keeps its markings. Removing a box brings its markings back. Only the drawing changes: nothing is saved with the city and driving is not affected. Off (default): markings show through the box as before." },
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.BoxObey)), "Cars obey yellow boxes" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.BoxObey)),
-                    "On (default): at a junction or building car exit you gave a yellow box, a car does not drive into the box unless there is room for its whole length (trailers included) plus the room margin on its exit beyond the box. A queue that keeps moving counts as room (the same measure as Cars never stop on a zebra); a queue that stands does not. Cars already in the box drive on. With the Whole junction gap rule, cars also take their give-way decision at the box's stop line instead of inside the box. At an exit box, cars on the main road do not stop inside the band in front of that exit, and cars leaving the building there wait until there is room past the band on their lane; cars turning in are not held. A building with several boxed exits: each exit's band counts on its own. Only the boxes you placed count. Off: the boxes are paint only. Changes take effect at the next simulation step." },
-                { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.BoxTurnWait)), "Yellow boxes: turning across oncoming traffic may wait in the box" },
-                { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.BoxTurnWait)),
-                    "On (default, as UK law): a car turning across oncoming traffic (right in a left-hand traffic city, left in a right-hand traffic city) may drive into the box and wait there for a gap when its exit has room and only oncoming traffic stops it (with the Whole junction gap rule it waits just before the oncoming lanes; never on a zebra). Off: it waits at the stop line like everyone else. With the Stock gap rule the game's own give-ways decide where cars wait, so this switch changes nothing there." },
+                    "On (default): at a junction or building car exit you gave a yellow box, a car does not drive into the box unless there is room for its whole length (trailers included) plus the room margin on its exit beyond the box. A queue that keeps moving counts as room (the same measure as Cars never stop on a zebra); a queue that stands does not. Cars already in the box drive on. Once a car may enter (its exit is not blocked), it drives as at any other junction: with the Whole junction gap rule it drives up to just before its first crossing with live traffic (lanes held by a red light do not count) and waits there, inside the box if that is where the crossing is; if its exit fills up while it waits there, it stays at that spot until there is room again. Exit blocked: it waits at the stop line (unless the same-exit-lane exception lets it in). At an exit box, cars on the main road do not stop inside the band in front of that exit, and cars leaving the building there wait until there is room past the band on their lane; cars turning in are not held. A building with several boxed exits: each exit's band counts on its own. Only the boxes you placed count. Off: the boxes are paint only. Changes take effect at the next simulation step." },
                 { m_Setting.GetOptionLabelLocaleID(nameof(JunctionRulesSettings.BoxLookPast)), "Look past the car in front at a box" },
                 { m_Setting.GetOptionDescLocaleID(nameof(JunctionRulesSettings.BoxLookPast)),
                     "On (default): a car about to drive into a yellow box looks at the whole stretch ahead, not only at the car right in front: every vehicle before, in and past the box, how fast they move and the free road beyond them. It expects each vehicle ahead, in and past the box, to keep going and to stop only behind a queue or vehicle it can see standing (crawling slower than about 18 km/h counts as standing), or at a red light, packed nose to tail and never standing in another yellow box, on a zebra (except a signal zebra whose people have red) or in another junction; when that leaves room for its whole length (trailers included) plus the room margin past the box, it drives on instead of pausing at the line for the car in front to clear the box first. It judges only what a driver could see: within 100 m around it (nothing stopped or slow within sight: it goes), in a straight line not blocked by a building, and nothing behind a lorry or bus (that vehicle itself counts with its own speed, with a little room to spare; with a lorry or bus ahead of it in or before the box it judges as with this setting off: it goes when the room past the box is free now); ordinary cars do not block the view. When that is not clear (a standing queue or a red light that leaves no room), it waits at the line as before; it still never stops inside the box for traffic. People on the box's exit zebra: when they are all walking across and the road past the box has room for the car's whole length now and the car fits between the entry zebra and the exit zebra, the car may drive in and wait just before the zebra (never on it); when someone stands on the zebra in the car's way, or there is no room, it waits at the line. Off: a car enters only when the room past the box is free now, and people on the exit zebra are handled as in 1.0.1." },

@@ -42,16 +42,16 @@ namespace JunctionRules.Core
         /// <summary>Returns a log line when the requested mode changed (or on the first call), else null.</summary>
         public string Step(JunctionGapRule rule, bool counting, out int mode, JunctionWaitingSpot spot = JunctionWaitingSpot.BeforeFirstCrossing,
             bool turnGivesWay = false, bool leftHandTraffic = false, bool noPushPeople = false, bool zebraClear = false,
-            float zebraMargin = RoomScan.DefaultMargin, bool boxObey = false, bool boxTurnWait = true, bool anyJunctionBox = false,
+            float zebraMargin = RoomScan.DefaultMargin, bool boxObey = false, bool anyJunctionBox = false,
             bool anyEntranceBox = false, float entranceLength = 8f, bool exitGiveWay = false, bool unmarkedGiveWay = false, bool boxLookPast = false)
         {
             // 0.4.2 (JR-T-010): the yellow box bits (traffic side from the same leftHandTraffic the turn rule reads).
-            int boxBits = Stage2Mode.BoxBits(boxObey, boxTurnWait, leftHandTraffic, anyJunctionBox, anyEntranceBox, entranceLength, boxLookPast);
+            int boxBits = Stage2Mode.BoxBits(boxObey, anyJunctionBox, anyEntranceBox, entranceLength, boxLookPast);
             mode = Stage2Mode.For(rule, counting, spot, turnGivesWay, leftHandTraffic, noPushPeople, zebraClear, zebraMargin, boxBits, exitGiveWay, unmarkedGiveWay);
             if (m_Has && mode == m_Mode) return null;
             bool first = !m_Has;
             bool ruleChanged = !first && ((mode ^ m_Mode) & (Stage2Mode.Rule | Stage2Mode.AtLine | Stage2Mode.TurnGivesWay | Stage2Mode.LeftHandTraffic | Stage2Mode.NoPushPeople | Stage2Mode.ZebraClear | Stage2Mode.ZebraMarginMask
-                | Stage2Mode.BoxObey | Stage2Mode.BoxTurnWait | Stage2Mode.BoxLeftHand | Stage2Mode.BoxEntranceMask | Stage2Mode.ExitGiveWay
+                | Stage2Mode.BoxObey | Stage2Mode.BoxEntranceMask | Stage2Mode.ExitGiveWay
                 | Stage2Mode.UnmarkedGiveWay | Stage2Mode.BoxLookPast)) != 0;
             bool boxesChanged = !first && ((mode ^ m_Mode) & (Stage2Mode.BoxJunctions | Stage2Mode.BoxEntrances)) != 0;
             m_Has = true;
@@ -140,8 +140,8 @@ namespace JunctionRules.Core
         public const int ZebraScanUnsorted = FeedingScans + 19;
         /// <summary>0.4.2 (JR-T-010): car-steps in which a car stood before a boxed junction because there was no room for it past the box (setting "Cars obey yellow boxes").</summary>
         public const int BoxHeldRoom = FeedingScans + 20;
-        /// <summary>0.4.2: car-steps in which a car turning across oncoming traffic stood inside a box at its turn spot (the UK right-turn exception; Whole junction).</summary>
-        public const int BoxTurnWaits = FeedingScans + 21;
+        /// <summary>1.5.0 (JR-T-038; slot of the 0.4.2 right-turn spot counter): car-steps in which a car stood inside a box at its whole-junction spot, before its first live conflict (Whole junction).</summary>
+        public const int BoxSpotWaits = FeedingScans + 21;
         /// <summary>0.4.2: car-steps in which a main-road car stood before an entrance band because there was no room for it past the band.</summary>
         public const int EntranceHeldMain = FeedingScans + 22;
         /// <summary>0.4.2: car-steps in which a car leaving a driveway stood at the road because there was no room for it past the band on its target lane.</summary>
@@ -182,8 +182,8 @@ namespace JunctionRules.Core
         public const int ExitCapLanes = FeedingScans + 40;
         /// <summary>0.4.7: exit decisions that hit the vehicle cap (dense traffic; counts as busy: wait).</summary>
         public const int ExitCapVehicles = FeedingScans + 41;
-        /// <summary>JR-T-013b (G3): car-steps in which a car turning across oncoming traffic stood at its turn spot inside a box because its exit had no room (room test re-run at the turn spot).</summary>
-        public const int BoxTurnRoomWaits = FeedingScans + 42;
+        /// <summary>JR-T-013b (G3; 1.5.0 JR-T-038 every lane of a boxed junction): car-steps in which a car stood at its whole-junction spot inside a box because its exit had no room (room test re-run at the spot).</summary>
+        public const int BoxSpotRoomWaits = FeedingScans + 42;
         /// <summary>
         /// 0.4.7 review (G1 F1): vehicles that appear directly in a public road lane, not through a building lane / spawn object
         /// / parking space (unspawned, current lane a public road car lane, no Connection / ResetSpeed flag): a path that starts
@@ -402,7 +402,7 @@ namespace JunctionRules.Core
                        : "") +
                    (boxMask >= 2
                        ? "; box entries held " + deltas[BoxHeldRoom].ToString(ci) +
-                         ", right-turn waits " + deltas[BoxTurnWaits].ToString(ci) +
+                         ", waits at a spot in the box " + deltas[BoxSpotWaits].ToString(ci) +
                          "; entrance band holds: main road " + deltas[EntranceHeldMain].ToString(ci) +
                          ", leaving driveway " + deltas[EntranceHeldLeaving].ToString(ci) +
                          "; entrance box entries held (entrance full) " + deltas[EntranceHeldEntering].ToString(ci)
@@ -428,7 +428,7 @@ namespace JunctionRules.Core
                          " (go), vehicles " + deltas[ExitCapVehicles].ToString(ci) + " (wait)"
                        : "") +
                    // JR-T-013b (G3): newest counter, at the end of the text (before the points).
-                   (boxMask >= 2 ? "; right-turn waits for exit room " + deltas[BoxTurnRoomWaits].ToString(ci) : "") +
+                   (boxMask >= 2 ? "; waits at a spot in the box for exit room " + deltas[BoxSpotRoomWaits].ToString(ci) : "") +
                    // 0.4.7 review (G1 F1): newest counter, after the G3 one.
                    (exitMask >= 2 ? "; placed straight onto a road lane (not judged) " + deltas[ExitRoadStart].ToString(ci) : "") +
                    // 0.4.8 (G7): the sidewalk rule's proof counters, newest at the end.
