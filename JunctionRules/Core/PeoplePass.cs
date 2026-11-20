@@ -154,5 +154,13 @@ namespace JunctionRules.Core
             if (people < 0 || cyclists < 0) return "; people passed blocking cars n/a";
             return "; people passed blocking cars " + people.ToString(ci) + " (cyclists " + cyclists.ToString(ci) + ")";
         }
+
+        /// <summary>JR-T-033 (B1): as above plus the people passes past a car on a building access (driveway out or way in);
+        /// negative = not counted.</summary>
+        public static string Format(long people, long cyclists, long atAccess)
+        {
+            if (people < 0 || cyclists < 0 || atAccess < 0) return Format(people, cyclists);
+            return Format(people, cyclists) + "; people passed a car at a building access " + atAccess.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
     }
 }

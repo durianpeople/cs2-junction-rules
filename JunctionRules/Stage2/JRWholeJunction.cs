@@ -352,6 +352,10 @@ namespace JunctionRules.Stage2
         private bool m_PeopleWaitingSkipped, m_HeldForWaitingPerson;
         /// <summary>G23 (counting): this car-step a standing person beside (not on) the car's way over a crossing got the game's creep, not a full stop.</summary>
         private bool m_PeopleBesideCreep;
+        /// <summary>JR-T-033 (B1, 1.4.0): the car lane being checked is a building access (Core/AccessCrossing.cs): its pavement is no
+        /// zebra and no whole-junction crossing; set by BeginLane / BeginZebras. m_LastNoPushAccess: the last NoPushPedestrian ran
+        /// on an access (why id). m_AccessStanding / m_AccessHeld: counters (Counting only).</summary>
+        private bool m_LaneAccess, m_LastNoPushAccess, m_AccessStanding, m_AccessHeld;
         /// <summary>G23 (counting): a gap scan did not count a vehicle standing in a queue held by a red light as present.</summary>
         private bool m_RedQueueIgnored;
         /// <summary>G22 (counting): this car-step the same-exit-lane exception let the car into / on through a junction box without exit room; standing in a box under it.</summary>
@@ -559,6 +563,7 @@ namespace JunctionRules.Stage2
             m_BoxLane = false;
             m_BoxTurnSpot = 2f;
             m_BoxTurnIndex = -1;
+            m_LaneAccess = IsAccess(lane, ref carLanes);   // JR-T-033 (B1)
             if (!m_NodeLaneData.HasComponent(lane)) return;
             // 0.4.11 (G21, owner 17 Nov: a vehicle turning into a building never waits in the box; the UK in-box turn spot does
             // not apply to turning into buildings): a drive's way in that leaves its road inside a painted box is decided at the
@@ -660,6 +665,13 @@ namespace JunctionRules.Stage2
             float u = StretchGeometry.ToDriving(start, m_Inverse);
             // 0.4.1: a zebra of the zebra sections is decided at its section's spot (never judged at the crossing).
             m_OvZebra = isCrossing && m_ZebraActive && IsZebraStart(u);
+            // JR-T-033 (B1, owner 20 Nov): the pavement over a building access is no crossing of the rule (no wait at the spot for
+            // people there): the game's own check at the crossing, as for a crossing judged there.
+            if (isCrossing && !m_OvZebra && !AccessCrossing.CrossingInRule(m_LaneAccess))
+            {
+                m_OvPhase = PointPhase.Stock;
+                return false;
+            }
             if (m_OvZebra && !RuleOn)
             {
                 // Stock gap rule: only the zebras are ours, and only before their section (the hold at the section's spot).
@@ -723,9 +735,10 @@ namespace JunctionRules.Stage2
             public bool m_Inverse;
             public ComponentLookup<LaneSignal> m_Signals;
             public ComponentLookup<Game.Net.PedestrianLane> m_Pedestrian;
-            /// <summary>0.4.8 (G7, owner 17 Nov): the lane is a driveway's leaving lane and the exit rule is on: the sidewalk it
-            /// crosses (every pedestrian overlap, marked or not) is a zebra Z, directly followed by the road lanes.</summary>
-            public bool m_SidewalkZebra;
+            /// <summary>JR-T-033 (B1, 1.4.0, owner 20 Nov): the lane is a building access (driveway out or way in): the pavement it
+            /// crosses is no zebra (no section, no soft zebra). 0.4.8-1.3.0 (G7) made a leaving driveway's pavement a hard zebra Z;
+            /// the exit give-way still stops before the pavement for the road (S2-29).</summary>
+            public bool m_AccessLane;
 
             public int Count => m_Overlaps.Length;
 
@@ -741,7 +754,7 @@ namespace JunctionRules.Stage2
                     if ((flags & WholePathRule.Water) == 0)
                     {
                         bool pedSignal = m_Signals.TryGetComponent(o.m_Other, out LaneSignal pedLight);
-                        kind = m_SidewalkZebra ? ZebraSections.Zebra : ZebraSections.ZebraKind((int)ped.m_Flags, pedSignal, (int)pedLight.m_Signal);
+                        kind = AccessCrossing.SectionKind(m_AccessLane, ZebraSections.ZebraKind((int)ped.m_Flags, pedSignal, (int)pedLight.m_Signal));
                     }
                     return;
                 }
@@ -784,7 +797,8 @@ namespace JunctionRules.Stage2
             elements.m_Inverse = inverse;
             elements.m_Signals = signals;
             elements.m_Pedestrian = pedestrianLanes;
-            elements.m_SidewalkZebra = m_ExitRule && carLanes.TryGetComponent(lane, out Game.Net.CarLane exitLane) && ExitGiveWay.IsDrivewayExitLane((uint)exitLane.m_Flags);
+            m_LaneAccess = IsAccess(lane, ref carLanes);   // JR-T-033 (B1)
+            elements.m_AccessLane = m_LaneAccess;
             bool atLine = RuleOn && ((m_Mode & Stage2Mode.AtLine) != 0 || m_BoxLane);
             // 0.4.2: a boxed junction lane: stop-line decision and the turner's spot in the box, where the zebra rule allows it.
             // Z O gaps (a waiting spot right after a zebra, owner refinement) everywhere but inside a box (the box decides at the line).
@@ -1648,6 +1662,13 @@ namespace JunctionRules.Stage2
                 stockDistance, today);
         }
 
+        /// <summary>JR-T-033 (B1): the car lane is a building access (CarLaneFlags.SideConnection, Core/AccessCrossing.cs).</summary>
+        public static bool IsAccess(Entity lane, ref ComponentLookup<Game.Net.CarLane> carLanes) =>
+            carLanes.TryGetComponent(lane, out Game.Net.CarLane carLane) && AccessCrossing.IsAccessLane((uint)carLane.m_Flags);
+
+        /// <summary>JR-T-033 (B1): the why id of a 0.3.2 full stop (S2-08b): at a building access only a person in the car's way.</summary>
+        public readonly WhyRule WhyNoPush() => m_LastNoPushAccess ? WhyRule.JrAccessPersonInWay : WhyRule.JrNeverPushPeople;
+
         /// <summary>
         /// 0.3.2 (JR-T-004, block S2-08b; only called with m_NoPushPeople): the game's CheckPedestrian has just run for
         /// person <paramref name="obj"/> against an open limit (S2-08 saved the iterator's limit, blocker and blocker type
@@ -1662,9 +1683,10 @@ namespace JunctionRules.Stage2
         /// </summary>
         public void NoPushPedestrian(ref float maxSpeed, ref Entity blocker, ref BlockerType blockerType, float savedMax, Entity savedBlocker,
             BlockerType savedType, Entity obj, float distance, bool pushBlockers, ref ComponentLookup<Moving> movingData, CarData car,
-            float safeTimeStep, Bounds1 speedRange, float personPos, float2 carRange, float crossingLength)
+            float safeTimeStep, Bounds1 speedRange, float personPos, float2 carRange, float crossingLength, bool accessLane)
         {
             float result = float.MaxValue;
+            m_LastNoPushAccess = accessLane;   // JR-T-033 (B1)
             if (maxSpeed < float.MaxValue)
             {
                 float stock = maxSpeed;
@@ -1674,7 +1696,14 @@ namespace JunctionRules.Stage2
                     : MathUtils.Clamp(VehicleUtils.GetMaxBrakingSpeed(car, distance, safeTimeStep), speedRange);
                 // 0.4.11 (G23): the full stop only for a person on the car's way over the crossing (not one waiting beside it at the kerb).
                 bool inPath = CrossingPush.PersonInPath(personPos, carRange.x, carRange.y, crossingLength);
+                // JR-T-033 (B1): at a building access only a person in the car's way (no 0.5 m widening) gets the full stop.
+                if (accessLane) inPath = AccessCrossing.FullStopApplies(true, inPath, AccessCrossing.PersonInWay(personPos, carRange.x, carRange.y, crossingLength));
                 result = CrossingPush.PedestrianSpeedInPath(true, reason, inPath, stock, fullStop);
+                if (Counting && accessLane)
+                {
+                    if (reason == CrossingPush.PushReason.Standing) m_AccessStanding = true;
+                    if (result < CrossingPush.CreepSpeed && result < savedMax) m_AccessHeld = true;
+                }
                 if (Counting && reason != CrossingPush.PushReason.None && !inPath) m_PeopleBesideCreep = true;
                 // G23 guard (must stay 0): held (below the creep speed) for a person classified as waiting, not crossing.
                 if (Counting && m_PersonWaitingNow && result < CrossingPush.CreepSpeed && result < savedMax) m_HeldForWaitingPerson = true;
@@ -2133,6 +2162,8 @@ namespace JunctionRules.Stage2
             if (m_PeopleWaitingSkipped) Add(counters, Stage2Counters.PeopleWaitingNotCrossing, 1);
             if (m_StockRoomSkipped) Add(counters, m_StockSkipBoxed ? Stage2Counters.StockRoomHoldSkippedBoxed : Stage2Counters.StockRoomHoldSkipped, 1);   // 0.4.11 (G25), 0.4.12 (G29 boxed)
             if (m_HeldForWaitingPerson && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.HeldForWaitingPerson, 1);
+            if (m_AccessStanding) Add(counters, Stage2Counters.AccessPeopleStanding, 1);   // JR-T-033 (B1)
+            if (m_AccessHeld && currentSpeed < Stage2Counters.StandingSpeed) Add(counters, Stage2Counters.AccessCarsHeld, 1);
             if (m_RedQueueIgnored) Add(counters, Stage2Counters.RedQueueNotPresent, 1);   // 0.4.11 (G23)
             // 0.4.11 (G22): entries under the same-exit-lane exception (one per vehicle episode), standing in a box under it (car-steps)
             if (m_BoxSameExitEntry && ExitEvent(eventTable, entity, frame, ExitGiveWay.SameExitEntryKind))

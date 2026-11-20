@@ -79,7 +79,7 @@ namespace JunctionRules.Tests
         {
             string root = RepoRoot();
             string copy = File.ReadAllText(Path.Combine(root, "JunctionRules", "Vanilla", "JRCarLaneSpeedIterator.cs"));
-            Check(copy.Contains("m_PrefabCar, m_SafeTimeStep, m_SpeedRange, laneObject.m_CurvePosition.x, m_CurveOffset, m_Curve.m_Length);"), "S2-08b hands the person's position and the car's range on the crossing");
+            Check(copy.Contains("m_PrefabCar, m_SafeTimeStep, m_SpeedRange, laneObject.m_CurvePosition.x, m_CurveOffset, m_Curve.m_Length, "), "S2-08b hands the person's position and the car's range on the crossing");
             string wj = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRWholeJunction.cs"));
             Check(wj.Contains("bool inPath = CrossingPush.PersonInPath(personPos, carRange.x, carRange.y, crossingLength);") && wj.Contains("CrossingPush.PedestrianSpeedInPath(true, reason, inPath, stock, fullStop)"), "NoPushPedestrian full-stops only people on the way");
             string ex = File.ReadAllText(Path.Combine(root, "JunctionRules", "Stage2", "JRExitGiveWay.cs"));

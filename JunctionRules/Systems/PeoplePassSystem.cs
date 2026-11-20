@@ -32,7 +32,9 @@ namespace JunctionRules.Systems
     {
         public const int CountPeople = 0;
         public const int CountCyclists = 1;
-        public const int CountSlots = 2;
+        /// <summary>JR-T-033 (B1): people passes past a car on a building access (CarLaneFlags.SideConnection lane; always on).</summary>
+        public const int CountPeopleAtAccess = 2;
+        public const int CountSlots = 3;
 
         /// <summary>Holds older than this are dropped by the sweep (entity gone or no longer in the slice).</summary>
         private const uint kStaleFrames = 600u * 60u;
@@ -114,6 +116,7 @@ namespace JunctionRules.Systems
                 m_MovingData = GetComponentLookup<Moving>(true),
                 m_LaneOverlaps = GetBufferLookup<LaneOverlap>(true),
                 m_LaneObjects = GetBufferLookup<LaneObject>(true),
+                m_CarLaneData = GetComponentLookup<Game.Net.CarLane>(true),   // JR-T-033 (B1)
                 m_Holds = m_Holds,
                 m_Counts = s_Counts,
                 m_Frame = frame,
@@ -152,10 +155,12 @@ namespace JunctionRules.Systems
             [ReadOnly] public ComponentLookup<Moving> m_MovingData;
             [ReadOnly] public BufferLookup<LaneOverlap> m_LaneOverlaps;
             [ReadOnly] public BufferLookup<LaneObject> m_LaneObjects;
+            [ReadOnly] public ComponentLookup<Game.Net.CarLane> m_CarLaneData;
             public NativeParallelHashMap<Entity, Hold> m_Holds;
             [NativeDisableContainerSafetyRestriction] public NativeArray<long> m_Counts;
             public uint m_Frame;
             public float m_Seconds;
+            private bool m_PassedAccess;
 
             public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
             {
@@ -186,6 +191,7 @@ namespace JunctionRules.Systems
                     {
                         lanes[i] = lane;
                         m_Counts[CountPeople] = m_Counts[CountPeople] + 1;
+                        if (m_PassedAccess) m_Counts[CountPeopleAtAccess] = m_Counts[CountPeopleAtAccess] + 1;   // JR-T-033 (B1)
                         m_Holds.Remove(e);
                     }
                 }
@@ -197,6 +203,7 @@ namespace JunctionRules.Systems
                 float x = lane.m_CurvePosition.x;
                 float y = lane.m_CurvePosition.y;
                 bool passed = false;
+                m_PassedAccess = false;
                 // The car may cover two adjacent road lanes: pass every overlap it holds that starts where the last ended.
                 for (int pass = 0; pass < 4; pass++)
                 {
@@ -209,6 +216,7 @@ namespace JunctionRules.Systems
                         if (!PeoplePass.CountsAsCrossing(roadOrTrack, merge)) continue;
                         if (!PeoplePass.PastOverlap(x, y, o.m_ThisStart * (1f / 255f), o.m_ThisEnd * (1f / 255f), out float nx)) continue;
                         if (!CarOn(o.m_Other, car, o.m_OtherStart * (1f / 255f), o.m_OtherEnd * (1f / 255f))) continue;
+                        if (m_CarLaneData.TryGetComponent(o.m_Other, out Game.Net.CarLane passedLane) && AccessCrossing.IsAccessLane((uint)passedLane.m_Flags)) m_PassedAccess = true;
                         x = nx;
                         found = true;
                         break;

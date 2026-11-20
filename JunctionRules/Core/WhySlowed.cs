@@ -90,6 +90,8 @@ namespace JunctionRules.Core
         JrSoftZebra = 55,
         /// <summary>Junction Rules 1.4.0 (JR-T-033): people on a zebra of the path; the car waits right before that zebra (drives up).</summary>
         JrPeopleWaitZebra = 56,
+        /// <summary>Junction Rules 1.4.0 (JR-T-033 B1): full stop at a building access for a person in the car's way (a person beside it gets the game's creep).</summary>
+        JrAccessPersonInWay = 57,
     }
 
     /// <summary>JR-T-025: what the blocker is (main thread, from the entity's components).</summary>
@@ -160,6 +162,7 @@ namespace JunctionRules.Core
                 case WhyRule.JrOther: return "jr_other";
                 case WhyRule.JrSoftZebra: return "jr_soft_zebra";
                 case WhyRule.JrPeopleWaitZebra: return "jr_people_wait_zebra";
+                case WhyRule.JrAccessPersonInWay: return "jr_access_person_in_way";
                 default: return "rule_" + ((int)r).ToString(CultureInfo.InvariantCulture);
             }
         }
@@ -205,6 +208,7 @@ namespace JunctionRules.Core
                 case WhyRule.JrOther: return "Junction Rules: hold (rule not named more closely)";
                 case WhyRule.JrSoftZebra: return "Junction Rules: soft zebra (signalised), no room past it";
                 case WhyRule.JrPeopleWaitZebra: return "Junction Rules: people on a zebra, waits right before it";
+                case WhyRule.JrAccessPersonInWay: return "Junction Rules: person in the way at a building access (full stop)";
                 default: return Id(r);
             }
         }

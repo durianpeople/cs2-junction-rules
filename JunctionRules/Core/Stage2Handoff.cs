@@ -284,7 +284,11 @@ namespace JunctionRules.Core
         public const int BoxExitZebraWait = FeedingScans + 77;
         /// <summary>JR-T-024: car-steps standing at a box line held for its exit zebra (people standing on it, or walking while the road past is not free now).</summary>
         public const int BoxExitZebraLine = FeedingScans + 78;
-        public const int Count = FeedingScans + 79;
+        /// <summary>JR-T-033 (B1, 1.4.0): car-steps in which a standing person was on the pavement a car's building access (driveway out or way in) crosses (the game counted them).</summary>
+        public const int AccessPeopleStanding = FeedingScans + 79;
+        /// <summary>JR-T-033 (B1): car-steps in which a car stood held (below the creep) by a person on the pavement at a building access.</summary>
+        public const int AccessCarsHeld = FeedingScans + 80;
+        public const int Count = FeedingScans + 81;
 
         /// <summary>Speed (m/s) under which a car counts as standing.</summary>
         public const float StandingSpeed = 0.5f;
@@ -466,6 +470,10 @@ namespace JunctionRules.Core
                        ? "; people beside a crossing passed at the game's creep (not on the car's way) " + deltas[PeopleBesideCrossingCreep].ToString(ci) +
                          "; people waiting at a crossing (kerb / red walk signal) not braked for " + deltas[PeopleWaitingNotCrossing].ToString(ci) +
                          "; car held for a person waiting at the kerb (not crossing) " + deltas[HeldForWaitingPerson].ToString(ci) + " (must be 0)" : "") +
+                   // JR-T-033 (B1)
+                   (exitMask >= 2 || deltas[AccessPeopleStanding] > 0 || deltas[AccessCarsHeld] > 0
+                       ? "; people standing on a building access " + deltas[AccessPeopleStanding].ToString(ci) +
+                         "; cars held by a person at a building access " + deltas[AccessCarsHeld].ToString(ci) : "") +
                    (exitMask >= 2 ? "; standing vehicles queued at a red not counted as present " + deltas[RedQueueNotPresent].ToString(ci) : "") +
                    // 0.4.11 (G25)
                    (ruleMask >= 2 && (exitMask >= 2 || deltas[StockRoomHoldSkipped] > 0) ? "; stock room hold skipped (unboxed, crossings clear) " + deltas[StockRoomHoldSkipped].ToString(ci) + " (boxed, same-exit-lane exception " + deltas[StockRoomHoldSkippedBoxed].ToString(ci) + ")" : "") +

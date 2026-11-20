@@ -147,7 +147,8 @@ namespace JunctionRules.Systems
             if (m_PassHasStart && PeoplePassSystem.Read(m_PassNow))
             {
                 part = PeoplePassCounts.Format(m_PassNow[PeoplePassSystem.CountPeople] - m_PassStart[PeoplePassSystem.CountPeople],
-                    m_PassNow[PeoplePassSystem.CountCyclists] - m_PassStart[PeoplePassSystem.CountCyclists]);
+                    m_PassNow[PeoplePassSystem.CountCyclists] - m_PassStart[PeoplePassSystem.CountCyclists],
+                    m_PassNow[PeoplePassSystem.CountPeopleAtAccess] - m_PassStart[PeoplePassSystem.CountPeopleAtAccess]);   // JR-T-033 (B1)
             }
             m_PassHasStart = PeoplePassSystem.Read(m_PassStart);
             return part ?? PeoplePassCounts.Format(-1, -1);

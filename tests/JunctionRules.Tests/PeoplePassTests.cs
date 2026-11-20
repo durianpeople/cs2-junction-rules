@@ -65,6 +65,8 @@ namespace JunctionRules.Tests
             // Log text.
             Check(PeoplePassCounts.Format(3, 1) == "; people passed blocking cars 3 (cyclists 1)", "log part");
             Check(PeoplePassCounts.Format(-1, -1) == "; people passed blocking cars n/a", "log part when not counted");
+            Check(PeoplePassCounts.Format(3, 1, 2) == "; people passed blocking cars 3 (cyclists 1); people passed a car at a building access 2"
+                && PeoplePassCounts.Format(3, 1, -1) == "; people passed blocking cars 3 (cyclists 1)", "JR-T-033 (B1): log part with the people passes at a building access");
         }
 
         private static void PeoplePassRepoTests()
