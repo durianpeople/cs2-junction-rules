@@ -169,9 +169,11 @@ PROBE-STAGE3-PAINT.md section 10.
   stop before it, room free now past the section); the section's vehicle points are then judged over the drive-up
   window (arrival + people wait estimate, at most 10 s, + clear time). Else the spot as before; why
   `jr_people_wait_zebra`, or `jr_people_wait_spot` with a reason (traffic / exit blocked / yellow box / tail on zebra /
-  cannot stop / not a zebra section). Core `ZebraDriveUp`, job `Stage2/JRZebraDriveUp.cs`.
+  cannot stop / not a zebra section / stock gap rule). Core `ZebraDriveUp`, job `Stage2/JRZebraDriveUp.cs`. JR-T-035:
+  Whole junction gap rule only (Stock: the spot as 1.3.0, reason `stock_gap_rule`); no drive-up when the people cannot
+  hold the car (estimated wait 0, nobody standing).
   1.4.0 (JR-T-033 B1, owner 20 Nov 2026): at a building access (`CarLaneFlags.SideConnection`, way in or out) the
-  pavement is no zebra (the 0.4.8 G7 hard zebra is gone; S2-29 still stops a leaving car before the pavement for the
+  unmarked pavement (no Crosswalk flag; a marked zebra there stays a zebra, JR-T-035) is no zebra (the 0.4.8 G7 hard zebra is gone; S2-29 still stops a leaving car before the pavement for the
   road gap and room) and no crossing of the whole-junction rule; the never-push full stop applies there only to a person
   in the car's way (Core `AccessCrossing.PersonInWay`), not one beside it or held at its edge (that made a mutual wait
   broken only by the 2 s people pass). Why `jr_access_person_in_way`. Timing log: "people standing on a building
