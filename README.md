@@ -3,7 +3,7 @@
 A Cities: Skylines II mod that makes traffic behave more like real (UK-style) traffic at junctions, crossings and
 building driveways, and adds painted **yellow box junctions** that drivers actually obey.
 
-Status: 1.4.1, on [Paradox Mods](https://mods.paradoxplaza.com/mods/168032/Windows), tested on a left-hand-traffic city. Expect rough edges.
+Status: 1.5.0, on [Paradox Mods](https://mods.paradoxplaza.com/mods/168032/Windows), tested on a left-hand-traffic city. Expect rough edges.
 
 **Getting started:** Options → Junction Rules → set **Car driving** to **Junction Rules** (it starts on the game's own
 driving, so nothing changes until you switch); for the whole-junction gap rule also set **Junction gap rule** to
@@ -76,9 +76,10 @@ A yellow box marks an area drivers must not stop in.
 - A vehicle enters a box only if there is room past it for its whole length (trailers included): free right now, or, with the setting Look past the car in front at a box (on by default), free by the time it gets there, with every vehicle ahead expected to keep going and to stop only behind a queue or vehicle it can see standing, or at a red light (within its 100 m line of sight; nothing slow in sight means it goes). The vehicles ahead are packed nose to tail, never in another yellow box, on a zebra (except a signal zebra whose people have red) or in another junction.
   A queue creeping slower than about 18 km/h (5 m/s) counts as standing.
 - If it can't clear the box, it stops with its front bumper at the line, not in the box.
+- Once its exit has room it drives in as at any junction: up to just before its first crossing with live traffic
+  (lanes held by a red light don't count) and waits there, turning or going straight; if its exit fills while it
+  waits there, it stays there until there is room again.
 - Several boxes close together are judged per vehicle: a gap between boxes only counts if that vehicle fits in it.
-- **Turning across oncoming traffic** (UK exception, optional): a turner may wait inside a junction box when its exit
-  is clear and only oncoming traffic stops it.
 - **Same-exit-lane exception:** a vehicle from a give-way approach may enter even when its exit is full, if where it
   would wait only blocks traffic heading for that same full lane. Building exits count as give-way approaches.
 - Vehicles turning into a building wait before the box until the driveway has room.

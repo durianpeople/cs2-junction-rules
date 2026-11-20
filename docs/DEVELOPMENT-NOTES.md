@@ -174,6 +174,15 @@ PROBE-STAGE3-PAINT.md section 10.
   hold the car (estimated wait 0, nobody standing). 1.4.1 (JR-T-036, owner 20 Nov 2026): a person STANDING on the
   target zebra (or a later zebra of its section; `ExitZebraWait.Person` Stationary, the box exit zebra wait's own test)
   = exit blocked: no drive-up, the spot, `jr_people_wait_spot` reason `standing_on_zebra`. Walkers only: unchanged.
+  1.5.0 (JR-T-038, owner rule 21 Nov 2026): yellow box = entry rule only. The box room test stays at the stop line (look
+  past, 1.3.0 sight, queue packing, G22 same-exit and G28 exit same-lane admissions, G21 way in unchanged); a boxed lane
+  no longer takes its give-way decision at the stop line and the UK right-turn turn spot (setting "turning across
+  oncoming traffic may wait in the box", rule 174, `TurnSpot`, `QueuedTurnersMayStand`) is gone. In the box the car
+  waits at its first live conflict like at any junction; G3 (exit room again at the spot in the box) now covers every
+  boxed lane (`BoxSpotRoomHold`, why `jr_box_spot_room`, timing line "waits at a spot in the box for exit room"); why
+  id 48 `jr_box_turn_spot` retired. Item B (whole junction rule): `StretchState.Classify` never leaves a give-way
+  demand at a point the car can no longer stop before (stop before an earlier point of the stretch if it can, else the
+  game's give-way if it can stop before that lane, else commit and clear). Tests `BoxGeneral*`.
   1.4.0 (JR-T-033 B1, owner 20 Nov 2026): at a building access (`CarLaneFlags.SideConnection`, way in or out) the
   unmarked pavement (no Crosswalk flag; a marked zebra there stays a zebra, JR-T-035) is no zebra (the 0.4.8 G7 hard zebra is gone; S2-29 still stops a leaving car before the pavement for the
   road gap and room) and no crossing of the whole-junction rule; the never-push full stop applies there only to a person
@@ -184,7 +193,7 @@ PROBE-STAGE3-PAINT.md section 10.
 - **Yellow box: gap to road markings (m)** (0.4.2): 0-2 m, default 0.5 m, from the painted edge of zebras and stop /
   give-way lines (entrance boxes: also from junction mouths); redraws all boxes at once.
 - **Cars obey yellow boxes** (0.4.2): on (default) or off (= 0.4.1); **Yellow boxes: turning across oncoming traffic may wait in the box**
-  on (default, UK) or off. Only boxes placed with the yellow box tool; shares the room margin slider (now "Room
+  on (default, UK) or off (1.5.0: the turn setting is gone, see below). Only boxes placed with the yellow box tool; shares the room margin slider (now "Room
   margin past a zebra or yellow box"). Timing log: box entries held, right-turn waits, entrance band holds.
 - **Look past the car in front at a box** (1.1.0, Yellow boxes, default on; off = 1.0.1 bit for bit): acts only in a
   yellow box room test (free-now rule). The car judges every vehicle it can see past the box: one whose free-now room is
