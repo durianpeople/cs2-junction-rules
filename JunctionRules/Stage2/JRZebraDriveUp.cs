@@ -134,7 +134,8 @@ namespace JunctionRules.Stage2
             m_DriveUpStart = first;
             float prev = ZebraSections.PreviousEnd(ref elements, false, first);
             bool fits = ZebraDriveUp.FitsClearOfZebras(prev > 0f, length, first, prev, margin, m_VehicleLength);
-            ZebraDriveUp.Reason r = ZebraDriveUp.Eligible(m_BoxLane, fits, m_Stretch.CanStopBefore(first), true);
+            // JR-T-035 (F1): only the Whole junction rule has the safeguard (the gap check over the window); Stock = the spot, as 1.3.0
+            ZebraDriveUp.Reason r = ZebraDriveUp.Eligible(RuleOn, m_BoxLane, fits, m_Stretch.CanStopBefore(first), true);
             float end = math.min(layout.SectionEnd(section), 1f);
             if (r == ZebraDriveUp.Reason.None && !RoomFreeNow(lane, end, inverse, length, self, safeTimeStep, ref carLanes, ref laneObjects, ref curves,
                     ref moving, ref controllers, ref prefabRefs, ref geometries, ref prefabCars, ref overlapData, ref pedestrianLanes))
@@ -145,24 +146,27 @@ namespace JunctionRules.Stage2
             if (r != ZebraDriveUp.Reason.None) return;
             // the estimated wait: everyone on the target and the later zebras of its section (the car waits before the target for them all)
             float wait = 0f;
+            int worst = ExitZebraWait.None;
             for (int i = 0; i < overlaps.Length; i++)
             {
                 elements.Get(i, out int kind, out float s, out _);
                 if ((kind & ZebraSections.Zebra) == 0 || s < first - WholePathRule.SpotEpsilon || m_Stretch.Spots.StretchOf(s) != section) continue;
-                if (ZebraPeople(overlaps[i], ref creatures, ref laneObjects, ref moving, ref curves, out float w) != ExitZebraWait.None)
-                    wait = ZebraDriveUp.WaitSeconds(wait, w);
+                int p = ZebraPeople(overlaps[i], ref creatures, ref laneObjects, ref moving, ref curves, out float w);
+                if (p == ExitZebraWait.None) continue;
+                wait = ZebraDriveUp.WaitSeconds(wait, w);
+                worst = ExitZebraWait.Worse(worst, p);
             }
+            // JR-T-035 (F4): everyone already past the car's way and nobody standing: they cannot hold the car, so no drive-up
+            // (today's distance and the normal gap time)
+            if (!ZebraDriveUp.PeopleCanHold(wait, worst == ExitZebraWait.Stationary)) return;
             m_DriveUp = true;
             m_DriveUpWait = wait;
-            if (RuleOn)
-            {
-                // the arrival time at the zebra and, from standstill there, the time to move past the rest of the section and the whole vehicle
-                m_DriveUpDeltaZebra = Delta(first);
-                GameMotion motion = default;
-                motion.m_Car = m_Car;
-                float clear = (end - first) * length + margin + m_VehicleLength;
-                m_DriveUpClear = ArrivalTime.Compute(ref motion, clear > 0f ? clear : 0f, 0f, m_DriveSpeed, 0f, m_TimeStep);
-            }
+            // the arrival time at the zebra and, from standstill there, the time to move past the rest of the section and the whole vehicle
+            m_DriveUpDeltaZebra = Delta(first);
+            GameMotion motion = default;
+            motion.m_Car = m_Car;
+            float clear = (end - first) * length + margin + m_VehicleLength;
+            m_DriveUpClear = ArrivalTime.Compute(ref motion, clear > 0f ? clear : 0f, 0f, m_DriveSpeed, 0f, m_TimeStep);
         }
 
         /// <summary>

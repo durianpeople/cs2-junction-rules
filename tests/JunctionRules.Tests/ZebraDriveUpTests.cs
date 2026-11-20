@@ -65,6 +65,20 @@ namespace JunctionRules.Tests
             Check(ZebraDriveUp.Decide(false, false, true, true, false) == ZebraDriveUp.Reason.TailOnZebra, "tail would stand on another zebra: not a drive-up");
             Check(ZebraDriveUp.Decide(true, false, false, false, true) == ZebraDriveUp.Reason.Box, "the exceptions are checked in order: box first");
 
+            // JR-T-035 (review F1): the drive-up needs the Whole junction gap rule (its safeguard); Stock = the spot, as 1.3.0
+            Check(ZebraDriveUp.Eligible(false, false, true, true, true) == ZebraDriveUp.Reason.StockGapRule
+                && ZebraDriveUp.Decide(false, false, true, true, true, false) == ZebraDriveUp.Reason.StockGapRule
+                && ZebraDriveUp.Decide(false, true, false, false, false, true) == ZebraDriveUp.Reason.StockGapRule, "Stock gap rule: never a drive-up, the reason is stock_gap_rule (checked first)");
+            Check(ZebraDriveUp.Eligible(true, false, true, true, true) == ZebraDriveUp.Reason.None && ZebraDriveUp.Decide(true, false, true, true, true, false) == ZebraDriveUp.Reason.None,
+                "Whole junction: unchanged");
+            Check((int)ZebraDriveUp.Reason.StockGapRule == 7 && ZebraDriveUp.ReasonId(ZebraDriveUp.Reason.StockGapRule) == "stock_gap_rule"
+                && WhyBook.ExtraText(WhyRule.JrPeopleWaitSpot, (float)ZebraDriveUp.Reason.StockGapRule) == "reason stock_gap_rule", "why: jr_people_wait_spot reason stock_gap_rule (7)");
+
+            // JR-T-035 (review F4): people who cannot hold the car (all past its way, nobody standing) make no drive-up
+            Check(!ZebraDriveUp.PeopleCanHold(0f, false) && ZebraDriveUp.PeopleCanHold(0f, true) && ZebraDriveUp.PeopleCanHold(0.5f, false),
+                "drive-up only when the people can hold the car: a wait above 0 or somebody standing");
+            Check(!ZebraDriveUp.PeopleCanHold(ZebraDriveUp.PersonSeconds(false, 0.9f, 0.4f, 0.6f, 10f, 1.4f), false), "a walker already past the car's way: no drive-up");
+
             // bus: rear over the crossed lane is allowed (no zebra behind); a zebra behind it within its length is not
             ZebraLayout bus = DuLayout(ZBus, DuItems);
             Check(bus.Merged == 1 && ZebraDriveUp.FitsClearOfZebras(false, DuLane, 0.72f, 0f, M, ZBus), "bus: rear over the crossed conflict lane is not an exception");
@@ -134,6 +148,8 @@ namespace JunctionRules.Tests
             public int ExitBlockedUntil;
             /// <summary>Red light / give-way not cleared at the line until this step.</summary>
             public int LineHoldUntil;
+            /// <summary>JR-T-035 (F4): from this step the walkers are past the car's way (still on the zebra, they cannot hold it); -1 = never.</summary>
+            public int OffWayFrom = -1;
         }
 
         private struct DuResult
@@ -148,7 +164,7 @@ namespace JunctionRules.Tests
         private static float DuZs => 0.72f * DuLane;
         private static float DuZe => 0.84f * DuLane;
 
-        private static DuResult DuRun(DuScene sc, DuPolicy pol)
+        private static DuResult DuRun(DuScene sc, DuPolicy pol, bool f4 = true)
         {
             var res = new DuResult { ClearStep = -1 };
             float x = -30f, v = 10f;
@@ -157,7 +173,8 @@ namespace JunctionRules.Tests
             for (int step = 0; step < 400; step++)
             {
                 float now = step * DuDt;
-                bool people = step >= sc.PeopleFrom && step < sc.PeopleTo;
+                bool onZebra = step >= sc.PeopleFrom && step < sc.PeopleTo;
+                bool people = onZebra && (sc.Standing || sc.OffWayFrom < 0 || step < sc.OffWayFrom);   // people who hold the car
                 float peopleLeft = people ? (sc.Standing ? ZebraDriveUp.MaxWaitSeconds : Math.Min((sc.PeopleTo - step) * DuDt, ZebraDriveUp.MaxWaitSeconds)) : 0f;
                 bool room = step >= sc.ExitBlockedUntil;
                 float rear = x - sc.Length;
@@ -191,8 +208,10 @@ namespace JunctionRules.Tests
                         if (beforeSpot)
                         {
                             bool fits = ZebraDriveUp.FitsClearOfZebras(false, DuLane, 0.72f, 0f, M, sc.Length);
-                            ZebraDriveUp.Reason r = ZebraDriveUp.Decide(false, fits, true, room, people && Conflict(extended));
-                            if (conflictNormal || !room || (people && r != ZebraDriveUp.Reason.None)) target = Math.Min(target, spot);
+                            // JR-T-035 (F4): a drive-up (and its window) only when the people can hold the car; f4 false = 1.4.0 as reviewed
+                            bool driveUp = onZebra && (!f4 || ZebraDriveUp.PeopleCanHold(peopleLeft, people && sc.Standing));
+                            ZebraDriveUp.Reason r = ZebraDriveUp.Decide(false, fits, true, room, driveUp && Conflict(extended));
+                            if (conflictNormal || !room || (driveUp && r != ZebraDriveUp.Reason.None)) target = Math.Min(target, spot);
                             else if (people) target = Math.Min(target, zStop);
                         }
                         else
@@ -213,7 +232,7 @@ namespace JunctionRules.Tests
                 if (wasBefore && x > spot + 0.01f && !room) res.EnteredWithBlockedExit++;
                 bool standing = v < 0.5f;
                 rear = x - sc.Length;
-                if (standing && Math.Abs(x - spot) < 1f && people && room && !Conflict(normal)) res.NeedlessSpot++;
+                if (standing && Math.Abs(x - spot) < 1f && onZebra && room && !Conflict(normal)) res.NeedlessSpot++;
                 if (standing && x > spot + 0.5f && rear < DuLane) res.StoodInJunction++;
                 if (standing && x > DuZs && rear < DuZe) res.OnZebraStanding++;
                 if (res.ClearStep < 0 && rear > DuLane) { res.ClearStep = step; break; }
@@ -258,6 +277,16 @@ namespace JunctionRules.Tests
 
             var (_, b7, c7) = DuAll(new DuScene { Name = "bus, oncoming stream", Length = ZBus, PeopleFrom = 0, PeopleTo = 20, Oncoming = new[] { 6f, 14f, 22f } });
             Check(c7.BlockedOthers == 0 && c7.OnZebraStanding == 0, "bus with an oncoming stream: the window keeps it at the spot while a vehicle can come; nobody blocked");
+
+            // JR-T-035 (F4): walkers all past the car's way (still on the zebra) and a vehicle inside the drive-up window but not the
+            // normal one: 1.4.0 as reviewed held the car at its spot for that traffic; with F4 it drives as 1.3.0 / off
+            var f4Scene = new DuScene { Name = "walkers past the car's way, traffic only in the drive-up window", PeopleFrom = 0, PeopleTo = 40, OffWayFrom = 0, Oncoming = new[] { 7f } };
+            var (a8, b8, c8) = DuAll(f4Scene);
+            DuResult c8pre = DuRun(f4Scene, DuPolicy.V140, f4: false);
+            Console.WriteLine($"  drive-up '{f4Scene.Name}': 1.4.0 before F4 [{c8pre}]");
+            Check(c8pre.ClearStep > b8.ClearStep, "F4 scene: 1.4.0 before F4 holds the car back for traffic that could not matter (clears later than 1.3.0)");
+            Check(c8.NeedlessSpot == 0 && c8.ClearStep == b8.ClearStep && c8.ClearStep == a8.ClearStep && c8.StoodInJunction == b8.StoodInJunction,
+                "F4: no drive-up for people who cannot hold the car: drives as 1.3.0 and off");
 
             // no people: 1.4.0 = 1.3.0, step for step (random oncoming / exit / line schedules)
             var rr = new Random(3303);
@@ -304,6 +333,14 @@ namespace JunctionRules.Tests
             Check(wj.Contains("DriveUpReset();   // JR-T-033") && wj.Contains("if (freeNow && !inBox && m_BoxLookups) FurtherBoxes("), "BeginZebras resets the drive-up; free-now scans without box lookups skip FurtherBoxes");
             Check(du.Contains("freeNow: true, lookPast: false") && !du.Contains("new ") && !du.Contains("string") && !du.Contains("class "), "job side: free-now room, no allocation, no managed types");
             Check(dev.Contains("JR-T-033"), "DEVIATIONS: the 1.4.0 entry");
+            // JR-T-035 (review F1 / F4 / A3)
+            Check(du.Contains("ZebraDriveUp.Reason r = ZebraDriveUp.Eligible(RuleOn, m_BoxLane, fits, m_Stretch.CanStopBefore(first), true);"), "F1: the drive-up is gated on the Whole junction rule");
+            Check(du.Contains("if (!ZebraDriveUp.PeopleCanHold(wait, worst == ExitZebraWait.Stationary)) return;") && du.IndexOf("PeopleCanHold", StringComparison.Ordinal) < du.IndexOf("m_DriveUp = true;", StringComparison.Ordinal),
+                "F4: no drive-up for people who cannot hold the car");
+            Check(dev.Contains("stock_gap_rule") && dev.Contains("needs the Whole junction"), "DEVIATIONS: drive-up needs the Whole junction rule (F1)");
+            Check(dev.Contains("B1's in-way full stop needs"), "DEVIATIONS: A3 line");
+            string st = File.ReadAllText(Path.Combine(root, "JunctionRules", "Settings", "JunctionRulesSettings.cs"));
+            Check(st.Contains("drives up") && st.Contains("Whole junction rule only"), "settings: the zebra text names the drive-up and its Whole junction rule");
         }
     }
 }
