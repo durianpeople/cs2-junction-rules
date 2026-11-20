@@ -31,7 +31,7 @@ The game's car-driving system is switched off and replaced by a Burst-compiled c
 - Open the tool with **Ctrl+Y** or the toolbar button. Hover a junction or a building: a white outline means click to add a box, orange means click to remove it. Boxes are saved with your city.
 - Each real car access of a building (exit, entrance or two-way) is boxed on its own.
 - Boxes have straight sides, kerb to kerb, and never cover zebras, stop or give-way lines or medians. Boxes closer than a car length merge into one. No parking inside a box. Road markings under a box can optionally be hidden.
-- A vehicle enters a box only if there is room past it for its whole length (trailers included): free right now, or, with the setting Look past the car in front at a box (on by default), free by the time it gets there, with every vehicle ahead expected to keep going and to stop only behind a queue or vehicle it can see standing (crawling slower than about 18 km/h counts as standing), or at a red light (within its 50 m line of sight). Otherwise it stops with its front bumper at the line.
+- A vehicle enters a box only if there is room past it for its whole length (trailers included): free right now, or, with the setting Look past the car in front at a box (on by default), free by the time it gets there, with every vehicle ahead expected to keep going and to stop only behind a queue or vehicle it can see standing (crawling slower than about 18 km/h counts as standing), or at a red light (within its 100 m line of sight; nothing slow in sight means it goes). The vehicles ahead are packed nose to tail, never in another yellow box, on a zebra or in another junction. Otherwise it stops with its front bumper at the line.
 - UK exception (optional): a vehicle turning across oncoming traffic may wait inside a junction box when its exit is clear and only oncoming traffic stops it.
 - The mod never adds a starvation timeout: a vehicle that can't go legally waits.
 - Some spots can't take a box (elevated or tunnel roads, highways, roundabouts and so on); the tool says why.
@@ -60,7 +60,7 @@ Source code, issue tracker and design notes: https://github.com/durianpeople/cs2
 	<!--Link to the forum post where the mod can be discussed (Paradox forum URLs only; the GitHub link is the ExternalLink below)-->
 	<ForumLink Value="" />
 	<!--Version of the mod-->
-	<ModVersion Value="1.2.0" />
+	<ModVersion Value="1.3.0" />
 	<!--Recommended version of the base game to use the mod. "major.minor.*" as the game's own asset uploader writes it; the mod itself runs its driving copy only on 1.6.4 (version gate) and falls back to the game's driving otherwise.-->
 	<GameVersion Value="1.6.*" />
 	<!--Dependency for the mod, can be set multiple times-->
@@ -68,7 +68,7 @@ Source code, issue tracker and design notes: https://github.com/durianpeople/cs2
 	<!--Required DLC, can be set multiple times. Supported values are "Landmark Buildings", "San Fransisco Set", "Beach Properties", "Urban Promenades", "Modern Architecture"-->
 	<RequiredDLC Value="" />
 	<!--Change log for new version. Single line or multi line. Supports minimal markdown subset-->
-	<ChangeLog Value="Yellow boxes, looking past the car in front: a car now expects the vehicles ahead of it to keep going and to stop only behind a queue or vehicle it can see standing, or at a red light. It no longer brakes at the box line for a moving queue that will clearly make room. Turn &quot;Look past the car in front at a box&quot; off for the 1.0.1 behaviour." />
+	<ChangeLog Value="Yellow boxes, looking past the car in front: a car now sees 100 m (was 50 m) and goes when nothing within sight is stopped or slow. When it sees a stopped vehicle or a red light, it counts the vehicles in between packed nose to tail, never standing in another yellow box, on a zebra or in another junction. Turn &quot;Look past the car in front at a box&quot; off for the 1.0.1 behaviour." />
 	<!--<ChangeLog>
 	</ChangeLog>-->
 	<!--External link, can be set multiple times. supported types are "discord", "github", "youtube", "twitch", "twitter", "x", "paypal", "patreon", "buymeacoffee", "kofi", "crowdin", "gitlab", "gofundme", "bluesky"-->

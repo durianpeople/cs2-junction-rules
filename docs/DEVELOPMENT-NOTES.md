@@ -175,8 +175,12 @@ PROBE-STAGE3-PAINT.md section 10.
   is expected to carry on and stops only behind the back of a visible standing vehicle / queue or at a red stop line,
   which the scan reads where they are; the road up to its predicted front must lie inside the sight; 1.1.0 credited only
   its guaranteed travel, which is now kept for large vehicles alone); any vehicle the car follows through the box below
-  5 m/s refuses. Sight rule: a 50 m straight-line radius around the driver (on a turn it reaches into the road turned
-  into); the room relied on must end inside it and within the path read. Ordinary cars and vans never block the view. A
+  5 m/s refuses. Sight rule: a 100 m straight-line radius around the driver (50 m until 1.2.0; on a turn it reaches into the road turned
+  into); vehicles beyond it are not read; nothing stopped or slow within sight (and no red line) = the car goes (1.3.0,
+  JR-T-029: the 1.2.0 rule "the room relied on must end inside the sight" is gone). With a stopped / slow vehicle or red
+  line seen, the vehicles between are packed nose to tail behind it, never in another yellow box, on a zebra (the soft
+  zebra excepted) or in another junction interior (`RoomScan.NoStopZone` / `PackedRoom` / `PackedReach`; refusals
+  queue_pushed_back_by_zebra / box / junction). Ordinary cars and vans never block the view. A
   large vehicle (the game's `CarData.m_SizeClass` Large: lorries, buses, artics) ends the view: it is seen and credited
   itself, with its guaranteed travel less 5 m (`RoomScan.LookPastLargeMargin`: room for a car standing unseen ahead of
   it), the vehicles beyond it are not read at all (owner ruling 19 Nov: neither for nor against), and the room relied on
@@ -184,7 +188,7 @@ PROBE-STAGE3-PAINT.md section 10.
   look-past off for that decision: the car judges as with the setting off (room free now past the box), no hold of its
   own, so the setting never refuses what off allows.
   Buildings block the view (owner ruling 19 Nov): before the look-past gives the room, the straight 2D line from the
-  driver to each vehicle it credited and to the end of the room relied on is tested against the footprints of the
+  driver to each vehicle it credited (until 1.2.0 also to the end of the room relied on) is tested against the footprints of the
   buildings near that line (stock static object search tree, cells and items pruned by the line itself; no stored
   data). Footprint = the prefab's bounds placed by the building's Transform: the lot box for ordinary buildings, the mesh
   bounds for standing ones; a footprint that contains the driver does not block (a car leaving its own building or in a

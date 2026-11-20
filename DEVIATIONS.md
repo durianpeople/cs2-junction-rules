@@ -420,8 +420,8 @@ differential and a step-by-step trace hash over the box scenario set):
 - Rule: in a box room test (free-now rule) a vehicle past the box whose free-now room is short still gives room when it
   moves away at 3 m/s or more and its rear plus `GuaranteedTravel` (its braking distance less two steps of travel) leaves
   the car's length plus margin; a vehicle the car follows through the box below 3 m/s refuses.
-- Sight: a 50 m straight-line radius around the driver (`SightLine.FirstExit` per path lane); the room relied on must end
-  inside it and within the path read. Cars and vans never block the view. JR-T-022d (owner rulings 19 Nov, binding):
+- Sight: a 50 m straight-line radius around the driver (100 m since 1.3.0; `SightLine.FirstExit` per path lane); the room relied on must end
+  inside it and within the path read (until 1.2.0; 1.3.0: nothing slow within sight -> go). Cars and vans never block the view. JR-T-022d (owner rulings 19 Nov, binding):
   - A large vehicle (`CarData.m_SizeClass` Large) ends the view: it is judged itself with its position plus guaranteed
     travel less `RoomScan.LookPastLargeMargin` (5 m, the one general caution: room for a car standing unseen ahead of
     it), the vehicles beyond it are not read at all (neither for nor against), and the room relied on must end by its
@@ -441,6 +441,31 @@ differential and a step-by-step trace hash over the box scenario set):
 - The safety stop is untouched (the decision runs again every step while the car can still stop at the line). Rare
   misjudgements that end with a car standing in the box (offline: a queue past the box that stops dead, harder than any
   game vehicle can brake) are accepted by design.
+
+1.3.0 (JR-T-029: 100 m sight, nothing slow within sight -> go, the packed queue skips no-stop zones; owner rule 20 Nov
+2026, binding). No copy change (`vanilla_copy.py check` unchanged). Behind the same setting (off = 1.0.1 bit for bit:
+every new call tests `scan.LookPastOn`; the off differential and trace hash are unchanged).
+- Sight 50 m -> 100 m (`RoomScan.LookPastSightMetres`). A vehicle whose rear lies beyond the sight edge is not read at all
+  (`AddLook`, counted in `RoomScan.BeyondSightSkipped`). Large vehicles and buildings still block the view (unchanged); a
+  large vehicle queued ahead keeps the free-now rule (unchanged).
+- Nothing stopped or slow (< 5 m/s) within sight and no red line: the car goes. The 1.2.0 sight-end hold (refusal
+  `BeyondSight`, "the room relied on must end inside the sight") is removed, in `ExtendPast`, `FinishLookPast` and the
+  building test (`FinishSight` no longer tests the end of the room; credited vehicles still are). Standing vehicles
+  behind a building are still read (a hidden standing car is never assumed away).
+- A stopped / slow vehicle or a red line seen: the vehicles between are packed nose to tail behind it
+  (`RoomScan.PackedRoom`), each that would overlap a no-stop zone standing before it; the scan reads until the packed
+  queue can no longer reach the car's room (`RoomScan.PackedReach`) or the sight edge. No-stop zones
+  (`RoomScan.NoStopZone`, at most 8, nearest kept): other yellow boxes (a boxed junction's lanes; exit / entrance bands on
+  the path lanes, also later on the box's own lane), zebras (`ZebraSections.ZebraKind == Zebra`: the soft zebra of a
+  signal whose people have red is not a zone) and other junction interiors (node lanes of a node with 3+ edges). The
+  job reads up to 6 path lanes past the box with the look-past on (`JRWholeJunction.MaxLookLanes`; 3 off, unchanged).
+- New refusals when a zone push alone turns go into a hold: `queue_pushed_back_by_zebra`, `queue_pushed_back_by_box`,
+  `queue_pushed_back_by_junction` (`LookPastRefusal` 6-8). `BeyondSight` (5) is no longer set.
+- Unchanged: people on zebras, waiting turners, the exit-zebra rule, the soft-zebra rule, the safety stop.
+- Offline: Fernbrook replay held / needless / stood-in-box 9 / 7 / 0 (1.2.0) -> 1 / 1 / 0. The box scenario set with
+  its exits closing dead past the sight edge grows (unseen 55 -> 200 standing, nose 0 -> 3; seen 57 -> 211, nose 0 -> 3):
+  the cost of reading nothing beyond 100 m (keeping the 1.2.0 sight-end hold: 52 / 45, nose 0). Accepted misjudgement
+  class; guarded at the measured levels.
 
 1.2.0 (JR-T-027: predict each vehicle ahead from what is visibly ahead; owner rule and simplification 20 Nov 2026,
 binding). No copy change (`vanilla_copy.py check` unchanged). Core only (`Core/ZebraSections.cs` `RoomScan.AddLook`),
