@@ -75,9 +75,36 @@ namespace JunctionRules.Tests
                 && WhyBook.ExtraText(WhyRule.JrPeopleWaitSpot, (float)ZebraDriveUp.Reason.StockGapRule) == "reason stock_gap_rule", "why: jr_people_wait_spot reason stock_gap_rule (7)");
 
             // JR-T-035 (review F4): people who cannot hold the car (all past its way, nobody standing) make no drive-up
-            Check(!ZebraDriveUp.PeopleCanHold(0f, false) && ZebraDriveUp.PeopleCanHold(0f, true) && ZebraDriveUp.PeopleCanHold(0.5f, false),
-                "drive-up only when the people can hold the car: a wait above 0 or somebody standing");
-            Check(!ZebraDriveUp.PeopleCanHold(ZebraDriveUp.PersonSeconds(false, 0.9f, 0.4f, 0.6f, 10f, 1.4f), false), "a walker already past the car's way: no drive-up");
+            Check(!ZebraDriveUp.PeopleCanHold(0f) && ZebraDriveUp.PeopleCanHold(0.5f),
+                "drive-up only when the walkers can hold the car: a wait above 0 (standing people are the spot, JR-T-036)");
+            Check(!ZebraDriveUp.PeopleCanHold(ZebraDriveUp.PersonSeconds(false, 0.9f, 0.4f, 0.6f, 10f, 1.4f)), "a walker already past the car's way: no drive-up");
+
+            // JR-T-036 (1.4.1, owner 20 Nov): a person standing still on the target zebra = exit blocked: the spot, reason standing_on_zebra.
+            // The class is the box exit zebra wait's own (ExitZebraWait.Person: the game's walking test speed^2 >= 0.01, no new threshold).
+            int standing = ExitZebraWait.Person(true, false, 0f, true, false, true);
+            int walking = ExitZebraWait.Person(true, true, 1.4f * 1.4f, true, false, true);
+            int slowStop = ExitZebraWait.Person(true, true, 0.009f, true, false, true);
+            Check(standing == ExitZebraWait.Stationary && walking == ExitZebraWait.Moving && slowStop == ExitZebraWait.Stationary,
+                "standing / walking: the box exit zebra wait's classification and threshold (speed^2 < 0.01 = standing)");
+            Check(ZebraDriveUp.PeopleStanding(standing) && !ZebraDriveUp.PeopleStanding(walking) && !ZebraDriveUp.PeopleStanding(ExitZebraWait.None),
+                "PeopleStanding: only the Stationary class");
+            Check(ZebraDriveUp.PeopleStanding(ExitZebraWait.Worse(walking, standing)) && ZebraDriveUp.PeopleStanding(ExitZebraWait.Worse(standing, walking)),
+                "mixed standing + walking: standing wins");
+            Check(ZebraDriveUp.Eligible(true, false, true, true, true, true) == ZebraDriveUp.Reason.PeopleStanding
+                && ZebraDriveUp.Decide(true, false, true, true, true, true, false) == ZebraDriveUp.Reason.PeopleStanding,
+                "standing person on the target zebra: no drive-up, the spot (reason PeopleStanding)");
+            Check(ZebraDriveUp.Eligible(true, false, false, true, true, true) == ZebraDriveUp.Reason.None
+                && ZebraDriveUp.Decide(true, false, false, true, true, true, false) == ZebraDriveUp.Reason.None,
+                "walkers only: the drive-up as 1.4.0");
+            Check(ZebraDriveUp.Eligible(false, false, true, true, true, true) == ZebraDriveUp.Reason.StockGapRule
+                && ZebraDriveUp.Eligible(true, true, true, true, true, true) == ZebraDriveUp.Reason.Box
+                && ZebraDriveUp.Eligible(true, false, true, false, false, false) == ZebraDriveUp.Reason.PeopleStanding,
+                "reason order: stock gap rule, box, standing, then geometry and room");
+            Check(ZebraDriveUp.Eligible(true, false, true, true, true) == ZebraDriveUp.Eligible(true, false, false, true, true, true),
+                "the 5-argument Eligible = nobody standing");
+            Check(ZebraDriveUp.ReasonId(ZebraDriveUp.Reason.PeopleStanding) == "standing_on_zebra" && (int)ZebraDriveUp.Reason.PeopleStanding == 8
+                && WhyBook.ExtraText(WhyRule.JrPeopleWaitSpot, (float)ZebraDriveUp.Reason.PeopleStanding) == "reason standing_on_zebra",
+                "why: jr_people_wait_spot, reason standing_on_zebra (id 8, stable)");
 
             // bus: rear over the crossed lane is allowed (no zebra behind); a zebra behind it within its length is not
             ZebraLayout bus = DuLayout(ZBus, DuItems);
@@ -133,7 +160,7 @@ namespace JunctionRules.Tests
         // Offline scene set (1-D): off (stock gap rule, no zebra rule) / 1.3.0 / 1.4.0
         // ---------------------------------------------------------------------------------------------------------------
 
-        private enum DuPolicy { Off, V130, V140 }
+        private enum DuPolicy { Off, V130, V140, V141 }
 
         private sealed class DuScene
         {
@@ -150,11 +177,21 @@ namespace JunctionRules.Tests
             public int LineHoldUntil;
             /// <summary>JR-T-035 (F4): from this step the walkers are past the car's way (still on the zebra, they cannot hold it); -1 = never.</summary>
             public int OffWayFrom = -1;
+            /// <summary>JR-T-036: walkers until this step, then the people stop on the car's way and stand until PeopleTo (0 = never).</summary>
+            public int StopAt;
+            /// <summary>JR-T-036: a walker and a standing person on the zebra together (mixed) for the whole people time.</summary>
+            public bool Mixed;
         }
 
         private struct DuResult
         {
             public int ClearStep, NeedlessSpot, StoodInJunction, BlockedOthers, OnZebraStanding, EnteredWithBlockedExit;
+            /// <summary>JR-T-036: steps in which the car's front moved onto the zebra while a person was on the car's way (pushing through).</summary>
+            public int Pushed;
+            /// <summary>JR-T-036: NeedlessSpot without the steps somebody stands on the zebra (1.4.1: standing = exit blocked, the spot is the rule).</summary>
+            public int NeedlessWalkers;
+            /// <summary>JR-T-036: the car's front was past its spot when the people first stood still (committed before the stop).</summary>
+            public bool CommittedBeforeStop;
             public override string ToString() => $"clear {ClearStep}, needless spot {NeedlessSpot}, stood in junction {StoodInJunction}, blocked others {BlockedOthers}, on zebra {OnZebraStanding}";
         }
 
@@ -174,8 +211,10 @@ namespace JunctionRules.Tests
             {
                 float now = step * DuDt;
                 bool onZebra = step >= sc.PeopleFrom && step < sc.PeopleTo;
-                bool people = onZebra && (sc.Standing || sc.OffWayFrom < 0 || step < sc.OffWayFrom);   // people who hold the car
-                float peopleLeft = people ? (sc.Standing ? ZebraDriveUp.MaxWaitSeconds : Math.Min((sc.PeopleTo - step) * DuDt, ZebraDriveUp.MaxWaitSeconds)) : 0f;
+                bool standingNow = onZebra && (sc.Standing || sc.Mixed || (sc.StopAt > 0 && step >= sc.StopAt));   // somebody stands on the car's way
+                bool people = onZebra && (standingNow || sc.OffWayFrom < 0 || step < sc.OffWayFrom);   // people who hold the car
+                float peopleLeft = people ? (standingNow ? ZebraDriveUp.MaxWaitSeconds : Math.Min((sc.PeopleTo - step) * DuDt, ZebraDriveUp.MaxWaitSeconds)) : 0f;
+                if (sc.StopAt > 0 && step == sc.StopAt) res.CommittedBeforeStop = x > spot + 0.01f;
                 bool room = step >= sc.ExitBlockedUntil;
                 float rear = x - sc.Length;
                 bool overP1 = x > DuP1s && rear < DuP1e;
@@ -209,8 +248,11 @@ namespace JunctionRules.Tests
                         {
                             bool fits = ZebraDriveUp.FitsClearOfZebras(false, DuLane, 0.72f, 0f, M, sc.Length);
                             // JR-T-035 (F4): a drive-up (and its window) only when the people can hold the car; f4 false = 1.4.0 as reviewed
-                            bool driveUp = onZebra && (!f4 || ZebraDriveUp.PeopleCanHold(peopleLeft, people && sc.Standing));
-                            ZebraDriveUp.Reason r = ZebraDriveUp.Decide(false, fits, true, room, driveUp && Conflict(extended));
+                            // JR-T-036 (V141): somebody standing = the spot (PeopleStanding); 1.4.0 counted a standing person as a bounded wait
+                            bool standingRule = pol == DuPolicy.V141 && people && standingNow;
+                            bool driveUp = onZebra && (!f4 || ZebraDriveUp.PeopleCanHold(peopleLeft) || (pol == DuPolicy.V140 && people && standingNow));
+                            ZebraDriveUp.Reason r = ZebraDriveUp.Decide(true, false, standingRule, fits, true, room, driveUp && Conflict(extended));
+                            if (standingRule) driveUp = true;   // the reason holds the car at its spot
                             if (conflictNormal || !room || (driveUp && r != ZebraDriveUp.Reason.None)) target = Math.Min(target, spot);
                             else if (people) target = Math.Min(target, zStop);
                         }
@@ -227,12 +269,18 @@ namespace JunctionRules.Tests
                 float vMax = gap <= 0f ? 0f : (float)Math.Sqrt(2f * 5f * gap);
                 float nv = Math.Min(Math.Min(v + 2.5f * DuDt, 10f), vMax);
                 bool wasBefore = beforeSpot;
+                float xOld = x;
                 x = Math.Min(x + nv * DuDt, target == float.MaxValue ? float.MaxValue : Math.Max(x, target));
                 v = nv;
+                if (people && xOld <= DuZs + 0.01f && x > DuZs + 0.01f) res.Pushed++;   // the front moved onto the zebra with people on it
                 if (wasBefore && x > spot + 0.01f && !room) res.EnteredWithBlockedExit++;
                 bool standing = v < 0.5f;
                 rear = x - sc.Length;
-                if (standing && Math.Abs(x - spot) < 1f && onZebra && room && !Conflict(normal)) res.NeedlessSpot++;
+                if (standing && Math.Abs(x - spot) < 1f && onZebra && room && !Conflict(normal))
+                {
+                    res.NeedlessSpot++;
+                    if (!standingNow) res.NeedlessWalkers++;
+                }
                 if (standing && x > spot + 0.5f && rear < DuLane) res.StoodInJunction++;
                 if (standing && x > DuZs && rear < DuZe) res.OnZebraStanding++;
                 if (res.ClearStep < 0 && rear > DuLane) { res.ClearStep = step; break; }
@@ -242,11 +290,12 @@ namespace JunctionRules.Tests
 
         private static readonly List<(string Scene, DuResult Off, DuResult V130, DuResult V140)> s_DuTable = new List<(string, DuResult, DuResult, DuResult)>();
 
+        /// <summary>off / 1.3.0 / 1.4.1 (the current rule); 1.4.0 is printed beside them for the comparison.</summary>
         private static (DuResult, DuResult, DuResult) DuAll(DuScene sc)
         {
-            DuResult a = DuRun(sc, DuPolicy.Off), b = DuRun(sc, DuPolicy.V130), c = DuRun(sc, DuPolicy.V140);
+            DuResult a = DuRun(sc, DuPolicy.Off), b = DuRun(sc, DuPolicy.V130), c0 = DuRun(sc, DuPolicy.V140), c = DuRun(sc, DuPolicy.V141);
             s_DuTable.Add((sc.Name, a, b, c));
-            Console.WriteLine($"  drive-up '{sc.Name}': off [{a}] | 1.3.0 [{b}] | 1.4.0 [{c}]");
+            Console.WriteLine($"  drive-up '{sc.Name}': off [{a}] | 1.3.0 [{b}] | 1.4.0 [{c0}] | 1.4.1 [{c}]");
             return (a, b, c);
         }
 
@@ -272,8 +321,33 @@ namespace JunctionRules.Tests
             var (_, b5, c5) = DuAll(new DuScene { Name = "red / give-way not cleared", PeopleFrom = 0, PeopleTo = 30, LineHoldUntil = 20 });
             Check(c5.StoodInJunction == 0 || c5.ClearStep <= b5.ClearStep, "line hold: the car waits at its line as today");
 
-            var (_, b6, c6) = DuAll(new DuScene { Name = "a person standing on the zebra", PeopleFrom = 0, PeopleTo = 40, Standing = true });
-            Check(c6.OnZebraStanding == 0 && c6.ClearStep <= b6.ClearStep, "standing person: bounded wait estimate, never on the zebra");
+            // JR-T-036 (review A1 scene: a person standing 20 s): 1.4.0 drove up and stood in the junction; 1.4.1 waits at its spot
+            var a1Scene = new DuScene { Name = "a person standing on the zebra", PeopleFrom = 0, PeopleTo = 40, Standing = true };
+            var (_, b6, c6) = DuAll(a1Scene);
+            DuResult c6old = DuRun(a1Scene, DuPolicy.V140);
+            Check(c6old.StoodInJunction > 0, "A1 scene: 1.4.0 stands in the junction for a standing person (reference)");
+            Check(c6.StoodInJunction == 0 && c6.OnZebraStanding == 0 && c6.Pushed == 0 && c6.ClearStep == b6.ClearStep && c6.StoodInJunction == b6.StoodInJunction,
+                "A1 scene: 1.4.1 never stands in the junction for a standing person: waits at its spot, as 1.3.0");
+
+            // JR-T-036: mixed (a walker and a standing person) = the spot
+            var (_, b9, c9) = DuAll(new DuScene { Name = "mixed walking + standing", PeopleFrom = 0, PeopleTo = 30, Mixed = true });
+            Check(c9.StoodInJunction == 0 && c9.OnZebraStanding == 0 && c9.ClearStep == b9.ClearStep, "mixed standing + walking: standing wins, the spot");
+
+            // JR-T-036: the people stop on the car's way after the car committed to the drive-up (front past its spot): it stops
+            // before the zebra (the game's own pedestrian stop) and never pushes through
+            var stopScene = new DuScene { Name = "people stop after the car committed", PeopleFrom = 0, PeopleTo = 40, StopAt = 9 };
+            var (_, _, c10) = DuAll(stopScene);
+            Check(c10.CommittedBeforeStop, "stop-after-commit scene: the car was already past its spot when the people stopped");
+            Check(c10.Pushed == 0 && c10.OnZebraStanding == 0, "people stop after commit: the car stops before the zebra, never pushes, never on the zebra");
+            // and when they stop before the car reaches its spot: back to the spot
+            var (_, b11, c11) = DuAll(new DuScene { Name = "people stop before the car reaches its spot", PeopleFrom = 0, PeopleTo = 40, StopAt = 2 });
+            Check(c11.StoodInJunction == 0 && c11.Pushed == 0 && c11.ClearStep == b11.ClearStep, "people stop before the spot: the car waits at its spot (as 1.3.0)");
+
+            // walking only: 1.4.1 = 1.4.0 (drives up, waits right before the zebra)
+            var walkScene = new DuScene { Name = "no conflict, people on the exit zebra", PeopleFrom = 0, PeopleTo = 24 };
+            DuResult w140 = DuRun(walkScene, DuPolicy.V140), w141 = DuRun(walkScene, DuPolicy.V141);
+            Check(w140.ClearStep == w141.ClearStep && w140.StoodInJunction == w141.StoodInJunction && w141.StoodInJunction > 0 && w141.Pushed == 0,
+                "walking person: 1.4.1 drives up and waits right before the zebra, exactly as 1.4.0");
 
             var (_, b7, c7) = DuAll(new DuScene { Name = "bus, oncoming stream", Length = ZBus, PeopleFrom = 0, PeopleTo = 20, Oncoming = new[] { 6f, 14f, 22f } });
             Check(c7.BlockedOthers == 0 && c7.OnZebraStanding == 0, "bus with an oncoming stream: the window keeps it at the spot while a vehicle can come; nobody blocked");
@@ -295,26 +369,40 @@ namespace JunctionRules.Tests
             {
                 var sc = new DuScene { Name = "random", Length = rr.Next(2) == 0 ? ZCar : ZBus, Oncoming = new[] { (float)rr.NextDouble() * 30f, (float)rr.NextDouble() * 30f },
                     ExitBlockedUntil = rr.Next(0, 60), LineHoldUntil = rr.Next(0, 20) };
-                DuResult p = DuRun(sc, DuPolicy.V130), q = DuRun(sc, DuPolicy.V140);
+                DuResult p = DuRun(sc, DuPolicy.V130), q = DuRun(sc, DuPolicy.V141);
                 same = p.ClearStep == q.ClearStep && p.StoodInJunction == q.StoodInJunction && p.BlockedOthers == q.BlockedOthers;
             }
             Check(same, "no people on the zebra: 1.4.0 drives exactly as 1.3.0 (300 random scenes)");
             // random scenes with people: 1.4.0 never stands on the zebra and never blocks more than 1.3.0
             bool safe = true;
-            int needless130 = 0, needless140 = 0;
+            int needless130 = 0, needless140 = 0, needless141 = 0, walk130 = 0, walk141 = 0, stood140 = 0, stood141 = 0, standScenes = 0;
+            bool walkSame = true;
             for (int i = 0; i < 300 && safe; i++)
             {
                 int from = rr.Next(0, 20);
                 var sc = new DuScene { Name = "random people", Length = rr.Next(2) == 0 ? ZCar : ZBus, PeopleFrom = from, PeopleTo = from + rr.Next(4, 30), Standing = rr.Next(4) == 0,
                     Oncoming = new[] { (float)rr.NextDouble() * 30f, (float)rr.NextDouble() * 30f }, ExitBlockedUntil = rr.Next(2) == 0 ? 0 : rr.Next(0, 60) };
-                DuResult p = DuRun(sc, DuPolicy.V130), q = DuRun(sc, DuPolicy.V140);
+                DuResult p = DuRun(sc, DuPolicy.V130), q0 = DuRun(sc, DuPolicy.V140), q = DuRun(sc, DuPolicy.V141);
                 needless130 += p.NeedlessSpot;
-                needless140 += q.NeedlessSpot;
-                safe = q.OnZebraStanding == 0 && q.BlockedOthers <= p.BlockedOthers && q.EnteredWithBlockedExit == 0;
+                needless140 += q0.NeedlessSpot;
+                needless141 += q.NeedlessSpot;
+                walk130 += p.NeedlessWalkers;
+                walk141 += q.NeedlessWalkers;
+                safe = q.OnZebraStanding == 0 && q.BlockedOthers <= p.BlockedOthers && q.EnteredWithBlockedExit == 0 && q.Pushed == 0;
+                if (sc.Standing)
+                {
+                    standScenes++;
+                    stood140 += q0.StoodInJunction;
+                    stood141 += q.StoodInJunction;
+                    safe &= q.StoodInJunction <= p.StoodInJunction;
+                }
+                else walkSame &= q.ClearStep == q0.ClearStep && q.StoodInJunction == q0.StoodInJunction && q.NeedlessSpot == q0.NeedlessSpot;
             }
-            Console.WriteLine($"  drive-up random (300 scenes with people): needless spot holds 1.3.0 {needless130} -> 1.4.0 {needless140}");
-            Check(safe, "random scenes with people: 1.4.0 never stands on the zebra, never blocks more than 1.3.0, never enters with the exit blocked");
-            Check(needless140 < needless130, "random scenes with people: fewer needless spot holds");
+            Console.WriteLine($"  drive-up random (300 scenes with people): needless spot holds 1.3.0 {needless130} -> 1.4.0 {needless140} -> 1.4.1 {needless141} (standing = the spot by rule); walkers only 1.3.0 {walk130} -> 1.4.1 {walk141}");
+            Console.WriteLine($"  drive-up random, {standScenes} scenes with a standing person: steps stood in the junction 1.4.0 {stood140} -> 1.4.1 {stood141}");
+            Check(safe, "random scenes with people: 1.4.1 never stands on the zebra, never pushes, never blocks more than 1.3.0, never enters with the exit blocked, never stands in the junction more than 1.3.0 for a standing person");
+            Check(walkSame, "random scenes with walkers only: 1.4.1 = 1.4.0 step for step");
+            Check(needless141 < needless130 && walk141 < walk130, "random scenes with people: fewer needless spot holds than 1.3.0");
         }
 
         private static void ZebraDriveUpRepoTests()
@@ -334,9 +422,14 @@ namespace JunctionRules.Tests
             Check(du.Contains("freeNow: true, lookPast: false") && !du.Contains("new ") && !du.Contains("string") && !du.Contains("class "), "job side: free-now room, no allocation, no managed types");
             Check(dev.Contains("JR-T-033"), "DEVIATIONS: the 1.4.0 entry");
             // JR-T-035 (review F1 / F4 / A3)
-            Check(du.Contains("ZebraDriveUp.Reason r = ZebraDriveUp.Eligible(RuleOn, m_BoxLane, fits, m_Stretch.CanStopBefore(first), true);"), "F1: the drive-up is gated on the Whole junction rule");
-            Check(du.Contains("if (!ZebraDriveUp.PeopleCanHold(wait, worst == ExitZebraWait.Stationary)) return;") && du.IndexOf("PeopleCanHold", StringComparison.Ordinal) < du.IndexOf("m_DriveUp = true;", StringComparison.Ordinal),
+            Check(du.Contains("ZebraDriveUp.Reason r = ZebraDriveUp.Eligible(RuleOn, m_BoxLane, ZebraDriveUp.PeopleStanding(worst), fits, m_Stretch.CanStopBefore(first), true);"),
+                "F1 + JR-T-036: the drive-up is gated on the Whole junction rule and on nobody standing");
+            Check(du.Contains("if (!ZebraDriveUp.PeopleCanHold(wait)) return;") && du.IndexOf("PeopleCanHold", StringComparison.Ordinal) < du.IndexOf("m_DriveUp = true;", StringComparison.Ordinal),
                 "F4: no drive-up for people who cannot hold the car");
+            // JR-T-036: the people class is read before the verdict, from the box exit zebra wait's own test
+            int iWorst = du.IndexOf("worst = ExitZebraWait.Worse(worst, p);", StringComparison.Ordinal), iElig = du.IndexOf("ZebraDriveUp.Eligible(RuleOn", StringComparison.Ordinal);
+            Check(iWorst > 0 && iWorst < iElig && du.Contains("int p = ExitZebraWait.Person(creatures.HasComponent(obj)"), "JR-T-036: standing class (ExitZebraWait.Person) read before the drive-up verdict");
+            Check(dev.Contains("JR-T-036") && dev.Contains("standing_on_zebra"), "DEVIATIONS: the 1.4.1 standing entry");
             Check(dev.Contains("stock_gap_rule") && dev.Contains("needs the Whole junction"), "DEVIATIONS: drive-up needs the Whole junction rule (F1)");
             Check(dev.Contains("B1's in-way full stop needs"), "DEVIATIONS: A3 line");
             string st = File.ReadAllText(Path.Combine(root, "JunctionRules", "Settings", "JunctionRulesSettings.cs"));

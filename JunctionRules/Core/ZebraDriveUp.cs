@@ -28,6 +28,12 @@ namespace JunctionRules.Core
     ///   not only the drive-through time. A conflicting vehicle that can reach those points within that window holds the
     ///   car at its spot (<see cref="Reason.Traffic"/>). Vehicles that arrive after it has driven in wait behind it (the
     ///   game's own conflict checks: the car is physically there);</item>
+    /// <item>JR-T-036 (1.4.1, owner ruling 20 Nov 2026, BINDING): a person STANDING STILL on the target zebra (or a later zebra
+    ///   of its section, which the car would wait for there too) counts as exit blocked, as in the yellow box rule: the car
+    ///   waits at its spot before the junction (<see cref="Reason.PeopleStanding"/>). Only people MOVING across make the car
+    ///   drive up. The test is the box exit zebra wait's own (<see cref="ExitZebraWait.Person"/>: the game's walking test,
+    ///   a standing person only on or beside the car's way, the G23 waiting area excluded); one standing person is enough
+    ///   (mixed standing + walking = the spot);</item>
     /// <item>the junction is a painted yellow box (the stop point before the zebra lies inside the box): the existing box
     ///   rules decide, unchanged (JR-T-024 exit zebra wait): <see cref="Reason.Box"/>.</item>
     /// </list>
@@ -67,11 +73,15 @@ namespace JunctionRules.Core
             /// <summary>JR-T-035 (review F1): the Stock junction gap rule. The drive-up needs the Whole junction rule (its safeguard
             /// is the whole-junction gap check over the <see cref="Window"/>); with the Stock rule the car waits at its spot as in 1.3.0.</summary>
             StockGapRule = 7,
+            /// <summary>JR-T-036 (1.4.1, owner 20 Nov 2026): somebody stands still on the target zebra (or a later zebra of its section):
+            /// exit blocked, as the yellow box rule (<see cref="ExitZebraWait.Stationary"/>); the car waits at its spot.</summary>
+            PeopleStanding = 8,
         }
 
         /// <summary>
         /// Upper bound (s) of the estimated wait for the people on the zebra. A person standing on the car's way has no
-        /// predictable end: the bound. 10 s covers a walker crossing a two-lane zebra end to end (about 10-12 m at the
+        /// predictable end: the bound (JR-T-036: a standing person no longer allows a drive-up, so in the drive-up window the
+        /// bound only caps slow or long walks). 10 s covers a walker crossing a two-lane zebra end to end (about 10-12 m at the
         /// game's walking pace of about 1.3-1.5 m/s: 7-9 s) with margin, and stays inside the arrival-time horizon
         /// (<see cref="ArrivalTime.Horizon"/>: 17 s at the navigation step).
         /// </summary>
@@ -144,42 +154,61 @@ namespace JunctionRules.Core
         /// <summary>
         /// The drive-up decision for the first zebra with people of a section the car still decides at its spot, in the
         /// order the exceptions are named: the gap rule (JR-T-035: only the Whole junction rule has the safeguard, else
-        /// <see cref="Reason.StockGapRule"/>), box, then the geometry (tail on a zebra, cannot stop), then the exit room.
+        /// <see cref="Reason.StockGapRule"/>), box, somebody standing on the zebra (JR-T-036, <see cref="Reason.PeopleStanding"/>),
+        /// then the geometry (tail on a zebra, cannot stop), then the exit room.
         /// The traffic exception is not part of this verdict: it is the car's own gap check over the <see cref="Window"/>
         /// (it holds the car at the spot by itself, whatever the people distance is).
         /// </summary>
-        public static Reason Eligible(bool wholeJunction, bool boxLane, bool fitsClearOfZebras, bool canStopBefore, bool roomPastFreeNow)
+        public static Reason Eligible(bool wholeJunction, bool boxLane, bool peopleStanding, bool fitsClearOfZebras, bool canStopBefore, bool roomPastFreeNow)
         {
             if (!wholeJunction) return Reason.StockGapRule;
             if (boxLane) return Reason.Box;
+            if (peopleStanding) return Reason.PeopleStanding;
             if (!fitsClearOfZebras) return Reason.TailOnZebra;
             if (!canStopBefore) return Reason.CannotStop;
             if (!roomPastFreeNow) return Reason.ExitBlocked;
             return Reason.None;
         }
 
+        /// <summary><see cref="Eligible(bool, bool, bool, bool, bool, bool)"/> with nobody standing on the zebra (walkers only).</summary>
+        public static Reason Eligible(bool wholeJunction, bool boxLane, bool fitsClearOfZebras, bool canStopBefore, bool roomPastFreeNow) =>
+            Eligible(wholeJunction, boxLane, false, fitsClearOfZebras, canStopBefore, roomPastFreeNow);
+
         /// <summary>
-        /// The full rule for a simulation or a test: <see cref="Eligible"/>, then the safeguard (a conflicting vehicle
-        /// able to reach the car's conflict points within the <see cref="Window"/>) = <see cref="Reason.Traffic"/>.
+        /// The full rule for a simulation or a test: <see cref="Eligible(bool, bool, bool, bool, bool, bool)"/>, then the safeguard (a
+        /// conflicting vehicle able to reach the car's conflict points within the <see cref="Window"/>) = <see cref="Reason.Traffic"/>.
         /// </summary>
-        public static Reason Decide(bool wholeJunction, bool boxLane, bool fitsClearOfZebras, bool canStopBefore, bool roomPastFreeNow, bool conflictWithinWindow)
+        public static Reason Decide(bool wholeJunction, bool boxLane, bool peopleStanding, bool fitsClearOfZebras, bool canStopBefore, bool roomPastFreeNow,
+            bool conflictWithinWindow)
         {
-            Reason r = Eligible(wholeJunction, boxLane, fitsClearOfZebras, canStopBefore, roomPastFreeNow);
+            Reason r = Eligible(wholeJunction, boxLane, peopleStanding, fitsClearOfZebras, canStopBefore, roomPastFreeNow);
             if (r != Reason.None) return r;
             return conflictWithinWindow ? Reason.Traffic : Reason.None;
         }
+
+        /// <summary><see cref="Decide(bool, bool, bool, bool, bool, bool, bool)"/> with nobody standing on the zebra.</summary>
+        public static Reason Decide(bool wholeJunction, bool boxLane, bool fitsClearOfZebras, bool canStopBefore, bool roomPastFreeNow, bool conflictWithinWindow) =>
+            Decide(wholeJunction, boxLane, false, fitsClearOfZebras, canStopBefore, roomPastFreeNow, conflictWithinWindow);
 
         /// <summary><see cref="Decide(bool, bool, bool, bool, bool, bool)"/> with the Whole junction gap rule.</summary>
         public static Reason Decide(bool boxLane, bool fitsClearOfZebras, bool canStopBefore, bool roomPastFreeNow, bool conflictWithinWindow) =>
             Decide(true, boxLane, fitsClearOfZebras, canStopBefore, roomPastFreeNow, conflictWithinWindow);
 
         /// <summary>
-        /// JR-T-035 (review F4): the people on the target zebra can hold the car at all: an estimated wait above 0 (somebody
-        /// still to cross the car's way) or somebody standing on or beside it. Walkers that are all past the car's way (wait 0)
-        /// cannot hold it (the game's pedestrian check does not), so no drive-up: today's distance and the normal gap time.
+        /// JR-T-036 (1.4.1): the worst people class on the target zebra and the later zebras of its section
+        /// (<see cref="ExitZebraWait.Person"/> / <see cref="ExitZebraWait.Worse"/>) has somebody standing: exit blocked, the spot.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool PeopleCanHold(float wait, bool anyStationary) => wait > 0f || anyStationary;
+        public static bool PeopleStanding(int worstPeople) => worstPeople == ExitZebraWait.Stationary;
+
+        /// <summary>
+        /// JR-T-035 (review F4), simplified by JR-T-036: the walkers on the target zebra can hold the car at all: an estimated
+        /// wait above 0 (somebody still to cross the car's way). Walkers that are all past the car's way (wait 0) cannot hold it
+        /// (the game's pedestrian check does not), so no drive-up: today's distance and the normal gap time. Standing people
+        /// never get here (<see cref="Reason.PeopleStanding"/> keeps the car at its spot first).
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool PeopleCanHold(float wait) => wait > 0f;
 
         /// <summary>
         /// The distance the game's pedestrian check uses for a person on zebra <paramref name="zebraStart"/> of the
@@ -224,6 +253,7 @@ namespace JunctionRules.Core
                 case Reason.CannotStop: return "cannot_stop_before_zebra";
                 case Reason.NotZebraSection: return "not_a_zebra_section";
                 case Reason.StockGapRule: return "stock_gap_rule";
+                case Reason.PeopleStanding: return "standing_on_zebra";
                 default: return "reason_" + ((int)r).ToString(System.Globalization.CultureInfo.InvariantCulture);
             }
         }
