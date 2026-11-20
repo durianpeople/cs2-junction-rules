@@ -458,7 +458,8 @@ every new call tests `scan.LookPastOn`; the off differential and trace hash are 
   (`RoomScan.NoStopZone`, at most 8, nearest kept): other yellow boxes (a boxed junction's lanes; exit / entrance bands on
   the path lanes, also later on the box's own lane), zebras (`ZebraSections.ZebraKind == Zebra`: the soft zebra of a
   signal whose people have red is not a zone) and other junction interiors (node lanes of a node with 3+ road arms: `RoomScan.IsRoadArm`, a
-  footpath or track joined to a road does not count, JR-T-030). The job reads up to 6 path lanes past the box with the look-past on (`JRWholeJunction.MaxLookLanes`; 3 off, unchanged).
+  footpath or track joined to a road does not count, JR-T-030; and level crossings, a node car lane with
+  `CarLaneFlags.LevelCrossing`: the queue may not stand on the track, also with only 2 road arms, JR-T-031). The job reads up to 6 path lanes past the box with the look-past on (`JRWholeJunction.MaxLookLanes`; 3 off, unchanged).
 - New refusals when a zone push alone turns go into a hold: `queue_pushed_back_by_zebra`, `queue_pushed_back_by_box`,
   `queue_pushed_back_by_junction` (`LookPastRefusal` 6-8). `BeyondSight` (3) is no longer set.
 - Unchanged: people on zebras, waiting turners, the exit-zebra rule, the soft-zebra rule, the safety stop.

@@ -106,7 +106,7 @@ namespace JunctionRules.Tests
             Check(wj.Contains(") != RoomScan.ZoneZebra) continue;   // not a zebra, or the soft zebra")
                 && wj.Contains("scan.NoStopOnLane(zs, ze, startD, endD, len, read, RoomScan.ZoneZebra);"),
                 "job: only true zebras become no-stop zones (the soft zebra is skipped)");
-            Check(wj.Contains("if (RoomScan.NodeZone(RoadArms(owner.m_Owner)) == RoomScan.ZoneJunction) { scan.NoStopZone(read, read + span, RoomScan.ZoneJunction); return; }")
+            Check(wj.Contains("if (RoomScan.NodeZone(RoadArms(owner.m_Owner), levelCrossing) == RoomScan.ZoneJunction) { scan.NoStopZone(read, read + span, RoomScan.ZoneJunction); return; }")
                 && wj.Contains("m_BoxJunctionData.HasComponent(owner.m_Owner)) { scan.NoStopZone(read, read + span, RoomScan.ZoneBox); return; }")
                 && !wj.Contains("edges.Length >= 3"),
                 "job: a boxed junction's interior is a box zone, any other junction (3+ ROAD arms, JR-T-030) a junction zone");
@@ -120,15 +120,15 @@ namespace JunctionRules.Tests
                 foreach (var c in connected) if (RoomScan.IsRoadArm(c.road, c.start, c.end)) n++;
                 return n;
             }
-            byte NodeLaneZone(int arms, int zebraKind)
+            byte NodeLaneZone(int arms, int zebraKind, bool levelCrossing = false)
             {
-                byte z = RoomScan.NodeZone(arms);
+                byte z = RoomScan.NodeZone(arms, levelCrossing);
                 return z != 0 ? z : RoomScan.ZebraZone(zebraKind);
             }
             var midBlockPath = new[] { (true, false, true), (true, true, false), (false, true, false) };   // two road halves + a footpath
             int softKind = ZebraSections.ZebraKind(ZebraSections.PedestrianCrosswalk, true, WholePathRule.SignalStop);
             int hardKind = ZebraSections.ZebraKind(ZebraSections.PedestrianCrosswalk, false, 0);
-            Check(midBlockPath.Length >= 3 && Arms(midBlockPath) == 2 && RoomScan.NodeZone(Arms(midBlockPath)) == 0,
+            Check(midBlockPath.Length >= 3 && Arms(midBlockPath) == 2 && RoomScan.NodeZone(Arms(midBlockPath), false) == 0,
                 "JR-T-030: a mid-block node with a footpath joined (3 connected edges, 2 road arms) is not a junction zone");
             Check(NodeLaneZone(Arms(midBlockPath), softKind) == 0,
                 "JR-T-030: its soft zebra (signalised, people on red) is not a no-stop zone (the soft-zebra exemption holds)");
@@ -137,7 +137,7 @@ namespace JunctionRules.Tests
             var tee = new[] { (true, false, true), (true, true, false), (true, true, false) };
             var listedNotHere = new[] { (true, false, true), (true, true, false), (true, false, false), (false, true, false) };
             Check(Arms(tee) == 3 && NodeLaneZone(Arms(tee), softKind) == RoomScan.ZoneJunction
-                && Arms(listedNotHere) == 2 && RoomScan.NodeZone(Arms(listedNotHere)) == 0,
+                && Arms(listedNotHere) == 2 && RoomScan.NodeZone(Arms(listedNotHere), false) == 0,
                 "JR-T-030: 3 road arms = a junction zone (whole node lane); a road edge listed but not starting / ending there and a path do not count");
             Check(RoomScan.ZebraZone(ZebraSections.SoftZebra) == 0 && RoomScan.ZebraZone(ZebraSections.Zebra) == RoomScan.ZoneZebra
                 && RoomScan.ZebraZone(0) == 0 && RoomScan.JunctionRoadArms == 3,
@@ -145,6 +145,39 @@ namespace JunctionRules.Tests
             Check(wj.Contains("if (RoomScan.IsRoadArm(m_ArmRoadData.HasComponent(e), edge.m_Start == node, edge.m_End == node)) arms++;")
                 && wj.Contains("if (RoomScan.ZebraZone(ZebraSections.ZebraKind((int)ped.m_Flags, pedSignal, (int)pedLight.m_Signal)) != RoomScan.ZoneZebra) continue;"),
                 "JR-T-030: the job counts road arms with RoomScan.IsRoadArm and keeps zebras with RoomScan.ZebraZone (what the model above tests)");
+            // ---- JR-T-031 (Technical ruling): a level crossing (road x track, only 2 road arms) is a junction interior: the
+            // queue may not stand on the track. The game marks its car lanes with CarLaneFlags.LevelCrossing (0x40).
+            var levelCrossing = new[] { (true, false, true), (true, true, false), (false, true, false), (false, false, true) };   // 2 road halves + 2 rail edges
+            Check(RoomScan.LevelCrossingLaneFlag == StockRoomSkip.LevelCrossing && RoomScan.LevelCrossingLaneFlag == SameExitException.LevelCrossing
+                && RoomScan.IsLevelCrossingLane(0x40u | 0x200000u) && !RoomScan.IsLevelCrossingLane(0x8000000u) && !RoomScan.IsLevelCrossingLane(0u),
+                "JR-T-031: the level-crossing test reads CarLaneFlags.LevelCrossing (0x40) only (not TrafficLights / Approach)");
+            Check(Arms(levelCrossing) == 2 && NodeLaneZone(Arms(levelCrossing), 0, levelCrossing: true) == RoomScan.ZoneJunction
+                && NodeLaneZone(Arms(levelCrossing), softKind, levelCrossing: true) == RoomScan.ZoneJunction,
+                "JR-T-031: a level crossing with 2 road arms is a junction zone (whole node lane), also with a soft zebra on it");
+            Check(NodeLaneZone(Arms(midBlockPath), softKind, levelCrossing: false) == 0 && NodeLaneZone(Arms(midBlockPath), 0, levelCrossing: false) == 0,
+                "JR-T-031: a footpath-only split (no track) is still not a junction (the soft-zebra exemption holds)");
+            {
+                // the packed tail is pushed back by the crossing: mover (rear 2, 10 m/s), a car standing just past the track
+                // (rear 15); the crossing's node lane spans 8..12 -> the mover stands before it, room 3.5 < 5.2: held
+                RoomScan lc = Scan(100f);
+                byte lcZone = RoomScan.NodeZone(Arms(levelCrossing), RoomScan.IsLevelCrossingLane(0x40u));
+                if (lcZone != 0) lc.NoStopZone(8f, 12f, lcZone);
+                lc.Add(2f, 4.5f, 10f, 3, 1, 10f, 8f);
+                lc.Add(15f, 4.5f, 0f, 7, 1, 0f, 0f);
+                lc.FinishLookPast();
+                RoomScan noTrack = Scan(100f);
+                byte ntZone = RoomScan.NodeZone(Arms(midBlockPath), RoomScan.IsLevelCrossingLane(0u));
+                if (ntZone != 0) noTrack.NoStopZone(8f, 12f, ntZone);
+                noTrack.Add(2f, 4.5f, 10f, 3, 1, 10f, 8f);
+                noTrack.Add(15f, 4.5f, 0f, 7, 1, 0f, 0f);
+                noTrack.FinishLookPast();
+                Check(lcZone == RoomScan.ZoneJunction && !lc.HasRoom && lc.BlockerIndex == 7 && lc.Refusal == (byte)LookPastRefusal.QueuePushedByJunction,
+                    "JR-T-031: a level crossing pushes the packed tail back off the track: go -> held (queue_pushed_back_by_junction)");
+                Check(ntZone == 0 && noTrack.HasRoom && noTrack.AdmittedByLookPast,
+                    "JR-T-031: the same node without a track (footpath split, no zebra) does not push: go");
+            }
+            Check(wj.Contains("bool levelCrossing = carLanes.TryGetComponent(nav.m_Lane, out Game.Net.CarLane nodeCar) && RoomScan.IsLevelCrossingLane((uint)nodeCar.m_Flags);"),
+                "JR-T-031: the job reads the node car lane's LevelCrossing flag for the junction zone (no new lookups)");
             string nav26 = System.IO.File.ReadAllText(System.IO.Path.Combine(RepoRoot(), "JunctionRules", "Vanilla", "JRCarNavigationSystem.cs"));
             int b26 = nav26.IndexOf("BEGIN S2-26", StringComparison.Ordinal);
             int arm26 = nav26.IndexOf("m_JR.SetRoadArms(m_RoadData, m_JRExitEdges);", StringComparison.Ordinal);

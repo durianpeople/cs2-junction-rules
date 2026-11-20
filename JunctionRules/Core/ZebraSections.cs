@@ -673,10 +673,21 @@ namespace JunctionRules.Core
         public static bool IsRoadArm(bool isRoad, bool startsHere, bool endsHere) => isRoad && (startsHere || endsHere);
 
         /// <summary>
-        /// JR-T-030 (review F1): the no-stop zone a whole (not boxed) node lane is: <see cref="ZoneJunction"/> with
-        /// <see cref="JunctionRoadArms"/> or more road arms, else 0 (a mid-block node: only its zebras, <see cref="ZebraZone"/>).
+        /// JR-T-031: Game.Net.CarLaneFlags.LevelCrossing (0x40), which the game puts on the car lanes of a node where the road
+        /// crosses a track (the node composition's LevelCrossing).
         /// </summary>
-        public static byte NodeZone(int roadArms) => roadArms >= JunctionRoadArms ? ZoneJunction : (byte)0;
+        public const uint LevelCrossingLaneFlag = 0x40u;
+
+        /// <summary>JR-T-031: the car lane's flags mark a level crossing (the lane crosses a track at its node).</summary>
+        public static bool IsLevelCrossingLane(uint carLaneFlags) => (carLaneFlags & LevelCrossingLaneFlag) != 0;
+
+        /// <summary>
+        /// JR-T-030 (review F1) / JR-T-031: the no-stop zone a whole (not boxed) node lane is: <see cref="ZoneJunction"/> with
+        /// <see cref="JunctionRoadArms"/> or more road arms, or when the lane crosses a track (a level crossing, also with only
+        /// 2 road arms: a junction interior, nobody may stand on the track); else 0 (a mid-block node, also with a footpath
+        /// joined: only its zebras, <see cref="ZebraZone"/>).
+        /// </summary>
+        public static byte NodeZone(int roadArms, bool levelCrossing) => roadArms >= JunctionRoadArms || levelCrossing ? ZoneJunction : (byte)0;
 
         /// <summary>
         /// JR-T-030: the no-stop zone a crosswalk on a mid-block node lane is (ZebraSections.ZebraKind): a true zebra =

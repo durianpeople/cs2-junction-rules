@@ -1275,7 +1275,7 @@ namespace JunctionRules.Stage2
         /// <summary>
         /// JR-T-029 (owner rule 4, 20 Nov 2026): the places on a path lane past the box where the queue ahead cannot stand,
         /// for the look-past's packing (RoomScan.NoStopZone, metres past the window start): a node lane of another junction
-        /// (3 or more ROAD arms, JR-T-030: RoadArms) or of a boxed junction = its whole span (a junction interior / a box); a
+        /// (3 or more ROAD arms, JR-T-030: RoadArms), of a level crossing (its car lane crosses a track, JR-T-031) or of a boxed junction = its whole span (a junction interior / a box); a
         /// node lane of any other node (a mid-block crossing, also with a footpath joined) = its zebras, except the soft zebra (a signalised zebra whose people do not have
         /// green: waiting is allowed there, 1.0.1); a road lane = its exit / entrance boxes (LaneBands). Nothing beyond the sight.
         /// </summary>
@@ -1289,7 +1289,8 @@ namespace JunctionRules.Stage2
             if (m_NodeLaneData.HasComponent(nav.m_Lane))
             {
                 if (m_BoxJunctions && m_BoxJunctionData.HasComponent(owner.m_Owner)) { scan.NoStopZone(read, read + span, RoomScan.ZoneBox); return; }
-                if (RoomScan.NodeZone(RoadArms(owner.m_Owner)) == RoomScan.ZoneJunction) { scan.NoStopZone(read, read + span, RoomScan.ZoneJunction); return; }
+                bool levelCrossing = carLanes.TryGetComponent(nav.m_Lane, out Game.Net.CarLane nodeCar) && RoomScan.IsLevelCrossingLane((uint)nodeCar.m_Flags);   // JR-T-031
+                if (RoomScan.NodeZone(RoadArms(owner.m_Owner), levelCrossing) == RoomScan.ZoneJunction) { scan.NoStopZone(read, read + span, RoomScan.ZoneJunction); return; }
                 if (!overlapData.TryGetBuffer(nav.m_Lane, out DynamicBuffer<LaneOverlap> overlaps)) return;
                 for (int i = 0; i < overlaps.Length; i++)
                 {
