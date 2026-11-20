@@ -3,7 +3,7 @@
 A Cities: Skylines II mod that makes traffic behave more like real (UK-style) traffic at junctions, crossings and
 building driveways, and adds painted **yellow box junctions** that drivers actually obey.
 
-Status: 1.0.0, the first public release, on [Paradox Mods](https://mods.paradoxplaza.com/mods/168032/Windows), tested on a left-hand-traffic city. Expect rough edges.
+Status: 1.3.0, on [Paradox Mods](https://mods.paradoxplaza.com/mods/168032/Windows), tested on a left-hand-traffic city. Expect rough edges.
 
 **Getting started:** Options → Junction Rules → set **Car driving** to **Junction Rules** (it starts on the game's own
 driving, so nothing changes until you switch); for the whole-junction gap rule also set **Junction gap rule** to
