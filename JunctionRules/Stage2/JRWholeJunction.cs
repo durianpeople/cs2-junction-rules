@@ -205,6 +205,10 @@ namespace JunctionRules.Stage2
         /// job's Execute (the job struct does not move while it runs); null until SetBoxes (m_BoxLookups guards every read).
         /// </summary>
         private unsafe JRBoxEdges* m_BoxEdges;
+        /// <summary>JR-T-030 (review F1): SetRoadArms ran; the road and edge lookups for counting a node's road arms (RoadArms).</summary>
+        private bool m_ArmLookups;
+        private ComponentLookup<Game.Net.Road> m_ArmRoadData;
+        private ComponentLookup<Game.Net.Edge> m_ArmEdgeData;
         /// <summary>0.4.10 (sweep): the lane signals, for "a light inside the room window past a box" (SetBoxes).</summary>
         private ComponentLookup<LaneSignal> m_BoxSignalData;
         /// <summary>
@@ -1271,8 +1275,8 @@ namespace JunctionRules.Stage2
         /// <summary>
         /// JR-T-029 (owner rule 4, 20 Nov 2026): the places on a path lane past the box where the queue ahead cannot stand,
         /// for the look-past's packing (RoomScan.NoStopZone, metres past the window start): a node lane of another junction
-        /// (3 or more connected edges) or of a boxed junction = its whole span (a junction interior / a box); a node lane of a
-        /// 2-edge node (a mid-block crossing) = its zebras, except the soft zebra (a signalised zebra whose people do not have
+        /// (3 or more ROAD arms, JR-T-030: RoadArms) or of a boxed junction = its whole span (a junction interior / a box); a
+        /// node lane of any other node (a mid-block crossing, also with a footpath joined) = its zebras, except the soft zebra (a signalised zebra whose people do not have
         /// green: waiting is allowed there, 1.0.1); a road lane = its exit / entrance boxes (LaneBands). Nothing beyond the sight.
         /// </summary>
         private unsafe void NoStopZones(ref RoomScan scan, CarNavigationLane nav, bool navInverse, Curve navCurve, float read, float span,
@@ -1285,7 +1289,7 @@ namespace JunctionRules.Stage2
             if (m_NodeLaneData.HasComponent(nav.m_Lane))
             {
                 if (m_BoxJunctions && m_BoxJunctionData.HasComponent(owner.m_Owner)) { scan.NoStopZone(read, read + span, RoomScan.ZoneBox); return; }
-                if (m_ConnectedEdges.TryGetBuffer(owner.m_Owner, out DynamicBuffer<ConnectedEdge> edges) && edges.Length >= 3) { scan.NoStopZone(read, read + span, RoomScan.ZoneJunction); return; }
+                if (RoomScan.NodeZone(RoadArms(owner.m_Owner)) == RoomScan.ZoneJunction) { scan.NoStopZone(read, read + span, RoomScan.ZoneJunction); return; }
                 if (!overlapData.TryGetBuffer(nav.m_Lane, out DynamicBuffer<LaneOverlap> overlaps)) return;
                 for (int i = 0; i < overlaps.Length; i++)
                 {
@@ -1293,7 +1297,7 @@ namespace JunctionRules.Stage2
                     int flags = (int)o.m_Flags;
                     if ((flags & WholePathRule.Water) != 0 || !pedestrianLanes.TryGetComponent(o.m_Other, out Game.Net.PedestrianLane ped)) continue;
                     bool pedSignal = m_BoxSignalData.TryGetComponent(o.m_Other, out LaneSignal pedLight);
-                    if (ZebraSections.ZebraKind((int)ped.m_Flags, pedSignal, (int)pedLight.m_Signal) != ZebraSections.Zebra) continue;   // not a zebra, or the soft zebra
+                    if (RoomScan.ZebraZone(ZebraSections.ZebraKind((int)ped.m_Flags, pedSignal, (int)pedLight.m_Signal)) != RoomScan.ZoneZebra) continue;   // not a zebra, or the soft zebra
                     StretchGeometry.ToConflict(flags, o.m_ThisStart, o.m_ThisEnd, navInverse, false, out float zs, out float ze);
                     scan.NoStopOnLane(zs, ze, startD, endD, len, read, RoomScan.ZoneZebra);
                 }
@@ -1302,6 +1306,24 @@ namespace JunctionRules.Stage2
             if (!m_BoxEntrances || m_BoxEdges == null || !m_EdgeLaneData.HasComponent(nav.m_Lane) || !carLanes.TryGetComponent(nav.m_Lane, out Game.Net.CarLane cl)) return;
             if (!LaneBands(nav.m_Lane, owner.m_Owner, len, navInverse, cl.m_CarriagewayGroup, ref curves, out FixedList128Bytes<float2> bands)) return;
             for (int i = 0; i < bands.Length; i++) scan.NoStopOnLane(bands[i].x, bands[i].y, startD, endD, len, read, RoomScan.ZoneBox);
+        }
+
+        /// <summary>
+        /// JR-T-030 (review F1): the road arms of a node: its ConnectedEdge entries that are roads (Game.Net.Road) and start or
+        /// end at it (RoomScan.IsRoadArm, the filter of Boxes.BoxShapes.ArmEdges). Footpaths, tracks and other edges do not
+        /// count. Bounded by the buffer; 0 without the lookups (SetRoadArms) or the buffer.
+        /// </summary>
+        private int RoadArms(Entity node)
+        {
+            if (!m_ArmLookups || !m_ConnectedEdges.TryGetBuffer(node, out DynamicBuffer<ConnectedEdge> edges)) return 0;
+            int arms = 0;
+            for (int i = 0; i < edges.Length; i++)
+            {
+                Entity e = edges[i].m_Edge;
+                if (!m_ArmEdgeData.TryGetComponent(e, out Game.Net.Edge edge)) continue;
+                if (RoomScan.IsRoadArm(m_ArmRoadData.HasComponent(e), edge.m_Start == node, edge.m_End == node)) arms++;
+            }
+            return arms;
         }
 
         /// <summary>

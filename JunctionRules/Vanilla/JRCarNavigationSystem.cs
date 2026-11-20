@@ -1647,6 +1647,7 @@ public class JRCarNavigationSystem : GameSystemBase
 			if (carLaneSpeedIterator.m_JR.m_BoxRule)
 			{
 				carLaneSpeedIterator.m_JR.SetBoxes(m_JRBoxJunctionData, m_JREdgeLaneData, ref m_JRBoxEdges, m_LaneSignalData, m_CreatureData, blocker.m_Blocker);
+				carLaneSpeedIterator.m_JR.SetRoadArms(m_RoadData, m_JRExitEdges);   // JR-T-030: junction = 3+ road arms
 			}
 			if (carLaneSpeedIterator.m_JR.m_BoxRule)
 			{

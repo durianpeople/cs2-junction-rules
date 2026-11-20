@@ -103,12 +103,53 @@ namespace JunctionRules.Tests
                 && ZebraSections.ZebraKind(ZebraSections.PedestrianCrosswalk, false, 0) == ZebraSections.Zebra,
                 "soft zebra (signalised, people on red) is told apart from a zebra");
             string wj = System.IO.File.ReadAllText(System.IO.Path.Combine(RepoRoot(), "JunctionRules", "Stage2", "JRWholeJunction.cs"));
-            Check(wj.Contains("!= ZebraSections.Zebra) continue;   // not a zebra, or the soft zebra")
+            Check(wj.Contains(") != RoomScan.ZoneZebra) continue;   // not a zebra, or the soft zebra")
                 && wj.Contains("scan.NoStopOnLane(zs, ze, startD, endD, len, read, RoomScan.ZoneZebra);"),
                 "job: only true zebras become no-stop zones (the soft zebra is skipped)");
-            Check(wj.Contains("edges.Length >= 3) { scan.NoStopZone(read, read + span, RoomScan.ZoneJunction); return; }")
-                && wj.Contains("m_BoxJunctionData.HasComponent(owner.m_Owner)) { scan.NoStopZone(read, read + span, RoomScan.ZoneBox); return; }"),
-                "job: a boxed junction's interior is a box zone, any other junction (3+ edges) a junction zone");
+            Check(wj.Contains("if (RoomScan.NodeZone(RoadArms(owner.m_Owner)) == RoomScan.ZoneJunction) { scan.NoStopZone(read, read + span, RoomScan.ZoneJunction); return; }")
+                && wj.Contains("m_BoxJunctionData.HasComponent(owner.m_Owner)) { scan.NoStopZone(read, read + span, RoomScan.ZoneBox); return; }")
+                && !wj.Contains("edges.Length >= 3"),
+                "job: a boxed junction's interior is a box zone, any other junction (3+ ROAD arms, JR-T-030) a junction zone");
+
+            // ---- JR-T-030 (review F1): a junction = 3+ ROAD arms; a footpath joined to a road (the mid-block path split with
+            // its zebra) does not make one, so that node falls through to the zebra loop: the soft zebra keeps its exemption
+            // and a hard zebra there is still a zebra zone. Model of the job's NoStopZones node branch (RoadArms + the zebra loop).
+            int Arms((bool road, bool start, bool end)[] connected)
+            {
+                int n = 0;
+                foreach (var c in connected) if (RoomScan.IsRoadArm(c.road, c.start, c.end)) n++;
+                return n;
+            }
+            byte NodeLaneZone(int arms, int zebraKind)
+            {
+                byte z = RoomScan.NodeZone(arms);
+                return z != 0 ? z : RoomScan.ZebraZone(zebraKind);
+            }
+            var midBlockPath = new[] { (true, false, true), (true, true, false), (false, true, false) };   // two road halves + a footpath
+            int softKind = ZebraSections.ZebraKind(ZebraSections.PedestrianCrosswalk, true, WholePathRule.SignalStop);
+            int hardKind = ZebraSections.ZebraKind(ZebraSections.PedestrianCrosswalk, false, 0);
+            Check(midBlockPath.Length >= 3 && Arms(midBlockPath) == 2 && RoomScan.NodeZone(Arms(midBlockPath)) == 0,
+                "JR-T-030: a mid-block node with a footpath joined (3 connected edges, 2 road arms) is not a junction zone");
+            Check(NodeLaneZone(Arms(midBlockPath), softKind) == 0,
+                "JR-T-030: its soft zebra (signalised, people on red) is not a no-stop zone (the soft-zebra exemption holds)");
+            Check(NodeLaneZone(Arms(midBlockPath), hardKind) == RoomScan.ZoneZebra,
+                "JR-T-030: a hard zebra on that node is still a zebra zone (the queue is packed past it)");
+            var tee = new[] { (true, false, true), (true, true, false), (true, true, false) };
+            var listedNotHere = new[] { (true, false, true), (true, true, false), (true, false, false), (false, true, false) };
+            Check(Arms(tee) == 3 && NodeLaneZone(Arms(tee), softKind) == RoomScan.ZoneJunction
+                && Arms(listedNotHere) == 2 && RoomScan.NodeZone(Arms(listedNotHere)) == 0,
+                "JR-T-030: 3 road arms = a junction zone (whole node lane); a road edge listed but not starting / ending there and a path do not count");
+            Check(RoomScan.ZebraZone(ZebraSections.SoftZebra) == 0 && RoomScan.ZebraZone(ZebraSections.Zebra) == RoomScan.ZoneZebra
+                && RoomScan.ZebraZone(0) == 0 && RoomScan.JunctionRoadArms == 3,
+                "JR-T-030: ZebraZone keeps true zebras only");
+            Check(wj.Contains("if (RoomScan.IsRoadArm(m_ArmRoadData.HasComponent(e), edge.m_Start == node, edge.m_End == node)) arms++;")
+                && wj.Contains("if (RoomScan.ZebraZone(ZebraSections.ZebraKind((int)ped.m_Flags, pedSignal, (int)pedLight.m_Signal)) != RoomScan.ZoneZebra) continue;"),
+                "JR-T-030: the job counts road arms with RoomScan.IsRoadArm and keeps zebras with RoomScan.ZebraZone (what the model above tests)");
+            string nav26 = System.IO.File.ReadAllText(System.IO.Path.Combine(RepoRoot(), "JunctionRules", "Vanilla", "JRCarNavigationSystem.cs"));
+            int b26 = nav26.IndexOf("BEGIN S2-26", StringComparison.Ordinal);
+            int arm26 = nav26.IndexOf("m_JR.SetRoadArms(m_RoadData, m_JRExitEdges);", StringComparison.Ordinal);
+            Check(b26 > 0 && arm26 > b26 && arm26 < nav26.IndexOf("JR-STAGE2 END", b26, StringComparison.Ordinal),
+                "JR-T-030: S2-26 hands the job's road and edge lookups to the iterator (inside the marked block)");
             RoomScan off = RoomScan.Begin(4.2f, 1f);
             off.FreeNow = true; off.SightLeft = 100f;
             off.NoStopZone(8f, 12f, RoomScan.ZoneZebra);

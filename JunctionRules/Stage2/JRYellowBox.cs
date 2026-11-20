@@ -39,6 +39,17 @@ namespace JunctionRules.Stage2
             m_BoxLookups = true;
         }
 
+        /// <summary>
+        /// JR-T-030 (review F1, S2-26): the job's read-only road and edge lookups, so the look-past's no-stop zones count a
+        /// node's ROAD arms (RoadArms) instead of every connected edge (footpaths, tracks).
+        /// </summary>
+        public void SetRoadArms(ComponentLookup<Game.Net.Road> roads, ComponentLookup<Game.Net.Edge> edges)
+        {
+            m_ArmRoadData = roads;
+            m_ArmEdgeData = edges;
+            m_ArmLookups = true;
+        }
+
         /// <summary>The lane is a node lane of a boxed junction (setting on, junction boxes exist).</summary>
         private bool IsBoxedJunctionLane(Entity lane) =>
             m_BoxRule && m_BoxJunctions && m_BoxLookups && m_NodeLaneData.HasComponent(lane)

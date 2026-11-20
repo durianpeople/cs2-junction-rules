@@ -660,6 +660,30 @@ namespace JunctionRules.Core
         /// </summary>
         public const byte ZoneZebra = 1, ZoneBox = 2, ZoneJunction = 3;
 
+        /// <summary>
+        /// JR-T-030 (review F1): "another junction" for rule 4 = a node where at least this many ROAD arms meet. A footpath,
+        /// track or other non-road edge joined to a road (the mid-block path split that adds a zebra) does not make a junction.
+        /// </summary>
+        public const int JunctionRoadArms = 3;
+
+        /// <summary>
+        /// JR-T-030 (review F1): one ConnectedEdge entry of a node counts as a road arm when it is a road (Game.Net.Road) and
+        /// starts or ends at the node (the filter of Boxes.BoxShapes.ArmEdges; the buffer can list edges that do neither).
+        /// </summary>
+        public static bool IsRoadArm(bool isRoad, bool startsHere, bool endsHere) => isRoad && (startsHere || endsHere);
+
+        /// <summary>
+        /// JR-T-030 (review F1): the no-stop zone a whole (not boxed) node lane is: <see cref="ZoneJunction"/> with
+        /// <see cref="JunctionRoadArms"/> or more road arms, else 0 (a mid-block node: only its zebras, <see cref="ZebraZone"/>).
+        /// </summary>
+        public static byte NodeZone(int roadArms) => roadArms >= JunctionRoadArms ? ZoneJunction : (byte)0;
+
+        /// <summary>
+        /// JR-T-030: the no-stop zone a crosswalk on a mid-block node lane is (ZebraSections.ZebraKind): a true zebra =
+        /// <see cref="ZoneZebra"/>; the soft zebra (signalised, people on red: waiting allowed, 1.0.1) or no zebra = 0.
+        /// </summary>
+        public static byte ZebraZone(int zebraKind) => zebraKind == ZebraSections.Zebra ? ZoneZebra : (byte)0;
+
         /// <summary>JR-T-029: most no-stop zones kept per scan (path order: the nearest; further ones are ignored).</summary>
         public const int MaxZones = WaitingSpots.Capacity;
 
